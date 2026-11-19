@@ -199,9 +199,9 @@ check('spieler-Route gleitet per teleport (x=1, Bodenhöhe 0.2)') do
   Rune::Player.pos == [1.0, 0.2, 0.0]
 end
 Mover.update(0.5)
-check('zweiter Meter') { Rune::Player.pos == [2.0, 0.2, 0.0] }
-Mover.update(0.5)
-check('Route zu Ende') { Mover.routes.empty? }
+check('Route zu Ende (ein Schritt = ein Meter)') do
+  Rune::Player.pos == [1.0, 0.2, 0.0] && Mover.routes.empty?
+end
 
 puts '== Interpreter: move_route =='
 Mover.reset!
