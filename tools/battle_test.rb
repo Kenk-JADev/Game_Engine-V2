@@ -184,11 +184,40 @@ hp0 = goblin.hp
 2.times { Battle.angriff(Battle.actors[0], goblin) }
 check('Schaden zieht HP ab') { goblin.hp < hp0 && goblin.hp >= 0 }
 
-puts '== Item + Flucht =='
+puts '== Flucht =='
+Battle.start('waldweg', can_escape: false)
+2.times { druck(:down) }
+check('Cursor auf Flucht') { Battle.command_index == 2 }
+druck(:enter)
+check('Flucht ohne can_escape: kein Abbruch, weiter Befehle') do
+  Battle.active? && Battle.phase == :command
+end
+Battle.abort!
+# 50%-Wurf der Flucht deterministisch stubben (Kernel#rand wird von
+# Battle.attempt_escape ohne Receiver aufgerufen -> Singleton-Stub gewinnt).
+Battle.singleton_class.send(:define_method, :rand) { 0.9 }
+Battle.start('waldweg')
+2.times { druck(:down) }
+druck(:enter)
+check('Flucht fehlschlagen -> Aktionsphase (Runde 2, Gegner waren dran)') do
+  Battle.active? && Battle.phase == :command && Battle.turn == 1
+end
+Battle.abort!
+Battle.singleton_class.send(:define_method, :rand) { 0.1 }
+Battle.start('waldweg')
+2.times { druck(:down) }
+druck(:enter)
+check('Flucht gelungen -> Kampf vorbei (Ergebnis flucht)') do
+  !Battle.active? && Battle.result == :flucht
+end
+# Stub wieder entfernen: ab hier soll wieder echt gewürfelt werden.
+Battle.singleton_class.send(:remove_method, :rand)
+
+puts '== Item =='
+Battle.start('waldweg')
 Party.add_item('heiltrank', 1)
 Battle.actors[0].damage(20)
 check('usable_items enthält heiltrank') { Battle.usable_items.include?('heiltrank') }
-# next_actor hat den Cursor auf 0 (Angriff) gestellt; einmal runter = Item.
 druck(:down)
 check('Cursor auf Item') { Battle.command_index == 1 }
 druck(:enter)
@@ -210,15 +239,6 @@ end
 Battle.abort!
 check('abort!: Kampf aus, in_battle zurück') do
   !Battle.active? && !$game_temp.in_battle
-end
-srand(1234)
-Battle.start('waldweg', can_escape: false)
-druck(:down)
-druck(:down)
-check('Cursor auf Flucht') { Battle.command_index == 2 }
-druck(:enter)
-check('Flucht ohne can_escape: kein Abbruch, weiter Befehle') do
-  Battle.active? && Battle.phase == :command
 end
 
 puts '== Sieg =='
@@ -304,26 +324,44 @@ interp3.update(0.016)
 check('Zahleneingabe offen + blockiert') do
   interp3.busy_number? && interp3.running?
 end
+def ist3(interp)
+  ni = interp.num_input
+  ni ? "#{ni[:ziffern].inspect} sel=#{ni[:sel]}" : 'nil'
+end
+
 ni = interp3.num_input
 check('Status: 3 Ziffern, Cursor 0') do
   ni[:digits] == 3 && ni[:ziffern] == [0, 0, 0] && ni[:sel].zero?
 end
 druck_ui(interp3, :'1')
-check('Zifferntaste 1 setzt erste Stelle') do
+check("Zifferntaste 1 -> [1,0,0] sel=1 (ist #{ist3(interp3)})") do
   interp3.num_input[:ziffern] == [1, 0, 0] && interp3.num_input[:sel] == 1
 end
-druck_ui(interp3, :up)
-check('hoch zählt die Ziffer') { interp3.num_input[:ziffern] == [1, 1, 0] }
-druck_ui(interp3, :left)
-check('links verschiebt den Cursor') { interp3.num_input[:sel].zero? }
-druck_ui(interp3, :right, :right)
+druck_ui(interp3, :'2')
+check("Zifferntaste 2 -> [1,2,0] sel=2 (ist #{ist3(interp3)})") do
+  interp3.num_input[:ziffern] == [1, 2, 0] && interp3.num_input[:sel] == 2
+end
 druck_ui(interp3, :'7')
-check("7 auf dritte Stelle (ist #{interp3.num_input ? interp3.num_input[:ziffern].inspect + ' sel=' + interp3.num_input[:sel].to_s : 'nil'})") do
-  interp3.num_input && interp3.num_input[:ziffern] == [1, 1, 7]
+check("Zifferntaste 7 -> [1,2,7] sel=0 (ist #{ist3(interp3)})") do
+  interp3.num_input[:ziffern] == [1, 2, 7] && interp3.num_input[:sel].zero?
+end
+druck_ui(interp3, :up)
+check("hoch zählt erste Ziffer -> [2,2,7] (ist #{ist3(interp3)})") do
+  interp3.num_input[:ziffern] == [2, 2, 7]
+end
+druck_ui(interp3, :left)
+check("links wrap -> sel=2 (ist #{ist3(interp3)})") { interp3.num_input[:sel] == 2 }
+druck_ui(interp3, :left)
+check("links -> sel=1 (ist #{ist3(interp3)})") { interp3.num_input[:sel] == 1 }
+druck_ui(interp3, :right)
+check("rechts -> sel=2 (ist #{ist3(interp3)})") { interp3.num_input[:sel] == 2 }
+druck_ui(interp3, :down)
+check("runter zählt dritte Ziffer -> [2,2,6] (ist #{ist3(interp3)})") do
+  interp3.num_input[:ziffern] == [2, 2, 6]
 end
 druck_ui(interp3, :enter)
-check('Bestätigen setzt die Variable (117)') do
-  GameState.variable('ziffern') == 117.0 && !interp3.busy_number?
+check("Bestätigen setzt die Variable (226, ist #{GameState.variable('ziffern')})") do
+  GameState.variable('ziffern') == 226.0 && !interp3.busy_number?
 end
 interp3.update(0.016)
 check('Folge-Befehl läuft nach der Eingabe') { GameState.variable('fertig') == 1.0 }

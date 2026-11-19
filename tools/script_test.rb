@@ -197,7 +197,11 @@ begin
 
   # 8) Context-Helfer (Etappe 19i): battle startet einen Kampf. run_code
   # liefert true/false (Ausnahme = false), den Script-Wert fangen wir per
-  # Global ein.
+  # Global ein. Achtung: $project_root zeigt hier auf das tmp-Projekt OHNE
+  # database.json - für die Party kurz auf das echte Repo umschalten.
+  altes_root = $project_root
+  $project_root = nil
+  Database.reset!
   Party.setup(Database.database)
   Scripts.run_code('kampf_unbekannt', "$rgss_kampf1 = battle 'gibt_es_nicht'", interp, ev)
   check('battle-Helfer: unbekannte Truppe -> false') { $rgss_kampf1 == false }
@@ -206,6 +210,8 @@ begin
     ok == true && $rgss_kampf2 == true && Battle.active?
   end
   Battle.abort!
+  $project_root = altes_root
+  Database.reset!
 ensure
   FileUtils.remove_entry(tmp)
 end
