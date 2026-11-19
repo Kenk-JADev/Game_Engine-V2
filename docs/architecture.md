@@ -1129,6 +1129,47 @@ nicht); `tools/edclick.psm1` hatte sie bereits. `ß` bleibt, wo es war — die
 Umstellung führt kein ß neu ein (schweizerische Schreibung wie „grösser"
 neben bestehendem „Löschen" ist bewusst akzeptiert).
 
+## Editor-Hauptfenster professionell (Etappe 19c)
+
+User-Vorgabe nach Screenshot: Das Hauptfenster war an mehreren Stellen
+unrund — Checkboxes für sich ausschließende Modi, ein Bedienblock ohne
+Gruppierung, tote Leerräume unter der Prefab-Liste, und die Objektliste als
+einanzeilige ListBox. Die anderen Dialoge des Editors (Events, Datenbank,
+Materialbase) sind dagegen sauber gruppiert; das Hauptfenster zieht jetzt
+nach, plus drei Dinge, die RPG Maker XP seinem Editor mitgibt: Kontextmenüs,
+sortierbare Listen und eine Platzier-Vorschau.
+
+**Linke Spalte, drei benannte Gruppen:** „Werkzeug (Modus)" mit fünf
+Radios (Setzen, Auswählen, Verschieben, Boden malen, Höhe malen — genau einer
+aktiv, `set_mode()` setzt Haken zentral, weil auch Prefab-Liste und
+Kontextmenü den Modus wechseln), „Objekt-Typ (Prefab)" mit der Liste, die den
+verbleibenden Raum füllt (kein toter Leerraum mehr), „Objekt-Aktionen"
+(Drehen/Löschen/Duplizieren) und Undo/Redo am Spaltenende.
+
+**Objektliste als ListView (Bericht-Modus):** Spalten `#`, `Objekt`, `X`, `Z`,
+`Drehung`, `Material`; Klick auf den Spaltenkopf sortiert (auf-/absteigend),
+ganze Zeile markierbar, Gitterlinien. Die Zeile trägt den Objektindex im
+`lParam`, Sortierung und Datenreihenfolge bleiben also getrennt
+(`g.obj_order`). Doppelklick richtet weiter die Kamera aus, Rechtsklick öffnet
+das Kontextmenü.
+
+**Platzier-Vorschau („Geist"):** Im Setzen-Modus folgt eine eingefärbte
+Fassung des gewählten Prefabs (Mischung Richtung Mintgrün, ohne Textur — der
+Renderer kennt kein Alpha) dem Cursor, eingerastet auf dasselbe Raster und
+mit derselben Drehung, die der Klick setzt. `R` dreht die Vorschau in
+15°-Schritten, das Statusfeld zeigt Rasterpunkt und Drehung. Aus der
+„Sofort-Einfügen"-Falle wird so ein bestätigtes Platzieren.
+
+**Kontextmenü** (Rechtsklick im Viewport und auf der Objektliste): Objekt
+hier setzen, Kamera darauf, duplizieren, löschen — dieselben Befehle wie
+Tastatur/Buttons, über `WM_COMMAND` verteilt.
+
+**Introspektion für Live-Tests:** Texte sind prozessfremd nicht per
+`SendMessage` lesbar (BACKLOG-Wissen). Der Editor schreibt deshalb bei jeder
+Änderung der Objektliste `log/editor_objects.json` (Index, Typ, Name, X, Z,
+Drehung, Material); `tools/edclick.psm1` liest die Liste daraus und liefert
+weiter das alte Zeilenformat, bestehende Live-Skripte laufen also unverändert.
+
 ## Ruby-API (Stand Etappe 2)
 
 | API | Bedeutung |

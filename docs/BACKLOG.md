@@ -21,15 +21,6 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 ---
 
 ## Offen
-### [Editor] Objektliste verbessen + Platzier-Vorschau statt Sofort-Einfügen — offen (User-Wunsch)
-- Symptom: Objektliste zeigt nur einzeilige Kurztexte; Platzieren im Setzen-Modus
-  fügt beim ersten Klick sofort ein — keine Vorschau des ausgewählten Objekts.
-- Wunsch: Objekt in der Liste auswählen, Vorschau (Geist des Prefabs) folgt dem
-  Cursor im Viewport, Klick bestätigt das Platzieren.
-- Betroffene Stellen: `src/editor/editor_main.cpp` (Objektliste, `push_hover_marker`,
-  `place_object`).
-- Gefunden in: User-Rückmeldung nach Etappe 18k/18l.
-
 ### [Editor] NPC-Editor / Platzier-Tool für viele Dinge (x/y/z, Text) — offen (User-Wunsch)
 - Symptom: NPCs sind im Editor gar nicht editierbar (nur im Karten-JSON);
   Text/Schild-Objekte fehlen als platzierbarer Typ.
@@ -173,6 +164,16 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Etappe 19a.
 
 ## Erledigt
+### [Editor] Objektliste + Platzier-Vorschau — erledigt (19c)
+- Symptom/Wunsch: einzeilige ListBox, Sofort-Einfügen ohne Vorschau; User wollte
+  Listen-Auswahl, Geist-Vorschau am Cursor und Klick als Bestätigung.
+- Fix: Objektliste als ListView mit sechs Spalten und Sortierung per Kopflick;
+  Geist-Vorschau (eingefärbt, Raster- und drehungsgenau, `R` dreht in 15°);
+  linke Spalte als drei Gruppen mit Radio-Modi; Kontextmenü für Viewport und
+  Liste; `log/editor_objects.json` als Leseweg für Live-Tests.
+- Betroffene Stellen: `src/editor/editor_main.cpp`, `tools/edclick.psm1`.
+- Gefunden in: User-Rückmeldung nach Etappe 18k/18l.
+
 ### [Editor/Daten] Ersatzschreibung (ue/ae/oe) in Prosa + ANSI-Textaufrufe — erledigt (19b)
 - Symptom: Prefab-Liste „Huette"/„Wegstueck", NPC „Waechter Mara", Dialogzeilen
   („… traegt der Weg …"), Launcher-Hilfe „Waehlen/Loeschen"; zugleich hätten

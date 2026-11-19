@@ -70,19 +70,21 @@ function Save-Shot([string]$path) {
     $b.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
     $g.Dispose(); $b.Dispose()
 }
-# Objektliste des Editors auslesen (IDC_OBJ_LIST = 3010)
+# Objektliste des Editors auslesen. Seit Etappe 19c ist die Liste ein ListView
+# (Spalten, sortierbar); Texte lassen sich prozessfremd nicht per SendMessage
+# lesen. Der Editor schreibt deshalb bei jeder Aenderung einen Schnappschuss
+# nach log/editor_objects.json - den liest diese Funktion (Format wie frueher:
+# "1. Name  (x / z)", damit bestehende Live-Skripte laufen).
 function Get-ObjList {
-    $h = (Get-Process RuneEditor).MainWindowHandle
-    $lb = [EdClick]::GetDlgItem($h, 3010)
-    $n = [int][EdClick]::SendMessageInt($lb, 0x018B, [IntPtr]::Zero, [IntPtr]::Zero)
-    $out = @()
-    for ($i = 0; $i -lt $n; $i++) {
-        $len = [int][EdClick]::SendMessageInt($lb, 0x018A, [IntPtr]$i, [IntPtr]::Zero)
-        $sb = New-Object System.Text.StringBuilder ($len + 2)
-        [EdClick]::SendMessageStr($lb, 0x0189, [IntPtr]$i, $sb) | Out-Null
-        $out += $sb.ToString()
-    }
-    return $out
+    $exe = (Get-Process RuneEditor -ErrorAction SilentlyContinue).Path
+    if (-not $exe) { return @() }
+    $root = Split-Path (Split-Path $exe -Parent) -Parent
+    $pfad = Join-Path $root 'log\editor_objects.json'
+    if (-not (Test-Path $pfad)) { return @() }
+    $arr = Get-Content -Raw -Encoding UTF8 $pfad | ConvertFrom-Json
+    return @($arr | ForEach-Object {
+        '{0}. {1}  ({2} / {3})' -f ($_.i + 1), $_.name, $_.x, $_.z
+    })
 }
 function Get-PropField([int]$id) {
     $h = (Get-Process RuneEditor).MainWindowHandle

@@ -103,6 +103,14 @@ enum {
     IDC_LBL_MAPS      = 3028,
     // Etappe 18l: Höhen-Malwerkzeug (Berge/Senken)
     IDC_BTN_HEIGHT    = 3029,
+    // Etappe 19c: Gruppenrahmen der linken Spalte + Kontextmenü Viewport/Liste
+    IDC_GRP_TOOL      = 3030,
+    IDC_GRP_PREFAB    = 3031,
+    IDC_GRP_ACT       = 3032,
+    ID_CTX_PLACE      = 3120,
+    ID_CTX_FOCUS      = 3121,
+    ID_CTX_DUP        = 3122,
+    ID_CTX_DEL        = 3123,
     // Kontextmenü des Kartenbaums (postet als WM_COMMAND an main_proc)
     IDM_TREE_PROPS    = 3110,
     IDM_TREE_NEW      = 3111,
@@ -272,6 +280,11 @@ struct Editor {
     bool move_mode = false;        // Verschieben-Werkzeug (Drag im Viewport)
     bool paint_mode = false;       // Etappe 18e: Boden-Malwerkzeug (Splats)
     bool height_mode = false;      // Etappe 18l: Berge/Senken malen
+    float place_rot = 0.0f;        // Etappe 19c: Drehung der Platzier-Vorschau
+    int  obj_sort_col = -1;        // Etappe 19c: Sortierspalte (-1 = Datenreihenfolge)
+    bool obj_sort_asc = true;      // Etappe 19c: Sortierrichtung
+    std::vector<int> obj_order;    // Etappe 19c: Listenzeile -> Index in objects
+    HMENU ctx_obj = nullptr;       // Etappe 19c: Kontextmenü Viewport/Objektliste
     float paint_size = 8.0f;       // Brush-Grösse in Metern (Kantenlänge)
     std::string paint_tex = "weg"; // Textur des Pinsels
     bool dragging = false;         // gerade Objekt per Maus verschieben
@@ -1955,26 +1968,119 @@ void set_obj_number(int i, const char* key, float value) {
     g.dirty = true;
 }
 
+// Etappe 19c: zentrales Umschalten der fünf Modi. Die Knöpfe sind Radios
+// (BS_AUTORADIO); Prefab-Liste und Kontextmenü wechseln den Modus aber auch,
+// deshalb wird der Haken hier gesetzt - genau einer ist immer aktiv.
+void set_mode(int mode) {
+    g.place_mode  = (mode == 1);
+    g.move_mode   = (mode == 3);
+    g.paint_mode  = (mode == 4);
+    g.height_mode = (mode == 5);
+    const int ids[6] = { 0, IDC_BTN_PLACE, IDC_BTN_SELECT, IDC_BTN_MOVE,
+                         IDC_BTN_PAINT, IDC_BTN_HEIGHT };
+    for (int m = 1; m <= 5; ++m)
+        SendMessageW(GetDlgItem(g.main, ids[m]), BM_SETCHECK,
+                     (m == mode) ? BST_CHECKED : BST_UNCHECKED, 0);
+}
+
+// Etappe 19c: Anzeigename/Material eines Objekts fuer Liste und Introspektion.
+std::string obj_display_name(int i) {
+    const std::string type = obj_type(i);
+    if (const Prefab* pr = prefab_of(type)) return pr->name;
+    return type;
+}
+
+std::string obj_material(int i) {
+    if (!g.objects || i < 0 || i >= static_cast<int>(g.objects->arr.size())) return {};
+    const JsonValue* t = g.objects->arr[i].find("tex");
+    return (t && t->is_str()) ? t->str : std::string();
+}
+
+// Sortierschluessel der Objektliste (Spalte in g.obj_sort_col).
+bool obj_sort_less(int a, int b) {
+    switch (g.obj_sort_col) {
+        case 1:  return obj_display_name(a) < obj_display_name(b);
+        case 2:  return obj_number(a, "x", 0) < obj_number(b, "x", 0);
+        case 3:  return obj_number(a, "z", 0) < obj_number(b, "z", 0);
+        case 4:  return obj_number(a, "rot", 0) < obj_number(b, "rot", 0);
+        case 5:  return obj_material(a) < obj_material(b);
+        default: return a < b;
+    }
+}
+
+int obj_row_of(int index) {
+    for (int r = 0; r < static_cast<int>(g.obj_order.size()); ++r)
+        if (g.obj_order[r] == index) return r;
+    return -1;
+}
+
+// Etappe 19c: Objektliste als JSON-Schnappschuss nach log/editor_objects.json.
+// Texte lassen sich prozessfremd nicht per SendMessage lesen (siehe BACKLOG);
+// eine Datei im Log-Verzeichnis kann jedes Werkzeug - und hilft beim Debuggen.
+void write_objects_introspection() {
+    if (!g.objects) return;
+    const int n = static_cast<int>(g.objects->arr.size());
+    std::string js = "[\n";
+    for (int i = 0; i < n; ++i) {
+        char line[512];
+        std::snprintf(line, sizeof(line),
+                      "  {\"i\": %d, \"type\": \"%s\", \"name\": \"%s\", "
+                      "\"x\": %.3f, \"z\": %.3f, \"rot\": %.4f, \"tex\": \"%s\"}%s\n",
+                      i, obj_type(i).c_str(), obj_display_name(i).c_str(),
+                      obj_number(i, "x", 0), obj_number(i, "z", 0),
+                      obj_number(i, "rot", 0), obj_material(i).c_str(),
+                      (i + 1 < n) ? "," : "");
+        js += line;
+    }
+    js += "]\n";
+    static std::string cache;
+    if (js == cache) return;
+    cache = js;
+    write_file(g.root + "\\log\\editor_objects.json", js);
+}
+
 void sync_object_list() {
     if (!g.list_objs || !g.objects) return;
     // Etappe 19b: durchgehend W-Varianten - die Namen kommen als UTF-8 aus
     // dem Karten-JSON und dürfen nicht durch die ANSI-Codepage (CP1252)
     // laufen, sonst erscheint "Hütte" in der Liste doppelt kodiert (Ã-Form).
-    SendMessageW(g.list_objs, LB_RESETCONTENT, 0, 0);
+    // Zeilenreihenfolge: Datenreihenfolge oder Sortierung nach Spalte.
+    const int n = static_cast<int>(g.objects->arr.size());
+    g.obj_order.assign(static_cast<size_t>(n), 0);
+    for (int i = 0; i < n; ++i) g.obj_order[static_cast<size_t>(i)] = i;
+    if (g.obj_sort_col >= 0) {
+        std::stable_sort(g.obj_order.begin(), g.obj_order.end(),
+                         [](int a, int b) { return obj_sort_less(a, b); });
+        if (!g.obj_sort_asc) std::reverse(g.obj_order.begin(), g.obj_order.end());
+    }
+    ListView_DeleteAllItems(g.list_objs);
     wchar_t buf[160];
-    for (int i = 0; i < static_cast<int>(g.objects->arr.size()); ++i) {
-        const std::string type = obj_type(i);
-        std::string name = type;
-        if (const Prefab* p = prefab_of(type)) name = p->name;
-        std::swprintf(buf, 160, L"%d. %ls  (%.1f / %.1f)", i + 1,
-                      utf8_to_wide(name).c_str(),
-                      obj_number(i, "x", 0), obj_number(i, "z", 0));
-        int idx = SendMessageW(g.list_objs, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(buf));
-        SendMessageW(g.list_objs, LB_SETITEMDATA, idx, i);
+    for (int row = 0; row < n; ++row) {
+        const int i = g.obj_order[static_cast<size_t>(row)];
+        LVITEMW it{};
+        it.mask = LVIF_TEXT | LVIF_PARAM;
+        it.iItem = row;
+        it.iSubItem = 0;
+        it.lParam = i;                      // Zeile -> Objektindex
+        std::swprintf(buf, 160, L"%d", i + 1);
+        it.pszText = buf;
+        const int idx = ListView_InsertItem(g.list_objs, &it);
+        const std::wstring name = utf8_to_wide(obj_display_name(i));
+        ListView_SetItemText(g.list_objs, idx, 1, const_cast<wchar_t*>(name.c_str()));
+        std::swprintf(buf, 160, L"%.1f", obj_number(i, "x", 0));
+        ListView_SetItemText(g.list_objs, idx, 2, buf);
+        std::swprintf(buf, 160, L"%.1f", obj_number(i, "z", 0));
+        ListView_SetItemText(g.list_objs, idx, 3, buf);
+        std::swprintf(buf, 160, L"%.0f\u00b0", obj_number(i, "rot", 0) * 180.0f / 3.14159265f);
+        ListView_SetItemText(g.list_objs, idx, 4, buf);
+        const std::wstring mat = utf8_to_wide(obj_material(i));
+        ListView_SetItemText(g.list_objs, idx, 5, const_cast<wchar_t*>(mat.c_str()));
     }
-    if (g.sel_obj >= 0 && g.sel_obj < static_cast<int>(g.objects->arr.size())) {
-        SendMessageW(g.list_objs, LB_SETCURSEL, g.sel_obj, 0);
-    }
+    const int sel_row = obj_row_of(g.sel_obj);
+    if (sel_row >= 0)
+        ListView_SetItemState(g.list_objs, sel_row, LVIS_SELECTED | LVIS_FOCUSED,
+                              LVIS_SELECTED | LVIS_FOCUSED);
+    write_objects_introspection();
 }
 
 void json_remove_key(JsonValue& v, const std::string& key) {
@@ -2069,13 +2175,14 @@ void place_object(float x, float z) {
     obj.set("type", JsonValue::make_str(g.prefabs[g.sel_prefab].id));
     obj.set("x", JsonValue::make_num(x, false));
     obj.set("z", JsonValue::make_num(z, false));
-    obj.set("rot", JsonValue::make_num(0.0, false));
+    obj.set("rot", JsonValue::make_num(g.place_rot, false));
     g.objects->arr.push_back(std::move(obj));
     g.dirty = true;
 
     char buf[128];
-    std::snprintf(buf, sizeof(buf), "Gesetzt: %s bei %.1f/%.1f",
-                  g.prefabs[g.sel_prefab].name.c_str(), x, z);
+    std::snprintf(buf, sizeof(buf), "Gesetzt: %s bei %.1f/%.1f, Drehung %.0f Grad",
+                  g.prefabs[g.sel_prefab].name.c_str(), x, z,
+                  g.place_rot * 180.0 / 3.14159265);
     core::log_info(buf);
     sync_object_list();
 }
@@ -2551,38 +2658,40 @@ void layout_children() {
     const int bx = 8;
     const int bw2 = (lw - 8) / 2;
     const int tree_h = 150;                              // Kartenbaum
-    const int tools_lbl_h = 22;
-    // Etappe 18l: 8. Werkzeugzeile (Höhe malen) -> Block wächst.
-    const int block_h = 8 * 30 + 7 * 6;   // 8 Zeilen à 30 px, 7 Lücken à 6 px
-    const int tools_y0 = tb_h + tree_h + tools_lbl_h;
-    const int list_h = std::max(80, H - sb_h - tools_y0 - 8 - block_h);
-    const int y0 = tools_y0 + list_h + 8;
+    // Etappe 19c: feste Höhen der Gruppen, Prefab-Liste bekommt den Rest.
+    const int grp_tool_h = 5 * 26 + 26;    // 5 Radios + Rahmentitel
+    const int grp_act_h  = 2 * 32 + 30;    // 2 Aktionszeilen + Rahmentitel
+    const int undo_h     = 34;
+    const int y_tool = tb_h + tree_h + 4;
+    const int y_prefab = y_tool + grp_tool_h + 6;
+    const int y_act = H - sb_h - 8 - undo_h - grp_act_h;
+    const int y_undo = H - sb_h - 6 - undo_h;
 
     auto move_child = [](HWND hwnd, int x, int y, int w, int ht) {
         if (hwnd) SetWindowPos(hwnd, nullptr, x, y, w, ht,
                                SWP_NOZORDER | SWP_NOACTIVATE);
     };
-    auto tool_row = [&](int id, int row, int x, int w) {
-        move_child(GetDlgItem(g.main, id), x, y0 + row * 36, w, 30);
-    };
     // Etappe 18k: Kartenbaum + KARTEN-Label oben.
     move_child(GetDlgItem(g.main, IDC_LBL_MAPS), bx, tb_h + 8, lw, 20);
     move_child(g.map_tree, bx, tb_h + 30, lw, tree_h - 30);
-    move_child(GetDlgItem(g.main, IDC_LBL_TOOLS), bx, tools_y0, lw, 20);
-    move_child(g.list_prefab, bx, tools_y0 + tools_lbl_h, lw, list_h);
-    tool_row(IDC_BTN_PLACE, 0, bx, bw2);
-    tool_row(IDC_BTN_SELECT, 0, bx + bw2 + 8, bw2);
-    tool_row(IDC_BTN_ROTATE, 1, bx, bw2);
-    tool_row(IDC_BTN_DELETE, 1, bx + bw2 + 8, bw2);
-    tool_row(IDC_BTN_DUPLICATE, 2, bx, lw);
-    tool_row(IDC_BTN_MOVE, 3, bx, lw);
-    tool_row(IDC_BTN_PAINT, 4, bx, lw);
-    // Etappe 18l: Höhe malen (Berge/Senken) als 5. Werkzeugzeile.
-    tool_row(IDC_BTN_HEIGHT, 5, bx, lw);
-    // Etappe 18i: Undo/Redo über die ganze Spalte - die alten 96-px-
-    // Buttons schnitten "(Strg+Z)" bzw. "(Strg+Y)" ab.
-    tool_row(IDC_BTN_UNDO, 6, bx, lw);
-    tool_row(IDC_BTN_REDO, 7, bx, lw);
+    // Modus-Gruppe: Radios untereinander, volle Breite.
+    move_child(GetDlgItem(g.main, IDC_GRP_TOOL), bx - 4, y_tool, lw + 8, grp_tool_h);
+    const int radios[5] = { IDC_BTN_PLACE, IDC_BTN_SELECT, IDC_BTN_MOVE,
+                            IDC_BTN_PAINT, IDC_BTN_HEIGHT };
+    for (int r = 0; r < 5; ++r)
+        move_child(GetDlgItem(g.main, radios[r]), bx + 6, y_tool + 18 + r * 26, lw - 12, 24);
+    // Prefab-Gruppe füllt die Mitte (kein toter Leerraum mehr).
+    move_child(GetDlgItem(g.main, IDC_GRP_PREFAB), bx - 4, y_prefab, lw + 8,
+               std::max(90, y_act - 6 - y_prefab));
+    move_child(g.list_prefab, bx + 6, y_prefab + 18, lw - 12,
+               std::max(60, y_act - 6 - y_prefab - 26));
+    // Aktions-Gruppe + Undo/Redo am Spaltenende.
+    move_child(GetDlgItem(g.main, IDC_GRP_ACT), bx - 4, y_act, lw + 8, grp_act_h);
+    move_child(GetDlgItem(g.main, IDC_BTN_ROTATE), bx + 6, y_act + 18, bw2, 28);
+    move_child(GetDlgItem(g.main, IDC_BTN_DELETE), bx + bw2 + 12, y_act + 18, bw2, 28);
+    move_child(GetDlgItem(g.main, IDC_BTN_DUPLICATE), bx + 6, y_act + 50, lw - 12, 28);
+    move_child(GetDlgItem(g.main, IDC_BTN_UNDO), bx, y_undo, bw2, 30);
+    move_child(GetDlgItem(g.main, IDC_BTN_REDO), bx + bw2 + 8, y_undo, bw2, 30);
 
     // Rechte Spalte: Objektliste wächst nach oben, Eigenschaften bleiben
     // unten (fixe Höhe) und nutzen die neue Breite für die Eingabefelder.
@@ -2629,7 +2738,16 @@ void update_status() {
     std::swprintf(buf, 128, L"Objekte: %d", g.objects ? static_cast<int>(g.objects->arr.size()) : 0);
     status_text(1, buf);
     if (g.hover_valid) {
-        std::swprintf(buf, 128, L"Cursor: %.1f / %.1f", g.hover_pos.x, g.hover_pos.z);
+        // Etappe 19c: im Setzen-Modus zeigt das Feld, WO der Geist einrastet
+        // und wie er gedreht ist - genau das setzt der Klick.
+        if (g.place_mode) {
+            const float gx = std::round(g.hover_pos.x / g.grid) * g.grid;
+            const float gz = std::round(g.hover_pos.z / g.grid) * g.grid;
+            std::swprintf(buf, 128, L"Setzen @ %.1f / %.1f | Drehung %.0f° (R)",
+                          gx, gz, g.place_rot * 180.0f / 3.14159265f);
+        } else {
+            std::swprintf(buf, 128, L"Cursor: %.1f / %.1f", g.hover_pos.x, g.hover_pos.z);
+        }
     } else {
         std::swprintf(buf, 128, L"Cursor: —");
     }
@@ -2695,6 +2813,16 @@ LRESULT CALLBACK view_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                     }
                 }
             }
+            return 0;
+        }
+        case WM_CONTEXTMENU: {
+            // Etappe 19c: Rechtsklick im Viewport = Kontextmenü.
+            POINT pt{ GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
+            if (pt.x == -1 && pt.y == -1) {
+                pt.x = 0; pt.y = 0;
+                ClientToScreen(h, &pt);
+            }
+            TrackPopupMenuW(g.ctx_obj, TPM_RIGHTBUTTON, pt.x, pt.y, 0, g.main, nullptr);
             return 0;
         }
         case WM_MOUSEWHEEL: {
@@ -2892,6 +3020,38 @@ void push_selection_frame(int i) {
     }
 }
 
+// Etappe 19c: Platzier-Vorschau ("Geist"). Der Renderer kennt kein Alpha,
+// deshalb wird der Geist eingefärbt (Mischung Richtung Mintgrün) und ohne
+// Textur gezeichnet - gleiche Masse, gleiche Drehung wie das gesetzte
+// Objekt, aber klar als Vorschau erkennbar. Eingeraast auf dasselbe Raster,
+// das place_object() benutzt: Was man sieht, setzt der Klick.
+uint32_t mix_rgb(uint32_t a, uint32_t b, float t) {
+    auto ch = [&](int shift) {
+        const float av = static_cast<float>((a >> shift) & 0xFF);
+        const float bv = static_cast<float>((b >> shift) & 0xFF);
+        return static_cast<uint32_t>(av * (1.0f - t) + bv * t);
+    };
+    return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+}
+
+void push_ghost_object() {
+    if (!g.place_mode || !g.hover_valid) return;
+    if (g.sel_prefab < 0 || g.sel_prefab >= static_cast<int>(g.prefabs.size())) return;
+    const Prefab& pre = g.prefabs[static_cast<size_t>(g.sel_prefab)];
+    const float gx = std::round(g.hover_pos.x / g.grid) * g.grid;
+    const float gz = std::round(g.hover_pos.z / g.grid) * g.grid;
+    const float rot = g.place_rot;
+    const float by = base_y_at(gx, gz);
+    const float cd = std::cos(rot), sd = std::sin(rot);
+    for (const PrefabPart& part : pre.parts) {
+        const float dx = part.d.x, dz = part.d.z;
+        const math::Vec3 pos{ gx + dx * cd + dz * sd, by + part.d.y,
+                              gz - dx * sd + dz * cd };
+        g.renderer->push_box(pos, part.s, math::Vec3{ 0, rot, 0 },
+                             mix_rgb(part.c, 0x63F58A, 0.55f));
+    }
+}
+
 // Gelber Platzier-Marker am Cursor (Raster-gross). Im Mal-Modus (Etappe 18e)
 // stattdessen ein flaches Quadrat in Pinselgrösse als Brush-Vorschau.
 void push_hover_marker() {
@@ -2930,6 +3090,7 @@ void render_frame() {
         for (int i = 0; i < static_cast<int>(g.objects->arr.size()); ++i) push_object(i);
     }
     if (g.sel_obj >= 0) push_selection_frame(g.sel_obj);
+    push_ghost_object();   // Etappe 19c: Vorschau vor dem Marker
     push_hover_marker();
 
     g.renderer->end_frame();
@@ -3096,12 +3257,26 @@ void handle_shortcuts() {
             *k.was = now;
         }
     }
-    if (g.sel_obj >= 0) {
+    // Etappe 19c: R dreht im Setzen-Modus (ohne Auswahl) die Vorschau in
+    // 15-Grad-Schritten, sonst wie bisher das ausgewählte Objekt.
+    {
         static bool r_was = false;
         const bool r_now = (GetAsyncKeyState('R') & 0x8000) != 0;
-        if (r_now && !r_was) rotate_selected(math::PI / 6.0f);
+        if (r_now && !r_was) {
+            if (g.place_mode && g.sel_obj < 0) {
+                g.place_rot += math::PI / 12.0f;
+                if (g.place_rot >= 2.0f * math::PI) g.place_rot -= 2.0f * math::PI;
+                status_mode((L"Vorschau-Drehung " +
+                             std::to_wstring(static_cast<int>(
+                                 g.place_rot * 180.0f / 3.14159265f)) +
+                             L"° | R = weiter drehen | Klick = setzen").c_str());
+            } else if (g.sel_obj >= 0) {
+                rotate_selected(math::PI / 6.0f);
+            }
+        }
         r_was = r_now;
-
+    }
+    if (g.sel_obj >= 0) {
         static bool del_was = false;
         const bool del_now = (GetAsyncKeyState(VK_DELETE) & 0x8000) != 0;
         if (del_now && !del_was) delete_selected();
@@ -3341,90 +3516,57 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 case IDC_PREFAB_LIST:
                     if (code == LBN_SELCHANGE) {
                         g.sel_prefab = static_cast<int>(SendMessageW(g.list_prefab, LB_GETCURSEL, 0, 0));
-                        g.place_mode = true;
-                        g.move_mode = false;
-                        g.paint_mode = false;   // Etappe 18e
-                        g.height_mode = false;  // Etappe 18l
-                        SendMessageW(GetDlgItem(g.main, IDC_BTN_PLACE), BM_SETCHECK, BST_CHECKED, 0);
-                        SendMessageW(GetDlgItem(g.main, IDC_BTN_MOVE), BM_SETCHECK, BST_UNCHECKED, 0);
-                        SendMessageW(GetDlgItem(g.main, IDC_BTN_SELECT), BM_SETCHECK, BST_UNCHECKED, 0);
-                        SendMessageW(GetDlgItem(g.main, IDC_BTN_PAINT), BM_SETCHECK, BST_UNCHECKED, 0);
-                        SendMessageW(GetDlgItem(g.main, IDC_BTN_HEIGHT), BM_SETCHECK, BST_UNCHECKED, 0);
+                        set_mode(1);
                         status_mode((L"Setzen: " + utf8_to_wide(
                             g.sel_prefab < static_cast<int>(g.prefabs.size())
                                 ? g.prefabs[g.sel_prefab].name : std::string("?"))).c_str());
                     }
                     return 0;
-                case IDC_OBJ_LIST:
-                    if (code == LBN_SELCHANGE) {
-                        const int i = static_cast<int>(SendMessageW(g.list_objs, LB_GETCURSEL, 0, 0));
-                        select_object(i, true);
-                        status_mode(L"Ausgewählt (Liste)");
+                case ID_CTX_PLACE:
+                    if (g.hover_valid) {
+                        set_mode(1);
+                        place_object(g.hover_pos.x, g.hover_pos.z);
+                        update_title();
                     }
-                    if (code == LBN_DBLCLK) {
-                        // Etappe 18a: Doppelklick = Kamera auf das Objekt richten.
-                        const int i = static_cast<int>(SendMessageW(g.list_objs, LB_GETCURSEL, 0, 0));
-                        if (i >= 0 && i < static_cast<int>(g.objects->arr.size())) {
-                            const float ox = static_cast<float>(obj_number(i, "x", 0));
-                            const float oz = static_cast<float>(obj_number(i, "z", 0));
-                            const float oy = base_y_at(ox, oz);
-                            g.cam_pos = math::Vec3{ ox, oy + 12.0f, oz + 18.0f };
-                            g.cam_yaw = math::PI;
-                            g.cam_pitch = -0.45f;
-                            status_mode(L"Kamera auf Objekt gerichtet");
-                            core::log_info("Kamera auf Objekt #" + std::to_string(i) +
-                                           " gerichtet (Doppelklick Liste)");
-                        }
+                    return 0;
+                case ID_CTX_FOCUS:
+                    if (g.sel_obj >= 0 && g.objects &&
+                        g.sel_obj < static_cast<int>(g.objects->arr.size())) {
+                        const float ox = obj_number(g.sel_obj, "x", 0);
+                        const float oz = obj_number(g.sel_obj, "z", 0);
+                        g.cam_pos = math::Vec3{ ox, base_y_at(ox, oz) + 12.0f, oz + 18.0f };
+                        g.cam_yaw = math::PI;
+                        g.cam_pitch = -0.45f;
+                        status_mode(L"Kamera auf Objekt gerichtet");
                     }
+                    return 0;
+                case ID_CTX_DUP:
+                    duplicate_selected();
+                    sync_object_list();
+                    update_title();
+                    return 0;
+                case ID_CTX_DEL:
+                    delete_selected();
+                    sync_object_list();
+                    update_title();
                     return 0;
                 case IDC_BTN_PLACE:
-                    g.place_mode = true;
-                    g.move_mode = false;
-                    g.paint_mode = false;   // Etappe 18e
-                    g.height_mode = false;  // Etappe 18l
-                    SendMessageW(GetDlgItem(g.main, IDC_BTN_PLACE), BM_SETCHECK, BST_CHECKED, 0);
-                    SendMessageW(GetDlgItem(g.main, IDC_BTN_SELECT), BM_SETCHECK, BST_UNCHECKED, 0);
-                    SendMessageW(GetDlgItem(g.main, IDC_BTN_PAINT), BM_SETCHECK, BST_UNCHECKED, 0);
-                    SendMessageW(GetDlgItem(g.main, IDC_BTN_HEIGHT), BM_SETCHECK, BST_UNCHECKED, 0);
-                    status_mode(L"Setzen-Modus");
+                    set_mode(1);
+                    status_mode(L"Setzen: Vorschau folgt dem Cursor, Klick setzt | R = drehen");
                     return 0;
                 case IDC_BTN_SELECT:
-                    g.place_mode = false;
-                    g.move_mode = false;
-                    g.paint_mode = false;   // Etappe 18e
-                    g.height_mode = false;  // Etappe 18l
-                    SendMessageW(GetDlgItem(g.main, IDC_BTN_PLACE), BM_SETCHECK, BST_UNCHECKED, 0);
-                    SendMessageW(GetDlgItem(g.main, IDC_BTN_SELECT), BM_SETCHECK, BST_CHECKED, 0);
-                    SendMessageW(GetDlgItem(g.main, IDC_BTN_MOVE), BM_SETCHECK, BST_UNCHECKED, 0);
-                    SendMessageW(GetDlgItem(g.main, IDC_BTN_PAINT), BM_SETCHECK, BST_UNCHECKED, 0);
-                    SendMessageW(GetDlgItem(g.main, IDC_BTN_HEIGHT), BM_SETCHECK, BST_UNCHECKED, 0);
+                    set_mode(2);
                     status_mode(L"Auswahl-Modus");
                     return 0;
                 case IDC_BTN_MOVE:
-                    g.place_mode = false;
-                    g.move_mode = true;
-                    g.paint_mode = false;   // Etappe 18e
-                    g.height_mode = false;  // Etappe 18l
-                    SendMessageW(GetDlgItem(g.main, IDC_BTN_PLACE), BM_SETCHECK, BST_UNCHECKED, 0);
-                    SendMessageW(GetDlgItem(g.main, IDC_BTN_SELECT), BM_SETCHECK, BST_UNCHECKED, 0);
-                    SendMessageW(GetDlgItem(g.main, IDC_BTN_MOVE), BM_SETCHECK, BST_CHECKED, 0);
-                    SendMessageW(GetDlgItem(g.main, IDC_BTN_PAINT), BM_SETCHECK, BST_UNCHECKED, 0);
-                    SendMessageW(GetDlgItem(g.main, IDC_BTN_HEIGHT), BM_SETCHECK, BST_UNCHECKED, 0);
+                    set_mode(3);
                     status_mode(L"Verschieben: Objekt ziehen (Linksklick halten)");
                     return 0;
                 case IDC_BTN_PAINT: {
                     // Etappe 18e: Boden-Malwerkzeug. Pinseltextur = aktuelle
                     // Tileset-Auswahl (oder Default weg), Grösse per +/- im
                     // Mal-Modus, Shift+Klick radiert.
-                    g.place_mode = false;
-                    g.move_mode = false;
-                    g.paint_mode = true;
-                    g.height_mode = false;  // Etappe 18l
-                    SendMessageW(GetDlgItem(g.main, IDC_BTN_PLACE), BM_SETCHECK, BST_UNCHECKED, 0);
-                    SendMessageW(GetDlgItem(g.main, IDC_BTN_SELECT), BM_SETCHECK, BST_UNCHECKED, 0);
-                    SendMessageW(GetDlgItem(g.main, IDC_BTN_MOVE), BM_SETCHECK, BST_UNCHECKED, 0);
-                    SendMessageW(GetDlgItem(g.main, IDC_BTN_PAINT), BM_SETCHECK, BST_CHECKED, 0);
-                    SendMessageW(GetDlgItem(g.main, IDC_BTN_HEIGHT), BM_SETCHECK, BST_UNCHECKED, 0);
+                    set_mode(4);
                     if (g_ts.win && !g_ts.sel.empty()) g.paint_tex = g_ts.sel;
                     status_mode((L"Boden malen: " + utf8_to_wide(g.paint_tex) +
                                  L" | +/- Grösse | Shift = Radierer").c_str());
@@ -3436,16 +3578,8 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                     // Etappe 18l: Höhen-Malwerkzeug. Berge/Senken direkt an
                     // der angeklickten Stelle, Default-Karten sind flach
                     // (Amplitude 0) - Erhöhen/Lesen ohne Seed-Fummelei.
-                    g.place_mode = false;
-                    g.move_mode = false;
-                    g.paint_mode = false;
-                    g.height_mode = true;
-                    SendMessageW(GetDlgItem(g.main, IDC_BTN_PLACE), BM_SETCHECK, BST_UNCHECKED, 0);
-                    SendMessageW(GetDlgItem(g.main, IDC_BTN_SELECT), BM_SETCHECK, BST_UNCHECKED, 0);
-                    SendMessageW(GetDlgItem(g.main, IDC_BTN_MOVE), BM_SETCHECK, BST_UNCHECKED, 0);
-                    SendMessageW(GetDlgItem(g.main, IDC_BTN_PAINT), BM_SETCHECK, BST_UNCHECKED, 0);
-                    SendMessageW(GetDlgItem(g.main, IDC_BTN_HEIGHT), BM_SETCHECK, BST_CHECKED, 0);
-                    status_mode((L"Höhe malen: +" + std::to_wstring(static_cast<int>(height_step())) +
+                    set_mode(5);
+                    status_mode((L"Höhe malen: + + std::to_wstring(static_cast<int>(height_step())) +
                                  L" m pro Klick | +/- Grösse | Shift = Senke").c_str());
                     core::log_info("H\xC3\xB6hen-Malwerkzeug aktiviert (Schritt " +
                                    std::to_string(height_step()) + " m, Grösse " +
@@ -3500,6 +3634,54 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         // Umbenennen per Inplace-Edit (TVS_EDITLABELS).
         case WM_NOTIFY: {
             const NMHDR* nm = reinterpret_cast<const NMHDR*>(lp);
+            // Etappe 19c: Objektliste (ListView) - Auswahl, Sortierung,
+            // Doppelklick (Kamera) und Rechtsklick (Kontextmenü).
+            if (nm->idFrom == IDC_OBJ_LIST && nm->hwndFrom) {
+                if (nm->code == LVN_ITEMCHANGED) {
+                    const NMLISTVIEW* lv = reinterpret_cast<const NMLISTVIEW*>(lp);
+                    if ((lv->uNewState & LVIS_SELECTED) &&
+                        !(lv->uOldState & LVIS_SELECTED) && lv->iItem >= 0) {
+                        LVITEMW it{};
+                        it.mask = LVIF_PARAM;
+                        it.iItem = lv->iItem;
+                        if (ListView_GetItem(g.list_objs, &it)) {
+                            select_object(static_cast<int>(it.lParam), true);
+                            status_mode(L"Ausgewählt (Liste)");
+                        }
+                    }
+                    return 0;
+                }
+                if (nm->code == LVN_COLUMNCLICK) {
+                    const NMLISTVIEW* lv = reinterpret_cast<const NMLISTVIEW*>(lp);
+                    if (g.obj_sort_col == lv->iSubItem) g.obj_sort_asc = !g.obj_sort_asc;
+                    else { g.obj_sort_col = lv->iSubItem; g.obj_sort_asc = true; }
+                    sync_object_list();
+                    status_mode(g.obj_sort_asc ? L"Objektliste aufsteigend sortiert"
+                                               : L"Objektliste absteigend sortiert");
+                    return 0;
+                }
+                if (nm->code == NM_DBLCLK) {
+                    // Doppelklick = Kamera auf das Objekt richten (wie 18a).
+                    const int i = g.sel_obj;
+                    if (i >= 0 && g.objects &&
+                        i < static_cast<int>(g.objects->arr.size())) {
+                        const float ox = obj_number(i, "x", 0);
+                        const float oz = obj_number(i, "z", 0);
+                        g.cam_pos = math::Vec3{ ox, base_y_at(ox, oz) + 12.0f, oz + 18.0f };
+                        g.cam_yaw = math::PI;
+                        g.cam_pitch = -0.45f;
+                        status_mode(L"Kamera auf Objekt gerichtet");
+                    }
+                    return 0;
+                }
+                if (nm->code == NM_RCLICK) {
+                    POINT pt{};
+                    GetCursorPos(&pt);
+                    TrackPopupMenuW(g.ctx_obj, TPM_RIGHTBUTTON, pt.x, pt.y, 0, g.main, nullptr);
+                    return 0;
+                }
+                return 0;
+            }
             if (nm->idFrom != IDC_MAPTREE || !nm->hwndFrom) break;
             switch (nm->code) {
                 case TVN_SELCHANGED: {
@@ -6910,7 +7092,8 @@ int main(int argc, char** argv) {
 
     // Gemeinsame Steuerelemente (Win32-Design)
     INITCOMMONCONTROLSEX icc{ sizeof(icc), ICC_STANDARD_CLASSES | ICC_BAR_CLASSES |
-                                             ICC_TREEVIEW_CLASSES };
+                                             ICC_TREEVIEW_CLASSES |
+                                             ICC_LISTVIEW_CLASSES };
     InitCommonControlsEx(&icc);
 
     g.font = CreateFontW(-16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
@@ -6969,6 +7152,14 @@ int main(int argc, char** argv) {
     AppendMenuW(g.menu, MF_POPUP, reinterpret_cast<UINT_PTR>(view_menu), L"&Ansicht");
     AppendMenuW(g.menu, MF_POPUP, reinterpret_cast<UINT_PTR>(help_menu), L"&Hilfe");
 
+    // Etappe 19c: Kontextmenü für Viewport und Objektliste (Rechtsklick).
+    g.ctx_obj = CreatePopupMenu();
+    AppendMenuW(g.ctx_obj, MF_STRING, ID_CTX_PLACE, L"Objekt hier setzen");
+    AppendMenuW(g.ctx_obj, MF_STRING, ID_CTX_FOCUS, L"Kamera darauf richten");
+    AppendMenuW(g.ctx_obj, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(g.ctx_obj, MF_STRING, ID_CTX_DUP, L"Objekt duplizieren");
+    AppendMenuW(g.ctx_obj, MF_STRING, ID_CTX_DEL, L"Objekt löschen");
+
     // Hauptfenster
     WNDCLASSW wc{};
     wc.lpfnWndProc = main_proc;
@@ -7015,39 +7206,66 @@ int main(int argc, char** argv) {
                               TVS_SHOWSELALWAYS | WS_TABSTOP,
                               8, 30, 198, 130, IDC_MAPTREE);
 
-    // Linke Spalte: Werkzeuge
-    make_control(L"Static", L"WERKZEUGE", 0, 8, 168, 180, 20, IDC_LBL_TOOLS);
-    g.list_prefab = make_control(L"ListBox", nullptr,
-                                 WS_VSCROLL | WS_BORDER | LBS_NOTIFY | LBS_HASSTRINGS,
-                                 8, 190, 198, 320, IDC_PREFAB_LIST);
-    make_control(L"Button", L"Setzen", BS_AUTOCHECKBOX,
-                 8, 518, 96, 30, IDC_BTN_PLACE);
-    make_control(L"Button", L"Auswählen", BS_AUTOCHECKBOX,
-                 110, 518, 96, 30, IDC_BTN_SELECT);
-    make_control(L"Button", L"Drehen (R)", BS_PUSHBUTTON,
-                 8, 554, 96, 30, IDC_BTN_ROTATE);
-    make_control(L"Button", L"Löschen", BS_PUSHBUTTON,
-                 110, 554, 96, 30, IDC_BTN_DELETE);
-    make_control(L"Button", L"Duplizieren", BS_PUSHBUTTON,
-                 8, 590, 198, 30, IDC_BTN_DUPLICATE);
-    make_control(L"Button", L"Verschieben", BS_AUTOCHECKBOX,
-                 8, 626, 198, 30, IDC_BTN_MOVE);
-    make_control(L"Button", L"Boden malen", BS_AUTOCHECKBOX,
-                 8, 662, 198, 30, IDC_BTN_PAINT);
+    // Etappe 19c: linke Spalte als drei benannte Gruppen wie in den anderen
+    // Dialogen des Editors: erst der Modus (Radios, genau einer aktiv), dann
+    // der Objekt-Typ (Prefab-Liste füllt den Rest), dann die Aktionen.
+    make_control(L"Button", L"Werkzeug (Modus)", BS_GROUPBOX,
+                 4, 168, 206, 156, IDC_GRP_TOOL);
+    make_control(L"Button", L"Setzen", BS_AUTORADIO | WS_GROUP,
+                 14, 186, 186, 24, IDC_BTN_PLACE);
+    make_control(L"Button", L"Auswählen", BS_AUTORADIO,
+                 14, 212, 186, 24, IDC_BTN_SELECT);
+    make_control(L"Button", L"Verschieben", BS_AUTORADIO,
+                 14, 238, 186, 24, IDC_BTN_MOVE);
+    make_control(L"Button", L"Boden malen", BS_AUTORADIO,
+                 14, 264, 186, 24, IDC_BTN_PAINT);
     // Etappe 18l: Berge/Senken direkt an der Stelle malen (Default flach, da
     // neue Karten Amplitude 0 haben); Shift+Klick trägt ab.
-    make_control(L"Button", L"Höhe malen", BS_AUTOCHECKBOX,
-                 8, 698, 198, 30, IDC_BTN_HEIGHT);
+    make_control(L"Button", L"Höhe malen", BS_AUTORADIO,
+                 14, 290, 186, 24, IDC_BTN_HEIGHT);
+    make_control(L"Button", L"Objekt-Typ (Prefab)", BS_GROUPBOX | WS_GROUP,
+                 4, 330, 206, 300, IDC_GRP_PREFAB);
+    g.list_prefab = make_control(L"ListBox", nullptr,
+                                 WS_VSCROLL | WS_BORDER | LBS_NOTIFY | LBS_HASSTRINGS,
+                                 14, 348, 186, 272, IDC_PREFAB_LIST);
+    make_control(L"Button", L"Objekt-Aktionen", BS_GROUPBOX,
+                 4, 636, 206, 96, IDC_GRP_ACT);
+    make_control(L"Button", L"Drehen (R)", BS_PUSHBUTTON | WS_GROUP,
+                 14, 654, 88, 28, IDC_BTN_ROTATE);
+    make_control(L"Button", L"Löschen", BS_PUSHBUTTON,
+                 108, 654, 92, 28, IDC_BTN_DELETE);
+    make_control(L"Button", L"Duplizieren", BS_PUSHBUTTON,
+                 14, 686, 186, 28, IDC_BTN_DUPLICATE);
     make_control(L"Button", L"Undo (Strg+Z)", BS_PUSHBUTTON,
-                 8, 734, 96, 30, IDC_BTN_UNDO);
+                 8, 738, 96, 30, IDC_BTN_UNDO);
     make_control(L"Button", L"Redo (Strg+Y)", BS_PUSHBUTTON,
-                 110, 734, 96, 30, IDC_BTN_REDO);
+                 110, 738, 96, 30, IDC_BTN_REDO);
 
     // Rechte Spalte: Objektliste + Eigenschaften
     make_control(L"Static", L"OBJEKTE", 0, 1188, 8, 200, 20, IDC_LBL_OBJECTS);
-    g.list_objs = make_control(L"ListBox", nullptr,
-                               WS_VSCROLL | WS_BORDER | LBS_NOTIFY | LBS_HASSTRINGS,
+    // Etappe 19c: Objektliste als ListView im Bericht-Modus: Spalten statt
+    // einzeiliger Kurztexte, sortierbar per Kopflick, ganze Zeile markierbar.
+    g.list_objs = make_control(WC_LISTVIEWW, nullptr,
+                               WS_BORDER | LVS_REPORT | LVS_SINGLESEL |
+                               LVS_SHOWSELALWAYS | WS_TABSTOP,
                                1188, 30, 242, 400, IDC_OBJ_LIST);
+    ListView_SetExtendedListViewStyle(g.list_objs,
+                                      LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES |
+                                      LVS_EX_DOUBLEBUFFER);
+    {
+        struct { const wchar_t* titel; int breite; } cols[] = {
+            { L"#", 34 },       { L"Objekt", 118 }, { L"X", 52 },
+            { L"Z", 52 },       { L"Drehung", 56 }, { L"Material", 78 },
+        };
+        for (int c = 0; c < 6; ++c) {
+            LVCOLUMNW lc{};
+            lc.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_FMT;
+            lc.fmt = LVCFMT_LEFT;
+            lc.pszText = const_cast<wchar_t*>(cols[c].titel);
+            lc.cx = cols[c].breite;
+            ListView_InsertColumn(g.list_objs, c, &lc);
+        }
+    }
     make_control(L"Button", L"Eigenschaften", BS_GROUPBOX,
                  1184, 613, 250, 238, IDC_GRP_PROPS);
     make_control(L"Static", L"X", 0, 1194, 648, 60, 20, IDC_LBL_X);
@@ -7145,7 +7363,7 @@ int main(int argc, char** argv) {
         SendMessageW(g.list_prefab, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label.c_str()));
     }
     if (!g.prefabs.empty()) SendMessageW(g.list_prefab, LB_SETCURSEL, 0, 0);
-    SendMessageW(GetDlgItem(g.main, IDC_BTN_PLACE), BM_SETCHECK, BST_CHECKED, 0);
+    set_mode(1);   // Etappe 19c: Startmodus Setzen (Radio-Haken zentral)
     status_mode(L"Setzen-Modus");
     sync_object_list();
     sync_property_fields();

@@ -1,4 +1,4 @@
-# Handoff für die nächste KI - Rune3D, Stand nach Etappe 19b
+# Handoff für die nächste KI - Rune3D, Stand nach Etappe 19c
 
 **Datum des Stands:** HEAD (nach Commit) — Etappe 19a: CI (GitHub Actions), portabler Build, Daten-Validierung
 **Projekt:** `C:/Users/jusagu/Desktop/Engine` — Windows-Only 3D-RPG-Engine (C++20/Win32/D3D11 + echtes CRuby 3.4.11), Editor = eigenes Programm `RuneEditor.exe`.
@@ -31,7 +31,8 @@ Der User beauftragte eine Überarbeitung von Engine und Editor **im Stil von RPG
 | — | `8abfdd2` | Fix Vollbild-Resize: hbrBackground im Hauptfenster (schwarze Ränder beim Maximieren weg) |
 | 18l | `a0107fa` | Höhen-Malwerkzeug („Höhe malen“, ID 3029): Berge/Senken per Maus, terrain.heights im Karten-JSON; Kartengrenze (Physics-Clamp); Terrain-Bau pro Kartenwechsel (enter_map→build_terrain) |
 | 19a | `0cd940d` + Nacharbeit |
-| 19b | HEAD | Echte Umlaute überall: Prosa (Kommentare, UI-/Spieltexte, Doku, Daten-Namen) schreibt ä/ö/ü, Identifier bleiben ASCII; 24 Win32-Textaufrufe von A auf W (`utf8_to_wide`/`wide_to_utf8`); `build.ps1` mit UTF-8-BOM | GitHub Actions (4 Jobs), `build.ps1` portabel + `-Test`, `tools/test_all.rb`, `tools/json_test.cpp` (88 Checks), `tools/json_bridge_check.rb`, `tools/lint_repo.rb`, `game/engine/mapcheck.rb` + Test, README.md, einheitliche Zeilenenden, **Fix: `json_write` beschnitt Kommazahlen (`%.12g`)** |
+| 19b | `2f589ba` | Echte Umlaute überall: Prosa (Kommentare, UI-/Spieltexte, Doku, Daten-Namen) schreibt ä/ö/ü, Identifier bleiben ASCII; 24 Win32-Textaufrufe von A auf W (`utf8_to_wide`/`wide_to_utf8`); `build.ps1` mit UTF-8-BOM | GitHub Actions (4 Jobs), `build.ps1` portabel + `-Test`, `tools/test_all.rb`, `tools/json_test.cpp` (88 Checks), `tools/json_bridge_check.rb`, `tools/lint_repo.rb`, `game/engine/mapcheck.rb` + Test, README.md, einheitliche Zeilenenden, **Fix: `json_write` beschnitt Kommazahlen (`%.12g`)** |
+| 19c | HEAD | Editor-Hauptfenster professionell: linke Spalte als drei Gruppen mit Radio-Modi (`set_mode`), Objektliste als ListView (6 Spalten, sortierbar per Kopflick), Platzier-Vorschau („Geist" folgt dem Cursor, `R` dreht in 15°), Kontextmenü für Viewport und Liste, `log/editor_objects.json` als Leseweg für Live-Tests (edclick) |
 
 Alle Etappen sind gebaut, live getestet (headless Ruby-Tests + Fenster-Injektion) und committed. Es gibt **keine uncommitteten Quelländerungen**; `opencode.json` ist lokaler Harness-Kram (steht jetzt im .gitignore).
 
@@ -66,6 +67,11 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
   API-Namen) bleiben ASCII. Win32-Textaufrufe immer als W-Variante mit
   `utf8_to_wide`/`wide_to_utf8` — ANSI-Aufrufe verstümmeln UTF-8 zu „Ã¼".
   `.ps1`-Dateien mit Umlauten brauchen eine UTF-8-BOM (PowerShell 5.1).
+- **Editor-Bedienung seit 19c:** Modi sind Radios in der Gruppe „Werkzeug";
+  im Setzen-Modus zeigt der Geist am Cursor exakt, was der Klick setzt
+  (`R` = Vorschau drehen); Objektliste sortiert per Klick auf den Spaltenkopf;
+  Rechtsklick im Viewport/auf der Liste = Kontextmenü. Live-Tests lesen die
+  Objektliste aus `log/editor_objects.json` (nicht per SendMessage).
 - **CI läuft automatisch** (`.github/workflows/ci.yml`, bei push und pull_request):
   `hygiene` (lint_repo), `engine` (test_all + mapcheck), `cpp-logik` (json_test mit
   `-Werror` + Brücke) auf ubuntu, `windows` (build.ps1 -Clean und -Test, EXEs als
