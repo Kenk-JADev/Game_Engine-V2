@@ -1051,6 +1051,29 @@ Das Repo hatte keine Startseite. `README.md` nennt jetzt Zweck, den
 Vergleich mit RPG Maker XP (was da ist, was fehlt), Voraussetzungen, Build-,
 Test- und CI-Befehle, Projektstruktur, Bedienung und das Karten-Format.
 
+### Ergebnis: was CI am ersten Tag gefunden hat
+
+Der erste Lauf (`44498396607`) war rot in genau zwei Jobs — und beide Male war
+der Fund echt:
+
+| Job | Stand 1. Lauf | Ursache |
+|---|---|---|
+| `hygiene` | ✅ | — |
+| `cpp-logik` | ✅ | JSON-Fix bestätigt: 88 Checks, 13 Dateien bytegleich |
+| `engine` | ❌ | `mapcheck_test.rb`: 2 Assertionen suchten den Fundort im `message`-Feld statt in `Finding#to_s` (Test-Bug, Prüfregeln korrekt) |
+| `windows` | ❌ | `build.ps1 -Test` übergab g++ Argumente mit angehängtem Komma (PowerShell-Argument-Modus) |
+
+Der Windows-Job hat dabei schon im ersten Lauf den Hauptbeweis erbracht:
+`Rune3D.exe` (1106,7 KB) und `RuneEditor.exe` (1584,7 KB) warnungsfrei mit
+GCC 16.2 gebaut, Ruby 3.4.12 und Toolchain rein über `RbConfig` gefunden,
+die `msys2/setup-msys2`-Rücksprungschritte korrekt übersprungen.
+
+**Endstand (Lauf `44499944309`): alle vier Jobs grün.** Windows meldet
+`17 OK, 0 fehlgeschlagen, 0 uebersprungen` — dort läuft `tex_import_test.rb`
+dank `-Test` mit `--strict` gegen die wirklich gebaute EXE mit, und die
+JSON-Brücke prüft 13 Dateien ohne Format-Abweichung. Artefakt `Rune3D-Windows`
+(3,9 MB: beide EXEs, Ruby- und System-DLLs, Manifest).
+
 ### Fallstricke dieser Etappe
 
 - **PowerShell-Argument-Modus:** `& $Gcc '-std=c++20', '-O1', ...` übergibt die
@@ -1067,8 +1090,11 @@ Test- und CI-Befehle, Projektstruktur, Bedienung und das Karten-Format.
   die kürzeste exakt runde Darstellung mit Gegenprobe (`strtod`) und eine
   Festkomma-Regel — sonst stimmt das Ergebnis nicht mit Ruby/Python überein.
 - **CI-Annotationen:** `tools/test_all.rb` gibt bei Fehlschlag
-  `::error title=…::…` aus, damit der Grund direkt in der Lauf-Übersicht steht
-  (Escaping: `%` → `%25`, `:` → `%3A`, `,` → `%2C`, Zeilenumbruch → `%0A`).
+  `::error title=…::…` aus, damit der Grund direkt in der Lauf-Übersicht steht —
+  und zwar mit GETRENNTem Escaping: Titel/Eigenschaften brauchen `%` → `%25`,
+  `:` → `%3A`, `,` → `%2C`, Zeilenumbruch → `%0A`; in der Nachricht selbst nur
+  `%`, CR und LF. Wer die Nachricht mit `%2C` escaped, sieht genau das später
+  lesbar in der Oberfläche stehen (`16 OK%2C 0 fehlgeschlagen`).
 - **Zeilenenden sind Daten:** Solange `.gitattributes` auf `* -text` steht,
   entscheidet der Zufall (bzw. der letzte Editor) über CRLF/LF. `lint_repo.rb`
   bewacht die Konvention jetzt bei jedem Lauf.
