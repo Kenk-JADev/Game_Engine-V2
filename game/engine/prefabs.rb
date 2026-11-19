@@ -64,6 +64,10 @@ module Prefabs
     prefab = by_id(obj['type'])
     return [] unless prefab
 
+    # Optionaler y-Wert ist der Versatz zur Geländeoberfläche. Er gilt auch
+    # für Animation und Kollision, weil alle Teile dieselbe Basis erhalten.
+    offset = obj['y']
+    base_y += offset.to_f if offset.is_a?(Numeric) && offset.to_f.finite?
     rot = (obj['rot'] || 0.0).to_f
     override = obj['tex'].to_s
     nodes = prefab[:parts].map.with_index do |part, i|

@@ -1,6 +1,6 @@
-# Handoff für die nächste KI - Rune3D, Stand nach Etappe 19m
+# Handoff für die nächste KI - Rune3D, Stand nach Etappe 19n
 
-**Datum des Stands:** 2026-11-19 — Etappe 19m: F2-Editor für Zufallskämpfe; CI-Status in GitHub Actions prüfen
+**Datum des Stands:** 2026-11-19 — Etappe 19n: NPCs, Schilder und Objekte per F5; CI-Status in GitHub Actions prüfen
 **Projekt:** `C:/Users/jusagu/Desktop/Engine` — Windows-Only 3D-RPG-Engine (C++20/Win32/D3D11 + echtes CRuby 3.4.11), Editor = eigenes Programm `RuneEditor.exe`.
 
 ## 0. Auftrag und Fortschritt (RPG-Maker-XP-Überholung)
@@ -36,7 +36,8 @@ Der User beauftragte eine Überarbeitung von Engine und Editor **im Stil von RPG
 | 19d | `e56b692` + Nacharbeit `0660de3` (CI-Grün) | XP-Features Welle 1: Self-Switches A-D pro Event (GameState, Seiten-Bedingung, `self_switch`/`if_self_switch`, Savegame, Editor-Combos im Seite-Kasten) + Bildschirmblende (`fade.rb`, Befehl `fade`, Reset bei Kartenwechsel); 23 Befehlstypen synchron in CMD_TYPES/ISSUE_CMD_TYPES/EV_TYPES; Tests `self_switch_test.rb`, `fade_test.rb` |
 | 19e | `59845c1` (CI-Grün) | RGSS-Schicht (`game/engine/rgss.rb`): `$game_*`-Globale, `Graphics`/`Input`/`Audio`/`load_data`+`save_data` wie RPG Maker XP (Abweichungen: JSON statt Marshal, Namen statt IDs, kein `$scene`-Loop) + Launcher-Ersteinrichtung `:first` (ohne Projekt: Enter/N = erstellen, D = Demo, Esc = beenden; `ensure_demo` nicht mehr automatisch) + Context-Helfer `fade`/`self_switch` + `$game_system.menu_disabled/save_disabled` beachtet; Tests `rgss_test.rb`, script_test-Abschnitt 6 |
 | 19f | `96be63d` (CI-Grün) | Artefakt-Bugfix (User-Konsole): `Rune3D-Windows` enthält jetzt `game/` + `projekte/` neben den EXEs (CI kopiert sie nach `build/`); beide EXEs loggen einen klaren Hinweis, wenn `game/` unter der Wurzel fehlt |
-| 19m | dieser Commit (CI-Status siehe Actions) | F2-Zufallskämpfe: gespeicherte F9-Truppen wählen/neu laden, Zeilenliste samt Gewichtung, validierte Schrittzahl, Altwerte/andere Kartendaten erhalten, Kartenbaum gesperrt; portable Tests in json_test |
+| 19n | dieser Commit (CI-Status siehe Actions) | F5-Platzier-Editor für NPCs, Schilder und Objekte; X/Y/Z, Wegpunkte und Text, transaktional, NPC-Gespräche per E, portable Tests |
+| 19m | `9bc392e` (CI-Grün Run 44589056862) | F2-Zufallskämpfe: gespeicherte F9-Truppen wählen/neu laden, Zeilenliste samt Gewichtung, validierte Schrittzahl, Altwerte/andere Kartendaten erhalten, Kartenbaum gesperrt; portable Tests in json_test |
 | 19l | `5720d41`, `557a852`, `a7c4f5d` (zuletzt CI-Grün Run 44581746188) | Zufallskämpfe per Karten-JSON und XP-Formel; Start/Kartenwechsel, Event-/Editor-Vorrang, Physikpause und Teleports abgesichert, MapCheck/C++-Parität und Beispiel in game/data; Integrationstests encounter_test sowie C++-Validierung im json_test |
 | 19k.3 | `bfdadac` (CI-Grün Run 44563139127) | Passierbarkeit rund gemacht: `game/engine/passage.rb` (Passage.zonen/zone?/hindernis?/blockiert?), Physik `solid_at` + `Rune::Physics.solid_at?`, passable? mit Objekt-Kollision, NPC stösst an/überspringt blockierte Wegpunkte, Mover stoppt an Wänden (auch Spieler-teleport), MapCheck-Lage-Warnungen + C++-Parität; neu tools/passage_test.rb |
 | 19k.2 | `86b1bd8` (CI-Grün Run 44556771894) | Passierbarkeit: „blocked"-Zonen im Karten-JSON (Physik-Wände + Ruby-Bindings + enter_map + $game_map.blocked?/passable? + MapCheck/C++-Issues + F2-Editorfeld + rote Viewport-Quader); Tests mapcheck_test/rgss_test |
@@ -47,7 +48,7 @@ Der User beauftragte eine Überarbeitung von Engine und Editor **im Stil von RPG
 | 19h | `1695951` + Nacharbeit bis `070da7e` (CI-Grün) | RGSS-Vertiefung: `graphics.rb` (Bitmap/Sprite/Window/Viewport, z-sortiert über `Graphics.draw`), `$scene` + `Graphics.scene_update`, `$game_temp`, `$data_actors/items/system`, `passable?` echt (Grenzen + Geländestufe), `RGSS.reset!` bei enter_map; Tests `graphics_test.rb` + rgss_test-Abschnitt |
 | 19g | `e8ac3e5` + Nacharbeit `89eb6d6` (CI-Grün) | Bewegungsrouten (XP Move Routes): `mover.rb` (8 Schritte, repeat, wait, Ersetzung, Spieler/NPC-Ziele), Befehl `move_route` (24 Typen synchron), Editor-Formular ohne neue Controls, Context-Helfer, `Mover.reset!` bei enter_map; Tests `move_route_test.rb` + script_test-Abschnitt 7 |
 
-Stand 19m: C++-Formularlogik kopflos getestet und Win64-Quelldatei cross-kompiliert; den vollständigen Windows-Build übernimmt CI. Ein grafischer Live-Test von F2 steht noch aus (kein Windows-Desktop/GPU in dieser Umgebung). Arbeitsbaum und CI vor Weiterarbeit prüfen; `opencode.json` ist lokaler Harness-Kram (steht im .gitignore).
+Stand 19n: C++-Formularlogik und Ruby-Spielablauf kopflos getestet, Win64-Quelldatei cross-kompiliert; den vollständigen Windows-Build übernimmt CI. Grafische Live-Tests von F2 und F5 stehen noch aus (kein Windows-Desktop/GPU in dieser Umgebung). Arbeitsbaum und CI vor Weiterarbeit prüfen; `opencode.json` ist lokaler Harness-Kram (steht im .gitignore).
 
 **Nacharbeit 19a (notiert für die Historie):** Der erste CI-Lauf hat genau das getan,
 wofür er da ist: `build.ps1 -Test` übergab g++ Argumente mit angehängtem Komma
@@ -144,6 +145,17 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
 
 **Backlog:** Offene Fehler, Grenzen und Test-Wissen stehen zentral in `docs/BACKLOG.md` — dort nachsehen und neue Erkenntnisse dorthin eintragen (nicht mehr hier listen).
 
+- **Platzier-Editor (19n):** F5, `placement_dialog.h` + portables
+  `placement_form.h`: NPCs, Schild-Events und Prefab-Objekte, X/Z und Y als
+  Geländeversatz, Wegpunkte, erster Text, letzte Cursorposition. Dialog ist
+  modal und arbeitet auf Kartenkopie; F6 muss geschlossen sein, weil seine
+  Befehlszeiger sonst veralten. OK übernimmt, Strg+S speichert. Alte komplexe
+  Befehle/Zusatzfelder bleiben erhalten. `Game.update` verarbeitet NPC-Events,
+  `Game.pickables` lässt NPC- und Schild-Grafik die Events nicht verdecken;
+  Kollision/Interaktion weiterhin XZ-basiert; NPC-Auto-/Touch-Zustände im
+  Spielstand. F5-Objektänderungen nutzen Objekt-Undo; beim Kartenladen wird
+  dieser geleert, NPCs/Schilder sind noch nicht im Undo. F5/F7/F10-Hotkeys sind nun
+  tatsächlich in der F-Tasten-Liste. Grafischer Windows-Live-Test steht aus.
 - **F2-Zufallskämpfe (19m):** `encounter_form.h` ist das portable Formularmodell: optionale/ungültige Altdaten bleiben unbearbeitet stehen, Duplikate gewichten, geänderte Schritte sind leer (=30) oder 1 bis 2^53−1. UI `IDLG_ENC_*` in `editor_main.cpp`: Truppen aus gespeicherter Projekt-Datenbank, F9 öffnen/Neu laden, unbekannte Einträge nur nach Rückfrage, OK erst nach Validierung; danach Strg+S. `map_props_form.h` bewahrt unveränderte allgemeine F2-Felder und unbekannte Schlüssel; nach Wurzeländerungen `g.objects` neu holen. Kartenbaum und Projektwechsel sind während F2 gesperrt; F9 vor Projektwechsel speichern und schließen (sonst droht Schreiben der alten Datenbank ins neue Projekt). `json_test.cpp` prüft die Modelle und die Demo. Grafischer Windows-Live-Test steht aus.
 - **Zufallskämpfe (19l):** Karten-JSON `"encounters": {"troops": [Truppen-IDs], "steps": n}`; n ist eine positive ganze Zahl (Default 30). `$game_player.make_encounter_count` würfelt `rand(n)+rand(n)+1`, `decrease_encounter_count` zählt bis 0. Boden-Schritt in `Game.update` (0,60 m Gehen / 0,85 m Rennen): Events und F4 haben Vorrang, im Editor kein Countdown. Bei freiem Interpreter, gültiger Liste und nicht gesperrtem `encounter_disabled` startet ein Kampf; nur bei Erfolg wird neu gewürfelt. Fehlstart versucht es beim nächsten Schritt erneut. Nach `RGSS.setup` und in `enter_map` wird gewürfelt; Karten-, Event-, RGSS- und Script-Teleports setzen die Schrittposition zurück (`Game.reset_step_tracking`); Bewegungsrouten zählen weiter. Der Zähler wird nicht gespeichert. `encounter_test.rb` testet echten Spielablauf, `json_test.cpp` die C++-Validierung (`encounter_check.h`). Beispieltruppen nur in der Vorlage `game/data`, bestehende Projekte (auch `projekte/dorf`) werden nicht migriert.
 - **Passierbarkeit (19k.3):** Eine Quelle für alles, was läuft: `game/engine/passage.rb`. `Passage.blockiert?(x, z)` = Block-Zone ODER Objekt-Hindernis; Letzteres fragt `Rune::Physics.solid_at?(x, y, z)` an zwei Tastpunkten über der Steiggrenze (`STUFE = 0.35` = `kMaxStep`, Tastpunkte 0.45/1.2) — ein flacher Kasten bleibt also eine Stufe, eine Wand blockt. Kopflos (ohne `Rune::Physics`) zählen nur die Zonen, deshalb sind npc_test/move_route_test nicht auf die Engine angewiesen. Verbraucher: `passable?` (RGSS), `Npc#update` (anstossen + blockierten Wegpunkt überspringen), `Mover.bewege` (Schritt abbrechen, `warn_once`), Startpunkt-Warnung in `enter_map`. MapCheck prüft die Lage von Start/Events/NPCs/Wegpunkten in Zonen der **geprüften** Karte (`@block_zonen`), der Editor dasselbe per `blocked_zone_at`.
@@ -156,11 +168,7 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
 - **Resize-Fakten (belegt):** Swapchain/Viewport folgen korrekt (`ResizeBuffers` fehlerfrei, Screenshot-Größe == Viewport-Größe), auch das Spiel behandelt `WM_SIZE` (`window.cpp` → `consume_resize()` → `renderer.resize()`). Bei Resize-Verdacht zürst `log/editor.log` auf `Viewport: …` prüfen. F12-Screenshot geht **nur** per echtem Tastendruck (`[EdClick]::Key(0x7B)`) — `PostMessage(WM_KEYDOWN)` wirkt nicht, weil `handle_shortcuts` `GetAsyncKeyState` fragt.
 - **Event-Seiten (18g):** Events haben `pages` (Liste aus `{conditions, trigger, commands}`); die Seite mit dem **höchsten Index** mit erfüllten Bedingungen gewinnt (Seite 0 = Standard, leere Bedingungen = immer). Bedingungen: `switch` {name,value} und `variable` {name,op,value} (UND-verknüpft). `Event.refresh_page!` läuft in main.rb vor den Trigger-Schleifen; **Seitenwechsel setzt `fired` zurück** (touch/auto feuern erneut). Alte Karten ohne `pages` → implizite Seite 0; der Editor migriert das geöffnete Event sofort (`ev_ensure_pages`) und speichert dann ohne Top-Level-trigger/commands. Editor-IDs: Seitenliste 5046, Neue Seite 5047, Seite löschen 5048, Seite übernehmen 5049, Bedingungsfelder 5050–5054. Der Trigger-ComboBox (5015) sitzt jetzt in der Gruppenbox „Seite". Tests: `tools/event_pages_test.rb` (44 Checks), `log/live18g.ps1`.
 - **Event-Editor (18f):** 20 Befehlstypen mit Kategorie-Präfixen (Enum EvType ersetzt magische Indizes!), `choices` (Wahlmöglichkeiten mit Zweigen als „Wenn [x]:"-Kopfzeilen), `toggle_switch`, `move_player`, `weather`, `save_game`/`load_game`, Trigger `parallel`. Neue Tests: `tools/event18f_test.rb` (23 Checks, Mock-Muster wie event_test.rb). **Live-Test-Falle:** Der Event-Dialog blockiert Strg+S des Hauptfensters (`event_editor_focused()`) → im Test erst Dialog schließen (IDEV_CLOSE 5005), dann speichern. `load_game` im Interpreter baut die Karte neu auf und ersetzt den laufenden Interpreter (dokumentiert).
-- **Nächste Kandidaten:** die beiden User-Wünsche aus `docs/BACKLOG.md` (Platzier-Vorschau
-  statt Sofort-Einfügen + bessere Objektliste; NPC-/Platzier-Dialog mit X/Y/Z und
-  Text-Objekten), danach Move-Routes, Self-Switches, Kampf-Befehle, Fade, Zahleneingabe,
-  Passierbarkeits-Regeln, Undo/Redo für Splats. Seit 19a ist jeder dieser Schritte durch
-  CI abgesichert (Windows-Job kompiliert den Editor wirklich).
+- **Nächste Kandidaten:** Datentreue bei großen JSON-Ganzzahlen und bearbeiteten Block-Zonen, danach Undo/Redo über Objekte hinaus sowie Kampf-/RGSS-Ausbau (siehe Backlog).
 - **WICHTIG bei Skript-Rewrites von Quellen:** NIEMALS `Get-Content -Raw` + `Set-Content -Encoding utf8` für C++-Dateien mit Umlauten — PowerShell liest dann CP1252 und produziert Doppelkodierung („Ã¼") + BOM. Reparatur per `tools/repair_mojibake.rb` (UTF-8 → CP1252 → UTF-8), Scan per `tools/scan_mojibake_bytes.rb`.
 - **Nächste Kandidaten:** Passierbarkeits-Regeln (blockierte Zonen), Autotiles, Weich-Übergänge per Weightmap, Undo/Redo für Splat-Operationen (derzeit nur Objekte).
 - Boden/Tileset (18c): `terrain.texture` + `terrain.tile` im Karten-JSON; Shader skaliert Terrain-UV mit 2.0/tile über `gParams.z` (Boxen nutzen `gParams.y`, Shadow-Pass beide 0 — nicht vermischen!). `Renderer::texture_rgba` liefert Pixel für Vorschauen; `Rune::Gfx.terrain_texture(name, tile_meters)` hat jetzt 2 Argumente (2. optional).
@@ -176,6 +184,16 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
 - Hardware: i5-10400T, 7,7 GB RAM, Intel UHD 630, keine Admin-Rechte.
 
 ## 5. Live-Test-Vorlage
+
+**Noch offen für 19n (echter Windows-Rechner):** F6 schließen, F5 öffnen,
+NPC mit eindeutiger Bezeichnung, Y-Versatz, Text und zwei Wegpunkten anlegen;
+Schild und Prefab-Objekt hinzufügen, Kategorie wechseln, OK, Strg+S. F5
+erneut öffnen und Daten prüfen; Abbrechen, ungültige Zahlen/Wegpunkte,
+lange Texte, Umbenennen auf bestehenden Namen und den Button „Letzte
+Cursorposition“ prüfen. Viewport, 1024×640/DPI und Tab/Enter prüfen; F4:
+NPC patrouilliert und spricht mit E/Maus, Schild zeigt Text, Y wirkt.
+Während F5 dürfen andere Dialoge/Projekt-/Kartenwechsel nicht eingreifen.
+
 
 **Noch offen für 19m (echter Windows-Rechner):** In einem Testprojekt in F9
 Gegner und Truppe anlegen und speichern; F2 öffnen, per „Neu laden“ und

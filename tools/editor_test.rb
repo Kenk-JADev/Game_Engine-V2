@@ -74,6 +74,12 @@ check('Knoten tragen Präfix ed_0') { nodes.all? { |n| n.name.start_with?('ed_0_
 check('Wand ist solid') { nodes[0].solid == true }
 check('Basis-Höhe angewendet') { near(nodes[0].position[1], 1.5 + 2.0) }
 
+hoch = Prefabs.instantiate(scene, { 'type' => 'haus', 'x' => 3.0, 'y' => 2.5,
+                                    'z' => -2.0, 'rot' => 0.0 }, 1.5, 'ed_hoch')
+check('Objekt-Y ist ein zusätzlicher Bodenversatz (auch für solide Teile)') do
+  near(hoch[0].position[1], 1.5 + 2.5 + 2.0) && hoch[0].solid
+end
+
 nodes = Prefabs.instantiate(scene, { 'type' => 'haus', 'x' => 0.0, 'z' => 0.0, 'rot' => Math::PI / 2.0 }, 0.0, 'ed_1')
 check('Gedreht (90 Grad): Tür geht nach +X statt +Z') { nodes[2].position[2].abs < 0.01 && nodes[2].position[0].abs > 2.5 }
 

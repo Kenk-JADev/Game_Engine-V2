@@ -46,6 +46,7 @@
 #include "editor/encounter_check.h"
 #include "editor/encounter_form.h"
 #include "editor/map_props_form.h"
+#include "editor/placement_form.h"
 #include "gfx/camera.h"      // nur fuer Kamera-Konstanten, falls noetig
 #include "gfx/renderer.h"
 #include "math/math.h"
@@ -73,6 +74,7 @@ enum {
     ID_MENU_PROJECT   = 114,   // Etappe 18b: Projekt wechseln...
     ID_MENU_TILESET   = 115,   // Etappe 18c: Tileset-Editor...
     ID_MENU_PROBLEMS  = 116,   // Etappe 18h: Probleme-Dialog (Backlog)
+    ID_MENU_PLACEMENT = 117,   // Etappe 19n: NPCs, Schilder und Objekte
     ID_MENU_MAP_BASE  = 200,   // dynamische Karten-Einträge danach
 
     IDC_PREFAB_LIST   = 3001,
@@ -362,7 +364,11 @@ int  height_edit(float cx, float cz, bool sink);
 // Etappe 17d: Event-Editor (eigenes modusloses Fenster).
 void open_event_editor();
 void close_event_editor();
+bool event_editor_open();
 bool event_editor_focused();
+
+// Etappe 19n: Platzier-Dialog für NPCs, Schilder und Objekte.
+void open_placement_dialog();
 
 // Etappe 17e: Script-Editor (scripts.json des Projekts).
 void open_script_editor();
@@ -898,6 +904,7 @@ void issues_scan_map() {
     // Etappe 19l: Zufallskämpfe (auch im kopflosen C++-Test geprüft).
     // Die Existenz der Truppen prüft erst Battle.start gegen die Datenbank.
     issue_scan_encounters(g.map_root.find("encounters"), mapname + " encounters", issue_report);
+    issue_scan_placement_heights(g.map_root, mapname, issue_report);
 
     // Etappe 19k.3: Positionen in Block-Zonen (Parität zu MapCheck) - der
     // Spieler käme dort nicht hinein, NPCs stünden an der Wand und Wegpunkte
@@ -1115,6 +1122,10 @@ bool load_map(int index) {
     g.cur_map = index;
     g.sel_obj = -1;
     g.dirty = false;
+    // Schnappschüsse gehören zur vorherigen Karte und dürfen deren Objekte
+    // niemals in die neu geladene Karte zurückschreiben.
+    g.undo_stack.clear();
+    g.redo_stack.clear();
 
     // Terrain neu erzeugen (rechteckige Karten: width/height, alt: size).
     // Etappe 18d: regen_terrain behandelt Ein-Textur- und Splat-Boden.
@@ -2462,7 +2473,7 @@ int object_hit(const math::Vec3& eye, const math::Vec3& dir, float& out_t) {
         const float x = obj_number(i, "x", 0);
         const float z = obj_number(i, "z", 0);
         const float rot = obj_number(i, "rot", 0);
-        const float by = base_y_at(x, z);
+        const float by = base_y_at(x, z) + obj_number(i, "y", 0);
         for (const PrefabPart& part : pre->parts) {
             const float cd = std::cos(rot), sd = std::sin(rot);
             const float dx = part.d.x, dz = part.d.z;
@@ -3044,7 +3055,8 @@ LRESULT CALLBACK view_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                     push_undo();
                     g.obj_drag = idx;
                     g.dragging = true;
-                    g.drag_y = base_y_at(obj_number(idx, "x", 0), obj_number(idx, "z", 0));
+                    g.drag_y = base_y_at(obj_number(idx, "x", 0), obj_number(idx, "z", 0)) +
+                               obj_number(idx, "y", 0);
                     SetCapture(h);
                     status_mode(L"Ziehen ...");
                 }
@@ -3080,7 +3092,7 @@ void push_object(int i) {
     const float x = obj_number(i, "x", 0);
     const float z = obj_number(i, "z", 0);
     const float rot = obj_number(i, "rot", 0);
-    const float by = base_y_at(x, z);
+    const float by = base_y_at(x, z) + obj_number(i, "y", 0);
     const float cd = std::cos(rot), sd = std::sin(rot);
     // Etappe 17f: optionales Objekt-Material ("tex") überschreibt alle Teile.
     int override_tex = -1;
@@ -3109,7 +3121,7 @@ void push_selection_frame(int i) {
     const float x = obj_number(i, "x", 0);
     const float z = obj_number(i, "z", 0);
     const float rot = obj_number(i, "rot", 0);
-    const float by = base_y_at(x, z);
+    const float by = base_y_at(x, z) + obj_number(i, "y", 0);
     const float cd = std::cos(rot), sd = std::sin(rot);
 
     math::Vec3 mn{ 1e9f, 1e9f, 1e9f }, mx{ -1e9f, -1e9f, -1e9f };
@@ -3224,6 +3236,53 @@ void push_blocked_zones() {
     }
 }
 
+// NPCs und Schild-Events zeigen dieselben Maße und Bodenversätze wie das
+// Spiel. Wegpunkte werden als kleine blaue Bodenmarken sichtbar.
+void push_placements() {
+    auto number = [](const JsonValue& o, const char* key, float fallback = 0.0f) {
+        const JsonValue* v = o.find(key);
+        if (!v || !v->is_num() || !std::isfinite(v->num) || std::fabs(v->num) > 1000000.0)
+            return fallback;
+        return static_cast<float>(v->num);
+    };
+    const JsonValue* npcs = g.map_root.find("npcs");
+    if (npcs && npcs->is_arr()) {
+        for (const JsonValue& npc : npcs->arr) {
+            if (!npc.is_obj()) continue;
+            const float x = number(npc, "x"), z = number(npc, "z"), y = number(npc, "y");
+            uint32_t color = 0xC49A6C;
+            if (const JsonValue* c = npc.find("color"); c && c->is_num() &&
+                std::isfinite(c->num) && c->num >= 0.0 && c->num <= 0xFFFFFF)
+                color = static_cast<uint32_t>(c->num);
+            g.renderer->push_box(math::Vec3{x, base_y_at(x, z) + y + 0.9f, z},
+                                 math::Vec3{0.7f, 1.8f, 0.7f}, math::Vec3{}, color);
+            const JsonValue* path = npc.find("path");
+            if (!path || !path->is_arr()) continue;
+            for (const JsonValue& p : path->arr) {
+                if (!p.is_arr() || p.arr.size() != 2 || !p.arr[0].is_num() || !p.arr[1].is_num() ||
+                    !std::isfinite(p.arr[0].num) || !std::isfinite(p.arr[1].num) ||
+                    std::fabs(p.arr[0].num) > 1000000.0 || std::fabs(p.arr[1].num) > 1000000.0) continue;
+                const float px = static_cast<float>(p.arr[0].num), pz = static_cast<float>(p.arr[1].num);
+                g.renderer->push_box(math::Vec3{px, base_y_at(px, pz) + y + 0.12f, pz},
+                                     math::Vec3{0.35f, 0.24f, 0.35f}, math::Vec3{}, 0x45B7F3);
+            }
+        }
+    }
+    const JsonValue* events = g.map_root.find("events");
+    if (events && events->is_arr()) {
+        for (const JsonValue& event : events->arr) {
+            if (!event.is_obj()) continue;
+            const JsonValue* visual = event.find("visual");
+            if (!visual || !visual->is_str() || visual->str != "schild") continue;
+            const float x = number(event, "x"), z = number(event, "z");
+            const float y = base_y_at(x, z) + number(event, "y");
+            const math::Vec3 rot{0, number(event, "rot"), 0};
+            g.renderer->push_box(math::Vec3{x, y + 0.65f, z}, math::Vec3{0.18f, 1.3f, 0.18f}, rot, 0x76502F);
+            g.renderer->push_box(math::Vec3{x, y + 1.55f, z}, math::Vec3{1.35f, 0.65f, 0.15f}, rot, 0xD5AB69);
+        }
+    }
+}
+
 void render_frame() {
     RECT rc;
     GetClientRect(g.view, &rc);
@@ -3238,6 +3297,7 @@ void render_frame() {
     if (g.objects) {
         for (int i = 0; i < static_cast<int>(g.objects->arr.size()); ++i) push_object(i);
     }
+    push_placements();
     if (g.sel_obj >= 0) push_selection_frame(g.sel_obj);
     push_ghost_object();   // Etappe 19c: Vorschau vor dem Marker
     push_hover_marker();
@@ -3379,12 +3439,13 @@ void handle_shortcuts() {
 
     // Etappe 17h: F-Tasten für die Werkzeugleiste (wie im Menü vermerkt).
     {
-        static bool f1w = false, f2w = false, f3w = false, f4w = false;
-        static bool f6w = false, f8w = false, f9w = false, f11w = false;
+        static bool f1w = false, f2w = false, f3w = false, f4w = false, f5w = false;
+        static bool f6w = false, f7w = false, f8w = false, f9w = false, f10w = false, f11w = false;
         struct { int vk; bool* was; } fkeys[] = {
             { VK_F1,  &f1w },  { VK_F2,  &f2w },  { VK_F3,  &f3w },
-            { VK_F4,  &f4w },  { VK_F6,  &f6w },  { VK_F8,  &f8w },
-            { VK_F9,  &f9w },  { VK_F11, &f11w },
+            { VK_F4,  &f4w },  { VK_F5,  &f5w },  { VK_F6,  &f6w },
+            { VK_F7,  &f7w },  { VK_F8,  &f8w },  { VK_F9,  &f9w },
+            { VK_F10, &f10w }, { VK_F11, &f11w },
         };
         for (auto& k : fkeys) {
             const bool now = (GetAsyncKeyState(k.vk) & 0x8000) != 0;
@@ -3396,6 +3457,7 @@ void handle_shortcuts() {
                         break;
                     case VK_F3:  PostMessageW(g.main, WM_COMMAND, ID_MENU_MATERIALS, 0); break;
                     case VK_F4:  PostMessageW(g.main, WM_COMMAND, ID_MENU_PLAYTEST, 0); break;
+                    case VK_F5:  PostMessageW(g.main, WM_COMMAND, ID_MENU_PLACEMENT, 0); break;
                     case VK_F6:  PostMessageW(g.main, WM_COMMAND, ID_MENU_EVENTS, 0); break;
                     case VK_F7:  PostMessageW(g.main, WM_COMMAND, ID_MENU_TILESET, 0); break;
                     case VK_F8:  PostMessageW(g.main, WM_COMMAND, ID_MENU_SOUNDTEST, 0); break;
@@ -3607,6 +3669,9 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 case ID_MENU_EVENTS:
                     open_event_editor();
                     return 0;
+                case ID_MENU_PLACEMENT:
+                    open_placement_dialog();
+                    return 0;
                 case ID_MENU_SCRIPTS:
                     open_script_editor();
                     return 0;
@@ -3654,7 +3719,8 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                                 L"Werkzeugleiste (F-Tasten):\n"
                                 L"  F2 Karten-Eigenschaften (u. a. Wetter)\n"
                                 L"  F3 Materialbase    F4 Playtest starten\n"
-                                L"  F6 Event-Editor    F8 Sound-Test\n"
+                                L"  F5 NPCs, Schilder und Objekte platzieren\n"
+                                L"  F6 Event-Editor    F7 Tileset    F8 Sound-Test\n"
                                 L"  F9 Datenbank (Helden/Items/Gegner/Truppen)\n"
                                 L"  F11 Script-Editor\n\n"
                                 L"Menü Karte: neue Karten anlegen, zwischen ihnen wechseln\n"
@@ -3685,7 +3751,7 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                         g.sel_obj < static_cast<int>(g.objects->arr.size())) {
                         const float ox = obj_number(g.sel_obj, "x", 0);
                         const float oz = obj_number(g.sel_obj, "z", 0);
-                        g.cam_pos = math::Vec3{ ox, base_y_at(ox, oz) + 12.0f, oz + 18.0f };
+                        g.cam_pos = math::Vec3{ ox, base_y_at(ox, oz) + obj_number(g.sel_obj, "y", 0) + 12.0f, oz + 18.0f };
                         g.cam_yaw = math::PI;
                         g.cam_pitch = -0.45f;
                         status_mode(L"Kamera auf Objekt gerichtet");
@@ -3822,7 +3888,7 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                         i < static_cast<int>(g.objects->arr.size())) {
                         const float ox = obj_number(i, "x", 0);
                         const float oz = obj_number(i, "z", 0);
-                        g.cam_pos = math::Vec3{ ox, base_y_at(ox, oz) + 12.0f, oz + 18.0f };
+                        g.cam_pos = math::Vec3{ ox, base_y_at(ox, oz) + obj_number(i, "y", 0) + 12.0f, oz + 18.0f };
                         g.cam_yaw = math::PI;
                         g.cam_pitch = -0.45f;
                         status_mode(L"Kamera auf Objekt gerichtet");
@@ -6488,11 +6554,17 @@ void close_event_editor() {
     if (g_ev.win) DestroyWindow(g_ev.win);
 }
 
+bool event_editor_open() {
+    return g_ev.win && IsWindow(g_ev.win);
+}
+
 bool event_editor_focused() {
     if (!g_ev.win) return false;
     HWND fg = GetForegroundWindow();
     return fg == g_ev.win || (fg && IsChild(g_ev.win, fg));
 }
+
+#include "editor/placement_dialog.h"
 
 // ============================================================================
 //  Etappe 17e: Script-Editor
@@ -7915,6 +7987,7 @@ int main(int argc, char** argv) {
     AppendMenuW(map_menu, MF_STRING | MF_GRAYED, 0,
                 L"Karten weiter unten in diesem Menü");
     HMENU ev_menu = CreatePopupMenu();
+    AppendMenuW(ev_menu, MF_STRING, ID_MENU_PLACEMENT, L"NPCs, Schilder und Objekte...\tF5");
     AppendMenuW(ev_menu, MF_STRING, ID_MENU_EVENTS, L"Event-Editor...\tF6");
     HMENU sc_menu = CreatePopupMenu();
     AppendMenuW(sc_menu, MF_STRING, ID_MENU_SCRIPTS, L"Script-Editor...\tF11");

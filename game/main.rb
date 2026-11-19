@@ -42,6 +42,19 @@ end
     @npcs || []
   end
 
+  # Der Ingame-Höhenpinsel baut das Terrain neu. Statische Schilder und
+  # stehende NPCs müssen danach ebenfalls der neuen Bodenhöhe folgen.
+  def self.refresh_placement_visuals(scene = @scene)
+    return unless scene && scene.respond_to?(:root)
+
+    # Nur selbst erzeugte Nodes ersetzen; ein Script darf einen beliebigen
+    # Namen verwenden und soll dabei nicht versehentlich Objekte verlieren.
+    old_nodes = (@placement_visuals || []).each_with_object({}) { |node, set| set[node] = true }
+    scene.root.children.reject! { |node| old_nodes.key?(node) }
+    @placement_visuals = (@events || []).each_with_index.flat_map { |event, i| event.add_visual(scene, i) }
+    (@npcs || []).each(&:refresh_terrain_height)
+  end
+
   # Laufzeit-Zugriff für die RGSS-Schicht (19h.2: $game_system.map_interpreter)
   # und für Tests.
   def self.interpreter
@@ -138,6 +151,8 @@ end
     # Game_Player#refresh beim Transfer).
     $game_player.make_encounter_count if $game_player
     @scene = build
+    # Schilder sind normale Events mit optionaler visueller Darstellung.
+    @placement_visuals = @events.each_with_index.flat_map { |event, i| event.add_visual(@scene, i) }
     @scene.refresh_solids
     @npcs = (@map['npcs'] || []).map { |h| Npc.new(h, @scene) }
     Effects.clear
@@ -234,7 +249,7 @@ end
     (data['npcs'] || []).each do |h|
       n = @npcs.find { |o| o.name == h['name'] }
       next unless n
-      n.restore!(h['x'], h['z'], h['wp'])
+      n.restore!(h['x'], h['z'], h['wp'], h['fired'])
       Rune::Log.info(format('NPC %s wiederhergestellt: x=%.2f z=%.2f Wegpunkt %d',
                             n.name, n.position[0], n.position[1], h['wp'].to_i))
     end
@@ -567,9 +582,10 @@ end
     unless @interpreter.running?
       px, py, pz = Rune::Player.position
 
-      # Aktive Event-Seite bestimmen (Etappe 18g): höchste Seite mit
-      # erfüllten Bedingungen gewinnt; Wechsel setzt 'fired' zurück.
-      @events.each(&:refresh_page!)
+      # Auch NPCs besitzen ein Event. Dieselbe Trigger-Verarbeitung erlaubt
+      # insbesondere Gespräche per E, nicht nur per Maus-Picking.
+      event_liste = @events + @npcs.map(&:event)
+      event_liste.each(&:refresh_page!)
 
       # NPCs bewegen (Position des zugehörigen Events folgt).
       @npcs.each { |n| n.update(dt) }
@@ -581,7 +597,7 @@ end
       end
 
       # Auto-/Touch-Events (einmalig je Kartenstart)
-      @events.each do |e|
+      event_liste.each do |e|
         next unless %w[touch auto].include?(e.trigger)
         next if e.fired
         if (e.trigger == 'auto') || e.near?(px, pz)
@@ -596,7 +612,7 @@ end
       # Hintergrund und starten sich neu, sobald sie fertig sind. Damit sie
       # nicht die Engine fluten, nur wenn der Interpreter gerade frei ist —
       # ein 'wait' im Event steuert das Tempo (wie bei RPG Maker üblich).
-      @events.each do |e|
+      event_liste.each do |e|
         next unless e.trigger == 'parallel'
         next if @interpreter.running?
         e.manual_fire(@interpreter)
@@ -604,7 +620,8 @@ end
 
       # Action-Events: nächstes in Reichweite anbieten (E drucken)
       @prompt = nil
-      @events.each do |e|
+      event_liste.each do |e|
+        break if @interpreter.running? # kein bereits gestartetes Event verdrängen
         next unless e.trigger == 'action'
         if e.near?(px, pz)
           @prompt = e.name
@@ -710,7 +727,15 @@ end
   # Alle anklickbaren Dinge: Szenenknoten + Events + NPCs.
   def self.pickables
     list = []
-    @scene.walk(@scene.root) { |n| list << n if n != @scene.root && n.visible }
+    hidden_nodes = (@npcs.map(&:node) + (@placement_visuals || []))
+                   .each_with_object({}) { |node, set| set[node] = true }
+    @scene.walk(@scene.root) do |n|
+      # Nur die zugehörigen Körper/Schilder auslassen, nicht beliebige
+      # Script-Nodes mit ähnlich lautendem Namen.
+      next if n == @scene.root || !n.visible || hidden_nodes.key?(n)
+
+      list << n
+    end
     list.concat(@events)
     list.concat(@npcs.map(&:event))
     list

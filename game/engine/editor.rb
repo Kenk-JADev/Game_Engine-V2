@@ -227,7 +227,10 @@ class Editor
                         resolution: tt['resolution'] || 192,
                         seed: tt['seed'] || 7,
                         amplitude: tt['amplitude'] || 0.0)
-    Editor.rebuild(@objects, @scene_ref) if @scene_ref
+    if @scene_ref
+      Editor.rebuild(@objects, @scene_ref)
+      Game.refresh_placement_visuals(@scene_ref) if Game.respond_to?(:refresh_placement_visuals)
+    end
   rescue => e
     Rune::Log.error("Editor: H\xC3\xB6hen-Neubau fehlgeschlagen: #{e.message}")
   end
@@ -528,7 +531,8 @@ class Editor
     return unless @selected && @objects[@selected]
     obj = @objects[@selected]
     r = Prefabs.radius_of(obj['type'])
-    Game.draw_wire_box(obj['x'].to_f, Game.gy(obj['x'].to_f, obj['z'].to_f) + 1.2,
+    versatz = obj['y'].is_a?(Numeric) && obj['y'].to_f.finite? ? obj['y'].to_f : 0.0
+    Game.draw_wire_box(obj['x'].to_f, Game.gy(obj['x'].to_f, obj['z'].to_f) + versatz + 1.2,
                        obj['z'].to_f, r * 2.0, 2.4, r * 2.0, UI::ACCENT)
   end
 

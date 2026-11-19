@@ -69,15 +69,17 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Betroffene Stellen: `game/engine/rgss.rb`, `game/engine/graphics.rb`,
   `docs/architecture.md` (19e/19h).
 - Gefunden in: Etappe 19e (User-Vorgabe „RGSS wie RPG Maker XP Online-Hilfe").
-### [Editor] NPC-Editor / Platzier-Tool für viele Dinge (x/y/z, Text) — offen (User-Wunsch)
-- Symptom: NPCs sind im Editor gar nicht editierbar (nur im Karten-JSON);
-  Text/Schild-Objekte fehlen als platzierbarer Typ.
-- Wunsch: Editor-Werkzeug (Dialog) zum Platzieren vieler Dinge mit X/Y/Z-Feldern:
-  NPCs (Name, Position, Wegpunkte), Text-Objekte, Objekte.
-- Betroffene Stellen: `src/editor/editor_main.cpp` (neuer Dialog nötig),
-  `projekte/*/data/maps/*.json` ("npcs"-Schlüssel existiert, Engine seit 17d).
-- Gefunden in: User-Rückmeldung nach Etappe 18k/18l.
-
+### [Editor] Platzier-Editor: komplexe NPC-Befehle und 3D-Picking — offen (Ausbau)
+- Stand 19n: F5 bearbeitet NPCs, Schild-Events und Objekte mit X/Y/Z,
+  Wegpunkten und einfachem Text. Zusätzliche NPC-Befehle bleiben erhalten,
+  sind aber nicht vollständig in der GUI editierbar. NPCs/Schilder können
+  noch nicht direkt im 3D-Viewport angeklickt/gezogen werden; F5 bietet
+  stattdessen die letzte Cursorposition und numerische Felder.
+- Y ist ein Bodenversatz für die Darstellung; NPC-Kollision und Event-
+  Reichweite sind weiterhin XZ-basiert (keine vertikale Trennung).
+- Betroffene Stellen: `src/editor/placement_dialog.h`, `game/engine/npc.rb`,
+  `game/engine/event.rb`, `game/main.rb`.
+- Gefunden in: Etappe 19n.
 
 ### [Engine] Parallele Events blockieren NPC-Logik — offen
 - Symptom: Ein laufendes `parallel`-Event hält die NPC-Bewegung an, solange der Interpreter damit beschäftigt ist.
@@ -98,7 +100,7 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Etappe 18d.
 
 ### [Editor] Undo/Redo deckt nur Objekte ab — offen
-- Symptom: Strg+Z/Y betrifft nur das `objects`-Array; Splat-Flächen, Event-/Seiten- und DB-Änderungen sind nicht rückholbar.
+- Symptom: Strg+Z/Y betrifft nur das `objects`-Array; Splat-Flächen, NPC-/Schild-Platzierungen, Event-/Seiten- und DB-Änderungen sind nicht rückholbar.
 - Vermutung/Analyse: Undo-Stapel snapshottet nur `objects`; für Events/Splats fehlt ein zweiter Stapel oder ein gemeinsamer Karten-Snapshot.
 - Betroffene Stellen: `src/editor/editor_main.cpp` (`push_undo`, Event-Dialog, Tileset-Dialog).
 - Gefunden in: Etappen 17c/18d/18g.
@@ -204,6 +206,18 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Etappe 19a.
 
 ## Erledigt
+### [Editor] NPC-Editor / Platzier-Tool mit X/Y/Z und Text — erledigt (19n)
+- F5: NPCs, Schild-Events und Prefab-Objekte anlegen, bearbeiten und
+  löschen; Wegpunkte, Text, Bodenversatz, letzte Cursorposition und
+  validierte Eingaben. Änderungen werden transaktional übernommen.
+- Laufzeit: Y-Bodenversatz für NPCs/Objekte, Schilder als Aktions-Events,
+  NPCs per E und Mausklick ansprechbar; bestehende Befehle bleiben erhalten.
+- Tests: C++-Formularmodell, NPC-/Prefab-/MapCheck-Tests und echte
+  Game.update-Integration. Grafischer Windows-Live-Test steht noch aus;
+  3D-Direktmanipulation und komplexe NPC-Befehle siehe Ausbau-Eintrag oben.
+- Betroffene Stellen: `placement_form.h`, `placement_dialog.h`, `editor_main.cpp`,
+  `game/engine/{npc,event,prefabs,mapcheck,editor}.rb`, `game/main.rb`.
+
 ### [Editor] Zufallskämpfe pro Karte bearbeiten — erledigt (19m)
 - Wunsch: Truppen und mittlere Schrittzahl ohne JSON-Handarbeit über F2
   einstellen, mit Zugriff auf gespeicherte F9-Truppen.

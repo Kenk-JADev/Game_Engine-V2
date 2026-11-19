@@ -39,6 +39,10 @@ class Event
     @x        = h['x'].to_f
     @z        = h['z'].to_f
     @radius   = (h['radius'] || 2.0).to_f
+    # y ist ein Versatz zur Geländehöhe, nicht eine absolute Welthöhe.
+    @height_offset = h['y'].is_a?(Numeric) && h['y'].to_f.finite? ? h['y'].to_f : 0.0
+    @visual   = h['visual']
+    @rotation = h['rot'].is_a?(Numeric) && h['rot'].to_f.finite? ? h['rot'].to_f : 0.0
     @pages    = Event.build_pages(h)
     @fired    = false
     @page_idx = 0
@@ -122,9 +126,25 @@ class Event
     (px - @x) * (px - @x) + (pz - @z) * (pz - @z) <= @radius * @radius
   end
 
+  # Ein im Platzier-Editor erzeugtes Schild ist ein normales Event mit
+  # optionaler Darstellung. Die beiden Kästen sind nur sichtbar, nicht
+  # anklickbare Hindernisse; Picking benutzt das zugehörige Event.
+  def add_visual(scene, index)
+    return [] unless @visual == 'schild'
+
+    y = Game.gy(@x, @z) + @height_offset
+    prefix = "event_visual_#{index}"
+    [scene.add(Node.new(name: "#{prefix}_pfosten", position: [@x, y + 0.65, @z],
+                        rotation: [0.0, @rotation, 0.0], scale: [0.18, 1.3, 0.18],
+                        color: 0x76502F)),
+     scene.add(Node.new(name: "#{prefix}_tafel", position: [@x, y + 1.55, @z],
+                        rotation: [0.0, @rotation, 0.0], scale: [1.35, 0.65, 0.15],
+                        color: 0xD5AB69))]
+  end
+
   # --- Picking (Maus): Events werden als Kugel getroffen -------------------
   def box_center
-    [@x, Game.gy(@x, @z) + 1.0, @z]
+    [@x, Game.gy(@x, @z) + @height_offset + 1.0, @z]
   end
 
   def pick_radius

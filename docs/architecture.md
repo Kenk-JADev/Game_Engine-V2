@@ -1711,6 +1711,42 @@ Demo-Datenbank, JSON-Roundtrips und unberührte allgemeine Eigenschaften.
 CI baut/linkt den Win32-Editor, hat aber keine GPU/Fenster für einen echten
 grafischen Live-Test (siehe Backlog und Handoff).
 
+## NPCs, Schilder und Objekte im Platzier-Editor (Etappe 19n)
+
+F5 bzw. „Events → NPCs, Schilder und Objekte“ öffnet einen modalen Dialog
+mit Kategorienliste, Neu/Löschen und Formular. X/Z sind Weltpositionen, Y ist
+ein optionaler Versatz zur Geländehöhe; Objektdrehung/Schilddrehung wird im
+Dialog in Grad, im JSON in Radiant geführt. Die letzte Cursor-Bodenposition
+lässt sich übernehmen. NPCs haben Name, Tempo, Radius, Wegpunkte (`X; Z`,
+Dezimalkomma erlaubt) und einen ersten Text. Schilder sind gewöhnliche
+Action-Events mit eindeutiger ID, `visual: "schild"` und Textbefehl; die
+zwei nicht-soliden Zeichenknoten werden beim Terrain-Neubau aktualisiert.
+Bestehende Objekte behalten ihren Prefab-Typ und alle nicht geänderten Felder.
+
+`placement_form.h` validiert auf Kopien und bewahrt unbekannte Eigenschaften,
+weitere Befehle und unveränderte präzise Zahlen. Ungültige alte Wegpunkte
+werden erst nach Rückfrage ersetzt; nicht darstellbare/komplexe Texte werden
+nicht überschrieben. Mehrseitige Schilder werden in F6 weiterbearbeitet;
+komplexe NPC-Kommandos sind im Formular nur eingeschränkt editierbar. Der
+Dialog sammelt Änderungen auf einer Kartenkopie (OK übernimmt, Abbrechen
+verwirft, Strg+S speichert), deaktiviert die übrigen Fenster und verlangt
+einen geschlossenen Event-Editor, damit dessen JSON-Zeiger nicht veralten.
+NPCs und Schilder samt Wegpunkten werden im Standalone-Editor angezeigt.
+Objektänderungen aus F5 werden im vorhandenen Objekt-Undo abgelegt; NPC-/
+Schildänderungen sind noch nicht rückholbar. Der Undo-Stapel wird bei jedem
+Kartenladen geleert, damit keine Objekte aus einer anderen Karte auftauchen.
+
+Laufzeit: `Npc` und `Prefabs.instantiate` berücksichtigen optionales `y`;
+Kollision und E-Reichweite bleiben wie bisher zweidimensional in X/Z.
+`Game.update` verarbeitet auch NPC-Events und `Game.pickables` verdeckt ihre
+Events nicht mit Körperknoten. Script-Nodes werden unabhängig vom Namen
+nicht als Schildgrafik behandelt. Einmalig ausgelöste NPC-Auto-/Touch-Events
+überleben Spielstände; ältere Spielstände ohne `fired` bleiben gültig.
+MapCheck und F10 prüfen ungültiges `y`.
+Tests: `json_test.cpp`, `npc_test.rb`, `editor_test.rb`, `mapcheck_test.rb`
+und `encounter_test.rb` (echter Spielablauf). Ein grafischer Windows-Test
+für F5, Layout/Tab und Playtest steht noch aus.
+
 ## Ruby-API (Stand Etappe 2)
 
 | API | Bedeutung |

@@ -87,6 +87,7 @@ module Project
     attr_accessor :save_data
   end
   def self.load_save(_name, _slot) = @save_data
+  def self.save(_name, _slot, data) = (@save_data = data; true)
 end
 
 module Weather
@@ -104,8 +105,13 @@ module Issues
 end
 
 class Scene
-  attr_reader :updates
-  def initialize(_name) = (@updates = 0)
+  attr_reader :updates, :root
+  def initialize(_name)
+    @updates = 0
+    @root = Node.new(name: 'root')
+  end
+  def add(node) = (@root.children << node; node)
+  def walk(node, &block) = (block.call(node); node.children.each { |c| walk(c, &block) })
   def refresh_solids; end
   def update(_dt) = (@updates += 1)
 end
@@ -123,7 +129,9 @@ require 'data'
 require 'state'
 require 'party'
 require 'battle'
+require 'node'
 require 'event'
+require 'npc'
 require 'interpreter'
 require 'mover'
 require 'effects'
@@ -260,6 +268,92 @@ check('Script-Teleport verwirft den im selben Frame vorgemerkten Encounter') do
   !Battle.active? && $game_player.encounter_count == 1
 ensure
   Graphics.callback = nil
+end
+
+puts '== Platzierungen: echte Spielschleife =='
+check('NPC ist per E ansprechbar und zeigt seinen Text') do
+  prepare
+  scene = Game.instance_variable_get(:@scene)
+  npc = Npc.new({ 'name' => 'Neu', 'x' => 1, 'y' => 2, 'z' => 0, 'path' => [],
+                  'commands' => [{ 'cmd' => 'text', 'lines' => ['Hallo vom NPC'] }] }, scene)
+  Game.npcs << npc
+  Rune::Input.keys = [:e]
+  Game.update(0.016)
+  gestartet = Game.interpreter.running?
+  Rune::Input.keys = []
+  Game.update(0.016)
+  gestartet && Game.interpreter.message == ['Hallo vom NPC']
+ensure
+  Rune::Input.keys = []
+end
+check('Schild aus Kartendaten wird dargestellt und per E gelesen') do
+  prepare
+  karte = Database.map('start')
+  karte['events'] << { 'id' => 8, 'name' => 'Schild', 'x' => 0.5, 'y' => 2, 'z' => 0,
+                       'visual' => 'schild', 'commands' => [{ 'cmd' => 'text', 'lines' => ['Weg'] }] }
+  Game.enter_map('start')
+  Game.instance_variable_set(:@intro, nil)
+  scene = Game.instance_variable_get(:@scene)
+  sichtbar = scene.root.children.count { |n| n.name.start_with?('event_visual_') } == 2
+  Rune::Input.keys = [:e]
+  Game.update(0.016)
+  Rune::Input.keys = []
+  Game.update(0.016)
+  sichtbar && Game.interpreter.message == ['Weg']
+ensure
+  Rune::Input.keys = []
+  karte['events'].clear if karte
+end
+check('Schild und NPC sind als Event statt als verdeckender Körper pickbar') do
+  prepare
+  scene = Game.instance_variable_get(:@scene)
+  npc = Npc.new({ 'name' => 'Pick-NPC', 'x' => 1, 'z' => 0 }, scene)
+  Game.npcs << npc
+  schild = Event.new('name' => 'Schild', 'x' => 4, 'z' => 0, 'visual' => 'schild',
+                     'commands' => [{ 'cmd' => 'text', 'lines' => ['Weg'] }])
+  Game.events << schild
+  # Ein Script darf denselben Namenspräfix verwenden; dessen Node gehört ihm.
+  fremd = Node.new(name: 'event_visual_eigenes_script')
+  scene.add(fremd)
+  Game.refresh_placement_visuals(scene)
+  Game.refresh_placement_visuals(scene)
+  kandidaten = Game.pickables
+  schilder = scene.root.children.select { |n| n != fremd && n.name.start_with?('event_visual_') }
+  schilder.size == 2 && scene.root.children.include?(fremd) && kandidaten.include?(fremd) &&
+    kandidaten.include?(npc.event) && kandidaten.include?(schild) &&
+    !kandidaten.include?(npc.node) && schilder.none? { |node| kandidaten.include?(node) }
+end
+check('einmaliges NPC-Auto-Event bleibt nach einem echten Save/Load ausgelöst') do
+  prepare
+  karte = Database.map('start')
+  karte['npcs'] = [{ 'name' => 'Auto-NPC', 'x' => 2, 'z' => 0, 'trigger' => 'auto',
+                     'commands' => [{ 'cmd' => 'wait', 'seconds' => 10 }] }]
+  Game.enter_map('start')
+  Game.instance_variable_set(:@intro, nil)
+  Game.update(0.016)
+  ausgelöst = Game.npcs.first.event.fired && Game.interpreter.running?
+  gespeichert = Game.save_game(1) && Project.save_data['npcs'].first['fired'] == true
+  geladen = Game.load_game(1)
+  wiederhergestellt = Game.npcs.first.event.fired
+  Game.update(0.016)
+  ausgelöst && gespeichert && geladen && wiederhergestellt && !Game.interpreter.running?
+ensure
+  karte.delete('npcs') if karte
+end
+check('Touch-Event verdrängt kein NPC-Gespräch und hat im selben Frame Vorrang') do
+  prepare
+  scene = Game.instance_variable_get(:@scene)
+  Game.npcs << Npc.new({ 'name' => 'Redner', 'x' => 1, 'z' => 0,
+                         'commands' => [{ 'cmd' => 'text', 'lines' => ['NPC'] }] }, scene)
+  Game.events << Event.new('name' => 'Kontakt', 'x' => 0, 'z' => 0, 'trigger' => 'touch',
+                           'commands' => [{ 'cmd' => 'text', 'lines' => ['Kontakt'] }])
+  Rune::Input.keys = [:e]
+  Game.update(0.016)
+  Rune::Input.keys = []
+  Game.update(0.016)
+  Game.interpreter.message == ['Kontakt']
+ensure
+  Rune::Input.keys = []
 end
 
 puts '== Zufallskampf: Schritt, Battle und Sperren =='

@@ -20,6 +20,7 @@
 #include "editor/encounter_check.h"
 #include "editor/encounter_form.h"
 #include "editor/map_props_form.h"
+#include "editor/placement_form.h"
 
 #include <cmath>
 #include <cstdio>
@@ -111,6 +112,129 @@ int roundtrip_modus(int argc, char** argv) {
     }
     std::printf("roundtrip: %s -> %s\n", argv[2], argv[3]);
     return 0;
+}
+
+void placement_form_tests() {
+    using namespace rune::editor;
+    std::printf("== Editor: NPCs, Schilder und Objekte ==\n");
+    JsonValue map = json_parse(R"({"objects":[{"type":"haus","x":0,"z":0}],
+      "events":[{"id":1,"name":"NPC 1"},{"id":3,"name":"Schild 1"}],
+      "npcs":[{"name":"Mara","x":1.2345678901234567,"z":2,"speed":1.2,
+        "path":[[1,2],[3,4]],"extra":{"wichtig":true},
+        "commands":[{"cmd":"text","lines":["Guten Tag","Äpfel"],"extra":42},
+                    {"cmd":"switch","name":"auftrag","value":true}]}]})");
+    const JsonValue original = map.find("npcs")->arr[0];
+    const std::string original_text = json_write(original);
+    const PlacementForm before = placement_form_read(original, PlacementKind::Npc);
+    check("NPC-Formular liest Wegpunkte und Text", before.name == "Mara" &&
+          before.path == "1; 2\r\n3; 4" && before.text == "Guten Tag\r\nÄpfel" &&
+          before.path_valid && before.text_editable && before.y == "0");
+    const PlacementEdit unchanged = placement_form_prepare(original, PlacementKind::Npc, before, before);
+    check("unverändertes Formular verändert keine NPC-Daten", unchanged.ok && !unchanged.changed &&
+          json_write(unchanged.value) == original_text);
+    PlacementForm changed = before;
+    changed.y = "1,75";
+    changed.path = "1,5; -2,25\r\n3; 4";
+    changed.text = "Hallo\r\n\r\nWelt";
+    const PlacementEdit edit = placement_form_prepare(original, PlacementKind::Npc, before, changed);
+    const JsonValue* commands = edit.value.find("commands");
+    check("NPC-Höhe, Dezimalkomma und Wegpunkte validiert", edit.ok && edit.changed &&
+          edit.value.find("y")->num == 1.75 && edit.value.find("path")->arr.size() == 2 &&
+          edit.value.find("path")->arr[0].arr[0].num == 1.5 &&
+          edit.value.find("path")->arr[0].arr[1].num == -2.25);
+    check("Textänderung erhält Leerzeilen, Zusatzfelder und weitere Befehle",
+          commands && commands->arr.size() == 2 && commands->arr[0].find("extra")->num == 42 &&
+          commands->arr[0].find("lines")->arr.size() == 3 &&
+          commands->arr[0].find("lines")->arr[1].str.empty() &&
+          commands->arr[1].find("cmd")->str == "switch");
+    check("NPC-Vorbereitung ist transaktional und erhält präzise Werte", json_write(original) == original_text &&
+          json_write(*edit.value.find("x")) == json_write(*original.find("x")) &&
+          edit.value.find("extra")->find("wichtig")->b);
+    changed = before; changed.path = "3; 4\r\n1; 2\r\n9; 8";
+    const PlacementEdit reordered = placement_form_prepare(original, PlacementKind::Npc, before, changed);
+    check("umgeordnete Wegpunkte behalten ihre ursprünglichen Zahlentypen", reordered.ok &&
+          reordered.value.find("path")->arr[0].arr[0].is_int &&
+          reordered.value.find("path")->arr[1].arr[1].is_int &&
+          !reordered.value.find("path")->arr[2].arr[0].is_int);
+    changed = before;
+    changed.x = "12xyz";
+    changed.text = "Änderung";
+    const PlacementEdit bad_x = placement_form_prepare(original, PlacementKind::Npc, before, changed);
+    check("ungültige Zahl verhindert die gesamte Änderung", !bad_x.ok && bad_x.field == "x" &&
+          json_write(original) == original_text);
+    changed = before; changed.speed = "0";
+    check("Tempo muss positiv sein", !placement_form_prepare(original, PlacementKind::Npc, before, changed).ok);
+    changed = before; changed.radius = "nan";
+    check("NaN wird zurückgewiesen", !placement_form_prepare(original, PlacementKind::Npc, before, changed).ok);
+    changed = before; changed.path = "1; 2; 3";
+    check("kaputter Wegpunkt wird zurückgewiesen", !placement_form_prepare(original, PlacementKind::Npc, before, changed).ok);
+    changed = before; changed.name = "  ";
+    check("leerer Name wird zurückgewiesen", !placement_form_prepare(original, PlacementKind::Npc, before, changed).ok);
+    changed.name = "A\tB";
+    check("Steuerzeichen im Namen werden zurückgewiesen", !placement_form_prepare(original, PlacementKind::Npc, before, changed).ok);
+
+    const JsonValue invalid = json_parse(R"({"name":"Alt","x":0,"z":0,"path":[[1,2,3]],
+                                              "commands":{"fremd":true}})");
+    const PlacementForm old_form = placement_form_read(invalid, PlacementKind::Npc);
+    check("ungültige Alt-Wegpunkte und Kommandos werden angezeigt bzw. geschützt",
+          !old_form.path_valid && !old_form.text_editable);
+    changed = old_form; changed.x = "3";
+    const PlacementEdit old_edit = placement_form_prepare(invalid, PlacementKind::Npc, old_form, changed);
+    check("andere Änderungen erhalten ungültige Altdaten", old_edit.ok &&
+          json_write(*old_edit.value.find("path")) == json_write(*invalid.find("path")) &&
+          json_write(*old_edit.value.find("commands")) == json_write(*invalid.find("commands")));
+    changed.path = "3; 4";
+    const PlacementEdit replacement = placement_form_prepare(invalid, PlacementKind::Npc, old_form, changed);
+    check("Ersetzen ungültiger Wegpunkte erfordert Rückfrage", replacement.ok && replacement.replaces_invalid_path);
+    changed.text = "Gefahr";
+    check("gesperrter Text kann nicht versehentlich ersetzt werden",
+          !placement_form_prepare(invalid, PlacementKind::Npc, old_form, changed).ok);
+
+    const JsonValue npc = placement_new(map, PlacementKind::Npc, "");
+    const JsonValue sign = placement_new(map, PlacementKind::Sign, "");
+    const JsonValue object = placement_new(map, PlacementKind::Object, "baum");
+    check("neuer NPC bekommt eindeutigen Namen und bleibt ohne Wegpunkte stehen",
+          npc.find("name")->str == "NPC 2" && npc.find("path")->arr.empty());
+    check("Schild bekommt freie Event-ID, eigenen Namen und Textbefehl",
+          sign.find("id")->num == 2 && sign.find("name")->str == "Schild 2" &&
+          sign.find("visual")->str == "schild" && sign.find("trigger")->str == "action" &&
+          sign.find("commands")->arr[0].find("cmd")->str == "text");
+    check("Namenskollisionen zwischen Events und NPCs erkennbar",
+          placement_name_used(map, "NPC 1", PlacementKind::Npc, 0) &&
+          !placement_name_used(map, "Mara", PlacementKind::Npc, 0));
+    check("neues Prefab-Objekt hat den gewählten Typ", object.find("type")->str == "baum");
+    const PlacementForm so = placement_form_read(object, PlacementKind::Object);
+    changed = so; changed.y = "4"; changed.rotation = "90"; changed.type = "haus";
+    const PlacementEdit eo = placement_form_prepare(object, PlacementKind::Object, so, changed);
+    check("Objekt mit Höhe und Grad-Drehung gespeichert", eo.ok && eo.value.find("y")->num == 4 &&
+          std::fabs(eo.value.find("rot")->num - 1.5707963267948966) < 1e-14 &&
+          eo.value.find("type")->str == "haus");
+    const JsonValue pages = json_parse(R"({"name":"Schild","x":0,"z":0,"visual":"schild",
+       "pages":[{"commands":[{"cmd":"text","lines":["A"]}]},
+                {"commands":[{"cmd":"text","lines":["B"]}]}]})");
+    const PlacementForm pf = placement_form_read(pages, PlacementKind::Sign);
+    changed = pf; changed.x = "5";
+    const PlacementEdit pe = placement_form_prepare(pages, PlacementKind::Sign, pf, changed);
+    check("mehrseitiges Schild schützt Text, Positionsänderung bewahrt Seiten", !pf.text_editable && pe.ok &&
+          json_write(*pe.value.find("pages")) == json_write(*pages.find("pages")));
+    map.find("npcs")->arr[0] = edit.value;
+    map.find("events")->arr.push_back(sign);
+    map.find("objects")->arr.push_back(eo.value);
+    const JsonValue roundtrip = json_parse(json_write(map));
+    check("alle drei Platzierungsarten überleben einen Karten-Roundtrip",
+          roundtrip.find("npcs")->arr[0].find("commands")->arr.size() == 2 &&
+          roundtrip.find("events")->arr[2].find("visual")->str == "schild" &&
+          roundtrip.find("objects")->arr[1].find("y")->num == 4);
+    const JsonValue bad_heights = json_parse(R"({"objects":[{"y":"hoch"}],
+        "events":[{"y":null},{"y":[]}],"npcs":[{"y":1},{"y":false}]})");
+    std::vector<EncounterFinding> heights;
+    issue_scan_placement_heights(bad_heights, "Karte", [&](int severity, const std::string& where,
+                                                            const std::string& text) {
+        heights.push_back({severity, where, text});
+    });
+    check("F10 meldet ungültige Höhen aller drei Arten, null ist erlaubt",
+          heights.size() == 3 && heights[0].severity == 1 && heights[0].where == "Karte objects #1" &&
+          heights[1].where == "Karte events #2" && heights[2].where == "Karte npcs #2");
 }
 
 // Der Win32-Dialog benutzt dieselben Funktionen. So können wir auch ohne
@@ -620,6 +744,7 @@ int main(int argc, char** argv) {
 
     encounter_form_tests(wurzel);
     map_props_form_tests();
+    placement_form_tests();
 
     std::printf("== JSON: Grosse/tiefe Dokumente ==\n");
     {

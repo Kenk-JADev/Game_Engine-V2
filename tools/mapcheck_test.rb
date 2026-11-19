@@ -460,6 +460,22 @@ check('null als encounters oder optionale Felder -> keine Funde') do
   ohne && MapCheck.scan(k, **OPTS).empty?
 end
 
+puts '== MapCheck: Höhenversatz =='
+check('gültiges oder null-Y bei Objekten, Events und NPCs -> keine Y-Warnung') do
+  k = saubere_karte
+  k['objects'][0]['y'] = 2.5
+  k['events'][0]['y'] = nil
+  k['npcs'][0]['y'] = -3
+  MapCheck.scan(k, **OPTS).none? { |f| f.message.include?("'y'") }
+end
+check('ungültige Y-Versätze bei allen drei Arten -> Warnungen') do
+  k = saubere_karte
+  k['objects'][0]['y'] = 'hoch'
+  k['events'][0]['y'] = Float::INFINITY
+  k['npcs'][0]['y'] = []
+  MapCheck.scan(k, **OPTS).count { |f| f.message.include?("'y' muss eine endliche Zahl") } == 3
+end
+
 puts '== MapCheck: NPCs =='
 check('NPC ohne name -> Warnung') do
   k = saubere_karte

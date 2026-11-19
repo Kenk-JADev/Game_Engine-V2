@@ -95,6 +95,33 @@ stein = Npc.new({ 'name' => 'Stein', 'x' => 1.0, 'z' => 2.0 }, scene)
 stein.update(5.0)
 check('NPC ohne Wegpunkte bleibt stehen') { stein.position == [1.0, 2.0] }
 
+# Etappe 19n: y ist ein Bodenversatz, auch nach Bewegung und Spielstandladen.
+hoeher = Npc.new({ 'name' => 'Hoch', 'x' => 0.0, 'y' => 3.0, 'z' => 0.0,
+                   'speed' => 1.0, 'path' => [[4.0, 0.0]] }, scene)
+check('NPC-Y-Versatz ist am Körper und beim Picking sichtbar') do
+  hoeher.node.position[1] == 3.9 && hoeher.event.box_center[1] == 4.0
+end
+hoeher.update(1.0)
+check('NPC-Y-Versatz bleibt beim Laufen') { hoeher.node.position[1] == 3.9 }
+hoeher.move_to(2, 1)
+check('NPC-Y-Versatz bleibt bei Bewegungsrouten') { hoeher.node.position[1] == 3.9 }
+hoeher.restore!(0, 0, 0)
+check('NPC-Y-Versatz bleibt beim Laden') { hoeher.node.position[1] == 3.9 }
+
+schild = Event.new('id' => 13, 'name' => 'Wegweiser', 'x' => 4, 'y' => 2, 'z' => -1,
+                   'rot' => Math::PI / 2, 'visual' => 'schild',
+                   'trigger' => 'action', 'commands' => [{ 'cmd' => 'text', 'lines' => ['Hallo'] }])
+schild.add_visual(scene, 13)
+tafeln = scene.root.children.select { |n| n.name.start_with?('event_visual_13_') }
+check('Schild-Event erzeugt Pfosten und Tafel in der richtigen Höhe') do
+  tafeln.size == 2 && tafeln[0].position == [4.0, 2.65, -1.0] &&
+    tafeln[1].position == [4.0, 3.55, -1.0] && tafeln.all? { |n| n.rotation[1] == Math::PI / 2 }
+end
+check('Schild bleibt ein nutzbares Event') do
+  schild.box_center == [4.0, 3.0, -1.0] && schild.near?(4, -1) &&
+    schild.trigger == 'action' && schild.commands[0]['lines'] == ['Hallo']
+end
+
 # --- Geschwindigkeit ---------------------------------------------------------
 schnell = Npc.new({ 'name' => 'Sprint', 'x' => 0.0, 'z' => 0.0, 'speed' => 10.0,
                     'path' => [[100.0, 0.0]] }, scene)
@@ -146,6 +173,13 @@ check('Restore stellt Position wieder her') do
   blocker.position[0] == snap['x'] && blocker.position[1] == snap['z']
 end
 check('Restore stellt Wegpunkt wieder her') { blocker.snapshot['wp'] == snap['wp'] }
+blocker.event.fired = true
+feuer_snap = blocker.snapshot
+blocker.event.fired = false
+blocker.restore!(feuer_snap['x'], feuer_snap['z'], feuer_snap['wp'], feuer_snap['fired'])
+check('einmalig ausgelöstes NPC-Event übersteht Snapshot/Restore') { blocker.event.fired }
+blocker.restore!(snap['x'], snap['z'], snap['wp'])
+check('alte NPC-Spielstände ohne fired bleiben lesbar') { !blocker.event.fired }
 
 # Event-Position nach Restore synchron (E-Interaktion am geladenen Ort)
 check('Event-Position nach Restore synchron') do

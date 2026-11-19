@@ -59,6 +59,7 @@ $game_map/$game_screen/$game_temp`, `Graphics`, `Input`, `Audio`,
 |---|---|---|
 | Kartenliste / Karten-Eigenschaften | Kartenbaum + Dialog | ✅ |
 | Event-Editor, Seiten, Bedingungen | 26 Befehle, 4 Trigger, Self-Switches A-D | ✅ |
+| NPCs / Schilder / Objektpositionen | F5-Platzier-Editor, Text, Wegpunkte und Y-Bodenversatz | ✅ teilweise |
 | Schalter & Variablen | `GameState` | ✅ |
 | Datenbank (Helden, Items, Gegner, Truppen …) | alle vier Sammlungen + Gold per GUI editierbar; keine Skills/Waffen/Zustände | ✅ teilweise |
 | Tileset / Boden | Splat-Böden, Höhen-Malwerkzeug | ✅ |
@@ -185,7 +186,7 @@ docs/                architecture.md, BACKLOG.md, HANDOFF_Naechste_KI.md
 | G, Esc, Enter | Raster umschalten, Auswahl aufheben, Eigenschaften übernehmen |
 | Doppelklick in der Objektliste | Kamera aufs Objekt richten |
 | PNG/BMP ins Fenster ziehen | Textur importieren |
-| F1 Hilfe · F2 Karten-Eigenschaften · F3 Materialbase · F4 Playtest · F6 Event-Editor · F7 Tileset · F8 Sound-Test · F9 Datenbank · F10 Probleme · F11 Script-Editor · F12 Screenshot | |
+| F1 Hilfe · F2 Karten-Eigenschaften · F3 Materialbase · F4 Playtest · F5 Platzier-Editor · F6 Event-Editor · F7 Tileset · F8 Sound-Test · F9 Datenbank · F10 Probleme · F11 Script-Editor · F12 Screenshot | |
 
 **Spiel**: WASD laufen, Shift rennen, Leertaste springen, E benutzen/reden,
 Maussteuerung Blick, Esc Menü, F2 Debug-Ausgabe, F4 Playtest umschalten,
@@ -213,6 +214,24 @@ Karten sind JSON unter `projekte/<name>/data/maps/<id>.json`:
   "encounters": { "troops": ["waldweg", "banditen"], "steps": 30 }
 }
 ```
+
+**NPCs, Schilder und Objekte:** Karte wählen, ggf. den Event-Editor F6
+schließen, dann **F5** oder „Events → NPCs, Schilder und Objekte“ öffnen.
+Kategorie und Eintrag wählen oder mit „Neu“ anlegen. X/Z sind Weltpositionen;
+Y ist ein Versatz zur Geländehöhe (0 = auf dem Boden). Für NPCs Tempo,
+Gesprächsradius und Wegpunkte (`X; Z`, eine Zeile je Punkt) eingeben; für
+NPCs und Schilder lässt sich der erste Text bearbeiten. Zusätzliche Befehle
+bleiben erhalten. Mehrseitige Schild-Events lassen sich vollständig in F6
+bearbeiten; komplexe NPC-Kommandos bleiben erhalten, sind hier aber nicht
+vollständig editierbar. „Letzte Cursorposition“ übernimmt den zuletzt im
+Viewport getroffenen Bodenpunkt. **OK** übernimmt alle Dialogänderungen in
+die Karte, **Abbrechen** verwirft sie, **Strg+S** speichert anschließend.
+NPCs und Schilder erscheinen im Viewport; die Wegpunkte sind blau markiert.
+NPC-Gespräche und Schilder sind im Spiel mit **E** oder Mausklick nutzbar.
+Kollisions- und Interaktionsreichweite bleiben XZ-basiert, auch bei Y-Versatz.
+Objektänderungen aus F5 sind mit Strg+Z rückgängig zu machen; NPCs und
+Schilder sind noch nicht im Undo enthalten. Beim Kartenwechsel wird der
+Objekt-Undo-Stapel geleert.
 
 `blocked` (optional) sind unsichtbare Wände über alle Höhen (x/z = Mitte,
 w/h = Größe in Metern) — im Editor unter F2 editierbar und als rote

@@ -233,6 +233,14 @@ module MapCheck
     def zahl?(v) = v.is_a?(Numeric)
     def text?(v) = v.is_a?(String) && !v.strip.empty?
 
+    # Optionaler y-Versatz ist bei null/fehlendem Feld wie 0 zu behandeln.
+    def pruefe_y(objekt, wo)
+      y = objekt['y']
+      return if y.nil? || (zahl?(y) && y.to_f.finite?)
+
+      melde(WARNUNG, wo, "'y' muss eine endliche Zahl sein (Versatz zum Gelände)")
+    end
+
     # --- Etappe 19k.3: Lage in Block-Zonen ----------------------------------
     # Nur brauchbare Zonen (Zahlen, w/h > 0) zählen - kaputte Einträge meldet
     # pruefe_blocked bereits als Fehler/Warnung.
@@ -440,6 +448,7 @@ module MapCheck
         %w[x z].each do |k|
           melde(FEHLER, w, "'#{k}' fehlt oder ist keine Zahl") unless zahl?(o[k])
         end
+        pruefe_y(o, w)
         melde(WARNUNG, w, "'rot' ist keine Zahl") if o.key?('rot') && !zahl?(o['rot'])
         if @materials && text?(o['tex']) && !@materials.include?(o['tex'])
           melde(WARNUNG, w, "Material '#{o['tex']}' ist nicht geladen")
@@ -468,6 +477,7 @@ module MapCheck
         %w[x z].each do |k|
           melde(FEHLER, w, "'#{k}' fehlt oder ist keine Zahl") unless zahl?(e[k])
         end
+        pruefe_y(e, w)
         melde(WARNUNG, w, 'steht in einer Block-Zone (nicht erreichbar)') if in_zone?(e['x'], e['z'])
         if e.key?('radius') && !(zahl?(e['radius']) && e['radius'] > 0)
           melde(WARNUNG, w, "'radius' muss > 0 sein")
@@ -750,6 +760,7 @@ module MapCheck
         %w[x z].each do |k|
           melde(FEHLER, w, "'#{k}' fehlt oder ist keine Zahl") unless zahl?(n[k])
         end
+        pruefe_y(n, w)
         melde(WARNUNG, w, 'steht in einer Block-Zone (kommt nicht heraus)') if in_zone?(n['x'], n['z'])
         if n.key?('speed') && !(zahl?(n['speed']) && n['speed'] > 0)
           melde(WARNUNG, w, "'speed' muss > 0 sein")
