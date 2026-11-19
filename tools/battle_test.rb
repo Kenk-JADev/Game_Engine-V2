@@ -239,7 +239,7 @@ check('Aktionsphase gelaufen (Wieder Befehle, Runde 2)') do
   Battle.phase == :command && Battle.turn == 1
 end
 a0 = Battle.actors[0]
-check("Heiltrank wirkt (ist hp=#{a0.hp}/#{a0.max_hp} item=#{Party.item_count('heiltrank')} log=#{Battle.log.last(3).join(' | ')})") do
+check("Heiltrank wirkt (ist hp=#{a0.hp}/#{a0.max_hp} item=#{Party.item_count('heiltrank')} log=#{Battle.instance_variable_get(:@log).last(3).join(' | ')})") do
   a0.hp >= a0.max_hp - 15 && Party.item_count('heiltrank').zero?
 end
 Battle.abort!
