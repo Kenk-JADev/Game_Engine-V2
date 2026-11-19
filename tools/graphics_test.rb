@@ -138,8 +138,15 @@ check('in der Karte, flach -> passierbar') { $game_player.passable?(5.0, 5.0) }
 check('Richtung 6 (rechts) in die Wand -> false') do
   !$game_player.passable?(10.0, 5.0, 6)
 end
-check('Richtung 4 (links) von der Wand hinunter -> true (Delta zählt)') do
-  $game_player.passable?(11.0, 5.0, 4)
+# Spieler steht auf 2/3 (moveto oben); die Stufe misst vom Spieler zum Ziel.
+check('Richtung 4 (links) von der Wand hinunter -> false (Stufe vom Spieler)') do
+  !$game_player.passable?(11.0, 5.0, 4)
+end
+check('auf der Wand nach links (flach weiter) -> true') do
+  $game_player.moveto(12.0, 5.0)
+  ok = $game_player.passable?(12.0, 5.0, 4)
+  $game_player.moveto(2.0, 3.0)
+  ok
 end
 check('hinter der Kartengrenze (x > width) -> false') do
   !$game_player.passable?(125.0, 5.0)

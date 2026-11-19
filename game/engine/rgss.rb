@@ -218,7 +218,12 @@ module RGSS
         return false if (w > 0 && (tx < 0 || tx > w)) || (h > 0 && (tz < 0 || tz > h))
       end
 
-      (Game.gy(tx, tz) - Game.gy(x.to_f, z.to_f)).abs <= MAX_STUFE
+      # Die Stufe misst am SPIELER: (x, z) ist der Ausgangspunkt des Schritts
+      # (XP: x/y des Events), aber ob das Ziel erreichbar ist, entscheidet der
+      # Höhenunterschied zur aktuellen Spielerposition - der übergebene Punkt
+      # kann anywhere sein (Scripts prüfen oft voraus).
+      px, _py, pz = Rune::Player.position
+      (Game.gy(tx, tz) - Game.gy(px, pz)).abs <= MAX_STUFE
     end
 
     def refresh; end
