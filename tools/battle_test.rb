@@ -238,9 +238,9 @@ Battle.update(0.016)
 check('Aktionsphase gelaufen (Wieder Befehle, Runde 2)') do
   Battle.phase == :command && Battle.turn == 1
 end
-check('Heiltrank wirkt: Arik fast voll, Item weg') do
-  Battle.actors[0].hp >= Battle.actors[0].max_hp - 15 &&
-    Party.item_count('heiltrank').zero?
+a0 = Battle.actors[0]
+check("Heiltrank wirkt (ist hp=#{a0.hp}/#{a0.max_hp} item=#{Party.item_count('heiltrank')} log=#{Battle.log.last(3).join(' | ')})") do
+  a0.hp >= a0.max_hp - 15 && Party.item_count('heiltrank').zero?
 end
 Battle.abort!
 check('abort!: Kampf aus, in_battle zurück') do
@@ -253,9 +253,11 @@ Battle.instance_variable_set(:@actions, [])
 Battle.instance_variable_set(:@phase, :execute)
 gold0 = Party.gold
 Battle.update(0.016)   # execute: keine Aktionen, alle Gegner tot -> Sieg
-check('Ergebnis Sieg') { Battle.result == :sieg && !Battle.active? }
-check('Belohnung: Gold gestiegen (Goblin 8 + Wolf 0)') { Party.gold >= gold0 + 8 }
-check('Exp auf Party-Helden verteilt') do
+check("Ergebnis Sieg (ist result=#{Battle.result.inspect} phase=#{Battle.phase.inspect} active=#{Battle.active?} hp=#{Battle.enemies.map(&:hp).inspect})") do
+  Battle.result == :sieg && !Battle.active?
+end
+check("Belohnung: Gold gestiegen (vor=#{gold0} nach=#{Party.gold})") { Party.gold >= gold0 + 8 }
+check("Exp auf Party-Helden verteilt (ist #{Party.actors.map { |a| [a.name, a.exp] }.inspect})") do
   Party.actors.sum(&:exp) >= 30
 end
 check('gameover bleibt aus') { $game_temp.gameover == false }
