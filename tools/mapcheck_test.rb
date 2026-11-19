@@ -331,7 +331,9 @@ end
 puts '== MapCheck: Block-Zonen (19k.2) =='
 check('gültige blocked-Zone: keine Funde') do
   k = saubere_karte
-  k['blocked'] = [{ 'x' => 1.0, 'z' => 2.0, 'w' => 3.0, 'h' => 4.0 }]
+  # Etappe 19k.3: Die Zone liegt fernab - sonst meldet die Lage-Pruefung
+  # NPC/Event/Wegpunkt, die in der Zone stehen (hier: NPC (1,1), Event (0,3)).
+  k['blocked'] = [{ 'x' => 50.0, 'z' => 50.0, 'w' => 3.0, 'h' => 4.0 }]
   MapCheck.scan(k, **OPTS).empty?
 end
 check('blocked ohne w -> Fehler') do
