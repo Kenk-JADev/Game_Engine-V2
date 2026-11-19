@@ -21,17 +21,6 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 ---
 
 ## Offen
-### [Editor] F6-Fenster ist nicht an kleine Bildschirme angepasst — offen (Layout)
-- Statische Analyse: Das Event-Fenster ist fest 1000 × 730 Pixel groß; seine
-  unteren Schaltflächen liegen bis etwa y=690. Es ist weder größenänderbar
-  noch scrollbar. Bei 1024 × 640 und/oder hoher Windows-Skalierung können
-  daher Teile außerhalb des Arbeitsbereichs liegen.
-- Responsives oder scrollbar erreichbares Layout entwickeln und auf einem
-  echten Windows-Desktop mit verschiedenen Auflösungen/DPI prüfen. Die
-  tatsächliche Darstellung wurde in dieser Umgebung nicht live getestet.
-- Betroffene Stellen: `src/editor/editor_main.cpp` (`open_event_editor`).
-- Gefunden in: F6-Audit zu Etappe 19o.5.
-
 ### [Editor/Engine] Extreme Terrain-/Atmosphärenwerte sind nicht vollständig abgesichert — offen
 - Symptom: Wohlgeformtes JSON mit extrem großen Ganzzahlen/Kommazahlen oder
   ungünstigen Terrain-Abmessungen/Auflösungen kann vor der Objektvorschau
@@ -239,6 +228,20 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Etappe 19a.
 
 ## Erledigt
+### [Editor] F6-Fenster auf kleinen Arbeitsflächen erreichbar — implementiert (19o.6)
+- Das frühere feste 1000×730-Fenster konnte unterhalb der Arbeitsfläche
+  liegen. Jetzt werden Fenstergröße und Position auf den aktuellen Monitor
+  begrenzt; das Fenster ist größenänderbar und der Inhalt zweiachsig
+  scrollbar. Fokuswechsel führen den Ausschnitt nach, DPI-Wechsel skalieren
+  Schrift und Control-Geometrie. Listen/Combos bleiben direkte Dialogkinder.
+- Portable Tests prüfen die tatsächlichen Control-Koordinaten und simulieren
+  kleine Ausschnitte, mehrere DPI-Stufen und negative Monitorkoordinaten.
+  Windows-Tests verwenden unsichtbare Win32-Controls; das ist kein echter
+  Desktop-/DPI-Livetest. Dieser bleibt im Live-Test-Eintrag ausdrücklich offen.
+- Betroffene Stellen: `src/editor/event_layout.h`, `event_view_win.h`,
+  `editor_main.cpp`, `tools/json_test.cpp`, `build.ps1`.
+- Gefunden in: F6-Audit zu Etappe 19o.5.
+
 ### [Editor] F6 schreibt unberührte Felder um — erledigt (19o.5)
 - `event_form.h` liest ohne Mutation und bereitet Event-, Seiten- und
   Befehlsänderungen gemeinsam auf Kopien vor. Nur geänderte Felder werden

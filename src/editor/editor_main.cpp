@@ -49,6 +49,7 @@
 #include "editor/encounter_check.h"
 #include "editor/encounter_form.h"
 #include "editor/event_form.h"
+#include "editor/event_view_win.h"
 #include "editor/map_document.h"
 #include "editor/map_props_form.h"
 #include "editor/number_format.h"
@@ -5627,6 +5628,7 @@ struct EventCmdRef {
 
 struct EventDlgState {
     HWND win = nullptr;
+    EventViewState view;
     HWND list_events = nullptr;
     HWND list_cmds = nullptr;
     HWND ed_id = nullptr;
@@ -6325,7 +6327,13 @@ void ev_error(const EventEdit& edit) {
     else if (edit.field == "cmd_text") focus = g_ev.ed_ce_text;
     else if (edit.field == "cmd_op") focus = g_ev.cb_ce_op;
     else if (edit.field == "cmd_flag") focus = g_ev.cb_ce_bool;
-    if (focus && IsWindowEnabled(focus) && IsWindowVisible(focus)) SetFocus(focus);
+    if (focus && IsWindowEnabled(focus) && IsWindowVisible(focus)) {
+        SetFocus(focus);
+        // Bei Fehlern kann das Feld auch nach einer MessageBox außerhalb des
+        // gerade sichtbaren Ausschnitts liegen.
+        event_view_reveal(g_ev.view, g_ev.win, focus);
+        g_ev.view.last_focus = GetFocus();
+    }
 }
 
 bool ev_confirm_edit(const EventEdit& edit) {
@@ -6610,12 +6618,7 @@ void ev_move_command(int delta) {
 HWND ev_control(const wchar_t* cls, const wchar_t* text, DWORD style,
                 int x, int y, int w, int h, int id) {
     if (id != 0 && std::wcscmp(cls, L"Static") != 0) style |= WS_TABSTOP;
-    HWND c = CreateWindowExW(0, cls, text, WS_CHILD | WS_VISIBLE | style,
-                             x, y, w, h, g_ev.win,
-                             reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),
-                             GetModuleHandleW(nullptr), nullptr);
-    SendMessageW(c, WM_SETFONT, reinterpret_cast<WPARAM>(g.font), TRUE);
-    return c;
+    return event_view_add(g_ev.view, g_ev.win, cls, text, style, x, y, w, h, id);
 }
 
 void ev_label(const wchar_t* text, int x, int y, int w) {
@@ -6715,6 +6718,7 @@ LRESULT CALLBACK event_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         }
         if (msg == WM_COMMAND || msg == WM_CLOSE) return 0;
     }
+    if (event_view_message(g_ev.view, h, msg, wp, lp)) return 0;
     switch (msg) {
         // Ein bereits synchron abgeglichener Post ist nur noch eine veraltete
         // Nachricht und darf keine weitere Auswahländerung auslösen.
@@ -6749,15 +6753,23 @@ LRESULT CALLBACK event_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             if (resolve_event_editor()) DestroyWindow(h);
             return 0;
         case WM_DESTROY:
-            if (g_ev.win == h) g_ev = EventDlgState{};
+            if (g_ev.win == h) g_ev.view.ready = false;
             return 0;
+        case WM_NCDESTROY:
+            if (g_ev.win == h) {
+                event_view_dispose(g_ev.view);
+                g_ev = EventDlgState{};
+            }
+            break;
     }
     return DefWindowProcW(h, msg, wp, lp);
 }
 
 void open_event_editor() {
     if (g_ev.win) {
+        event_view_fit_existing(g_ev.win);
         SetForegroundWindow(g_ev.win);
+        event_view_reveal(g_ev.view, g_ev.win, GetFocus());
         return;
     }
     if (g.cur_map < 0) return;
@@ -6773,15 +6785,24 @@ void open_event_editor() {
     wc.hbrBackground = GetSysColorBrush(COLOR_BTNFACE);
     RegisterClassW(&wc);
 
-    const int W = 1000, H = 730;   // Etappe 18f: mehr Platz + Gruppenboxen
-    RECT mr;
-    GetWindowRect(g.main, &mr);
-    g_ev.win = CreateWindowExW(WS_EX_DLGMODALFRAME, L"RuneEditorEventDlg",
-                               L"Event-Editor",
-                               WS_POPUP | WS_CAPTION | WS_SYSMENU,
-                               mr.left + 120, mr.top + 60, W, H,
+    // Die ursprüngliche Formularfläche wird DPI-gerecht skaliert, das äußere
+    // Fenster aber auf die Arbeitsfläche des aktuellen Monitors begrenzt.
+    // Bei Platzmangel bleiben beide Fenster-Scrollleisten und Tab-Navigation.
+    // Kein WS_CLIPCHILDREN: Die transparenten Gruppenboxen brauchen den vom
+    // Elternfenster gezeichneten Hintergrund auch beim Verschieben.
+    const DWORD style = WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME |
+                        WS_HSCROLL | WS_VSCROLL;
+    const DWORD ex_style = WS_EX_DLGMODALFRAME;
+    UINT dpi = GetDpiForWindow(g.main);
+    if (!dpi) dpi = EVENT_LAYOUT_DPI;
+    const EventLayoutRect bounds = event_view_initial_rect(g.main, style, ex_style, dpi);
+    g_ev.win = CreateWindowExW(ex_style, L"RuneEditorEventDlg", L"Event-Editor", style,
+                               bounds.left, bounds.top,
+                               event_layout_int(static_cast<std::int64_t>(bounds.right) - bounds.left),
+                               event_layout_int(static_cast<std::int64_t>(bounds.bottom) - bounds.top),
                                g.main, nullptr, GetModuleHandleW(nullptr), nullptr);
     if (!g_ev.win) { g_ev = EventDlgState{}; return; }
+    event_view_init(g_ev.view, dpi, g.font);
 
     // Linke Spalte: Event-Liste + Seiten (Etappe 18g)
     ev_label(L"EVENTS", 12, 8, 200);
@@ -6947,6 +6968,8 @@ void open_event_editor() {
     g_ev.sel_cmd = -1;
     ev_refresh();
     g_ev.syncing = false;
+    g_ev.view.ready = true;
+    event_view_update(g_ev.view, g_ev.win);
 
     ShowWindow(g_ev.win, SW_SHOW);
     SetForegroundWindow(g_ev.win);
@@ -8800,9 +8823,13 @@ int main(int argc, char** argv) {
             // Auch moduslose Dialoge brauchen Tab/Esc/Enter; Mehrzeiler
             // behalten Enter dank ES_WANTRETURN als Zeilenumbruch.
             if (g.props_dlg && IsDialogMessageW(g.props_dlg, &msg)) continue;
-            if (event_editor_open() && IsDialogMessageW(g_ev.win, &msg)) continue;
+            if (event_editor_open() && IsDialogMessageW(g_ev.win, &msg)) {
+                event_view_reveal_new_focus(g_ev.view, g_ev.win);
+                continue;
+            }
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
+            if (event_editor_open()) event_view_reveal_new_focus(g_ev.view, g_ev.win);
         }
         if (!running) break;
 

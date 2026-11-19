@@ -6,8 +6,9 @@
 //  Schreiber etwas verschluckt (Reihenfolge, unbekannte Schlüssel, int vs.
 //  float, Umlaute), ist eine Karte nach dem Speichern kaputt — und der Fehler
 //  fällt erst im Spiel auf. Der Test hängt an keiner Win32-/D3D11-/Ruby-
-//  Abhängigkeit und läuft deshalb sowohl unter MSYS2 (build.ps1 -Test) als
-//  auch in CI auf Linux. Bau in einer Zeile:
+// Abhängigkeit und läuft deshalb sowohl unter MSYS2 (build.ps1 -Test) als
+// auch in CI auf Linux. Unter Windows kommen unsichtbare Win32-Controltests
+// hinzu; sie ersetzen keinen grafischen Live-Test. Bau in einer Zeile:
 //     g++ -std=c++20 -O1 -Wall -Wextra -Isrc src/editor/json.cpp tools/json_test.cpp -o build/json_test
 //
 //  Zusatzmodus (für die Ruby-Vergleichsprüfung tools/json_bridge_check.rb):
@@ -22,15 +23,24 @@
 #include "editor/encounter_check.h"
 #include "editor/encounter_form.h"
 #include "editor/event_form.h"
+#include "editor/event_layout.h"
+#include "editor/event_view_win.h"
 #include "editor/map_document.h"
 #include "editor/map_props_form.h"
 #include "editor/number_format.h"
 #include "editor/object_props_form.h"
 #include "editor/placement_form.h"
 
+#include <algorithm>
+#include <cctype>
+#include <cerrno>
+#include <climits>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <cwchar>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -1611,7 +1621,348 @@ void event_form_tests(const std::string& wurzel) {
     }
 }
 
+// Die echten F6-Controlkoordinaten aus der UI lesen, damit eine spätere
+// Erweiterung nicht unbemerkt über die virtuelle Formularfläche hinausragt.
+struct F6TestControl { int x, y, width, height; };
+
+bool f6_test_int(const std::string& token, int& result) {
+    const char* start = token.c_str();
+    char* end = nullptr;
+    errno = 0;
+    const long value = std::strtol(start, &end, 10);
+    if (end == start || errno == ERANGE || value < INT_MIN || value > INT_MAX) return false;
+    while (*end && std::isspace(static_cast<unsigned char>(*end))) ++end;
+    if (*end) return false;
+    result = static_cast<int>(value);
+    return true;
+}
+
+bool f6_test_controls(const std::string& source, std::vector<F6TestControl>& controls) {
+    size_t cursor = source.find("void open_event_editor() {");
+    if (cursor == std::string::npos) return false;
+    const size_t limit = source.find("\nvoid close_event_editor()", cursor);
+    if (limit == std::string::npos) return false;
+    while (true) {
+        const size_t control = source.find("ev_control(", cursor);
+        const size_t label = source.find("ev_label(", cursor);
+        const size_t next = std::min(control, label);
+        if (next == std::string::npos || next >= limit) break;
+        const bool is_label = next == label;
+        cursor = next + (is_label ? std::strlen("ev_label(") : std::strlen("ev_control("));
+        size_t arg_start = cursor;
+        int depth = 1;
+        bool quoted = false, escaped = false;
+        std::vector<std::string> args;
+        for (; cursor < limit; ++cursor) {
+            const char c = source[cursor];
+            if (quoted) {
+                if (escaped) escaped = false;
+                else if (c == '\\') escaped = true;
+                else if (c == '"') quoted = false;
+                continue;
+            }
+            if (c == '"') quoted = true;
+            else if (c == '(') ++depth;
+            else if (c == ')') {
+                if (--depth == 0) {
+                    args.push_back(source.substr(arg_start, cursor - arg_start));
+                    ++cursor;
+                    break;
+                }
+            } else if (c == ',' && depth == 1) {
+                args.push_back(source.substr(arg_start, cursor - arg_start));
+                arg_start = cursor + 1;
+            }
+        }
+        if (depth != 0 || args.size() != (is_label ? 4u : 8u)) return false;
+        const size_t first = is_label ? 1 : 3;
+        F6TestControl c{};
+        if (!f6_test_int(args[first], c.x) || !f6_test_int(args[first + 1], c.y) ||
+            !f6_test_int(args[first + 2], c.width)) return false;
+        if (is_label) c.height = 20;
+        else if (args[0].find("L\"ComboBox\"") != std::string::npos) {
+            // Das hohe CreateWindow-Maß ist der Popup-Umfang, nicht die
+            // geschlossene Auswahlzeile. Deren Win32-Größe prüft der Windows-Test.
+            c.height = 24;
+        } else if (!f6_test_int(args[first + 3], c.height)) return false;
+        controls.push_back(c);
+    }
+    return controls.size() >= 50;
+}
+
+void event_layout_tests(const std::string& root) {
+    using namespace rune::editor;
+    std::printf("== F6: Arbeitsfläche, DPI und Scrollen ==\n");
+    check("96 DPI unverändert", event_layout_scale(1000, 96) == 1000);
+    check("125/150/200 Prozent skalieren", event_layout_scale(1000, 120) == 1250 &&
+          event_layout_scale(702, 144) == 1053 && event_layout_scale(24, 192) == 48);
+    check("Skalierung rundet auch negative Werte", event_layout_scale(-3, 144) == -5 &&
+          event_layout_scale(3, 144) == 5);
+    check("ungültige DPI fällt auf 96 zurück", event_layout_scale(16, 0) == 16 &&
+          event_layout_rescale(240, 0, 144) == 360);
+    check("Skalierung begrenzt große Zahlen", event_layout_scale(INT_MAX, UINT_MAX) == INT_MAX &&
+          event_layout_scale(INT_MIN, UINT_MAX) == INT_MIN);
+    check("DPI-Wechsel erhält logische Scrollposition", event_layout_rescale(200, 96, 144) == 300 &&
+          event_layout_rescale(300, 144, 96) == 200);
+
+    const EventLayoutRect full{0, 40, 1024, 600}; // Arbeitsfläche unter einer Taskleiste
+    const EventLayoutRect owner{80, 60, 980, 590};
+    const EventLayoutRect small = event_layout_center(full, owner, 1500, 1050);
+    check("zu großes Fenster passt vollständig in die Arbeitsfläche", small.left == 0 && small.top == 40 &&
+          small.right == 1024 && small.bottom == 600);
+    const EventLayoutRect normal = event_layout_center({0, 0, 1920, 1040}, {200, 100, 1200, 800}, 1000, 700);
+    check("passendes Fenster am Besitzer zentriert", normal.left == 200 && normal.top == 100 &&
+          normal.right == 1200 && normal.bottom == 800);
+    const EventLayoutRect negative = event_layout_center({-1920, -200, 0, 840},
+                                                          {-1800, -100, -300, 700}, 900, 700);
+    check("negative Monitorkoordinaten bleiben auf diesem Monitor", negative.left == -1500 &&
+          negative.top == -50 && negative.right == -600 && negative.bottom == 650);
+    const EventLayoutRect moved = event_layout_fit({-1280, 20, 0, 1000}, {-1500, 800, -600, 1400});
+    check("DPI-Vorschlag wird links und unten begrenzt", moved.left == -1280 && moved.top == 400 &&
+          moved.right == -380 && moved.bottom == 1000);
+    const EventLayoutRect shrunk = event_layout_fit({0, 0, 800, 560}, {-20, -30, 1100, 900});
+    check("DPI-Vorschlag wird bei Platzmangel verkleinert", shrunk.left == 0 && shrunk.top == 0 &&
+          shrunk.right == 800 && shrunk.bottom == 560);
+    const EventLayoutRect invalid = event_layout_fit({10, 0, 10, 100}, {3, 4, 33, 44});
+    check("ungültige Arbeitsfläche verändert den Vorschlag nicht", invalid.left == 3 && invalid.bottom == 44);
+    const EventLayoutRect huge = event_layout_fit({INT_MIN, INT_MIN, INT_MAX, INT_MAX},
+                                                   {INT_MIN, INT_MIN, INT_MAX, INT_MAX});
+    check("Rechteckrechnung überläuft nicht an int-Grenzen", huge.left == INT_MIN && huge.right == INT_MAX &&
+          huge.top == INT_MIN && huge.bottom == INT_MAX);
+
+    check("Scrollbereich entspricht Inhalt minus Ausschnitt", event_scroll_max(1000, 600) == 400 &&
+          event_scroll_max(702, 900) == 0 && event_scroll_max(1000, 0) == 999);
+    check("Scrollpositionen beidseitig begrenzt", event_scroll_clamp(1000, 600, -1) == 0 &&
+          event_scroll_clamp(1000, 600, 500) == 400);
+    check("extreme Scrollschritte ohne Überlauf", event_scroll_move(1000, 600, 200, INT64_MAX) == 400 &&
+          event_scroll_move(1000, 600, 200, INT64_MIN) == 0);
+    check("größerer Ausschnitt setzt Überhang zurück", event_scroll_clamp(1000, 1200, 400) == 0);
+    check("Fokus rechts wird vollständig sichtbar", event_scroll_reveal(1000, 300, 0, 764, 936, 8) == 644);
+    check("Fokus links wird vollständig sichtbar", event_scroll_reveal(1000, 300, 500, 12, 100, 8) == 4);
+    check("sichtbarer Fokus lässt Ausschnitt stehen", event_scroll_reveal(1000, 300, 400, 450, 500, 8) == 400);
+    check("große sichtbare Liste springt nicht", event_scroll_reveal(1000, 200, 200, 100, 500, 8) == 200);
+    check("große unsichtbare Liste wird erreichbar", event_scroll_reveal(1000, 200, 600, 100, 500, 8) == 92);
+    check("leeres Fokusrechteck ändert nichts", event_scroll_reveal(1000, 300, 50, 20, 20, 8) == 50);
+    check("auch winziger Ausschnitt bleibt innerhalb der Grenzen",
+          event_scroll_reveal(1000, 1, 0, 500, 524, 100) == 500);
+
+    std::string source;
+    std::vector<F6TestControl> controls;
+    const bool parsed = datei_lesen(root + "/src/editor/editor_main.cpp", source) &&
+                        f6_test_controls(source, controls);
+    check("aktuelle F6-Controls aus dem Quelltext erfasst", parsed);
+    if (!parsed) return;
+    bool contained = true;
+    for (const F6TestControl& c : controls)
+        contained = contained && c.x >= 0 && c.y >= 0 && c.width > 0 && c.height > 0 &&
+                    c.x + c.width <= EVENT_LAYOUT_WIDTH && c.y + c.height <= EVENT_LAYOUT_HEIGHT;
+    check("alle F6-Controls liegen innerhalb der virtuellen Fläche", contained);
+
+    struct Scenario { unsigned dpi; int width, height; const char* name; };
+    const Scenario scenarios[] = {
+        {96, 984, 560, "1024x640, 100 Prozent"},
+        {120, 780, 450, "kleine Arbeitsfläche, 125 Prozent"},
+        {144, 600, 360, "kleine Arbeitsfläche, 150 Prozent"},
+        {192, 420, 240, "kleiner Ausschnitt, 200 Prozent"},
+        {288, 300, 150, "sehr kleiner Ausschnitt, 300 Prozent"},
+    };
+    for (const Scenario& s : scenarios) {
+        const int canvas_w = event_layout_scale(EVENT_LAYOUT_WIDTH, s.dpi);
+        const int canvas_h = event_layout_scale(EVENT_LAYOUT_HEIGHT, s.dpi);
+        const int max_x = event_scroll_max(canvas_w, s.width);
+        const int max_y = event_scroll_max(canvas_h, s.height);
+        const int margin = event_layout_scale(8, s.dpi);
+        bool edges = true, focus = true;
+        for (const F6TestControl& c : controls) {
+            const int left = event_layout_scale(c.x, s.dpi);
+            const int top = event_layout_scale(c.y, s.dpi);
+            const int right = left + event_layout_scale(c.width, s.dpi);
+            const int bottom = top + event_layout_scale(c.height, s.dpi);
+            // Auch bei Controls größer als der Ausschnitt sind beide Enden
+            // separat per Scrollleiste erreichbar.
+            const int x_start = event_scroll_clamp(canvas_w, s.width, left);
+            const int x_end = event_scroll_clamp(canvas_w, s.width, right - s.width);
+            const int y_start = event_scroll_clamp(canvas_h, s.height, top);
+            const int y_end = event_scroll_clamp(canvas_h, s.height, bottom - s.height);
+            edges = edges && left >= x_start && left < x_start + s.width &&
+                    right - 1 >= x_end && right - 1 < x_end + s.width &&
+                    top >= y_start && top < y_start + s.height &&
+                    bottom - 1 >= y_end && bottom - 1 < y_end + s.height;
+            for (int mode = 0; mode < 3; ++mode) {
+                const int old_x = mode == 0 ? 0 : mode == 1 ? max_x : max_x / 2;
+                const int old_y = mode == 0 ? 0 : mode == 1 ? max_y : max_y / 2;
+                const int x = event_scroll_reveal(canvas_w, s.width, old_x, left, right, margin);
+                const int y = event_scroll_reveal(canvas_h, s.height, old_y, top, bottom, margin);
+                focus = focus && x >= 0 && x <= max_x && y >= 0 && y <= max_y &&
+                        right > x && left < x + s.width && bottom > y && top < y + s.height;
+                if (right - left <= s.width - 2 * margin) focus = focus && left >= x && right <= x + s.width;
+                if (bottom - top <= s.height - 2 * margin) focus = focus && top >= y && bottom <= y + s.height;
+            }
+        }
+        std::string name = std::string(s.name) + ": alle Controlränder scrollbar";
+        check(name.c_str(), edges);
+        name = std::string(s.name) + ": Fokus wird sichtbar";
+        check(name.c_str(), focus);
+    }
+}
+
 #ifdef _WIN32
+LRESULT CALLBACK f6_test_window_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
+    auto* view = reinterpret_cast<rune::editor::EventViewState*>(GetWindowLongPtrW(h, GWLP_USERDATA));
+    if (msg == WM_NCCREATE) {
+        const auto* create = reinterpret_cast<const CREATESTRUCTW*>(lp);
+        view = static_cast<rune::editor::EventViewState*>(create->lpCreateParams);
+        SetWindowLongPtrW(h, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(view));
+    }
+    if (view && rune::editor::event_view_message(*view, h, msg, wp, lp)) return 0;
+    return DefWindowProcW(h, msg, wp, lp);
+}
+
+bool f6_test_visible_rect(HWND parent, HWND child) {
+    RECT client{}, bounds{};
+    if (!GetClientRect(parent, &client) || !GetWindowRect(child, &bounds)) return false;
+    MapWindowPoints(nullptr, parent, reinterpret_cast<POINT*>(&bounds), 2);
+    return bounds.left >= 0 && bounds.top >= 0 &&
+           bounds.right <= client.right && bounds.bottom <= client.bottom;
+}
+
+// Verdeckte Standardcontrols: prüft die echten Win32-Nachrichten und dass
+// Verschieben/Skalieren keine Formularinhalte oder Auswahlen verändert.
+// Kein Fenster wird gezeigt; Tastatur, Maus und reale Monitor-DPI bleiben ein
+// separater Live-Test.
+void event_view_windows_tests() {
+    using namespace rune::editor;
+    std::printf("== Windows: F6-Scroll-Controls (ohne sichtbare GUI) ==\n");
+    const HINSTANCE instance = GetModuleHandleW(nullptr);
+    const wchar_t* cls = L"RuneF6LayoutTest";
+    WNDCLASSW wc{};
+    wc.hInstance = instance;
+    wc.lpfnWndProc = f6_test_window_proc;
+    wc.lpszClassName = cls;
+    const ATOM registered = RegisterClassW(&wc);
+    check("Testfensterklasse registriert", registered != 0);
+    if (!registered) return;
+
+    EventViewState view;
+    const DWORD style = WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME |
+                        WS_HSCROLL | WS_VSCROLL;
+    HWND window = CreateWindowExW(WS_EX_DLGMODALFRAME, cls, L"F6-Test", style,
+                                   0, 0, 400, 270, nullptr, nullptr, instance, &view);
+    check("unsichtbares F6-Testfenster erzeugt", window != nullptr);
+    if (!window) { UnregisterClassW(cls, instance); return; }
+    EventLayoutRect work{};
+    const bool has_work = event_view_work_area(window, nullptr, work);
+    const EventLayoutRect initial = event_view_initial_rect(window, style, WS_EX_DLGMODALFRAME, 96);
+    check("Startrechteck berücksichtigt die aktuelle Arbeitsfläche", has_work &&
+          initial.left >= work.left && initial.top >= work.top &&
+          initial.right <= work.right && initial.bottom <= work.bottom &&
+          initial.right > initial.left && initial.bottom > initial.top);
+    event_view_init(view, 96, static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT)));
+    HWND list = event_view_add(view, window, L"ListBox", nullptr,
+        WS_VSCROLL | WS_BORDER | LBS_NOTIFY | LBS_HASSTRINGS | WS_TABSTOP, 12, 30, 280, 130, 1);
+    HWND edit = event_view_add(view, window, L"Edit", L"Entwurf Ä", WS_BORDER | ES_LEFT | WS_TABSTOP,
+                               764, 520, 172, 24, 2);
+    HWND combo = event_view_add(view, window, L"ComboBox", nullptr,
+        CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 776, 550, 90, 180, 3);
+    HWND button = event_view_add(view, window, L"Button", L"Übernehmen", BS_PUSHBUTTON | WS_TABSTOP,
+                                 686, 660, 250, 28, 4);
+    check("Listen-, Edit-, Combo- und Button-Control erzeugt", list && edit && combo && button);
+    if (!list || !edit || !combo || !button) {
+        DestroyWindow(window);
+        event_view_dispose(view);
+        UnregisterClassW(cls, instance);
+        return;
+    }
+    SendMessageW(list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Erstes Event"));
+    SendMessageW(list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Zweites Event"));
+    SendMessageW(list, LB_SETCURSEL, 1, 0);
+    SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"an"));
+    SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"aus"));
+    SendMessageW(combo, CB_SETCURSEL, 1, 0);
+    SendMessageW(edit, EM_SETSEL, 1, 4);
+    view.ready = true;
+    event_view_update(view, window);
+    int width = 1, height = 1;
+    event_view_size(window, width, height);
+    check("kleines Testfenster benötigt beide Scrollachsen", width < EVENT_LAYOUT_WIDTH &&
+          height < EVENT_LAYOUT_HEIGHT && view.x == 0 && view.y == 0);
+
+    SendMessageW(window, WM_HSCROLL, SB_BOTTOM, 0);
+    SendMessageW(window, WM_VSCROLL, SB_BOTTOM, 0);
+    SCROLLINFO si{};
+    si.cbSize = sizeof(si); si.fMask = SIF_POS;
+    const bool scroll_info = GetScrollInfo(window, SB_HORZ, &si) && si.nPos == view.x;
+    check("Scrollleisten erreichen das rechte und untere Ende", scroll_info &&
+          view.x == event_scroll_max(EVENT_LAYOUT_WIDTH, width) &&
+          view.y == event_scroll_max(EVENT_LAYOUT_HEIGHT, height));
+    check("zuvor verborgene Controls am Ende sichtbar", f6_test_visible_rect(window, edit) &&
+          f6_test_visible_rect(window, combo) && f6_test_visible_rect(window, button));
+    wchar_t value[64]{};
+    DWORD selection_start = 0, selection_end = 0;
+    GetWindowTextW(edit, value, static_cast<int>(sizeof(value) / sizeof(value[0])));
+    SendMessageW(edit, EM_GETSEL, reinterpret_cast<WPARAM>(&selection_start), reinterpret_cast<LPARAM>(&selection_end));
+    check("Scrollen erhält Text und Textauswahl", std::wcscmp(value, L"Entwurf Ä") == 0 &&
+          selection_start == 1 && selection_end == 4);
+    check("Scrollen erhält Listen- und Comboauswahl", SendMessageW(list, LB_GETCURSEL, 0, 0) == 1 &&
+          SendMessageW(combo, CB_GETCURSEL, 0, 0) == 1);
+    const int old_x = view.x, old_y = view.y;
+    check("Scrollmeldung eines Kindes wird nicht als Fensterleiste behandelt",
+          !event_view_message(view, window, WM_VSCROLL, SB_LINEUP, reinterpret_cast<LPARAM>(list)) &&
+          view.x == old_x && view.y == old_y);
+
+    event_view_scroll_to(view, window, 0, 0);
+    event_view_reveal(view, window, edit);
+    check("Fokus-Nachführung erreicht ein verborgenes Editfeld", f6_test_visible_rect(window, edit));
+    event_view_scroll_to(view, window, 0, 0);
+    SendMessageW(window, WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(-60)), 0);
+    check("Mausrad sammelt halbe Schritte", view.wheel_y == -60 && view.y == 0);
+    UINT lines = 3;
+    if (!SystemParametersInfoW(SPI_GETWHEELSCROLLLINES, 0, &lines, 0)) lines = 3;
+    SendMessageW(window, WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(-60)), 0);
+    check("voller Mausradschritt bewegt die vertikale Ansicht", view.wheel_y == 0 && (!lines || view.y > 0));
+    SendMessageW(window, WM_MOUSEWHEEL, MAKEWPARAM(MK_SHIFT, static_cast<WORD>(-120)), 0);
+    check("Umschalt-Mausrad bewegt die horizontale Ansicht", !lines || view.x > 0);
+
+    RECT suggested{};
+    GetWindowRect(window, &suggested);
+    SendMessageW(window, WM_DPICHANGED, MAKEWPARAM(144, 144), reinterpret_cast<LPARAM>(&suggested));
+    event_view_scroll_to(view, window, 0, 0);
+    RECT edit_bounds{};
+    GetWindowRect(edit, &edit_bounds);
+    MapWindowPoints(nullptr, window, reinterpret_cast<POINT*>(&edit_bounds), 2);
+    check("DPI-Nachricht skaliert die ursprünglichen Controlkoordinaten", view.dpi == 144 &&
+          edit_bounds.left == event_layout_scale(764, 144) && edit_bounds.top == event_layout_scale(520, 144));
+    event_view_reveal(view, window, combo);
+    RECT collapsed{}, dropped{};
+    GetWindowRect(combo, &collapsed);
+    SendMessageW(combo, CB_GETDROPPEDCONTROLRECT, 0, reinterpret_cast<LPARAM>(&dropped));
+    check("Combo bleibt als Auswahlzeile erreichbar, Popup-Maß bleibt erhalten",
+          f6_test_visible_rect(window, combo) && collapsed.bottom - collapsed.top < event_layout_scale(180, 144) &&
+          dropped.bottom > collapsed.bottom && SendMessageW(combo, CB_GETCOUNT, 0, 0) == 2);
+    GetWindowTextW(edit, value, static_cast<int>(sizeof(value) / sizeof(value[0])));
+    check("DPI-Layout erhält Entwurf und Auswahlen", std::wcscmp(value, L"Entwurf Ä") == 0 &&
+          SendMessageW(list, LB_GETCURSEL, 0, 0) == 1 && SendMessageW(combo, CB_GETCURSEL, 0, 0) == 1);
+    SetWindowPos(window, nullptr, 0, 0, 600, 400, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    SendMessageW(window, WM_SIZE, SIZE_RESTORED, 0);
+    event_view_size(window, width, height);
+    check("Resize begrenzt beide Scrollpositionen neu", view.x <= event_scroll_max(event_view_content_width(view), width) &&
+          view.y <= event_scroll_max(event_view_content_height(view), height));
+    // Ein Verlassen des Monitors durch Fensterziehen muss auch ohne DPI-Wechsel
+    // auf der dann aktuellen Arbeitsfläche landen.
+    SetWindowPos(window, nullptr, work.right + 100, work.top, 0, 0,
+                 SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+    SendMessageW(window, WM_EXITSIZEMOVE, 0, 0);
+    RECT after_move{};
+    EventLayoutRect current_work{};
+    check("Fenster nach Ziehen wieder auf seiner Monitor-Arbeitsfläche", GetWindowRect(window, &after_move) &&
+          event_view_work_area(window, nullptr, current_work) &&
+          after_move.left >= current_work.left && after_move.top >= current_work.top &&
+          after_move.right <= current_work.right && after_move.bottom <= current_work.bottom);
+    check("F6-Testfenster zerstört", DestroyWindow(window) != 0);
+    event_view_dispose(view);
+    UnregisterClassW(cls, instance);
+}
+
 // Echter Dateitest ohne GUI: Die gemeinsame Karte/F9-Schreibfunktion arbeitet
 // mit Unicode-Pfaden und darf bestehende Daten bei Fehlern nicht beschädigen.
 bool win_test_read(const std::wstring& path, std::string& out) {
@@ -1971,7 +2322,9 @@ int main(int argc, char** argv) {
     map_document_tests(wurzel);
     object_props_tests(wurzel);
     event_form_tests(wurzel);
+    event_layout_tests(wurzel);
 #ifdef _WIN32
+    event_view_windows_tests();
     atomic_file_windows_tests();
 #endif
 

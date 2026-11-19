@@ -157,7 +157,7 @@ if ($Test) {
         "-I$ProjectRoot\src",
         "$ProjectRoot\src\editor\json.cpp",
         "$ProjectRoot\tools\json_test.cpp",
-        '-o', $JsonTestExe
+        '-o', $JsonTestExe, '-luser32', '-lgdi32'
     )
     & $Gcc @JsonTestFlags
     if ($LASTEXITCODE -ne 0) { throw 'json_test.exe konnte nicht gebaut werden' }

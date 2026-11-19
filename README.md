@@ -287,8 +287,14 @@ nicht verschieben, bleibt sie unverändert und es erscheint eine Warnung.
 Bei der Zahleneingabe muss der Startwert zur Ziffernzahl passen. Sehr lange,
 vom Windows-Feld nicht verlustfrei darstellbare Eingaben sind geschützt.
 Für Events gibt es weiterhin kein Undo; vor F2/F5 muss F6 geschlossen sein.
-Das feste F6-Fenster kann auf kleinen Bildschirmen teilweise außerhalb des
-Arbeitsbereichs liegen; ein grafischer Windows-Live- und DPI-Test steht aus.
+Das F6-Fenster passt sich beim Öffnen der Arbeitsfläche des aktuellen
+Editor-Monitors an und kann am Rand verkleinert werden. Bei Platzmangel
+erreichen horizontale und vertikale Fenster-Scrollleisten das gesamte
+Formular; Tab und Umschalt+Tab führen den Fokus nach. Das Mausrad scrollt
+vertikal, Umschalt+Mausrad horizontal, sofern das fokussierte Control das
+Rad nicht selbst verarbeitet. Listen und Komboboxen behalten ihr eigenes
+Radverhalten. Bei genügend Platz sind die Leisten deaktiviert. Ein echter
+Windows-GUI-/DPI-Test steht noch aus.
 
 ### Karten-Eigenschaften (F2)
 

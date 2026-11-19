@@ -1712,6 +1712,36 @@ Demo-Datenbank, JSON-Roundtrips und unberührte allgemeine Eigenschaften.
 CI baut/linkt den Win32-Editor, hat aber keine GPU/Fenster für einen echten
 grafischen Live-Test (siehe Backlog und Handoff).
 
+## F6-Layout für kleine Arbeitsflächen (Etappe 19o.6)
+
+`event_layout.h` berechnet unabhängig von Win32 das Einpassen auf eine
+Monitor-Arbeitsfläche, DPI-Skalierung, Scrollgrenzen und Fokus-Nachführung.
+Die Formularfläche beträgt 1000×702 bei 96 DPI; Combo-Dropdowns sind eigene
+Popups und zählen nicht zu ihrer geschlossenen Zeile. Das äußere Fenster
+berücksichtigt Rahmen und Scrollleisten, wird auf dem Monitor des
+Hauptfensters zentriert/begrenzt und ist größenänderbar. Bei DPI- oder
+Arbeitsflächenwechsel werden Größe, Schrift und Koordinaten angepasst.
+
+`event_view_win.h` hält logische Originalkoordinaten aller Controls und
+positioniert beim Scrollen auch vollständig außerhalb des Ausschnitts
+befindliche Kinder per `DeferWindowPos`. Die Fensterleisten bleiben bei
+genügend Platz deaktiviert sichtbar; Mausrad wird nur verarbeitet, wenn es
+kein Kind verarbeitet, Umschalt+Rad scrollt horizontal. Nach einem echten
+Fokuswechsel und nach Validierungsfehlern wird der Fokus sichtbar gemacht;
+manuelles Scrollen springt nicht zum alten Fokus zurück. Die Controls bleiben
+direkte Dialogkinder, damit `WM_COMMAND`, Auswahl-/Pending-Schutz, Combos,
+Mehrzeiler und `IsDialogMessageW` weiterhin denselben Weg nutzen.
+
+`tools/json_test.cpp` liest die tatsächlichen F6-Controlpositionen aus der
+Quelle und simuliert kleine Ansichten mit 100–300 % DPI, Scrollgrenzen,
+Fokus und negativen Monitorkoordinaten. Unter Windows ergänzt es unsichtbare
+Controltests für Nachrichten, Text, Auswahl, Combos und simulierten
+DPI-Wechsel; `build.ps1 -Test` linkt dafür User32/GDI32. Lokal bestanden
+613 portable Checks und Sanitizer; Win64 wurde cross-kompiliert und der
+Test gelinkt. Ein echter Windows-GUI-/DPI-/Mehrmonitor-Test ist weiterhin
+erforderlich (Testplan im Handoff); CI-Build oder versteckte Controls
+belegen keine tatsächliche Darstellung oder Tastatur-/Mausbedienung.
+
 ## Datentreue im Event-Editor (Etappe 19o.5)
 
 `event_form.h` kapselt das portable Modell für Event-, Seiten- und
@@ -1767,10 +1797,9 @@ lädt C++-Ergebnisse mit Ruby `Event`/`Interpreter` (einschließlich Choices,
 Self-Switch-Isolation und Zahleneingabe); `sync_test.rb` liest Modell und
 Win32-Typ-/Trigger-Listen. Lokal 577 portable Checks/0 Fehler, Sanitizer,
 Win64-Cross-Kompilierung und 17/0 Event-Brückenchecks via Ruby-WASM-Fixture;
-native Open3-Ausführung und vollständigen Windows-Link prüft CI. Die GUI,
-Auswahl-/MessageBox-Abläufe und das DPI-Layout benötigen einen echten
-Windows-Live-Test. Das feste 1000×730-Fenster ist auf kleinen Bildschirmen
-möglicherweise nicht vollständig erreichbar (offen im Backlog).
+native Open3-Ausführung und vollständigen Windows-Link prüft CI. Die GUI und
+Auswahl-/MessageBox-Abläufe benötigen weiterhin einen echten Windows-Live-Test.
+Zum überarbeiteten F6-Layout und dem ausstehenden DPI-Test siehe 19o.6 oben.
 
 ## Datentreue im Objektformular (Etappe 19o.4)
 
