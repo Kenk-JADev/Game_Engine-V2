@@ -22,16 +22,17 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 
 ## Offen
 ### [Engine] RGSS-Schicht deckt noch nicht alles ab — offen (Feature-Fehlend)
-- Stand 19e: `$game_system/$game_switches/$game_variables/$game_self_switches/
-  $game_party/$game_player/$game_map/$game_screen`, `Graphics` (Fade),
-  `Input` (RGSS-Konstanten), `Audio`, `load_data/save_data` (JSON) sind da.
-- Es fehlen u. a.: `$game_temp` und `$data_*` (keine Entsprechung im
-  Datenmodell), `Sprite`/`Window`/`Tilemap`/`Plane`/`Viewport` (2D-Objekt-
-  klassen - die UI-Schicht ist Engine-seitig), `$scene`-Hauptschleife
-  (Frame-Takt kommt von Rune.tick, nicht aus Scripts), Marshal-Format
-  (bleibt JSON), Audio-Pitch, visuelle `Graphics.freeze/transition`,
-  echte Passierbarkeitsprüfung (`$game_player.passable?` ist Platzhalter).
-- Betroffene Stellen: `game/engine/rgss.rb`, `docs/architecture.md` (19e).
+- Stand 19h: `$game_*` komplett inkl. `$game_temp`, `$data_actors/items/system`
+  (Hashes mit String-IDs), `Sprite/Window/Viewport/Bitmap` (über die UI-
+  Primitive), `$scene` mit `Graphics.scene_update`, `$game_player.passable?`
+  echt (Kartengrenzen + Geländestufe) - siehe Erledigt-Eintrag 19h.
+- Es fehlen weiterhin: `Tilemap`/`Plane` (3D-Terrain ersetzt Kachel-Ebenen),
+  Bitmap aus Dateien laden (nur Farbe/Text-Merker), Viewport-Clipping,
+  Sprite-Tonwerte (tone), Marshal-Format (bleibt JSON), Audio-Pitch,
+  visuelle `Graphics.freeze/transition`, Hindernis-Kollision in `passable?`
+  (keine blocked?-Abfrage - hängt am Passierbarkeitsthema insgesamt).
+- Betroffene Stellen: `game/engine/rgss.rb`, `game/engine/graphics.rb`,
+  `docs/architecture.md` (19e/19h).
 - Gefunden in: Etappe 19e (User-Vorgabe „RGSS wie RPG Maker XP Online-Hilfe").
 ### [Editor] NPC-Editor / Platzier-Tool für viele Dinge (x/y/z, Text) — offen (User-Wunsch)
 - Symptom: NPCs sind im Editor gar nicht editierbar (nur im Karten-JSON);
@@ -170,6 +171,22 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Etappe 19a.
 
 ## Erledigt
+### [Engine] RGSS-Vertiefung: Sprite/Window/$scene/$game_temp/$data_* — erledigt (19h)
+- Wunsch: „Ja alles" auf die Roadmap (19g Bewegungsrouten, 19h RGSS-
+  Vertiefung, 19i Zahleneingabe+Kampf); bestätigt per Auswahl „Beides
+  nacheinander".
+- Umsetzung: `game/engine/graphics.rb` (Bitmap/Sprite/Window/Viewport auf
+  den UI-Primitiven, z-sortiertes `Graphics.draw` aus `Game.draw`),
+  `$scene` + `Graphics.scene_update` (Scene#main pro Frame, Fehler werfen
+  die Szene ab), `$game_temp`, `$data_*` aus database.json/system.json,
+  `passable?` echt (Grenzen + 1.2-m-Geländestufe, XP-Richtungen),
+  `RGSS.reset!` aus `enter_map` (Sprites/Szene flüchtig).
+- Grenzen: bleiben im offenen Eintrag „RGSS-Schicht deckt noch nicht alles
+  ab" (Tilemap/Plane, Bitmap-Dateien, Audio-Pitch, freeze/transition,
+  Hindernis-Kollision).
+- Betroffene Stellen: `game/engine/{graphics,rgss,boot}.rb`, `game/main.rb`,
+  `tools/{graphics_test,rgss_test}.rb`.
+
 ### [Engine/Editor] Bewegungsrouten (XP Move Routes) — erledigt (19g)
 - Wunsch: XP-Features einbauen (User, "Ja alles" auf die Roadmap
   Bewegungsrouten/RGSS-Vertiefung/Zahleneingabe+Kampf).

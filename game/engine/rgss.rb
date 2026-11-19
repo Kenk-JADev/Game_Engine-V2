@@ -25,8 +25,18 @@
 #      Den Frame-Takt gibt die Engine vor (Rune.tick), nicht das Script.
 #    - Audio-Pitch wird ignoriert (prozedurale Sounds kennen keine Tonhöhe),
 #      Lautstärke ist wie bei RGSS 0..100.
-#    - $game_temp und $data_* haben (noch) keine Entsprechung - siehe
-#      docs/BACKLOG.md.
+#
+#  Etappe 19h (RGSS-Vertiefung) ergänzt:
+#    - $game_temp (message_text, common_event_id, player_passable? ...)
+#    - $data_actors/$data_items/$data_weapons/$data_armors/$data_system aus
+#      database.json/system.json (Hashes mit String-Schlüsseln statt XP-
+#      Integer-Indizes; $data_weapons/$data_armors sind leer - Datenbank
+#      kennt noch keine Waffen/Rüstungen, Backlog).
+#    - $scene + Graphics.scene_update (Scripts dürfen eigene Szenen stellen;
+#      die Engine-Schleife ersetzt das NICHT - Scene#main läuft pro Frame).
+#    - Sprite/Window/Viewport/Bitmap in game/engine/graphics.rb.
+#    - $game_player.passable? echt: Kartengrenzen + Geländestufe (Objekt-
+#      Kollision bleibt Backlog, es gibt keine blocked?-Abfrage).
 #
 #  Initialisierung: RGSS.setup wird aus Game.setup aufgerufen (und bei F5).
 #  Vor dem ersten setup sind die $game_*-Globalen nil; Engine-Code prüft das.
@@ -53,6 +63,30 @@ module RGSS
     end
 
     def rgss_version = VERSION
+  end
+
+  # ------------------------------------------------------------ $game_temp
+
+  # Flüchtige Systemwerte (Etappe 19h) - in XP pro Szene neu, hier pro
+  # RGSS.reset! (Kartenwechsel/F5). message_text/message_proc sind Ablage
+  # für eigene Dialog-Scripts; player_passable? steuert, ob passable?
+  # überhaupt prüft (XP: im Debug-Modus false).
+  class GameTemp
+    attr_accessor :message_text, :message_proc, :common_event_id
+    attr_accessor :player_passable, :transition_processing
+    attr_accessor :map_transition_name, :battle_transition_name
+
+    def initialize
+      @message_text = nil
+      @message_proc = nil
+      @common_event_id = 0
+      @player_passable = true
+      @transition_processing = false
+      @map_transition_name = ''
+      @battle_transition_name = ''
+    end
+
+    def player_passable? = @player_passable
   end
 
   # ---------------------------------------------------------- $game_switches
@@ -156,8 +190,33 @@ module RGSS
       Rune::Camera.yaw = yaw.to_f
     end
 
-    # Platzhalter ohne Prüfung: Passierbarkeit ist Backlog-Thema (19e-Doku).
-    def passable?(_x, _z, _direction = nil) = true
+    # Passierbar (Etappe 19h, echt soweit möglich): innerhalb der Karten-
+    # grenzen und keine zu hohe Geländestufe. Richtungen wie XP: 2=unten
+    # (+z), 4=links (-x), 6=rechts (+x), 8=oben (-z) - ohne Richtung wird
+    # die Zielstelle selbst geprüft. Objekt-Kollision fehlt (Backlog: es
+    # gibt keine blocked?-Abfrage für Hindernisse).
+    MAX_STUFE = 1.2   # Meter Höhenunterschied, die ein Schritt überwindet
+
+    def passable?(x, z, direction = nil)
+      return true unless $game_temp && $game_temp.player_passable?
+
+      dx, dz = case direction.to_i
+               when 2 then [0.0, 1.0]
+               when 4 then [-1.0, 0.0]
+               when 6 then [1.0, 0.0]
+               when 8 then [0.0, -1.0]
+               else [0.0, 0.0]
+               end
+      tx = x.to_f + dx
+      tz = z.to_f + dz
+
+      w = $game_map ? $game_map.width : 0.0
+      h = $game_map ? $game_map.height : 0.0
+      return false if (w > 0 && (tx < 0 || tx > w)) || (h > 0 && (tz < 0 || tz > h))
+
+      (Game.gy(tx, tz) - Game.gy(x.to_f, z.to_f)).abs <= MAX_STUFE
+    end
+
     def refresh; end
   end
 
@@ -216,10 +275,33 @@ module RGSS
     def weather_intensity = Weather.intensity
   end
 
+  # ------------------------------------------------------------- $data_*
+
+  # Datenbank als RGSS-Globale (Etappe 19h). XP nutzt Integer-Indizes in
+  # Arrays; Rune3D hat String-IDs - deshalb Hashes mit 'id'/'name'-Schlüsseln.
+  def self.load_data_globals
+    db = Database.database
+    $data_actors = liste_als_hash(db['actors'])
+    $data_items  = liste_als_hash(db['items'])
+    $data_weapons = {}   # Datenbank kennt noch keine Waffen (Backlog)
+    $data_armors  = {}   # ... und keine Rüstungen (Backlog)
+    $data_system  = Database.system
+  end
+
+  def self.liste_als_hash(liste)
+    (liste || []).each_with_object({}) do |h, ziel|
+      next unless h.is_a?(Hash)
+      id = h['id'].to_s
+      ziel[id] = h unless id.empty?
+    end
+  end
+  private_class_method :liste_als_hash
+
   # Alle $game_*-Globalen (neu) besetzen. Läuft aus Game.setup (Start, F5,
   # Playtest) - die Wrapper delegieren live, ein Neuaufbau der Karte
   # (enter_map) braucht also kein erneutes setup.
   def self.setup
+    $game_temp          = GameTemp.new
     $game_system        = GameSystem.new
     $game_switches      = GameSwitches.new
     $game_variables     = GameVariables.new
@@ -228,7 +310,16 @@ module RGSS
     $game_player        = GamePlayer.new
     $game_map           = GameMap.new
     $game_screen        = GameScreen.new
+    $scene              = nil   # eigene Szenen setzen Scripts selbst
+    load_data_globals
     Rune::Log.info("RGSS-Schicht bereit (#{VERSION})")
+  end
+
+  # Flüchtige RGSS-Dinge verwerfen (Kartenwechsel, F5, Playtest-Ende):
+  # Sprites/Fenster/$scene und $game_temp sind nicht speicherbar.
+  def self.reset!
+    Graphics.scene_reset! if defined?(Graphics) && Graphics.respond_to?(:scene_reset!)
+    $game_temp = GameTemp.new
   end
 end
 

@@ -88,6 +88,7 @@ end
     @map = Database.map(id)
     Fade.reset!   # Etappe 19d: nie mit dunklem Bildschirm in eine Karte kommen
     Mover.reset!  # Etappe 19g: Routen sind flüchtig (Ziel-NPCs sind neu)
+    RGSS.reset!   # Etappe 19h: Sprites/Fenster/$scene sind flüchtig
     @events = (@map['events'] || []).map { |h| Event.new(h) }
     @map['objects'] ||= []
     # Etappe 18l: Terrain gehört zur Karte - beim Wechsel neu aufbauen,
@@ -448,6 +449,7 @@ end
     Effects.update(dt)
     Fade.update(dt)   # Etappe 19d: Bildschirmblende (XP-Fade) weiterdrehen
     Mover.update(dt)  # Etappe 19g: Bewegungsrouten laufen IMMER (auch bei Text)
+    Graphics.scene_update   # Etappe 19h: $scene.main (RGSS-Szenen-Schleife)
     px, py, pz = Rune::Player.position
     Weather.update(dt, px, py, pz)   # Etappe 17h: Regen/Schnee um den Spieler
 
@@ -717,6 +719,8 @@ end
         draw_wire_box(p[0], p[1], p[2], s[0] * 1.02, s[1] * 1.02, s[2] * 1.02, 0x59D8FF)
       end
     end
+
+    Graphics.draw   # Etappe 19h: RGSS-Sprites/Fenster über der Welt
 
     # 2D-Overlay zuletzt
     UI.hud

@@ -13,6 +13,7 @@
 #    - Graphics (fadeout/fadein in Frames, brightness, freeze/transition)
 #    - Audio (bgm/se mit 0..100-Lautstärke, Pfad-/Endungs-Kürzung)
 #    - load_data/save_data (JSON-Rundlauf)
+#    - Etappe 19h: $game_temp, $data_*-Globale, passable? (Grenzen/Stufe)
 # ============================================================================
 
 require 'tmpdir'
@@ -210,6 +211,29 @@ check('transition löst freeze') { !Graphics.frozen? }
 c0 = Graphics.frame_count
 Graphics.update
 check('update zählt Frames') { Graphics.frame_count == c0 + 1 }
+
+puts '== Etappe 19h: $game_temp, $data_*, passable? =='
+check('$game_temp besetzt und frisch') do
+  $game_temp.is_a?(RGSS::GameTemp) && $game_temp.message_text.nil? &&
+    $game_temp.player_passable?
+end
+check('$data_actors: Hash mit String-IDs aus database.json') do
+  $data_actors.key?('arik') && $data_actors.size == 2
+end
+check('$data_items/$data_system besetzt') do
+  $data_items.key?('heiltrank') && $data_system.is_a?(Hash)
+end
+check('passable?: flach in der Karte -> true') { $game_player.passable?(5.0, 5.0) }
+check('passable?: Richtung 6 über die Kartengrenze -> false') do
+  !$game_player.passable?($game_map.width, 5.0, 6)
+end
+$game_temp.player_passable = false
+check('passable? abgeschaltet -> immer true') { $game_player.passable?(999.0, 999.0) }
+$game_temp.player_passable = true
+RGSS.reset!
+check('RGSS.reset!: $game_temp frisch, $scene nil') do
+  $game_temp.is_a?(RGSS::GameTemp) && $scene.nil?
+end
 
 puts '== Audio =='
 Rune::Sound::CALLS.clear

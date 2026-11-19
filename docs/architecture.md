@@ -1337,6 +1337,50 @@ nicht, sichtbare Events ohne NPC-Körper können nicht laufen.
 stop/Ersetzung, Spieler-Route, Interpreter wait/ohne wait/repeat+wait,
 MapCheck inkl. Sync-Assert), script_test.rb-Abschnitt 7 (Context-Helfer).
 
+## RGSS-Vertiefung (Etappe 19h)
+
+Die 19e-Schicht bekommt die fehlenden RGSS1-Bausteine: eigene Grafikobjekte,
+Szenen und flüchtige Systemwerte - Scripts im Script-Editor (F11) können jetzt
+eigene Fenster/Sprites bauen, wie im RPG Maker.
+
+**Bitmap/Sprite/Window/Viewport (`game/engine/graphics.rb`, neu):** Rune3D
+hat keine Pixel-Bitmaps; die Klassen legen die RGSS-Namen über die
+UI-Primitive (`Rune::Gfx.rect/text` via `UI.panel/text`). `Bitmap` merkt
+Größe/Farbe/Text (Dateien laden ist Backlog), `Sprite` zeichnet sein Bitmap
+als Rechteck (x/y/z/opacity/visible/Zoom, Viewport-Vererbung), `Window` ist
+ein Panel mit Titel, Zeilen und Cursor (`update` bewegt per `Input.dir4` und
+liefert `:ok`/`:cancel` auf C/B), `Viewport` gruppiert (z/visible/opacity
+gelten für Kinder). Alle Objekte registrieren sich in `RGSSGfx.objects`;
+`Game.draw` ruft einmal `Graphics.draw`, das nach `z_effective` sortiert
+zeichnet - über der Welt, unter dem Engine-UI und der Blende.
+
+**$scene:** Scripts dürfen eigene Szenen setzen (`$scene = MeineScene`);
+`Graphics.scene_update` (in `Game.update`) ruft pro Frame `Scene#main` -
+der XP-Szenen-Name. Die Engine-Schleife wird dabei NICHT ersetzt (bewusste
+Abweichung). Szenen-Fehler werden geloggt/gemeldet und werfen die Szene ab,
+damit das Spiel weiterläuft.
+
+**$game_temp:** `message_text/message_proc/common_event_id/player_passable/
+transition_processing/...` - flüchtig pro `RGSS.reset!`, das jetzt
+`Game.enter_map` ruft (Kartenwechsel/F5/Playtest: Sprites, Fenster und
+`$scene` sind nicht speicherbar).
+
+**$data_*:** `$data_actors/$data_items` als Hashes mit String-IDs aus
+`database.json` (XP: Arrays mit Integer-Indizes), `$data_system` =
+system.json; `$data_weapons/$data_armors` sind leer, bis die Datenbank
+Waffen/Rüstungen kennt (Backlog, vorbereitet für 19i Kampf).
+
+**passable? echt:** `$game_player.passable?(x, z, d = 2)` prüft Kartengrenzen
+(`$game_map.width/height`) und Geländestufe (max. 1.2 m über `Game.gy`);
+Richtungen wie XP (2=+z, 4=-x, 6=+x, 8=-z, 0/nil = Stelle selbst).
+`$game_temp.player_passable = false` schaltet die Prüfung ab (XP-Debug).
+Objekt-/Hindernis-Kollision fehlt weiter (keine blocked?-Abfrage, Backlog).
+
+**Tests:** `tools/graphics_test.rb` (kopflos: Bitmap, Sprite-Sortierung/
+Viewport/dispose, Window-Cursor/-Zeichnen, $scene, reset!, passable?) +
+19h-Abschnitt in `rgss_test.rb` ($game_temp/$data_* gegen die echte
+database.json).
+
 ## Ruby-API (Stand Etappe 2)
 
 | API | Bedeutung |
