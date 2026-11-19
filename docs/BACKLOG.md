@@ -21,18 +21,28 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 ---
 
 ## Offen
-### [Editor] F6/F9 und Objektformular schreiben unberührte Felder um — offen (Daten-Treue)
-- Symptom: Event- und Datenbankformulare sowie das Objekt-Eigenschaftsfeld
-  schreiben bei Übernahme/Selektion auch unveränderte, gerundet angezeigte
-  Felder zurück. So können genaue Koordinaten und große Ganzzahlen trotz
-  verlustfreiem JSON-Baum verändert werden. F9 kann Goldänderungen ohne
-  ausgewählten Eintrag verlieren. F6 migriert außerdem alte Event-Seiten.
-- Analyse: Ursprünglich beschnitt `ev_num_str` bei Präzision 0 sogar die
-  Endnullen (100 → 1); dies ist in 19o.1 behoben. F5/F2 ändern bereits nur
-  berührte Felder; F6/F9 und das Objektformular brauchen denselben Schutz.
+### [Editor] F6 und Objektformular schreiben unberührte Felder um — offen (Daten-Treue)
+- Symptom: Event- und Objektformulare schreiben bei Übernahme/Selektion
+  auch unveränderte, gerundet angezeigte Felder zurück. Genaue Koordinaten
+  und große Ganzzahlen können dadurch verändert werden; F6 migriert
+  außerdem alte Event-Seiten und kann vor dem Duplizieren Werte runden.
+- Analyse: `ev_num_str`-Endnullenverlust ist seit 19o.1 behoben; F2/F5 und
+  F9 (19o.3) übernehmen nur geänderte Felder. F6 und das alte Objektformular
+  brauchen denselben Schutz.
 - Betroffene Stellen: `src/editor/editor_main.cpp` (`ev_apply_event_fields`,
-  `ev_apply_page_fields`, `db_apply`, `apply_property_fields`).
+  `ev_apply_page_fields`, `apply_property_fields`).
 - Gefunden in: Etappe 19o.1.
+
+### [Editor] F9-Dateikonfliktprüfung ist nicht atomar — offen (Daten-Treue)
+- Symptom: Ändert ein anderes Programm `database.json` genau zwischen der
+  F9-Konfliktprüfung und dem Ersetzen der Datei, kann seine Änderung
+  überschrieben werden, ohne dass der Vergleich sie gesehen hat.
+- Analyse: Seit 19o.3 vergleicht F9 vor dem Schreiben die Originalbytes
+  und fragt bei Änderungen; das anschließende Ersetzen ist aber kein
+  atomarer dateiübergreifender Compare-and-Swap und sperrt andere Prozesse
+  nicht für die gesamte Dauer.
+- Betroffene Stellen: `src/editor/editor_main.cpp` (`db_save`, `db_write_file`).
+- Gefunden in: Etappe 19o.3.
 
 ### [Engine] Kampf-Grundgerüst deckt noch nicht alles ab — offen (Feature-Fehlend)
 - Stand 19i: Rundenkampf mit Angriff/Item/Flucht, Sieg/Niederlage/Exp/
@@ -197,6 +207,21 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Etappe 19a.
 
 ## Erledigt
+### [Editor] F9 schreibt unberührte Werte und verliert Gold — erledigt (19o.3)
+- Das portable `database_form.h` übernimmt nur geänderte Felder; große
+  Ganzzahlen, präzise Floats, optionale und unbekannte Werte bleiben
+  erhalten. Gold funktioniert auch ohne Auswahl; ungültige Eingaben
+  verhindern die gesamte Übernahme. Uneindeutige Gegnerlisten und kaputte
+  Sammlungen werden nur nach Rückfrage ersetzt, Löschung wird bestätigt.
+- Fehlerhafte/unlesbare Datenbankdateien werden nicht durch leere ersetzt;
+  Änderungen durch andere Programme vor dem Speichern lösen eine Rückfrage
+  aus. Speichern nutzt eine temporäre Datei; Schließen/Neu laden fragen
+  bei ungespeicherten Änderungen. Das kleine Konflikt-Zeitfenster bleibt
+  als offener Eintrag dokumentiert.
+- Tests: `tools/json_test.cpp`, Win64-Cross-Kompilierung und Ruby-Suite;
+  grafischer Windows-Live-Test steht aus.
+- Betroffene Stellen: `src/editor/database_form.h`, `editor_main.cpp`.
+
 ### [Editor] Bearbeitete Block-Zonen verlieren Zusatzfelder — erledigt (19o.2)
 - F2 zeigt temporäre Zeilenmarken; beim Ändern oder Umordnen bleiben
   Zusatzdaten und unberührte Koordinaten exakt bei der richtigen Zone.

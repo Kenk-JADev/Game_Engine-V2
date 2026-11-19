@@ -43,6 +43,7 @@
 #include "core/log.h"
 #include "core/sound.h"
 #include "editor/json.h"
+#include "editor/database_form.h"
 #include "editor/encounter_check.h"
 #include "editor/encounter_form.h"
 #include "editor/map_props_form.h"
@@ -384,6 +385,7 @@ bool material_editor_focused();
 void open_database_dialog();
 bool database_editor_open();
 bool database_editor_focused();
+bool database_request_close();
 
 // Etappe 17h: Sound-Test + Playtest.
 void open_soundtest_dialog();
@@ -3849,6 +3851,7 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                                           L"RuneEditor", MB_YESNO | MB_ICONQUESTION);
                 if (r != IDYES) return 0;
             }
+            if (database_editor_open() && !database_request_close()) return 0;
             DestroyWindow(h);
             return 0;
 
@@ -7198,7 +7201,7 @@ constexpr int DB_MAX_ROWS = 13;   // Gegner brauchen 12 Felder, eine Zeile Luft
 
 // Ein Formularfeld: JSON-Schlüssel, Beschriftung, Zahl (sonst Text),
 // Nachkommastellen. Sonderfall Truppen-"enemies": Array aus Gegner-IDs,
-// im Edit komma-getrennt (db_join_ids/db_split_ids).
+// im Edit komma-getrennt (siehe database_form.h).
 struct DbField {
     const char*    key;
     const wchar_t* label;
@@ -7279,6 +7282,12 @@ struct DatabaseDlgState {
     int  sel = -1;
     bool dirty = false;
     bool syncing = false;
+    DatabaseForm before;
+    bool field_editable[DB_MAX_ROWS] = {};
+    bool gold_editable = false;
+    bool hint_active = false;
+    bool disk_present = false;
+    std::string disk_text;   // Originalbytes für Konfliktprüfung beim Speichern
 };
 
 static DatabaseDlgState g_db;
@@ -7287,67 +7296,99 @@ std::string db_path() {
     return g.project_dir + "\\database.json";
 }
 
+// Das bloße Öffnen/Wechseln eines Reiters darf fehlende oder fehlerhafte
+// Sammlungen nicht durch leere Listen ersetzen.
 JsonValue* db_array(const char* key) {
     JsonValue* a = g_db.root.find(key);
-    if (!a || !a->is_arr()) a = &g_db.root.set(key, JsonValue::make_arr());
-    return a;
+    return a && a->is_arr() ? a : nullptr;
+}
+
+JsonValue* db_entry() {
+    JsonValue* a = db_array(db_tab_key(g_db.tab));
+    if (!a || g_db.sel < 0 || static_cast<size_t>(g_db.sel) >= a->arr.size()) return nullptr;
+    return &a->arr[static_cast<size_t>(g_db.sel)];
+}
+
+std::vector<DatabaseFieldSpec> db_specs() {
+    int count = 0;
+    const DbField* fields = db_fields(g_db.tab, count);
+    std::vector<DatabaseFieldSpec> result;
+    for (int i = 0; i < count; ++i) {
+        const DbField& f = fields[i];
+        const DatabaseFieldKind kind = std::strcmp(f.key, "enemies") == 0 ? DatabaseFieldKind::IdList
+            : !f.num ? DatabaseFieldKind::Text
+            : f.prec == 0 ? DatabaseFieldKind::Integer : DatabaseFieldKind::Decimal;
+        result.push_back({f.key, kind});
+    }
+    return result;
+}
+
+std::string db_text(HWND control) {
+    const int length = GetWindowTextLengthW(control);
+    std::wstring text(static_cast<size_t>(std::max(0, length)) + 1, L'\0');
+    const int copied = GetWindowTextW(control, text.data(), static_cast<int>(text.size()));
+    text.resize(static_cast<size_t>(std::max(0, copied)));
+    return wide_to_utf8(text);
 }
 
 void db_status(const std::string& text) {
     if (g_db.lbl_status) ev_set_text(g_db.lbl_status, text);
 }
 
-void db_load() {
-    g_db.root = JsonValue::make_obj();
+enum class DatabaseDiskState { Missing, Ready, Error };
+
+DatabaseDiskState db_read_disk(const std::wstring& path, std::string& out) {
+    const DWORD attributes = GetFileAttributesW(path.c_str());
+    if (attributes == INVALID_FILE_ATTRIBUTES) {
+        if (GetLastError() != ERROR_FILE_NOT_FOUND) return DatabaseDiskState::Error;
+        out.clear();
+        return DatabaseDiskState::Missing;
+    }
+    if (attributes & FILE_ATTRIBUTE_DIRECTORY) return DatabaseDiskState::Error;
+    FILE* f = nullptr;
+    if (_wfopen_s(&f, path.c_str(), L"rb") != 0 || !f) return DatabaseDiskState::Error;
     std::string text;
-    if (read_file(db_path(), text) && !text.empty()) {
-        try {
-            g_db.root = json_parse(text);
-        } catch (const std::exception&) {
-            g_db.root = JsonValue::make_obj();
+    char buf[65536];
+    size_t n = 0;
+    while ((n = std::fread(buf, 1, sizeof(buf), f)) > 0) text.append(buf, n);
+    const bool read_ok = std::ferror(f) == 0;
+    const bool close_ok = std::fclose(f) == 0;
+    if (!read_ok || !close_ok) return DatabaseDiskState::Error;
+    out = std::move(text);
+    return DatabaseDiskState::Ready;
+}
+
+bool db_load() {
+    const auto fail = [](const wchar_t* message) {
+        MessageBoxW(g_db.win, message, L"Datenbank nicht geladen", MB_OK | MB_ICONERROR);
+        return false;
+    };
+    std::string text;
+    const DatabaseDiskState state = db_read_disk(utf8_to_wide(db_path()), text);
+    if (state == DatabaseDiskState::Error)
+        return fail(L"database.json kann nicht gelesen werden. Die bisherigen Daten bleiben erhalten.");
+    JsonValue loaded = JsonValue::make_obj();
+    if (state == DatabaseDiskState::Ready) {
+        switch (database_parse_document(text, loaded)) {
+            case DatabaseParseStatus::InvalidJson:
+                return fail(L"database.json enthält ungültiges JSON. Sie wird nicht überschrieben.");
+            case DatabaseParseStatus::InvalidRoot:
+                return fail(L"Die Datenbankwurzel ist kein Objekt. Sie wird nicht überschrieben.");
+            case DatabaseParseStatus::InvalidUtf8:
+                return fail(L"Die Datenbank enthält ungültiges UTF-8 oder Unicode. Sie wird nicht überschrieben.");
+            case DatabaseParseStatus::DuplicateKey:
+                return fail(L"Die Datenbank enthält doppelte Schlüssel. Sie wird nicht überschrieben.");
+            case DatabaseParseStatus::Nonfinite:
+                return fail(L"Die Datenbank enthält eine nicht darstellbare Kommazahl. Sie wird nicht überschrieben.");
+            case DatabaseParseStatus::Ok: break;
         }
     }
-    db_array("actors");
-    db_array("items");
-    db_array("enemies");   // Etappe 19i: Kämpfe
-    db_array("troops");
-    if (!g_db.root.find("gold")) g_db.root.set("gold", JsonValue::make_num(0, true));
+    // Eine noch nicht vorhandene Datei entsteht erst durch explizites Speichern.
+    g_db.root = std::move(loaded);
+    g_db.disk_present = state == DatabaseDiskState::Ready;
+    g_db.disk_text = std::move(text);
     g_db.dirty = false;
-}
-
-// Truppen-Feld "enemies": Array aus IDs -> komma-getrennter Text.
-std::string db_join_ids(const JsonValue& e) {
-    const JsonValue* a = e.find("enemies");
-    if (!a || !a->is_arr()) return "";
-    std::string out;
-    for (const JsonValue& v : a->arr) {
-        if (!v.is_str()) continue;
-        if (!out.empty()) out += ", ";
-        out += v.str;
-    }
-    return out;
-}
-
-// komma-getrennter Text -> Array aus IDs (Whitespace wird getrimmt).
-JsonValue db_split_ids(const std::string& text) {
-    JsonValue arr = JsonValue::make_arr();
-    std::string tok;
-    for (char c : text) {
-        if (c == ',' || c == ';') {
-            const size_t b = tok.find_first_not_of(" \t\r\n");
-            if (b != std::string::npos)
-                arr.arr.push_back(JsonValue::make_str(
-                    tok.substr(b, tok.find_last_not_of(" \t\r\n") - b + 1)));
-            tok.clear();
-        } else {
-            tok += c;
-        }
-    }
-    const size_t b = tok.find_first_not_of(" \t\r\n");
-    if (b != std::string::npos)
-        arr.arr.push_back(JsonValue::make_str(
-            tok.substr(b, tok.find_last_not_of(" \t\r\n") - b + 1)));
-    return arr;
+    return true;
 }
 
 // Formular je Reiter beschriften (Feldanzahl sichtbar, Rest versteckt).
@@ -7365,128 +7406,148 @@ void db_form_layout() {
 
 void db_refresh_lists() {
     if (!g_db.win) return;
-    wchar_t buf[200];
     SendMessageW(g_db.list, LB_RESETCONTENT, 0, 0);
     const JsonValue* arr = db_array(db_tab_key(g_db.tab));
+    if (!arr) { g_db.sel = -1; return; }
+    int selected_row = -1;
     for (int i = 0; i < static_cast<int>(arr->arr.size()); ++i) {
-        const JsonValue& e = arr->arr[i];
-        switch (g_db.tab) {
-            case 1:
-                std::swprintf(buf, 200, L"%d. %ls  [%ls]", i + 1,
-                              utf8_to_wide(ev_str_of(e, "name", "?")).c_str(),
-                              utf8_to_wide(ev_str_of(e, "kind", "-")).c_str());
-                break;
-            case 2:
-                std::swprintf(buf, 200, L"%d. %ls  (HP %ls)", i + 1,
-                              utf8_to_wide(ev_str_of(e, "name", "?")).c_str(),
-                              utf8_to_wide(ev_num_str(ev_num_of(e, "hp"), 0)).c_str());
-                break;
-            case 3: {
-                const JsonValue* en = e.find("enemies");
-                const int n = (en && en->is_arr())
-                                  ? static_cast<int>(en->arr.size()) : 0;
-                std::swprintf(buf, 200, L"%d. %ls  (%d Gegner)", i + 1,
-                              utf8_to_wide(ev_str_of(e, "name", "?")).c_str(), n);
-                break;
+        const JsonValue& e = arr->arr[static_cast<size_t>(i)];
+        std::wstring label = std::to_wstring(i + 1) + L". ";
+        if (!e.is_obj()) {
+            label += L"[ungültiger Eintrag]";
+        } else {
+            label += utf8_to_wide(ev_str_of(e, "name", "?"));
+            switch (g_db.tab) {
+                case 1:
+                    label += L"  [" + utf8_to_wide(ev_str_of(e, "kind", "-")) + L"]";
+                    break;
+                case 2:
+                    label += L"  (HP " + utf8_to_wide(database_number_text(e.find("hp"))) + L")";
+                    break;
+                case 3: {
+                    const JsonValue* en = e.find("enemies");
+                    const size_t n = en && en->is_arr() ? en->arr.size() : 0;
+                    label += L"  (" + std::to_wstring(n) + L" Gegner)";
+                    break;
+                }
+                default:
+                    label += L" (" + utf8_to_wide(ev_str_of(e, "class", "-")) + L")";
+                    break;
             }
-            default:
-                std::swprintf(buf, 200, L"%d. %ls (%ls)", i + 1,
-                              utf8_to_wide(ev_str_of(e, "name", "?")).c_str(),
-                              utf8_to_wide(ev_str_of(e, "class", "-")).c_str());
-                break;
         }
-        const int idx = static_cast<int>(
-            SendMessageW(g_db.list, LB_ADDSTRING, 0,
-                        reinterpret_cast<LPARAM>(buf)));
-        SendMessageW(g_db.list, LB_SETITEMDATA, idx,
-                     static_cast<LPARAM>(static_cast<INT_PTR>(i)));
+        const int idx = static_cast<int>(SendMessageW(
+            g_db.list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label.c_str())));
+        if (idx >= 0) {
+            SendMessageW(g_db.list, LB_SETITEMDATA, idx, static_cast<LPARAM>(static_cast<INT_PTR>(i)));
+            if (i == g_db.sel) selected_row = idx;
+        }
     }
 
-    // Auswahl wiederherstellen.
-    if (g_db.sel >= 0 && g_db.sel < static_cast<int>(arr->arr.size())) {
-        SendMessageW(g_db.list, LB_SETCURSEL, g_db.sel, 0);
-    } else {
-        g_db.sel = -1;
-    }
+    if (selected_row >= 0) SendMessageW(g_db.list, LB_SETCURSEL, selected_row, 0);
+    else g_db.sel = -1;
 }
 
 void db_refresh_fields() {
     if (!g_db.win) return;
-    int count = 0;
-    const DbField* fields = db_fields(g_db.tab, count);
-    const JsonValue* arr = db_array(db_tab_key(g_db.tab));
-    const bool valid = g_db.sel >= 0 && g_db.sel < static_cast<int>(arr->arr.size());
+    const bool was_syncing = g_db.syncing;
+    g_db.syncing = true;
+    const std::vector<DatabaseFieldSpec> specs = db_specs();
+    const JsonValue* entry = db_entry();
+    const bool valid = entry && entry->is_obj();
+    g_db.before = database_form_read(g_db.root, entry, specs);
+    bool protected_field = false;
     for (int i = 0; i < DB_MAX_ROWS; ++i) {
-        EnableWindow(g_db.ed[i], (valid && i < count) ? TRUE : FALSE);
-        if (!valid) SetWindowTextW(g_db.ed[i], L"");
+        const bool used = static_cast<size_t>(i) < specs.size();
+        const std::string text = used ? g_db.before.fields[static_cast<size_t>(i)] : std::string();
+        ev_set_text(g_db.ed[i], text);
+        g_db.field_editable[i] = valid && used && database_single_line(text) && db_text(g_db.ed[i]) == text;
+        if (valid && used && !g_db.field_editable[i]) protected_field = true;
+        EnableWindow(g_db.ed[i], g_db.field_editable[i] ? TRUE : FALSE);
     }
-    EnableWindow(GetDlgItem(g_db.win, IDDB_DEL), valid ? TRUE : FALSE);
-
-    if (g_db.ed_gold) {
-        SetWindowTextW(g_db.ed_gold,
-                       utf8_to_wide(ev_num_str(ev_num_of(g_db.root, "gold"), 0)).c_str());
-    }
-    if (!valid) return;
-
-    const JsonValue& e = arr->arr[g_db.sel];
-    for (int i = 0; i < count; ++i) {
-        const DbField& f = fields[i];
-        if (std::strcmp(f.key, "enemies") == 0) {
-            ev_set_text(g_db.ed[i], db_join_ids(e));
-        } else if (f.num) {
-            ev_set_text(g_db.ed[i], ev_num_str(ev_num_of(e, f.key), f.prec));
-        } else {
-            ev_set_text(g_db.ed[i], ev_str_of(e, f.key));
-        }
-    }
+    EnableWindow(GetDlgItem(g_db.win, IDDB_DEL), entry ? TRUE : FALSE);
+    ev_set_text(g_db.ed_gold, g_db.before.gold);
+    g_db.gold_editable = database_single_line(g_db.before.gold) && db_text(g_db.ed_gold) == g_db.before.gold;
+    EnableWindow(g_db.ed_gold, g_db.gold_editable ? TRUE : FALSE);
+    if (!g_db.gold_editable) protected_field = true;
+    g_db.hint_active = protected_field || (entry && !valid);
+    if (protected_field)
+        db_status("Nicht darstellbares Feld gesperrt; seine Daten bleiben erhalten.");
+    else if (entry && !valid)
+        db_status("Ungültiger Eintrag: unverändert lassen oder ausdrücklich löschen.");
+    else if (g_db.dirty)
+        db_status("Geändert - noch nicht gespeichert");
+    else
+        db_status("database.json: " + db_path());
+    g_db.syncing = was_syncing;
 }
 
 void db_refresh() {
+    const bool was_syncing = g_db.syncing;
     g_db.syncing = true;
     db_form_layout();
     db_refresh_lists();
     db_refresh_fields();
-    g_db.syncing = false;
+    g_db.syncing = was_syncing;
 }
 
-// Formular in den Eintrag zurückschreiben.
-void db_apply(bool mark_dirty) {
-    JsonValue* arrp = db_array(db_tab_key(g_db.tab));
-    if (g_db.sel < 0 || g_db.sel >= static_cast<int>(arrp->arr.size())) return;
-    JsonValue& e = arrp->arr[g_db.sel];
-    int count = 0;
-    const DbField* fields = db_fields(g_db.tab, count);
-    for (int i = 0; i < count; ++i) {
-        const DbField& f = fields[i];
-        if (std::strcmp(f.key, "enemies") == 0) {
-            e.set("enemies", db_split_ids(ev_text(g_db.ed[i])));
-        } else if (f.num) {
-            e.set(f.key, JsonValue::make_num(ev_number(g_db.ed[i], ev_num_of(e, f.key)),
-                                             f.prec == 0));
-        } else {
-            e.set(f.key, JsonValue::make_str(ev_text(g_db.ed[i])));
+DatabaseForm db_current_form() {
+    DatabaseForm current = g_db.before;
+    if (g_db.gold_editable) current.gold = db_text(g_db.ed_gold);
+    for (size_t i = 0; i < current.fields.size(); ++i)
+        if (g_db.field_editable[i]) current.fields[i] = db_text(g_db.ed[i]);
+    return current;
+}
+
+bool db_pending() {
+    const DatabaseForm current = db_current_form();
+    return current.gold != g_db.before.gold || current.fields != g_db.before.fields;
+}
+
+// Validiert Gold und Eintrag gemeinsam auf Kopien; erst nach Bestätigung
+// werden nur die geänderten Felder übernommen. Beim Löschen eines Eintrags
+// kann das Eintragsformular übersprungen werden, Gold bleibt aber erhalten.
+bool db_apply(bool include_entry = true) {
+    const std::vector<DatabaseFieldSpec> specs = db_specs();
+    DatabaseForm after = db_current_form();
+    if (!include_entry) after.fields = g_db.before.fields;
+    const DatabaseEdit edit = database_form_prepare(g_db.root, db_entry(), specs, g_db.before, after);
+    if (!edit.ok) {
+        const std::string message = (edit.field.empty() ? std::string() : edit.field + ": ") + edit.error;
+        MessageBoxW(g_db.win, utf8_to_wide(message).c_str(), L"Ungültige Eingabe", MB_OK | MB_ICONWARNING);
+        if (edit.gold_error) SetFocus(g_db.ed_gold);
+        else {
+            for (size_t i = 0; i < specs.size(); ++i)
+                if (edit.field == specs[i].key) { SetFocus(g_db.ed[i]); break; }
         }
+        return false;
     }
-    if (g_db.tab == 0) {
-        // Felder ohne Formularzeile behalten (level/exp wie seit 17g).
-        e.set("level", JsonValue::make_num(
-            ev_num_of(e, "level") > 0 ? ev_num_of(e, "level") : 1.0, true));
-        if (!e.find("exp")) e.set("exp", JsonValue::make_num(0, true));
+    if (edit.replaces_invalid && MessageBoxW(
+            g_db.win,
+            L"Diese Änderung ersetzt fehlerhafte oder nicht eindeutig darstellbare Altdaten. Fortfahren?",
+            L"Datenbank", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) return false;
+    if (!database_form_commit(g_db.root, db_tab_key(g_db.tab), g_db.sel, edit)) {
+        MessageBoxW(g_db.win, L"Der Eintrag ist nicht mehr verfügbar. Es wurde nichts übernommen.",
+                    L"Datenbank", MB_OK | MB_ICONERROR);
+        return false;
     }
-    if (g_db.ed_gold) {
-        g_db.root.set("gold", JsonValue::make_num(
-            ev_number(g_db.ed_gold, ev_num_of(g_db.root, "gold")), true));
-    }
-    if (mark_dirty) {
+    if (edit.changed) {
         g_db.dirty = true;
-        db_refresh_lists();
         db_status("Geändert - noch nicht gespeichert");
     }
+    g_db.before = std::move(after);
+    return true;
 }
 
 void db_add() {
-    db_apply(true);
-    JsonValue* arr = db_array(db_tab_key(g_db.tab));
+    if (!db_apply()) return;
+    const char* key = db_tab_key(g_db.tab);
+    JsonValue* arr = db_array(key);
+    if (!arr) {
+        if (g_db.root.find(key) && MessageBoxW(
+                g_db.win, L"Die Sammlung ist keine Liste. Durch Neu wird sie ersetzt. Fortfahren?",
+                L"Datenbank", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) return;
+        arr = &g_db.root.set(key, JsonValue::make_arr());
+    }
     const char* prefix = "held";
     if (g_db.tab == 1) prefix = "item";
     if (g_db.tab == 2) prefix = "gegner";
@@ -7545,29 +7606,96 @@ void db_add() {
     g_db.sel = static_cast<int>(arr->arr.size()) - 1;
     g_db.dirty = true;
     db_refresh();
-    db_status("Neuen Eintrag angelegt - Speichern nicht vergessen");
+    if (!g_db.hint_active) db_status("Neuen Eintrag angelegt - Speichern nicht vergessen");
 }
 
 void db_delete() {
     JsonValue* arr = db_array(db_tab_key(g_db.tab));
-    if (g_db.sel < 0 || g_db.sel >= static_cast<int>(arr->arr.size())) return;
+    if (!arr || g_db.sel < 0 || static_cast<size_t>(g_db.sel) >= arr->arr.size()) return;
+    if (MessageBoxW(g_db.win, L"Diesen Eintrag und seine Zusatzdaten wirklich löschen?",
+                    L"Datenbank", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) return;
+    if (!db_apply(false)) return;
+    // Gold kann beim Setzen die Wurzel-Paarliste und damit arr verschieben.
+    arr = db_array(db_tab_key(g_db.tab));
     arr->arr.erase(arr->arr.begin() + g_db.sel);
     if (g_db.sel >= static_cast<int>(arr->arr.size())) {
         g_db.sel = static_cast<int>(arr->arr.size()) - 1;
     }
     g_db.dirty = true;
     db_refresh();
-    db_status("Eintrag gelöscht - Speichern nicht vergessen");
+    if (!g_db.hint_active) db_status("Eintrag gelöscht - Speichern nicht vergessen");
 }
 
-void db_save() {
-    db_apply(false);
-    if (write_file(db_path(), json_write(g_db.root))) {
-        g_db.dirty = false;
-        db_status("Gespeichert: database.json");
-    } else {
-        db_status("FEHLER: database.json konnte nicht geschrieben werden");
+// Erst vollständig in eine neue Datei im selben Verzeichnis schreiben, dann
+// ersetzen. Ein fehlgeschlagenes Schreiben zerstört nicht die alte Datenbank.
+bool db_write_file(const std::wstring& path, const std::string& data) {
+    static unsigned serial = 0;
+    HANDLE file = INVALID_HANDLE_VALUE;
+    std::wstring temp;
+    for (int attempt = 0; attempt < 100; ++attempt) {
+        temp = path + L".rune-" + std::to_wstring(GetCurrentProcessId()) +
+               L"-" + std::to_wstring(++serial) + L".tmp";
+        file = CreateFileW(temp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+                           FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (file != INVALID_HANDLE_VALUE) break;
+        const DWORD error = GetLastError();
+        if (error != ERROR_FILE_EXISTS && error != ERROR_ALREADY_EXISTS) return false;
     }
+    if (file == INVALID_HANDLE_VALUE) return false;
+    bool ok = true;
+    size_t written = 0;
+    while (written < data.size()) {
+        const DWORD part = static_cast<DWORD>(std::min<size_t>(data.size() - written, 1024 * 1024));
+        DWORD n = 0;
+        if (!WriteFile(file, data.data() + written, part, &n, nullptr) || n == 0) { ok = false; break; }
+        written += n;
+    }
+    if (ok && !FlushFileBuffers(file)) ok = false;
+    if (!CloseHandle(file)) ok = false;
+    if (ok && !MoveFileExW(temp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+        ok = false;
+    if (!ok) DeleteFileW(temp.c_str());
+    return ok;
+}
+
+bool db_save() {
+    if (!db_apply()) return false;
+    const std::wstring path = utf8_to_wide(db_path());
+    std::string disk_text;
+    const DatabaseDiskState state = db_read_disk(path, disk_text);
+    if (state == DatabaseDiskState::Error) {
+        MessageBoxW(g_db.win, L"database.json kann vor dem Speichern nicht gelesen werden. Es wurde nichts überschrieben.",
+                    L"Datenbank", MB_OK | MB_ICONERROR);
+        return false;
+    }
+    if (database_disk_changed(g_db.disk_present, g_db.disk_text, state == DatabaseDiskState::Ready, disk_text) &&
+        MessageBoxW(g_db.win,
+            L"database.json wurde außerhalb dieses Dialogs geändert, angelegt oder entfernt. Trotzdem überschreiben?",
+            L"Datenbank-Konflikt", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) return false;
+    const std::string output = json_write(g_db.root);
+    if (!db_write_file(path, output)) {
+        db_status("FEHLER: database.json konnte nicht geschrieben werden");
+        MessageBoxW(g_db.win, L"database.json konnte nicht gespeichert werden. Die alte Datei bleibt erhalten.",
+                    L"Datenbank", MB_OK | MB_ICONERROR);
+        return false;
+    }
+    g_db.disk_present = true;
+    g_db.disk_text = output;
+    g_db.dirty = false;
+    db_refresh();
+    if (!g_db.hint_active) db_status("Gespeichert: database.json");
+    return true;
+}
+
+bool database_request_close() {
+    if (!g_db.win) return true;
+    if (g_db.dirty || db_pending()) {
+        const int result = MessageBoxW(g_db.win, L"Änderungen an der Datenbank speichern?",
+                                       L"Datenbank", MB_YESNOCANCEL | MB_ICONQUESTION);
+        if ((result != IDYES && result != IDNO) || (result == IDYES && !db_save())) return false;
+    }
+    DestroyWindow(g_db.win);
+    return true;
 }
 
 HWND db_control(const wchar_t* cls, const wchar_t* text, DWORD style,
@@ -7588,15 +7716,28 @@ LRESULT CALLBACK database_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             if (g_db.syncing) return 0;
 
             if (code == LBN_SELCHANGE && id == IDDB_LIST) {
-                if (g_db.sel >= 0) db_apply(true);   // alten Eintrag sichern
-                g_db.sel = static_cast<int>(SendMessageW(g_db.list, LB_GETCURSEL, 0, 0));
-                db_refresh_lists();
-                db_refresh_fields();
+                const LRESULT row = SendMessageW(g_db.list, LB_GETCURSEL, 0, 0);
+                const LRESULT item = row == LB_ERR ? LB_ERR : SendMessageW(g_db.list, LB_GETITEMDATA, row, 0);
+                if (!db_apply()) {
+                    g_db.syncing = true;
+                    db_refresh_lists();   // alte Auswahl wiederherstellen; Eingaben behalten
+                    g_db.syncing = false;
+                    return 0;
+                }
+                g_db.sel = item == LB_ERR ? -1 : static_cast<int>(item);
+                db_refresh();
                 return 0;
             }
-            if (id == IDDB_TAB_H || id == IDDB_TAB_I ||
-                id == IDDB_TAB_E || id == IDDB_TAB_T) {
-                db_apply(true);
+            if (code == BN_CLICKED && (id == IDDB_TAB_H || id == IDDB_TAB_I ||
+                                       id == IDDB_TAB_E || id == IDDB_TAB_T)) {
+                if (!db_apply()) {
+                    const int old_id = g_db.tab == 1 ? IDDB_TAB_I : g_db.tab == 2 ? IDDB_TAB_E
+                                     : g_db.tab == 3 ? IDDB_TAB_T : IDDB_TAB_H;
+                    for (const int button : {IDDB_TAB_H, IDDB_TAB_I, IDDB_TAB_E, IDDB_TAB_T})
+                        SendMessageW(GetDlgItem(g_db.win, button), BM_SETCHECK,
+                                     button == old_id ? BST_CHECKED : BST_UNCHECKED, 0);
+                    return 0;
+                }
                 g_db.tab = (id == IDDB_TAB_I) ? 1
                          : (id == IDDB_TAB_E) ? 2
                          : (id == IDDB_TAB_T) ? 3 : 0;
@@ -7604,21 +7745,30 @@ LRESULT CALLBACK database_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 db_refresh();
                 return 0;
             }
+            if (code == EN_CHANGE && (id == IDDB_GOLD || (id >= IDDB_F1 && id < IDDB_F1 + DB_MAX_ROWS))) {
+                db_status("Eingabe geändert - noch nicht gespeichert");
+                return 0;
+            }
+            if (code != BN_CLICKED) return 0;
             if (id == IDDB_NEW)    { db_add(); return 0; }
             if (id == IDDB_DEL)    { db_delete(); return 0; }
             if (id == IDDB_SAVE)   { db_save(); return 0; }
             if (id == IDDB_RELOAD) {
-                db_load();
-                g_db.sel = -1;
-                db_refresh();
-                db_status("Vom Datenträger neu geladen");
+                if ((g_db.dirty || db_pending()) && MessageBoxW(
+                        h, L"Ungespeicherte Datenbankänderungen verwerfen und neu laden?",
+                        L"Datenbank", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) return 0;
+                if (db_load()) {
+                    g_db.sel = -1;
+                    db_refresh();
+                    if (!g_db.hint_active) db_status("Vom Datenträger neu geladen");
+                }
                 return 0;
             }
-            if (id == IDDB_CLOSE)  { DestroyWindow(h); return 0; }
+            if (id == IDDB_CLOSE)  { database_request_close(); return 0; }
             return 0;
         }
         case WM_CLOSE:
-            DestroyWindow(h);
+            database_request_close();
             return 0;
         case WM_DESTROY:
             if (g_db.win == h) {
@@ -7631,6 +7781,14 @@ LRESULT CALLBACK database_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 }
                 g_db.lbl_status = nullptr;
                 g_db.sel = -1;
+                g_db.before = DatabaseForm{};
+                g_db.gold_editable = false;
+                for (bool& editable : g_db.field_editable) editable = false;
+                g_db.dirty = false;
+                g_db.syncing = false;
+                g_db.hint_active = false;
+                g_db.disk_present = false;
+                g_db.disk_text.clear();
             }
             return 0;
     }
@@ -7660,7 +7818,8 @@ void open_database_dialog() {
                                mr.left + 140, mr.top + 40, 716, 768,
                                g.main, nullptr, GetModuleHandleW(nullptr), nullptr);
 
-    db_load();
+    if (!g_db.win) return;
+    if (!db_load()) { DestroyWindow(g_db.win); return; }
 
     // Reiter + Gold
     db_control(L"Button", L"Helden", BS_AUTORADIOBUTTON | WS_GROUP,
@@ -7672,7 +7831,7 @@ void open_database_dialog() {
     db_control(L"Button", L"Truppen", BS_AUTORADIOBUTTON,
                278, 10, 90, 24, IDDB_TAB_T);
     db_control(L"Static", L"Gold:", 0, 396, 13, 40, 20, 0);
-    g_db.ed_gold = db_control(L"Edit", L"0", WS_BORDER | ES_RIGHT,
+    g_db.ed_gold = db_control(L"Edit", L"0", WS_BORDER | ES_RIGHT | ES_AUTOHSCROLL,
                               438, 10, 80, 24, IDDB_GOLD);
     SendMessageW(GetDlgItem(g_db.win, IDDB_TAB_H), BM_SETCHECK, BST_CHECKED, 0);
 
@@ -7688,7 +7847,7 @@ void open_database_dialog() {
     for (int i = 0; i < DB_MAX_ROWS; ++i) {
         const int y = 44 + i * 46;
         g_db.lbl[i] = db_control(L"Static", L"", 0, 292, y, 250, 18, IDDB_L1 + i);
-        g_db.ed[i] = db_control(L"Edit", nullptr, WS_BORDER | ES_LEFT,
+        g_db.ed[i] = db_control(L"Edit", nullptr, WS_BORDER | ES_LEFT | ES_AUTOHSCROLL,
                                 292, y + 18, 380, 24, IDDB_F1 + i);
     }
 
@@ -7697,9 +7856,9 @@ void open_database_dialog() {
     db_control(L"Button", L"Neu laden", BS_PUSHBUTTON, 420, 674, 120, 30, IDDB_RELOAD);
 
     g_db.tab = 0;
-    g_db.sel = db_array("actors")->arr.empty() ? -1 : 0;
+    const JsonValue* actors = db_array("actors");
+    g_db.sel = actors && !actors->arr.empty() ? 0 : -1;
     db_refresh();
-    db_status("database.json: " + db_path());
 
     ShowWindow(g_db.win, SW_SHOW);
     SetForegroundWindow(g_db.win);

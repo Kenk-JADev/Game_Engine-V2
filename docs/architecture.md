@@ -1540,7 +1540,9 @@ die 19i-Daten (`enemies`, `troops`) waren reine JSON-Handarbeit. Jetzt:
   level, exp bei Helden) bleiben beim Speichern erhalten - der Dialog
   schreibt nur seine Tabellenfelder.
 - **Truppen-Gegnerliste**: das Array `enemies` wird komma-getrennt im Edit
-  gezeigt (`db_join_ids`) und getrimmt zurückverwandelt (`db_split_ids`).
+  angezeigt und beim Ändern getrimmt zurückverwandelt. Seit 19o.3 erledigen
+  dies `database_ids_text`/`database_ids_parse`; nicht eindeutig darstellbare
+  Altdaten bleiben erhalten bzw. werden nur nach Bestätigung ersetzt.
 - **Neu-Anlegen** mit sinnvollen Defaults je Reiter (gegner_N/trupp_N mit
   Basiswerten), Fenster auf 716x768 gewachsen, Menü-/Hilfetexte nachgezogen.
 
@@ -1711,6 +1713,44 @@ Demo-Datenbank, JSON-Roundtrips und unberührte allgemeine Eigenschaften.
 CI baut/linkt den Win32-Editor, hat aber keine GPU/Fenster für einen echten
 grafischen Live-Test (siehe Backlog und Handoff).
 
+## Datentreue im F9-Datenbankdialog (Etappe 19o.3)
+
+`database_form.h` liest Text, Integer, Float und Gegnerlisten als portable
+Formularwerte. `database_form_prepare` prüft alle geänderten Felder und
+Gold auf einer Kopie, `database_form_commit` übernimmt erst nach Rückfragen.
+Unveränderte Werte, Typen, fehlende Felder (auch Helden-Level/Exp) und
+unbekannte Daten werden nicht ergänzt oder gerundet. Ganzzahlen werden
+als Dezimaltext mit beliebiger Stellenzahl eingegeben (optional Plus/Minus,
+führende Nullen werden normalisiert), Dezimalwerte müssen endlich sein und
+dürfen Dezimalkomma/Exponent verwenden. Semantische Bereiche wie HP > 0
+oder Drop-Chance 0..1 werden weiterhin nicht geprüft.
+
+Gold ist unabhängig von der Eintragsauswahl. Bei Fehleingaben bleiben alle
+Entwürfe erhalten und Auswahl/Reiter wechseln nicht. Gegner-IDs können
+doppelt vorkommen; mehrdeutige/falsche Altdaten werden bei Listenänderung
+bestätigt, Nicht-Objekte bleiben bis zum bestätigten Löschen stehen. F9
+sperrt Einzeltexte, die das Windows-Editfeld nicht verlustfrei darstellen
+kann. Fehlende Sammlungen entstehen erst bei Neu, falsche Sammlungen nur
+nach ausdrücklicher Zustimmung. Schließen und Neu laden fragen bei
+ungespeicherten Änderungen; beim Schließen des Editors wird F9 ebenfalls
+berücksichtigt.
+
+Ungültiges JSON, doppelte Schlüssel, ungültiges UTF-8/Unicode, falsche
+Wurzeltypen und nicht endliche Float-Altwerte werden nicht geladen. Ein
+Lesefehler ersetzt weder den bisherigen Entwurf noch die Datei. Speichern
+vergleicht die Dateibytes mit dem Stand beim Laden/Speichern, fragt bei
+externen Änderungen und schreibt vor dem Ersetzen eine neue temporäre
+Datei. Der Vergleich und das Ersetzen sind nicht atomar gegen andere
+Prozesse (offener Backlog-Punkt); Dateien erst nach Sicherung gemeinsam
+bearbeiten. Fehlende database.json lässt sich explizit neu speichern.
+
+`tools/json_test.cpp` testet die Logik einschließlich ungültiger Dokumente,
+fehlender Auswahl, sehr großer Werte, kaputter Listen, Konfliktvergleich
+und der mitgelieferten Datenbanken. Lokal: 314 C++-Checks und ASan/UBSan
+erfolgreich, Win64 cross-kompiliert, Ruby-WASM 25 OK/1 Windows-EXE-Skip.
+Die Win32-Dateioperationen und Dialog-Abläufe sind damit nicht grafisch
+getestet; ein echter Windows-Live-Test steht aus.
+
 ## Datentreue Block-Zonen im F2-Dialog (Etappe 19o.2)
 
 `blocked_form.h` zeigt für jeden vorhandenen Arrayeintrag eine temporäre
@@ -1749,7 +1789,7 @@ eingelesen; `-0` als Ganzzahl wird wie in Ruby zu `0` normalisiert.
 Tests decken 2^53, 2^63, negative und 400-stellige Werte, Kopien, Änderungen,
 Inkremente und ungültige Tokens ab. Die Ruby-JSON-Brücke vergleicht außerdem
 Typen und synthetische große Zahlen. Grenzen: Kommazahlen/Rechenoperationen
-bleiben double-basiert; F6/F9 und das alte Objektformular können aktuell
+bleiben double-basiert; F6 und das alte Objektformular können aktuell
 bei Übernahme unberührte angezeigte Felder runden (siehe Backlog).
 
 ## NPCs, Schilder und Objekte im Platzier-Editor (Etappe 19n)

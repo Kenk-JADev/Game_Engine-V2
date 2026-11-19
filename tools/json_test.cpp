@@ -17,6 +17,7 @@
 // ============================================================================
 
 #include "editor/json.h"
+#include "editor/database_form.h"
 #include "editor/encounter_check.h"
 #include "editor/encounter_form.h"
 #include "editor/map_props_form.h"
@@ -648,6 +649,226 @@ void map_props_form_tests() {
           removing.ok && removing.removed == 2 && changes.changed && root.find("blocked") == nullptr);
 }
 
+// Dieselben portablen Funktionen dienen dem F9-Dialog als Schreibkern.
+void database_form_tests(const std::string& wurzel) {
+    using namespace rune::editor;
+    std::printf("== Editor: F9-Datenbank (Datenmodell) ==\n");
+    const std::vector<DatabaseFieldSpec> specs = {
+        {"id", DatabaseFieldKind::Text}, {"name", DatabaseFieldKind::Text},
+        {"hp", DatabaseFieldKind::Integer}, {"drop_rate", DatabaseFieldKind::Decimal},
+        {"enemies", DatabaseFieldKind::IdList}
+    };
+    JsonValue root = json_parse(R"({"actors":[{"id":"arik","name":"Arik",
+      "hp":9007199254740993,"level":9007199254740995,"drop_rate":0.12345678901234567,
+      "enemies":["wolf","wolf","bandit"],"extra":{"wichtig":true}},42],"andere":null})");
+    const std::string original_root = json_write(root);
+    const JsonValue original_entry = root.find("actors")->arr[0];
+    DatabaseForm before = database_form_read(root, &root.find("actors")->arr[0], specs);
+    std::string rate_text = json_write(*original_entry.find("drop_rate"));
+    rate_text.pop_back();
+    check("Anzeige zeigt große Ganzzahl und präzise Kommazahl unverändert",
+          before.fields[2] == "9007199254740993" && before.fields[3] == rate_text && rate_text.size() > 5);
+    check("Gegnerliste zeigt Reihenfolge und Duplikate", before.fields[4] == "wolf, wolf, bandit");
+    check("fehlendes Gold wird als 0 angezeigt, aber nicht angelegt", before.gold == "0" && !root.find("gold"));
+    DatabaseEdit edit = database_form_prepare(root, &root.find("actors")->arr[0], specs, before, before);
+    check("unverändertes F9-Formular ändert auch fehlende Felder nicht", edit.ok && !edit.changed &&
+          database_form_commit(root, "actors", 0, edit) && json_write(root) == original_root);
+
+    DatabaseForm after = before;
+    after.fields[1] = "Arik der Große";
+    edit = database_form_prepare(root, &root.find("actors")->arr[0], specs, before, after);
+    check("Entwurf bleibt ohne Commit unverändert", edit.ok && edit.entry_changed && !edit.gold_changed &&
+          json_write(root) == original_root);
+    check("Namensänderung übernommen", database_form_commit(root, "actors", 0, edit) &&
+          root.find("actors")->arr[0].find("name")->str == "Arik der Große");
+    const JsonValue& actor = root.find("actors")->arr[0];
+    check("unberührte Integer, Kommazahlen, Level und Zusatzdaten bleiben exakt",
+          json_write(*actor.find("hp")) == json_write(*original_entry.find("hp")) &&
+          json_write(*actor.find("drop_rate")) == json_write(*original_entry.find("drop_rate")) &&
+          json_write(*actor.find("level")) == json_write(*original_entry.find("level")) &&
+          actor.find("extra")->find("wichtig")->b && !actor.find("exp") && !root.find("gold"));
+    check("Nicht-Objekt in der Sammlung bleibt beim Ändern erhalten",
+          root.find("actors")->arr[1].is_num() && root.find("actors")->arr[1].number() == 42);
+
+    // Gold ist unabhängig von Selektion und Reiter. Root.set darf die
+    // Speicheradresse der vorher bearbeiteten Sammlung verschieben.
+    before = database_form_read(root, nullptr, specs);
+    after = before;
+    after.gold = "+0009007199254740993";
+    const std::string actors_before = json_write(*root.find("actors"));
+    edit = database_form_prepare(root, nullptr, specs, before, after);
+    check("Gold ohne Auswahl unabhängig vom Eintrag übernehmen", edit.ok && !edit.entry_changed &&
+          edit.gold_changed && database_form_commit(root, "items", -1, edit) &&
+          json_write(*root.find("gold")) == "9007199254740993\n" &&
+          json_write(*root.find("actors")) == actors_before && !root.find("items"));
+    before = database_form_read(root, &root.find("actors")->arr[0], specs);
+    after = before; after.gold = "-12"; after.fields[1] = "Neu";
+    edit = database_form_prepare(root, &root.find("actors")->arr[0], specs, before, after);
+    check("Gold und Eintrag gemeinsam übernehmen ohne veralteten Zeiger", edit.ok && edit.entry_changed &&
+          edit.gold_changed && database_form_commit(root, "actors", 0, edit) &&
+          root.find("actors")->arr[0].find("name")->str == "Neu" &&
+          json_write(*root.find("gold")) == "-12\n");
+
+    before = database_form_read(root, &root.find("actors")->arr[0], specs);
+    const std::string before_bad = json_write(root);
+    after = before; after.fields[1] = "Nicht übernehmen"; after.fields[2] = "12oops"; after.gold = "3";
+    edit = database_form_prepare(root, &root.find("actors")->arr[0], specs, before, after);
+    check("fehlerhaftes Feld verhindert alle Änderungen einschließlich Gold", !edit.ok && !edit.changed &&
+          edit.field == "hp" && !database_form_commit(root, "actors", 0, edit) && json_write(root) == before_bad);
+    after = before; after.fields[1] = "Nicht übernehmen"; after.gold = "1.5";
+    edit = database_form_prepare(root, &root.find("actors")->arr[0], specs, before, after);
+    check("ungültiges globales Gold wird gesondert gemeldet", !edit.ok && edit.gold_error &&
+          json_write(root) == before_bad);
+    after = before; after.fields[1] = "Name\nmit Zeile";
+    edit = database_form_prepare(root, &root.find("actors")->arr[0], specs, before, after);
+    check("Steuerzeichen in neuen Textfeldern werden abgelehnt", !edit.ok && edit.field == "name");
+    after = before; after.fields[1] = std::string("A\0B", 3);
+    check("eingebettetes NUL wird abgelehnt", !database_form_prepare(root, &root.find("actors")->arr[0],
+                                                                     specs, before, after).ok);
+    const std::vector<DatabaseFieldSpec> enemy_gold = {{"gold", DatabaseFieldKind::Integer}};
+    const JsonValue enemy = json_parse(R"({"gold":5})");
+    before = database_form_read(root, &enemy, enemy_gold); after = before; after.fields[0] = "falsch";
+    edit = database_form_prepare(root, &enemy, enemy_gold, before, after);
+    check("Fehler im Gegner-Gold ist nicht das globale Gold", !edit.ok && edit.field == "gold" && !edit.gold_error);
+
+    JsonValue number;
+    check("Ganzzahl-Eingabe normalisiert Vorzeichen und führende Nullen",
+          database_integer(" +0000120 ", number) && json_write(number) == "120\n" &&
+          database_integer("-000", number) && json_write(number) == "0\n");
+    const std::string huge(400, '9');
+    check("neue 400-stellige Ganzzahl wird nicht gerundet", database_integer(huge, number) &&
+          json_write(number) == huge + "\n");
+    for (const char* invalid : {"", "+", "--3", "1.2", "1e3", "7xyz", "NaN", "0x10"}) {
+        const std::string label = std::string("ungültige Ganzzahl abgelehnt: ") + invalid;
+        check(label.c_str(), !database_integer(invalid, number));
+    }
+    check("Kommazahl akzeptiert Dezimalkomma und Exponent", database_decimal("1,25e-1", number) &&
+          !number.is_int && number.number() == 0.125);
+    for (const char* invalid : {"", "NaN", "inf", "1e9999", "1e-9999", "0x1p2", "1,2,3", "8text"}) {
+        const std::string label = std::string("ungültige Kommazahl abgelehnt: ") + invalid;
+        check(label.c_str(), !database_decimal(invalid, number));
+    }
+
+    JsonValue list;
+    check("Gegnerlisten akzeptieren Komma/Semikolon, Umlaute und Duplikate",
+          database_ids_parse(" wolf, wölfchen; wolf ", list) && list.arr.size() == 3 &&
+          list.arr[0].str == "wolf" && list.arr[1].str == "wölfchen" && list.arr[2].str == "wolf");
+    check("Gegnerlisten lehnen Steuerzeichen ab", !database_ids_parse("wolf,\n bandit", list) &&
+          !database_ids_parse(std::string("wolf\0bandit", 11), list));
+    JsonValue mixed_root = json_parse(R"({"troops":[{"name":"Alt","enemies":["wolf",42," x ","a,b",""]}],"gold":0})");
+    const std::vector<DatabaseFieldSpec> troop = {{"name", DatabaseFieldKind::Text},
+                                                  {"enemies", DatabaseFieldKind::IdList}};
+    const JsonValue* mixed = &mixed_root.find("troops")->arr[0];
+    before = database_form_read(mixed_root, mixed, troop);
+    check("nicht eindeutig darstellbare alte Gegnerliste erkannt",
+          !database_ids_representable(mixed->find("enemies")) &&
+          before.fields[1].find("[ungültiger Eintrag]") != std::string::npos);
+    after = before; after.fields[0] = "Neu";
+    edit = database_form_prepare(mixed_root, mixed, troop, before, after);
+    check("andere Änderung erhält fehlerhafte alte Gegnerliste ohne Rückfrage", edit.ok &&
+          !edit.replaces_invalid && json_write(*edit.entry.find("enemies")) == json_write(*mixed->find("enemies")));
+    after = before; after.fields[1] = "wolf, bandit";
+    const std::string mixed_before = json_write(mixed_root);
+    edit = database_form_prepare(mixed_root, mixed, troop, before, after);
+    check("Ersetzen fehlerhafter Gegnerdaten verlangt Rückfrage und verändert noch nichts",
+          edit.ok && edit.replaces_invalid && json_write(mixed_root) == mixed_before);
+    check("nach Bestätigung lassen sich Gegnerdaten ausdrücklich ersetzen",
+          database_form_commit(mixed_root, "troops", 0, edit) &&
+          mixed_root.find("troops")->arr[0].find("enemies")->arr.size() == 2);
+    const JsonValue damaged = json_parse(R"({"enemies":"keine Liste","name":{"extra":1}})");
+    check("falsche Typen sind sichtbar und als nicht darstellbar markiert",
+          database_ids_text(damaged.find("enemies")) == "[ungültige Gegnerliste]" &&
+          !database_ids_representable(damaged.find("enemies")) &&
+          database_field_text(damaged.find("name"), DatabaseFieldKind::Text) == "[ungültig]");
+    const JsonValue hidden_ids = json_parse(R"(["","Zeile\nneu"])");
+    check("leere und nicht einzeilige IDs sind als Platzhalter sichtbar und reparierbar",
+          database_ids_text(&hidden_ids) == "[leere ID], [nicht darstellbare ID]" &&
+          !database_ids_representable(&hidden_ids));
+    check("alte Zeilenumbrüche und NUL im Einzelfeld müssen gesperrt werden",
+          !database_single_line("eine\nZeile") && !database_single_line(std::string("A\0B", 3)) &&
+          database_single_line("Äpfel und Leerzeichen"));
+
+    JsonValue reallocate = json_parse(R"({"actors":[{"name":"Alt"}]})");
+    const std::vector<DatabaseFieldSpec> names = {{"name", DatabaseFieldKind::Text}};
+    before = database_form_read(reallocate, &reallocate.find("actors")->arr[0], names);
+    after = before; after.fields[0] = "Geändert"; after.gold = "100";
+    edit = database_form_prepare(reallocate, &reallocate.find("actors")->arr[0], names, before, after);
+    check("fehlendes Gold hinzufügen invalidiert keinen benötigten Eintragszeiger",
+          database_form_commit(reallocate, "actors", 0, edit) &&
+          reallocate.find("actors")->arr[0].find("name")->str == "Geändert" &&
+          reallocate.find("gold")->number() == 100);
+    const std::string before_stale = json_write(reallocate);
+    check("veraltete Auswahl verhindert die gesamte Übernahme",
+          !database_form_commit(reallocate, "actors", 9, edit) && json_write(reallocate) == before_stale);
+    const JsonValue invalid_entry = json_parse("42");
+    before = database_form_read(reallocate, &invalid_entry, names); after = before; after.gold = "101";
+    edit = database_form_prepare(reallocate, &invalid_entry, names, before, after);
+    check("Goldänderung auch mit ungültigem Eintrag möglich", edit.ok && edit.gold_changed && !edit.entry_changed);
+    after.fields[0] = "unerlaubt";
+    check("Nicht-Objekt lässt sich nicht still durch Objekt ersetzen",
+          !database_form_prepare(reallocate, &invalid_entry, names, before, after).ok);
+    check("nicht endliche Kommazahlen schützen die ganze Datenbank beim Laden",
+          !database_document_serializable(json_parse(R"({"x":[1e400]})")) &&
+          database_document_serializable(json_parse("{\"x\":" + huge + "}")));
+
+    JsonValue loaded = json_parse(R"({"behalten":true})");
+    const std::string saved_load = json_write(loaded);
+    const std::string invalid_utf8 = std::string("{\"a\":\"") + std::string("\xc0\x80", 2) + "\"}";
+    const std::vector<std::pair<std::string, DatabaseParseStatus>> bad_documents = {
+        {"", DatabaseParseStatus::InvalidJson},
+        {"{kaputt}", DatabaseParseStatus::InvalidJson},
+        {"{\"name\":\"ungültig\nZeile\"}", DatabaseParseStatus::InvalidJson},
+        {"[]", DatabaseParseStatus::InvalidRoot},
+        {invalid_utf8, DatabaseParseStatus::InvalidUtf8},
+        {R"({"a":"\uD800"})", DatabaseParseStatus::InvalidUtf8},
+        {R"({"a":1,"a":2})", DatabaseParseStatus::DuplicateKey},
+        {R"({"array":[{"a":1,"\u0061":2}]})", DatabaseParseStatus::DuplicateKey},
+        {R"({"a":[1e999]})", DatabaseParseStatus::Nonfinite}
+    };
+    for (const auto& [text, status] : bad_documents) {
+        check("defekte Datenbank blockiert Laden und erhält bisherigen Baum",
+              database_parse_document(text, loaded) == status && json_write(loaded) == saved_load);
+    }
+    check("gültiges Unicode und maskierte Steuerzeichen bleiben ladbar",
+          database_parse_document(R"({"name":"Äpfel 🍎","code":"a\n\u0000b","other":"\\\""})", loaded) ==
+              DatabaseParseStatus::Ok && loaded.find("name")->str == "Äpfel 🍎" &&
+          loaded.find("code")->str == std::string("a\n\0b", 4));
+    check("UTF-8-Prüfung erkennt Überlänge, Surrogate, unvollständige und zu große Codepoints",
+          database_valid_utf8("Äpfel 🍎") && !database_valid_utf8(std::string("\xc0\x80", 2)) &&
+          !database_valid_utf8(std::string("\xed\xa0\x80", 3)) &&
+          !database_valid_utf8(std::string("\xf0\x9f", 2)) &&
+          !database_valid_utf8(std::string("\xf4\x90\x80\x80", 4)) &&
+          !database_single_line(std::string("\xc0\x80", 2)));
+    check("Dateikonfliktprüfung erkennt Änderungen, Neuanlage und Löschung",
+          !database_disk_changed(false, "", false, "") &&
+          !database_disk_changed(true, "original", true, "original") &&
+          database_disk_changed(true, "original", true, "extern") &&
+          database_disk_changed(true, "original", false, "") &&
+          database_disk_changed(false, "", true, "neu"));
+    for (const char* path : {"game/data/database.json", "projekte/dorf/data/database.json"}) {
+        std::string text;
+        JsonValue file;
+        const bool ok = datei_lesen(wurzel + "/" + path, text) &&
+                        database_parse_document(text, file) == DatabaseParseStatus::Ok;
+        const std::string label = std::string("mitgelieferte Datenbank lässt sich sicher laden: ") + path;
+        check(label.c_str(), ok);
+    }
+
+    std::string data;
+    if (datei_lesen(wurzel + "/game/data/database.json", data)) {
+        JsonValue demo = json_parse(data);
+        const std::string initial = json_write(demo);
+        const JsonValue* demo_actor = &demo.find("actors")->arr[0];
+        before = database_form_read(demo, demo_actor, specs);
+        edit = database_form_prepare(demo, demo_actor, specs, before, before);
+        check("echte Demo-Datenbank bleibt bei unveränderter F9-Übernahme erhalten",
+              edit.ok && !edit.changed && database_form_commit(demo, "actors", 0, edit) &&
+              json_write(demo) == initial && json_write(json_parse(initial)) == initial);
+    } else {
+        check("Demo-Datenbank zum F9-Test lesbar", false);
+    }
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -928,6 +1149,7 @@ int main(int argc, char** argv) {
     blocked_form_tests();
     map_props_form_tests();
     placement_form_tests();
+    database_form_tests(wurzel);
 
     std::printf("== JSON: Grosse/tiefe Dokumente ==\n");
     {

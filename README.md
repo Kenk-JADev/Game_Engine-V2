@@ -21,7 +21,7 @@ Laufzeit neu geladen werden.
 
 ## Was es kann
 
-**Editor** (alles moduslos, mehrere Fenster gleichzeitig):
+**Editor** (Nebenfenster meist moduslos; F5 ist modal):
 
 - Kartenbaum wie die XP-Kartenliste: anlegen, umbenennen (inplace), löschen,
   Doppelklick = Eigenschaften
@@ -261,6 +261,22 @@ Karte, **Strg+S** speichert sie auf Platte; Abbrechen verwirft den Dialog.
 Die Vorlage `game/data` enthält Beispieltruppen. Bestehende Projekte, auch
 `projekte/dorf`, werden nicht automatisch umgestellt und benötigen bei
 Bedarf eigene Gegner und Truppen in ihrer Datenbank.
+
+### Datenbank (F9)
+
+F9 übernimmt beim Reiter- oder Eintragswechsel nur geänderte Felder;
+unveränderte Zahlen, optionale Felder und unbekannte Zusatzdaten bleiben
+erhalten. Gold kann auch ohne ausgewählten Eintrag geändert werden. Ganze
+Zahlen werden exakt gespeichert; Kommazahlen akzeptieren Punkt oder Komma.
+Ungültige Eingaben blockieren die Übernahme. Fehlende Sammlungen entstehen
+erst beim Anlegen eines Eintrags; fehlerhafte Sammlungen und uneindeutige
+alte Gegnerlisten werden nur nach Rückfrage ersetzt. Nicht darstellbare
+Einzeltexte sind geschützt. Speichern schreibt zunächst eine temporäre Datei;
+beim Schließen/Neu-Laden wird vor dem Verwerfen gefragt. Hat ein anderes
+Programm die Datei seit dem Laden geändert, fragt F9 vor dem Überschreiben.
+Diese Konfliktprüfung ist keine atomare Sperre gegen gleichzeitiges Schreiben.
+Ungültiges JSON, doppelte Schlüssel, ungültiges Unicode und nicht endliche
+Kommazahlen verhindern das Laden, statt eine leere Datenbank zu überschreiben.
 
 Regeln: Editor und Spiel schreiben beide `JSON.pretty_generate`-Format (LF,
 2 Leerzeichen, kürzeste exakte Zahlendarstellung) — deshalb wirft Speichern
