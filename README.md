@@ -36,7 +36,8 @@ Laufzeit neu geladen werden.
   Switches), Triggern (`action`, `touch`, `auto`, `parallel`) und 26 Befehlen
   in Kategorien (inkl. Bewegungsroute, Zahleneingabe, Kampf starten)
 - Script-Editor, Materialbase (PNG/BMP-Import per WIC, auch per Drag & Drop),
-  Datenbank (Helden, Items, Gold), Sound-Test, Probleme-Dialog (F10)
+  Datenbank (Helden, Items, Gegner, Truppen, Gold), Sound-Test,
+  Probleme-Dialog (F10)
 - Playtest: startet `Rune3D.exe --project <name>` mit der gespeicherten Karte
 
 **Engine**: Third-Person-Spieler mit Physik (Schwerkraft, Sprung, `solid`-Teile
@@ -59,7 +60,7 @@ $game_map/$game_screen/$game_temp`, `Graphics`, `Input`, `Audio`,
 | Kartenliste / Karten-Eigenschaften | Kartenbaum + Dialog | ✅ |
 | Event-Editor, Seiten, Bedingungen | 26 Befehle, 4 Trigger, Self-Switches A-D | ✅ |
 | Schalter & Variablen | `GameState` | ✅ |
-| Datenbank (Helden, Items) | Helden, Items, Gold, Gegner, Truppen | ✅ teilweise |
+| Datenbank (Helden, Items, Gegner, Truppen …) | alle vier Sammlungen + Gold per GUI editierbar; keine Skills/Waffen/Zustände | ✅ teilweise |
 | Tileset / Boden | Splat-Böden, Höhen-Malwerkzeug | ✅ |
 | Script-Editor (Ruby) | `Scripts`-Sandbox + Editor | ✅ |
 | Playtest | F4 | ✅ |

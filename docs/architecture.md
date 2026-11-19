@@ -1521,6 +1521,33 @@ Zweite Maßnahme: README-Vergleichstabelle und Feature-Beschreibung auf
 den Stand 19d-19i gebracht (Kampf-Grundgerüst, Bewegungsrouten, Self-
 Switches, Zahleneingabe, Fade, RGSS-Schicht, 26 Befehle).
 
+## Datenbank-Dialog: Gegner und Truppen (Etappe 19k.1)
+
+Erster Teil der Editor-Lücken-Runde (User-Auswahl nach 19j). Der
+Datenbank-Dialog (F9) konnte seit 17g nur Helden und Items bearbeiten -
+die 19i-Daten (`enemies`, `troops`) waren reine JSON-Handarbeit. Jetzt:
+
+- **Vier Reiter**: Helden / Items / Gegner / Truppen; ein Listenfeld links
+  (je Reiter eigene Anzeige: Klasse, Art, HP, Gegner-Anzahl), Formular
+  rechts.
+- **Feldgesteuertes Formular**: statt fester 9 Zeilen mit Tab-Spezifika im
+  Code gibt es `DbField`-Tabellen (`DB_FIELDS_ACTOR/ITEM/ENEMY/TROOP`) aus
+  JSON-Schlüssel, Beschriftung, Zahlen-Flag und Präzision; `db_fields(tab)`
+  wählt sie, Layout/Füllen/Zurückschreiben sind generisch
+  (`DB_MAX_ROWS` = 13 Zeilen, Gegner brauchen 12: id/name/hp/mp/atk/def/
+  spi/agi/exp/gold/drop/drop_rate). Unbekannte JSON-Schlüssel (color, desc,
+  level, exp bei Helden) bleiben beim Speichern erhalten - der Dialog
+  schreibt nur seine Tabellenfelder.
+- **Truppen-Gegnerliste**: das Array `enemies` wird komma-getrennt im Edit
+  gezeigt (`db_join_ids`) und getrimmt zurückverwandelt (`db_split_ids`).
+- **Neu-Anlegen** mit sinnvollen Defaults je Reiter (gegner_N/trupp_N mit
+  Basiswerten), Fenster auf 716x768 gewachsen, Menü-/Hilfetexte nachgezogen.
+
+`tools/sync_test.rb` prüft die vier Feldtabellen gegen die echte
+`game/data/database.json`: jeder editierbare Schlüssel muss in den
+Einträgen vorkommen (erste Spalte immer `id`) - editiert der Dialog ins
+Leere, kippt der Test.
+
 ## Ruby-API (Stand Etappe 2)
 
 | API | Bedeutung |

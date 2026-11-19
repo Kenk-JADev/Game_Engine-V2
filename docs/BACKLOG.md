@@ -187,6 +187,17 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Etappe 19a.
 
 ## Erledigt
+### [Editor] Datenbank-Dialog: Gegner/Truppen-Tab — erledigt (19k.1)
+- Wunsch: Editor-Lücken schließen (User-Auswahl nach 19j); Gegner/Truppen
+  (19i) waren bisher nur per JSON-Handarbeit editierbar.
+- Umsetzung: vier Reiter (Helden/Items/Gegner/Truppen), feldgesteuertes
+  Formular über DB_FIELDS_*-Tabellen (12 Gegner-Felder inkl. drop/drop_rate,
+  Truppen-Gegnerliste komma-getrennt), Neu-Defaults je Reiter, unbekannte
+  Schlüssel (color/desc/level/exp) bleiben erhalten; sync_test prüft die
+  Feldtabellen gegen database.json.
+- Betroffene Stellen: `src/editor/editor_main.cpp` (DB-Dialog-Abschnitt),
+  `tools/sync_test.rb`, `README.md`.
+
 ### [Tests/Doku] Professionalisierungs-Runde: Sync-Test + README-Auffrischung — erledigt (19j)
 - Wunsch (User): „Alles anschauen ob man es professionell bessern/einbauen
   kann" — Auswahl per Frage: Professionalisierungs-Runde.

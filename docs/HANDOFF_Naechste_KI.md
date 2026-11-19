@@ -1,4 +1,4 @@
-# Handoff für die nächste KI - Rune3D, Stand nach Etappe 19j
+# Handoff für die nächste KI - Rune3D, Stand nach Etappe 19k
 
 **Datum des Stands:** HEAD (nach Commit) — Etappe 19a: CI (GitHub Actions), portabler Build, Daten-Validierung
 **Projekt:** `C:/Users/jusagu/Desktop/Engine` — Windows-Only 3D-RPG-Engine (C++20/Win32/D3D11 + echtes CRuby 3.4.11), Editor = eigenes Programm `RuneEditor.exe`.
@@ -36,6 +36,7 @@ Der User beauftragte eine Überarbeitung von Engine und Editor **im Stil von RPG
 | 19d | `e56b692` + Nacharbeit `0660de3` (CI-Grün) | XP-Features Welle 1: Self-Switches A-D pro Event (GameState, Seiten-Bedingung, `self_switch`/`if_self_switch`, Savegame, Editor-Combos im Seite-Kasten) + Bildschirmblende (`fade.rb`, Befehl `fade`, Reset bei Kartenwechsel); 23 Befehlstypen synchron in CMD_TYPES/ISSUE_CMD_TYPES/EV_TYPES; Tests `self_switch_test.rb`, `fade_test.rb` |
 | 19e | `59845c1` (CI-Grün) | RGSS-Schicht (`game/engine/rgss.rb`): `$game_*`-Globale, `Graphics`/`Input`/`Audio`/`load_data`+`save_data` wie RPG Maker XP (Abweichungen: JSON statt Marshal, Namen statt IDs, kein `$scene`-Loop) + Launcher-Ersteinrichtung `:first` (ohne Projekt: Enter/N = erstellen, D = Demo, Esc = beenden; `ensure_demo` nicht mehr automatisch) + Context-Helfer `fade`/`self_switch` + `$game_system.menu_disabled/save_disabled` beachtet; Tests `rgss_test.rb`, script_test-Abschnitt 6 |
 | 19f | `96be63d` (CI-Grün) | Artefakt-Bugfix (User-Konsole): `Rune3D-Windows` enthält jetzt `game/` + `projekte/` neben den EXEs (CI kopiert sie nach `build/`); beide EXEs loggen einen klaren Hinweis, wenn `game/` unter der Wurzel fehlt |
+| 19k.1 | HEAD | Datenbank-Dialog (F9): vier Reiter Helden/Items/Gegner/Truppen, feldgesteuertes Formular (DB_FIELDS_*), Truppen-Gegnerliste komma-getrennt, sync_test prüft Feldtabellen gegen database.json |
 | 19j | `74dc98f` (CI-Grün Run 44546218102) | Professionalisierung: `tools/sync_test.rb` (Ruby/C++-Vokabular maschinell abgeglichen: Befehlstypen+Enum+Labels, Trigger, Operatoren, Wetter, Self-Switches, Effekte, Interpreter-when-Listen, DB-Dialog vs. database.json) + README auf Stand 19d-19i |
 | 19i | `05d3218` + Nacharbeit bis `50f9fec` (CI-Grün) | Zahleneingabe (input_number, UI.nummer_eingabe) + Kampf-Grundgerüst (battle.rb: Battler/Phasen/Sieg-Niederlage-Exp-Gold-Drop, database.json enemies+troops, Editor-Typen, CMD_TYPES 26); Tests battle_test.rb + script_test-Abschnitt 8 |
 | 19h.2 | `4654729` + Nacharbeit bis `8031449` (CI-Grün) | RGSS an den User-Upload `XP-Defaultscript/` ausgerichtet: $game_temp/$game_system/$game_screen/$game_map/$game_player wie die Default-Scripts, Window_Selectable, Mover mit XP-Schrittnamen+Codes+turn_*+code-Parameter (Editor Wert 3), gameover/to_title-Flags; Tests erweitert |

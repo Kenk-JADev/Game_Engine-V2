@@ -3513,7 +3513,8 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                                 L"  F2 Karten-Eigenschaften (u. a. Wetter)\n"
                                 L"  F3 Materialbase    F4 Playtest starten\n"
                                 L"  F6 Event-Editor    F8 Sound-Test\n"
-                                L"  F9 Datenbank (Helden/Items)    F11 Script-Editor\n\n"
+                                L"  F9 Datenbank (Helden/Items/Gegner/Truppen)\n"
+                                L"  F11 Script-Editor\n\n"
                                 L"Menü Karte: neue Karten anlegen, zwischen ihnen wechseln\n"
                                 L"Playtest: startet Rune3D.exe mit diesem Projekt\n"
                                 L"(--project, ohne Titelbildschirm).\n\n"
@@ -6650,55 +6651,118 @@ bool material_editor_focused() {
 }
 
 // ============================================================================
-//  Etappe 17g: Datenbank-Dialog (Helden / Items / Gold)
+//  Etappe 17g, 19k.1: Datenbank-Dialog (Helden / Items / Gegner / Truppen)
 //
-//  Bearbeitet projekte/<name>/data/database.json ({"gold","actors","items"}).
+//  Bearbeitet projekte/<name>/data/database.json
+//  ({"gold","actors","items","enemies","troops"}).
 //  Das Spiel liest sie via Database.database und baut daraus die Party
-//  (Party.setup); Gold/Inventar wandern mit den Spielständen.
-//  Zwei Reiter-artige Listen links (Helden, Items) + Formular rechts.
+//  (Party.setup) und die Kämpfe (Battle.start, Etappe 19i); Gold/Inventar
+//  wandern mit den Spielständen.
+//  Vier Reiter-Umschalter oben + eine Liste links + Formular rechts.
+//  Das Formular ist feldgesteuert (DB_FIELDS_*): pro Reiter eine Tabelle aus
+//  JSON-Schlüssel, Beschriftung, Zahlen-Flag und Präzision. Neue Felder
+//  brauchen nur einen Tabellen-Eintrag (Platz: DB_MAX_ROWS Zeilen).
+//  tools/sync_test.rb prüft die Tabellen gegen die echte database.json.
 // ============================================================================
 enum {
-    IDDB_HLIST    = 8001,   // Helden-Liste
-    IDDB_ILIST    = 8002,   // Item-Liste
+    IDDB_LIST     = 8001,   // Eintrags-Liste (alle Reiter)
     IDDB_TAB_H    = 8010,   // Umschalter: Helden
     IDDB_TAB_I    = 8011,   // Umschalter: Items
     IDDB_GOLD     = 8012,   // Gold-Edit
-    IDDB_F1       = 8020,   // Formularfeld 1 (Name / Item-ID)
-    IDDB_F2       = 8021,   // Formularfeld 2 (Klasse / Item-Name)
-    IDDB_F3       = 8022,   // Feld 3 (Stufe / Art)
-    IDDB_F4       = 8023,   // Feld 4 (HP / Stärke)
-    IDDB_F5       = 8024,   // Feld 5 (MP / Preis)
-    IDDB_F6       = 8025,   // Feld 6 (ATK / Startmenge)
-    IDDB_F7       = 8026,   // Feld 7 (DEF / Beschreibung)
-    IDDB_F8       = 8027,   // Feld 8 (SPI)
-    IDDB_F9       = 8028,   // Feld 9 (AGI)
-    IDDB_L1       = 8040,   // Labels 1..9 (analog)
-    IDDB_L2       = 8041,
-    IDDB_L3       = 8042,
-    IDDB_L4       = 8043,
-    IDDB_L5       = 8044,
-    IDDB_L6       = 8045,
-    IDDB_L7       = 8046,
-    IDDB_L8       = 8047,
-    IDDB_L9       = 8048,
+    IDDB_TAB_E    = 8013,   // Umschalter: Gegner (19k.1)
+    IDDB_TAB_T    = 8014,   // Umschalter: Truppen (19k.1)
+    IDDB_F1       = 8020,   // Formularfelder 1..13 (IDDB_F1 + Zeile)
     IDDB_NEW      = 8050,
     IDDB_DEL      = 8051,
     IDDB_SAVE     = 8052,
     IDDB_RELOAD   = 8053,
     IDDB_CLOSE    = 8054,
     IDDB_STATUS   = 8055,
+    IDDB_L1       = 8060,   // Labels 1..13 (IDDB_L1 + Zeile)
 };
+
+constexpr int DB_MAX_ROWS = 13;   // Gegner brauchen 12 Felder, eine Zeile Luft
+
+// Ein Formularfeld: JSON-Schlüssel, Beschriftung, Zahl (sonst Text),
+// Nachkommastellen. Sonderfall Truppen-"enemies": Array aus Gegner-IDs,
+// im Edit komma-getrennt (db_join_ids/db_split_ids).
+struct DbField {
+    const char*    key;
+    const wchar_t* label;
+    bool           num;
+    int            prec;
+};
+
+const DbField DB_FIELDS_ACTOR[9] = {
+    { "id",    L"ID",       false, 0 },
+    { "name",  L"Name",     false, 0 },
+    { "class", L"Klasse",   false, 0 },
+    { "hp",    L"HP (max)", true,  0 },
+    { "mp",    L"MP (max)", true,  0 },
+    { "atk",   L"ATK",      true,  0 },
+    { "def",   L"DEF",      true,  0 },
+    { "spi",   L"SPI",      true,  0 },
+    { "agi",   L"AGI",      true,  0 },
+};
+const DbField DB_FIELDS_ITEM[7] = {
+    { "id",    L"ID",                          false, 0 },
+    { "name",  L"Name",                        false, 0 },
+    { "kind",  L"Art (heal/mana/quest/money)", false, 0 },
+    { "power", L"Stärke",                      true,  0 },
+    { "price", L"Preis",                       true,  0 },
+    { "start", L"Startmenge",                  true,  0 },
+    { "desc",  L"Beschreibung",                false, 0 },
+};
+const DbField DB_FIELDS_ENEMY[12] = {
+    { "id",        L"ID",                           false, 0 },
+    { "name",      L"Name",                         false, 0 },
+    { "hp",        L"HP",                           true,  0 },
+    { "mp",        L"MP",                           true,  0 },
+    { "atk",       L"ATK",                          true,  0 },
+    { "def",       L"DEF",                          true,  0 },
+    { "spi",       L"SPI",                          true,  0 },
+    { "agi",       L"AGI",                          true,  0 },
+    { "exp",       L"Exp (Belohnung)",              true,  0 },
+    { "gold",      L"Gold (Beute)",                 true,  0 },
+    { "drop",      L"Drop (Item-ID, leer = keins)", false, 0 },
+    { "drop_rate", L"Drop-Chance (0..1)",           true,  2 },
+};
+const DbField DB_FIELDS_TROOP[4] = {
+    { "id",      L"ID",                           false, 0 },
+    { "name",    L"Name",                         false, 0 },
+    { "enemies", L"Gegner (IDs, komma-getrennt)", false, 0 },
+    { "desc",    L"Beschreibung",                 false, 0 },
+};
+
+// Reiter -> Feldtabelle. 0 = Helden, 1 = Items, 2 = Gegner, 3 = Truppen.
+const DbField* db_fields(int tab, int& count) {
+    switch (tab) {
+        case 1:  count = 7;  return DB_FIELDS_ITEM;
+        case 2:  count = 12; return DB_FIELDS_ENEMY;
+        case 3:  count = 4;  return DB_FIELDS_TROOP;
+        default: count = 9;  return DB_FIELDS_ACTOR;
+    }
+}
+
+// Reiter -> Schlüssel des JSON-Arrays in database.json.
+const char* db_tab_key(int tab) {
+    switch (tab) {
+        case 1:  return "items";
+        case 2:  return "enemies";
+        case 3:  return "troops";
+        default: return "actors";
+    }
+}
 
 struct DatabaseDlgState {
     HWND win = nullptr;
-    HWND hlist = nullptr;
-    HWND ilist = nullptr;
+    HWND list = nullptr;
     HWND ed_gold = nullptr;
-    HWND ed[9] = {};      // Formularfelder 1..9
-    HWND lbl[9] = {};     // zugehörige Labels
+    HWND ed[DB_MAX_ROWS] = {};    // Formularfelder
+    HWND lbl[DB_MAX_ROWS] = {};   // zugehörige Labels
     HWND lbl_status = nullptr;
     JsonValue root;      // komplette database.json
-    int  tab = 0;        // 0 = Helden, 1 = Items
+    int  tab = 0;        // 0 Helden, 1 Items, 2 Gegner, 3 Truppen
     int  sel = -1;
     bool dirty = false;
     bool syncing = false;
@@ -6732,69 +6796,102 @@ void db_load() {
     }
     db_array("actors");
     db_array("items");
+    db_array("enemies");   // Etappe 19i: Kämpfe
+    db_array("troops");
     if (!g_db.root.find("gold")) g_db.root.set("gold", JsonValue::make_num(0, true));
     g_db.dirty = false;
 }
 
-// Formularfelder je Reiter beschriften und füllen.
+// Truppen-Feld "enemies": Array aus IDs -> komma-getrennter Text.
+std::string db_join_ids(const JsonValue& e) {
+    const JsonValue* a = e.find("enemies");
+    if (!a || !a->is_arr()) return "";
+    std::string out;
+    for (const JsonValue& v : a->arr) {
+        if (!v.is_str()) continue;
+        if (!out.empty()) out += ", ";
+        out += v.str;
+    }
+    return out;
+}
+
+// komma-getrennter Text -> Array aus IDs (Whitespace wird getrimmt).
+JsonValue db_split_ids(const std::string& text) {
+    JsonValue arr = JsonValue::make_arr();
+    std::string tok;
+    for (char c : text) {
+        if (c == ',' || c == ';') {
+            const size_t b = tok.find_first_not_of(" \t\r\n");
+            if (b != std::string::npos)
+                arr.arr.push_back(JsonValue::make_str(
+                    tok.substr(b, tok.find_last_not_of(" \t\r\n") - b + 1)));
+            tok.clear();
+        } else {
+            tok += c;
+        }
+    }
+    const size_t b = tok.find_first_not_of(" \t\r\n");
+    if (b != std::string::npos)
+        arr.arr.push_back(JsonValue::make_str(
+            tok.substr(b, tok.find_last_not_of(" \t\r\n") - b + 1)));
+    return arr;
+}
+
+// Formular je Reiter beschriften (Feldanzahl sichtbar, Rest versteckt).
 void db_form_layout() {
-    const wchar_t* const ACTOR_LABELS[9] = {
-        L"ID", L"Name", L"Klasse", L"HP (max)", L"MP (max)",
-        L"ATK", L"DEF", L"SPI", L"AGI"
-    };
-    const wchar_t* const ITEM_LABELS[9] = {
-        L"ID", L"Name", L"Art (heal/mana/quest/money)", L"Stärke", L"Preis",
-        L"Startmenge", L"Beschreibung", L"", L""
-    };
-    const bool actors = (g_db.tab == 0);
-    for (int i = 0; i < 9; ++i) {
-        const bool used = actors || i < 7;
+    int count = 0;
+    const DbField* fields = db_fields(g_db.tab, count);
+    for (int i = 0; i < DB_MAX_ROWS; ++i) {
+        const bool used = i < count;
         ShowWindow(g_db.lbl[i], used ? SW_SHOW : SW_HIDE);
         ShowWindow(g_db.ed[i], used ? SW_SHOW : SW_HIDE);
         EnableWindow(g_db.ed[i], used ? TRUE : FALSE);
-        SetWindowTextW(g_db.lbl[i], (actors ? ACTOR_LABELS[i] : ITEM_LABELS[i]));
+        if (used) SetWindowTextW(g_db.lbl[i], fields[i].label);
     }
-    ShowWindow(g_db.hlist, actors ? SW_SHOW : SW_HIDE);
-    ShowWindow(g_db.ilist, actors ? SW_HIDE : SW_SHOW);
 }
 
 void db_refresh_lists() {
     if (!g_db.win) return;
-    wchar_t buf[160];
-
-    SendMessageW(g_db.hlist, LB_RESETCONTENT, 0, 0);
-    const JsonValue* actors = db_array("actors");
-    for (int i = 0; i < static_cast<int>(actors->arr.size()); ++i) {
-        std::swprintf(buf, 160, L"%d. %ls (%ls)",
-                      i + 1,
-                      utf8_to_wide(ev_str_of(actors->arr[i], "name", "?")).c_str(),
-                      utf8_to_wide(ev_str_of(actors->arr[i], "class", "-")).c_str());
+    wchar_t buf[200];
+    SendMessageW(g_db.list, LB_RESETCONTENT, 0, 0);
+    const JsonValue* arr = db_array(db_tab_key(g_db.tab));
+    for (int i = 0; i < static_cast<int>(arr->arr.size()); ++i) {
+        const JsonValue& e = arr->arr[i];
+        switch (g_db.tab) {
+            case 1:
+                std::swprintf(buf, 200, L"%d. %ls  [%ls]", i + 1,
+                              utf8_to_wide(ev_str_of(e, "name", "?")).c_str(),
+                              utf8_to_wide(ev_str_of(e, "kind", "-")).c_str());
+                break;
+            case 2:
+                std::swprintf(buf, 200, L"%d. %ls  (HP %ls)", i + 1,
+                              utf8_to_wide(ev_str_of(e, "name", "?")).c_str(),
+                              utf8_to_wide(ev_num_str(ev_num_of(e, "hp"), 0)).c_str());
+                break;
+            case 3: {
+                const JsonValue* en = e.find("enemies");
+                const int n = (en && en->is_arr())
+                                  ? static_cast<int>(en->arr.size()) : 0;
+                std::swprintf(buf, 200, L"%d. %ls  (%d Gegner)", i + 1,
+                              utf8_to_wide(ev_str_of(e, "name", "?")).c_str(), n);
+                break;
+            }
+            default:
+                std::swprintf(buf, 200, L"%d. %ls (%ls)", i + 1,
+                              utf8_to_wide(ev_str_of(e, "name", "?")).c_str(),
+                              utf8_to_wide(ev_str_of(e, "class", "-")).c_str());
+                break;
+        }
         const int idx = static_cast<int>(
-            SendMessageW(g_db.hlist, LB_ADDSTRING, 0,
+            SendMessageW(g_db.list, LB_ADDSTRING, 0,
                         reinterpret_cast<LPARAM>(buf)));
-        SendMessageW(g_db.hlist, LB_SETITEMDATA, idx,
-                     static_cast<LPARAM>(static_cast<INT_PTR>(i)));
-    }
-
-    SendMessageW(g_db.ilist, LB_RESETCONTENT, 0, 0);
-    const JsonValue* items = db_array("items");
-    for (int i = 0; i < static_cast<int>(items->arr.size()); ++i) {
-        std::swprintf(buf, 160, L"%d. %ls  [%ls]",
-                      i + 1,
-                      utf8_to_wide(ev_str_of(items->arr[i], "name", "?")).c_str(),
-                      utf8_to_wide(ev_str_of(items->arr[i], "kind", "-")).c_str());
-        const int idx = static_cast<int>(
-            SendMessageW(g_db.ilist, LB_ADDSTRING, 0,
-                        reinterpret_cast<LPARAM>(buf)));
-        SendMessageW(g_db.ilist, LB_SETITEMDATA, idx,
+        SendMessageW(g_db.list, LB_SETITEMDATA, idx,
                      static_cast<LPARAM>(static_cast<INT_PTR>(i)));
     }
 
     // Auswahl wiederherstellen.
-    const JsonValue* arr = g_db.tab == 0 ? db_array("actors") : db_array("items");
-    HWND list = g_db.tab == 0 ? g_db.hlist : g_db.ilist;
     if (g_db.sel >= 0 && g_db.sel < static_cast<int>(arr->arr.size())) {
-        SendMessageW(list, LB_SETCURSEL, g_db.sel, 0);
+        SendMessageW(g_db.list, LB_SETCURSEL, g_db.sel, 0);
     } else {
         g_db.sel = -1;
     }
@@ -6802,36 +6899,32 @@ void db_refresh_lists() {
 
 void db_refresh_fields() {
     if (!g_db.win) return;
-    const JsonValue* arr = g_db.tab == 0 ? db_array("actors") : db_array("items");
+    int count = 0;
+    const DbField* fields = db_fields(g_db.tab, count);
+    const JsonValue* arr = db_array(db_tab_key(g_db.tab));
     const bool valid = g_db.sel >= 0 && g_db.sel < static_cast<int>(arr->arr.size());
-    for (int i = 0; i < 9; ++i) {
-        EnableWindow(g_db.ed[i], valid ? TRUE : FALSE);
+    for (int i = 0; i < DB_MAX_ROWS; ++i) {
+        EnableWindow(g_db.ed[i], (valid && i < count) ? TRUE : FALSE);
         if (!valid) SetWindowTextW(g_db.ed[i], L"");
     }
     EnableWindow(GetDlgItem(g_db.win, IDDB_DEL), valid ? TRUE : FALSE);
-    if (!valid) return;
-
-    const JsonValue& e = arr->arr[g_db.sel];
-    const bool actor = (g_db.tab == 0);
-    ev_set_text(g_db.ed[0], ev_str_of(e, "id"));
-    ev_set_text(g_db.ed[1], ev_str_of(e, "name"));
-    ev_set_text(g_db.ed[2], ev_str_of(e, actor ? "class" : "kind"));
-    ev_set_text(g_db.ed[3], ev_num_str(ev_num_of(e, actor ? "hp" : "power"), 0));
-    ev_set_text(g_db.ed[4], ev_num_str(ev_num_of(e, actor ? "mp" : "price"), 0));
-    ev_set_text(g_db.ed[5], ev_num_str(ev_num_of(e, actor ? "atk" : "start"), 0));
-    ev_set_text(g_db.ed[6], actor ? ev_str_of(e, "class")
-                                  : ev_str_of(e, "desc"));   // desc nur bei Items
-    if (actor) {
-        ev_set_text(g_db.ed[6], ev_num_str(ev_num_of(e, "def"), 0));
-        ev_set_text(g_db.ed[7], ev_num_str(ev_num_of(e, "spi"), 0));
-        ev_set_text(g_db.ed[8], ev_num_str(ev_num_of(e, "agi"), 0));
-    } else {
-        ev_set_text(g_db.ed[6], ev_str_of(e, "desc"));
-    }
 
     if (g_db.ed_gold) {
         SetWindowTextW(g_db.ed_gold,
                        utf8_to_wide(ev_num_str(ev_num_of(g_db.root, "gold"), 0)).c_str());
+    }
+    if (!valid) return;
+
+    const JsonValue& e = arr->arr[g_db.sel];
+    for (int i = 0; i < count; ++i) {
+        const DbField& f = fields[i];
+        if (std::strcmp(f.key, "enemies") == 0) {
+            ev_set_text(g_db.ed[i], db_join_ids(e));
+        } else if (f.num) {
+            ev_set_text(g_db.ed[i], ev_num_str(ev_num_of(e, f.key), f.prec));
+        } else {
+            ev_set_text(g_db.ed[i], ev_str_of(e, f.key));
+        }
     }
 }
 
@@ -6845,28 +6938,27 @@ void db_refresh() {
 
 // Formular in den Eintrag zurückschreiben.
 void db_apply(bool mark_dirty) {
-    const JsonValue* arrp = g_db.tab == 0 ? db_array("actors") : db_array("items");
+    JsonValue* arrp = db_array(db_tab_key(g_db.tab));
     if (g_db.sel < 0 || g_db.sel >= static_cast<int>(arrp->arr.size())) return;
-    JsonValue& e = const_cast<JsonValue&>(arrp->arr[g_db.sel]);
-    const bool actor = (g_db.tab == 0);
-    e.set("id", JsonValue::make_str(ev_text(g_db.ed[0])));
-    e.set("name", JsonValue::make_str(ev_text(g_db.ed[1])));
-    e.set(actor ? "class" : "kind", JsonValue::make_str(ev_text(g_db.ed[2])));
-    e.set(actor ? "hp" : "power",
-          JsonValue::make_num(ev_number(g_db.ed[3], 0.0), true));
-    e.set(actor ? "mp" : "price",
-          JsonValue::make_num(ev_number(g_db.ed[4], 0.0), true));
-    e.set(actor ? "atk" : "start",
-          JsonValue::make_num(ev_number(g_db.ed[5], 0.0), true));
-    if (actor) {
-        e.set("def", JsonValue::make_num(ev_number(g_db.ed[6], 0.0), true));
-        e.set("spi", JsonValue::make_num(ev_number(g_db.ed[7], 0.0), true));
-        e.set("agi", JsonValue::make_num(ev_number(g_db.ed[8], 0.0), true));
+    JsonValue& e = arrp->arr[g_db.sel];
+    int count = 0;
+    const DbField* fields = db_fields(g_db.tab, count);
+    for (int i = 0; i < count; ++i) {
+        const DbField& f = fields[i];
+        if (std::strcmp(f.key, "enemies") == 0) {
+            e.set("enemies", db_split_ids(ev_text(g_db.ed[i])));
+        } else if (f.num) {
+            e.set(f.key, JsonValue::make_num(ev_number(g_db.ed[i], ev_num_of(e, f.key)),
+                                             f.prec == 0));
+        } else {
+            e.set(f.key, JsonValue::make_str(ev_text(g_db.ed[i])));
+        }
+    }
+    if (g_db.tab == 0) {
+        // Felder ohne Formularzeile behalten (level/exp wie seit 17g).
         e.set("level", JsonValue::make_num(
             ev_num_of(e, "level") > 0 ? ev_num_of(e, "level") : 1.0, true));
-        e.set("exp", JsonValue::make_num(ev_num_of(e, "exp"), true));
-    } else {
-        e.set("desc", JsonValue::make_str(ev_text(g_db.ed[6])));
+        if (!e.find("exp")) e.set("exp", JsonValue::make_num(0, true));
     }
     if (g_db.ed_gold) {
         g_db.root.set("gold", JsonValue::make_num(
@@ -6881,10 +6973,13 @@ void db_apply(bool mark_dirty) {
 
 void db_add() {
     db_apply(true);
-    JsonValue* arr = g_db.tab == 0 ? db_array("actors") : db_array("items");
+    JsonValue* arr = db_array(db_tab_key(g_db.tab));
+    const char* prefix = "held";
+    if (g_db.tab == 1) prefix = "item";
+    if (g_db.tab == 2) prefix = "gegner";
+    if (g_db.tab == 3) prefix = "trupp";
     int n = 1;
     std::string id;
-    const char* prefix = (g_db.tab == 0) ? "held" : "item";
     for (;;) {
         id = std::string(prefix) + "_" + std::to_string(n);
         bool used = false;
@@ -6897,22 +6992,41 @@ void db_add() {
     JsonValue e = JsonValue::make_obj();
     e.set("id", JsonValue::make_str(id));
     e.set("name", JsonValue::make_str(id));
-    if (g_db.tab == 0) {
-        e.set("class", JsonValue::make_str("Krieger"));
-        e.set("level", JsonValue::make_num(1, true));
-        e.set("hp", JsonValue::make_num(100, true));
-        e.set("mp", JsonValue::make_num(20, true));
-        e.set("atk", JsonValue::make_num(10, true));
-        e.set("def", JsonValue::make_num(8, true));
-        e.set("spi", JsonValue::make_num(6, true));
-        e.set("agi", JsonValue::make_num(8, true));
-        e.set("exp", JsonValue::make_num(0, true));
-    } else {
-        e.set("kind", JsonValue::make_str("heal"));
-        e.set("power", JsonValue::make_num(20, true));
-        e.set("price", JsonValue::make_num(10, true));
-        e.set("start", JsonValue::make_num(0, true));
-        e.set("desc", JsonValue::make_str(""));
+    switch (g_db.tab) {
+        case 1:
+            e.set("kind", JsonValue::make_str("heal"));
+            e.set("power", JsonValue::make_num(20, true));
+            e.set("price", JsonValue::make_num(10, true));
+            e.set("start", JsonValue::make_num(0, true));
+            e.set("desc", JsonValue::make_str(""));
+            break;
+        case 2:   // Gegner (19i-Felder; color/desc bleiben optional im JSON)
+            e.set("hp", JsonValue::make_num(30, true));
+            e.set("mp", JsonValue::make_num(0, true));
+            e.set("atk", JsonValue::make_num(10, true));
+            e.set("def", JsonValue::make_num(8, true));
+            e.set("spi", JsonValue::make_num(5, true));
+            e.set("agi", JsonValue::make_num(8, true));
+            e.set("exp", JsonValue::make_num(10, true));
+            e.set("gold", JsonValue::make_num(0, true));
+            e.set("drop", JsonValue::make_str(""));
+            e.set("drop_rate", JsonValue::make_num(0.0, false));
+            break;
+        case 3:   // Truppen
+            e.set("enemies", JsonValue::make_arr());
+            e.set("desc", JsonValue::make_str(""));
+            break;
+        default:  // Helden
+            e.set("class", JsonValue::make_str("Krieger"));
+            e.set("level", JsonValue::make_num(1, true));
+            e.set("hp", JsonValue::make_num(100, true));
+            e.set("mp", JsonValue::make_num(20, true));
+            e.set("atk", JsonValue::make_num(10, true));
+            e.set("def", JsonValue::make_num(8, true));
+            e.set("spi", JsonValue::make_num(6, true));
+            e.set("agi", JsonValue::make_num(8, true));
+            e.set("exp", JsonValue::make_num(0, true));
+            break;
     }
     arr->arr.push_back(std::move(e));
     g_db.sel = static_cast<int>(arr->arr.size()) - 1;
@@ -6922,7 +7036,7 @@ void db_add() {
 }
 
 void db_delete() {
-    JsonValue* arr = g_db.tab == 0 ? db_array("actors") : db_array("items");
+    JsonValue* arr = db_array(db_tab_key(g_db.tab));
     if (g_db.sel < 0 || g_db.sel >= static_cast<int>(arr->arr.size())) return;
     arr->arr.erase(arr->arr.begin() + g_db.sel);
     if (g_db.sel >= static_cast<int>(arr->arr.size())) {
@@ -6960,18 +7074,23 @@ LRESULT CALLBACK database_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             const int code = HIWORD(wp);
             if (g_db.syncing) return 0;
 
-            if (code == LBN_SELCHANGE && (id == IDDB_HLIST || id == IDDB_ILIST)) {
+            if (code == LBN_SELCHANGE && id == IDDB_LIST) {
                 if (g_db.sel >= 0) db_apply(true);   // alten Eintrag sichern
-                HWND list = (id == IDDB_HLIST) ? g_db.hlist : g_db.ilist;
-                g_db.sel = static_cast<int>(SendMessageW(list, LB_GETCURSEL, 0, 0));
+                g_db.sel = static_cast<int>(SendMessageW(g_db.list, LB_GETCURSEL, 0, 0));
                 db_refresh_lists();
                 db_refresh_fields();
                 return 0;
             }
-            if (id == IDDB_TAB_H) { db_apply(true); g_db.tab = 0; g_db.sel = -1;
-                                     db_refresh(); return 0; }
-            if (id == IDDB_TAB_I) { db_apply(true); g_db.tab = 1; g_db.sel = -1;
-                                     db_refresh(); return 0; }
+            if (id == IDDB_TAB_H || id == IDDB_TAB_I ||
+                id == IDDB_TAB_E || id == IDDB_TAB_T) {
+                db_apply(true);
+                g_db.tab = (id == IDDB_TAB_I) ? 1
+                         : (id == IDDB_TAB_E) ? 2
+                         : (id == IDDB_TAB_T) ? 3 : 0;
+                g_db.sel = -1;
+                db_refresh();
+                return 0;
+            }
             if (id == IDDB_NEW)    { db_add(); return 0; }
             if (id == IDDB_DEL)    { db_delete(); return 0; }
             if (id == IDDB_SAVE)   { db_save(); return 0; }
@@ -6991,10 +7110,12 @@ LRESULT CALLBACK database_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_DESTROY:
             if (g_db.win == h) {
                 g_db.win = nullptr;
-                g_db.hlist = nullptr;
-                g_db.ilist = nullptr;
+                g_db.list = nullptr;
                 g_db.ed_gold = nullptr;
-                for (int i = 0; i < 9; ++i) { g_db.ed[i] = nullptr; g_db.lbl[i] = nullptr; }
+                for (int i = 0; i < DB_MAX_ROWS; ++i) {
+                    g_db.ed[i] = nullptr;
+                    g_db.lbl[i] = nullptr;
+                }
                 g_db.lbl_status = nullptr;
                 g_db.sel = -1;
             }
@@ -7021,9 +7142,9 @@ void open_database_dialog() {
     RECT mr;
     GetWindowRect(g.main, &mr);
     g_db.win = CreateWindowExW(WS_EX_DLGMODALFRAME, L"RuneEditorDbDlg",
-                               L"Datenbank (Helden / Items / Gold)",
+                               L"Datenbank (Helden / Items / Gegner / Truppen)",
                                WS_POPUP | WS_CAPTION | WS_SYSMENU,
-                               mr.left + 180, mr.top + 80, 700, 640,
+                               mr.left + 140, mr.top + 40, 716, 768,
                                g.main, nullptr, GetModuleHandleW(nullptr), nullptr);
 
     db_load();
@@ -7033,36 +7154,34 @@ void open_database_dialog() {
                12, 10, 90, 24, IDDB_TAB_H);
     db_control(L"Button", L"Items", BS_AUTORADIOBUTTON,
                104, 10, 80, 24, IDDB_TAB_I);
-    db_control(L"Static", L"Gold:", 0, 210, 13, 40, 20, 0);
+    db_control(L"Button", L"Gegner", BS_AUTORADIOBUTTON,
+               186, 10, 90, 24, IDDB_TAB_E);
+    db_control(L"Button", L"Truppen", BS_AUTORADIOBUTTON,
+               278, 10, 90, 24, IDDB_TAB_T);
+    db_control(L"Static", L"Gold:", 0, 396, 13, 40, 20, 0);
     g_db.ed_gold = db_control(L"Edit", L"0", WS_BORDER | ES_RIGHT,
-                              254, 10, 80, 24, IDDB_GOLD);
+                              438, 10, 80, 24, IDDB_GOLD);
     SendMessageW(GetDlgItem(g_db.win, IDDB_TAB_H), BM_SETCHECK, BST_CHECKED, 0);
 
-    // Listen links
-    g_db.hlist = db_control(L"ListBox", nullptr,
-                            WS_VSCROLL | WS_BORDER | LBS_NOTIFY | LBS_HASSTRINGS,
-                            12, 44, 260, 470, IDDB_HLIST);
-    g_db.ilist = db_control(L"ListBox", nullptr,
-                            WS_VSCROLL | WS_BORDER | LBS_NOTIFY | LBS_HASSTRINGS,
-                            12, 44, 260, 470, IDDB_ILIST);
-    db_control(L"Button", L"Neu", BS_PUSHBUTTON, 12, 522, 80, 28, IDDB_NEW);
-    db_control(L"Button", L"Löschen", BS_PUSHBUTTON, 96, 522, 90, 28, IDDB_DEL);
-    db_control(L"Button", L"Schließen", BS_PUSHBUTTON, 192, 522, 80, 28, IDDB_CLOSE);
+    // Liste links
+    g_db.list = db_control(L"ListBox", nullptr,
+                           WS_VSCROLL | WS_BORDER | LBS_NOTIFY | LBS_HASSTRINGS,
+                           12, 44, 260, 560, IDDB_LIST);
+    db_control(L"Button", L"Neu", BS_PUSHBUTTON, 12, 612, 80, 28, IDDB_NEW);
+    db_control(L"Button", L"Löschen", BS_PUSHBUTTON, 96, 612, 90, 28, IDDB_DEL);
+    db_control(L"Button", L"Schließen", BS_PUSHBUTTON, 192, 612, 80, 28, IDDB_CLOSE);
 
-    // Formular rechts: 9 Zeilen Label + Edit
-    const char* const KEYS[9] = { "id", "name", "class", "hp", "mp",
-                                  "atk", "def", "spi", "agi" };
-    for (int i = 0; i < 9; ++i) {
-        const int y = 44 + i * 56;
-        g_db.lbl[i] = db_control(L"Static", utf8_to_wide(KEYS[i]).c_str(), 0,
-                                 292, y, 190, 20, IDDB_L1 + i);
+    // Formular rechts: DB_MAX_ROWS Zeilen Label + Edit (Tabelle je Reiter)
+    for (int i = 0; i < DB_MAX_ROWS; ++i) {
+        const int y = 44 + i * 46;
+        g_db.lbl[i] = db_control(L"Static", L"", 0, 292, y, 250, 18, IDDB_L1 + i);
         g_db.ed[i] = db_control(L"Edit", nullptr, WS_BORDER | ES_LEFT,
-                               292, y + 22, 380, 24, IDDB_F1 + i);
+                                292, y + 18, 380, 24, IDDB_F1 + i);
     }
 
-    g_db.lbl_status = db_control(L"Static", L"", 0, 292, 552, 380, 20, IDDB_STATUS);
-    db_control(L"Button", L"Speichern", BS_PUSHBUTTON, 292, 578, 120, 30, IDDB_SAVE);
-    db_control(L"Button", L"Neu laden", BS_PUSHBUTTON, 420, 578, 120, 30, IDDB_RELOAD);
+    g_db.lbl_status = db_control(L"Static", L"", 0, 292, 648, 396, 20, IDDB_STATUS);
+    db_control(L"Button", L"Speichern", BS_PUSHBUTTON, 292, 674, 120, 30, IDDB_SAVE);
+    db_control(L"Button", L"Neu laden", BS_PUSHBUTTON, 420, 674, 120, 30, IDDB_RELOAD);
 
     g_db.tab = 0;
     g_db.sel = db_array("actors")->arr.empty() ? -1 : 0;
@@ -7370,7 +7489,8 @@ int main(int argc, char** argv) {
     AppendMenuW(tex_menu, MF_STRING, ID_MENU_TILESET, L"Tileset-Editor...\tF7");
     AppendMenuW(tex_menu, MF_STRING, ID_MENU_MATERIALS, L"Materialbase...\tF3");
     HMENU db_menu = CreatePopupMenu();
-    AppendMenuW(db_menu, MF_STRING, ID_MENU_DATABASE, L"Datenbank (Helden/Items)...\tF9");
+    AppendMenuW(db_menu, MF_STRING, ID_MENU_DATABASE,
+                L"Datenbank (Helden/Items/Gegner/Truppen)...\tF9");
     HMENU extra_menu = CreatePopupMenu();     // Etappe 17h
     AppendMenuW(extra_menu, MF_STRING, ID_MENU_SOUNDTEST, L"Sound-Test...\tF8");
     AppendMenuW(extra_menu, MF_STRING, ID_MENU_PLAYTEST, L"Playtest starten...\tF4");

@@ -110,16 +110,26 @@ check('Effekt-Beschriftung (C++) nennt alle MapCheck::EFFEKTE') do
 end
 
 puts '== Datenbank-Dialog =='
-check('Dialog-Felder KEYS (C++) existieren in database.json (actors)') do
-  keys = c_array('KEYS')
-  actor_keys = DATEN.fetch('actors', []).flat_map(&:keys).uniq
-  keys.all? { |k| actor_keys.include?(k) } && keys.first == 'id'
+# Seit 19k.1 ist das Formular feldgesteuert: DB_FIELDS_ACTOR/ITEM/ENEMY/TROOP
+# = { "json_key", L"Label", num, prec }. Jeder Schlüssel muss in den echten
+# database.json-Einträgen vorkommen (sonst editiert der Dialog ins Leere).
+def db_fields(name)
+  treffer = CPP.match(/DB_FIELDS_#{name}\[\d+\]\s*=\s*\{(.*?)\};/m)
+  raise "C++-Feldtabelle DB_FIELDS_#{name} nicht gefunden" unless treffer
+  treffer[1].scan(/\{\s*"([a-z_]+)"/).flatten
 end
-check('ACTOR_LABELS: ein Label pro Dialog-Feld') do
-  c_array('ACTOR_LABELS', wide: true).size == c_array('KEYS').size
+
+{ 'ACTOR' => 'actors', 'ITEM' => 'items',
+  'ENEMY' => 'enemies', 'TROOP' => 'troops' }.each do |tabelle, sammlung|
+  check("DB_FIELDS_#{tabelle} (C++) editiert nur echte #{sammlung}-Schlüssel") do
+    felder = db_fields(tabelle)
+    daten_keys = DATEN.fetch(sammlung, []).flat_map(&:keys).uniq
+    !felder.empty? && felder.first == 'id' &&
+      felder.all? { |k| daten_keys.include?(k) }
+  end
 end
-check('ITEM_LABELS: ein Label pro Dialog-Feld') do
-  c_array('ITEM_LABELS', wide: true).size == c_array('KEYS').size
+check('jede Reiter-Tabelle landet als db_tab_key in database.json') do
+  %w[actors items enemies troops].all? { |k| DATEN.key?(k) }
 end
 
 puts '== Gegner/Truppen seit 19i =='
