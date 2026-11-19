@@ -101,6 +101,7 @@ require 'issues'
 require 'party'
 require 'weather'
 require 'fade'
+require 'data'      # Database: graphics.rb/rgss.rb lesen daraus (echte JSONs)
 require 'rgss'
 require 'graphics'
 

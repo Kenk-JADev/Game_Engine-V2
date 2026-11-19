@@ -280,12 +280,13 @@ module RGSS
   # Datenbank als RGSS-Globale (Etappe 19h). XP nutzt Integer-Indizes in
   # Arrays; Rune3D hat String-IDs - deshalb Hashes mit 'id'/'name'-Schlüsseln.
   def self.load_data_globals
-    db = Database.database
+    # ::Database - sonst sucht Ruby die Konstante im RGSS-Modul (NameError).
+    db = ::Database.database
     $data_actors = liste_als_hash(db['actors'])
     $data_items  = liste_als_hash(db['items'])
     $data_weapons = {}   # Datenbank kennt noch keine Waffen (Backlog)
-    $data_armors  = {}   # ... und keine Rüstungen (Backlog)
-    $data_system  = Database.system
+    $data_armors = {}    # ... und keine Rüstungen (Backlog)
+    $data_system = ::Database.system
   end
 
   def self.liste_als_hash(liste)
