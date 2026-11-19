@@ -138,8 +138,12 @@ check('in der Karte, flach -> passierbar') { $game_player.passable?(5.0, 5.0) }
 check('Richtung 6 (rechts) in die Wand -> false') do
   !$game_player.passable?(10.0, 5.0, 6)
 end
-# Spieler steht auf 2/3 (moveto oben); die Stufe misst vom Spieler zum Ziel.
-check('Richtung 4 (links) von der Wand hinunter -> false (Stufe vom Spieler)') do
+# Die Stufe misst von der SPIELERPOSITION zum Ziel (siehe passable?).
+# Diagnose im Check-Namen: die CI-Annotation zeigt nur FAIL-Zeilen.
+pos = Rune::Player.position
+check("Richtung 4 (links) von der Wand hinunter -> false " \
+      "[pos=#{pos.inspect} gy(10)=#{Game.gy(10.0, 5.0)} " \
+      "gy(pos)=#{Game.gy(pos[0], pos[2])}]") do
   !$game_player.passable?(11.0, 5.0, 4)
 end
 check('auf der Wand nach links (flach weiter) -> true') do
@@ -151,7 +155,9 @@ end
 check('hinter der Kartengrenze (x > width) -> false') do
   !$game_player.passable?(125.0, 5.0)
 end
-check('Stufe hoch vom flachen Boden (delta 5 m > 1.2 m) -> false') do
+pos = Rune::Player.position
+check("Stufe hoch vom flachen Boden (delta 5 m > 1.2 m) -> false " \
+      "[pos=#{pos.inspect} gy(12)=#{Game.gy(12.0, 5.0)}]") do
   !$game_player.passable?(12.0, 5.0)
 end
 $game_temp.player_passable = false
