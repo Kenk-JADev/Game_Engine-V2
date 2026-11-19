@@ -355,6 +355,50 @@ check('blocked-Eintrag kein Objekt -> Fehler') do
   hat?(MapCheck.scan(k, **OPTS), 'ist kein Objekt', MapCheck::FEHLER)
 end
 
+# Etappe 19k.3: Lage in Block-Zonen (Start/Event/NPC/Wegpunkt).
+ZONE = [{ 'x' => 5.0, 'z' => 5.0, 'w' => 4.0, 'h' => 4.0 }].freeze
+check('Startpunkt in der Zone -> Warnung') do
+  k = saubere_karte
+  k['blocked'] = ZONE
+  k['start'] = { 'x' => 5.0, 'z' => 5.0 }
+  hat?(MapCheck.scan(k, **OPTS), 'liegt in einer Block-Zone (Spieler steckt fest)',
+       MapCheck::WARNUNG)
+end
+check('Event in der Zone -> Warnung') do
+  k = saubere_karte
+  k['blocked'] = ZONE
+  k['events'] = [{ 'name' => 'Wache', 'x' => 4.0, 'z' => 4.0,
+                   'commands' => [{ 'cmd' => 'log', 'text' => 'x' }] }]
+  hat?(MapCheck.scan(k, **OPTS), 'steht in einer Block-Zone (nicht erreichbar)',
+       MapCheck::WARNUNG)
+end
+check('NPC in der Zone -> Warnung') do
+  k = saubere_karte
+  k['blocked'] = ZONE
+  k['npcs'] = [{ 'name' => 'Wanderer', 'x' => 6.0, 'z' => 6.0, 'path' => [[0.0, 0.0]] }]
+  hat?(MapCheck.scan(k, **OPTS), 'steht in einer Block-Zone (kommt nicht heraus)',
+       MapCheck::WARNUNG)
+end
+check('NPC-Wegpunkt in der Zone -> Warnung') do
+  k = saubere_karte
+  k['blocked'] = ZONE
+  k['npcs'] = [{ 'name' => 'Wanderer', 'x' => 0.0, 'z' => 0.0,
+                 'path' => [[0.0, 0.0], [5.0, 5.0]] }]
+  hat?(MapCheck.scan(k, **OPTS), 'liegt in einer Block-Zone', MapCheck::WARNUNG)
+end
+check('Positionen ausserhalb der Zone -> keine Lage-Warnung') do
+  k = saubere_karte
+  k['blocked'] = ZONE
+  k['start'] = { 'x' => 0.0, 'z' => 0.0 }
+  !hat?(MapCheck.scan(k, **OPTS), 'Block-Zone', MapCheck::WARNUNG)
+end
+check('kaputte Zone zählt nicht für die Lage-Prüfung') do
+  k = saubere_karte
+  k['blocked'] = [{ 'x' => 5.0, 'z' => 5.0, 'w' => 0.0, 'h' => 4.0 }]
+  k['start'] = { 'x' => 5.0, 'z' => 5.0 }
+  !hat?(MapCheck.scan(k, **OPTS), 'Block-Zone (Spieler steckt fest)', MapCheck::WARNUNG)
+end
+
 puts '== MapCheck: NPCs =='
 check('NPC ohne name -> Warnung') do
   k = saubere_karte

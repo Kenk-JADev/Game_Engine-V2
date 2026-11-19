@@ -74,7 +74,7 @@ $game_map/$game_screen/$game_temp`, `Graphics`, `Input`, `Audio`,
 | Ballons, Animationen, Tilemap | — | ❌ fehlt |
 | Autotiles, weiche Boden-Übergänge | ein Quad = eine Textur | ❌ fehlt |
 | Charakter-Grafiken | Figuren sind Quader | ❌ fehlt |
-| Passierbarkeit (blockierte Zonen) | „blocked"-Rechtecke im Karten-JSON: Physik-Wände, F2-Editorfeld, rote Vorschau, `$game_player.passable?` | ✅ teilweise |
+| Passierbarkeit (blockierte Zonen) | „blocked"-Rechtecke im Karten-JSON: Physik-Wände, F2-Editorfeld, rote Vorschau; `passable?` prüft Zonen **und** Objekt-Hindernisse, NPCs/Routen stoppen an Wänden (`Passage`) | ✅ |
 
 Offene Punkte mit Symptom und betroffener Datei stehen in
 [`docs/BACKLOG.md`](docs/BACKLOG.md).

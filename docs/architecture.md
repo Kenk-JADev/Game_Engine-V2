@@ -1576,10 +1576,57 @@ w/h = Größe), die als **unsichtbare Wände über alle Höhen** wirken (kein
   `mapcheck_test.rb` (5 Checks) und `rgss_test.rb` (blocked?/passable?,
   8 Checks).
 
-Grenzen (Backlog): NPC-Pfadfindung (`move_to`) und Bewegungs-Routen laufen
-weiter durch Zonen (nur der Spieler wird physikalisch geblockt); Objekt-
-Kollision für `passable?` fehlt weiterhin; Zonen sind Rechtecke ohne
-Rotation/Höhenbereich.
+Grenzen: Zonen sind Rechtecke ohne Rotation/Höhenbereich. Die beiden
+anderen offenen Punkte (NPCs/Routen liefen durch Zonen, `passable?` kannte
+keine Objekt-Kollision) sind seit Etappe 19k.3 erledigt - siehe unten.
+
+## Passierbarkeit rund gemacht (Etappe 19k.3)
+
+19k.2 blockte nur den Spieler physikalisch. Seit 19k.3 gibt es **eine**
+Abfrage für alles, was läuft: `game/engine/passage.rb` (Modul `Passage`).
+
+- **`Passage.zonen` / `zone?(x, z)`**: die Block-Zonen der aktuellen Karte
+  (`Game.map['blocked']`), Punkttest inklusive Rand - dieselbe Rechnung wie
+  `Physics::is_blocked`. Kaputte Einträge (keine Hashes) werden überlesen.
+- **`Passage.hindernis?(x, z, gy = nil)`**: Objekt-Kollision über die neue
+  Physik-Abfrage `Physics::solid_at(x,y,z)` (Binding
+  `Rune::Physics.solid_at?(x,y,z)`). Getastet wird über der Steiggrenze der
+  Physik (`STUFE = 0.35` = `kMaxStep`): `TASTPUNKTE = [0.45, 1.2]` - ein
+  flacher Kasten bleibt damit eine begehbare Stufe, eine Wand oder ein
+  schwebender Kasten blockt. Ohne Engine (kopflose Tests) liefert die
+  Abfrage „frei", dann zählen nur die Zonen.
+- **`Passage.blockiert?(x, z, gy = nil)`** = `zone? || hindernis?`.
+
+Anschlüsse:
+- **RGSS**: `$game_player.passable?` prüft `Passage.blockiert?` (Grenzen +
+  Geländestufe + Zonen + Hindernisse); `$game_map.blocked_zones`/`blocked?`
+  delegieren an Passage (API von 19k.2 bleibt), neu `$game_map.hindernis?`.
+- **NPCs** (`npc.rb`): ein Schritt in Zone/Hindernis lässt den NPC anstossen
+  (warten) statt durchlaufen; liegt schon der **Wegpunkt** in einer Zone,
+  wird er übersprungen, damit die Patrouille nicht dauerhaft an der Wand
+  steht.
+- **Bewegungsrouten** (`mover.rb`): `bewege` rechnet den Teilschritt über
+  `teil_ziel` vor und bricht den Schritt ab (`distanz = 0`) plus
+  `warn_once`, wenn das Ziel blockiert ist - gilt für NPC-`move_to` **und**
+  den Spieler-`teleport` (der umging die Physik komplett).
+- **Spiel** (`main.rb`): Warnung, wenn der Startpunkt in einer Block-Zone
+  liegt (Spieler würde feststecken).
+- **MapCheck**: Lage-Prüfungen der geprüften Karte (`@block_zonen` aus
+  `map['blocked']`, nicht aus der geladenen Karte!) - Warnungen für
+  Startpunkt, Events, NPC-Position und NPC-Wegpunkte in einer Zone; nur
+  brauchbare Zonen (Zahlen, w/h > 0) zählen.
+- **Editor (C++)**: `blocked_zone_at(x,z)` + dieselben vier Lage-Meldungen
+  im `issues_scan_map` (Parität zu MapCheck).
+
+Tests: neu `tools/passage_test.rb` (Zonen, Tastpunkte, `blockiert?`),
+dazu Checks in `rgss_test.rb` (Hindernisse in `passable?`), `npc_test.rb`
+(Anstossen + Wegpunkt-Skip), `move_route_test.rb` (NPC- und Spieler-Route
+stoppen, Route hängt nicht) und `mapcheck_test.rb` (vier Lage-Warnungen).
+
+Grenzen (Backlog): NPCs weichen nicht aus (anstossen/überspringen statt
+Pfadfindung um die Wand herum), Bewegungs-Routen kennen kein „Wand
+entlang rutschen", `hindernis?` tastet zwei feste Höhen (keine exakte
+Körperbox).
 
 ## Ruby-API (Stand Etappe 2)
 
@@ -1599,6 +1646,8 @@ Rotation/Höhenbereich.
 | `Rune::Player.position` / `.teleport(x,y,z)` | Spieler |
 | `Rune::Player.on_ground?` / `.speed=` / `.jump_speed=` | Zustand/Tuning |
 | `Rune::Physics.clear_solids` / `.add_solid(x,y,z, sx,sy,sz)` / `.solid_count` | Hindernisse |
+| `Rune::Physics.solid_at?(x,y,z)` | Punkt in einem Hindernis? (19k.3, für `Passage.hindernis?`) |
+| `Rune::Physics.clear_blocked` / `.add_blocked(x,z,w,h)` / `.blocked_count` / `.blocked?(x,z)` | Block-Zonen der Karte (19k.2) |
 | `Rune::Input.down?(:w)` / `pressed?(:f5)` | Tastenzustand |
 | `Rune::Input.mouse_delta` / `.wheel` | Mausbewegung |
 | `Rune::Input.mouse_position` | Zeiger in Fensterpixeln `[x, y]` (im Fang-Modus: Mitte) |

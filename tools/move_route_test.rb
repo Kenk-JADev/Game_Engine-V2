@@ -46,8 +46,9 @@ end
 
 module Game
   @npcs = []
+  @map = {}
   class << self
-    attr_accessor :npcs
+    attr_accessor :npcs, :map
   end
 
   def self.gy(_x, _z) = 0.0
@@ -458,6 +459,38 @@ check("switch_on ohne 'code' -> Warnung") do
        "brauchen 'code'", MapCheck::WARNUNG)
 end
 check('CMD_TYPES zählen 26') { MapCheck::CMD_TYPES.size == 26 }
+
+puts '== Mover: Block-Zonen (19k.3) =='
+# Zone x = 1..3 (Mitte 2, Breite 2): der erste move_right-Schritt (1 m) endet
+# genau darin, die Route muss also stehen bleiben statt durchzulaufen.
+Game.map = { 'blocked' => [{ 'x' => 2.0, 'z' => 0.0, 'w' => 2.0, 'h' => 2.0 }] }
+mauer = FakeNpc.new('Mauer', 0.0, 0.0, 1.0)
+Game.npcs = [mauer]
+Mover.reset!
+npc_route = Mover.start('Mauer', %w[move_right move_right move_right])
+6.times { Mover.update(1.0) }
+check('NPC-Route stoppt an der Block-Zone') { mauer.position == [0.0, 0.0] }
+check('Route hängt nicht (Schritt gilt als abgelaufen)') { !Mover.running?(npc_route) }
+
+Rune::Player.pos = [0.0, 0.0, 0.0]
+Mover.reset!
+spieler_route = Mover.start('spieler', %w[move_right move_right])
+6.times { Mover.update(1.0) }
+check('Spieler-Route (teleport) stoppt an der Block-Zone') do
+  Rune::Player.pos[0] == 0.0
+end
+check('Spieler-Route läuft zu Ende') { !Mover.running?(spieler_route) }
+
+Game.map = {}
+Mover.reset!
+Rune::Player.pos = [0.0, 0.0, 0.0]
+frei = FakeNpc.new('Frei', 0.0, 0.0, 1.0)
+Game.npcs = [frei]
+Mover.start('Frei', %w[move_right move_right])
+4.times { Mover.update(1.0) }
+check('Ohne Zonen läuft die Route normal (2 m)') { nah?(frei.position, [2.0, 0.0]) }
+Mover.reset!
+Game.npcs = []
 
 puts($fail.zero? ? 'MOVE-ROUTE-TEST OK (0 Fehler)' : "MOVE-ROUTE-TEST FEHLGESCHLAGEN (#{$fail} Fehler)")
 exit($fail.zero? ? 0 : 1)

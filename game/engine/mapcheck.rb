@@ -202,6 +202,9 @@ module MapCheck
       @scripts    = scripts
       @maps       = maps
       @liste      = []
+      # Etappe 19k.3: Block-Zonen der GEPRÜFTEN Karte (nicht der geladenen!) -
+      # für die Lage-Prüfungen „steht in einer Block-Zone".
+      @block_zonen = []
     end
 
     def karte(map)
@@ -210,6 +213,7 @@ module MapCheck
         return
       end
 
+      @block_zonen = zonen_aus(map)   # Etappe 19k.3: vor den Lage-Prüfungen
       pruefe_name(map)
       pruefe_terrain(map['terrain'])
       pruefe_objekte(map['objects'])
@@ -228,6 +232,29 @@ module MapCheck
     def zahl?(v) = v.is_a?(Numeric)
     def text?(v) = v.is_a?(String) && !v.strip.empty?
 
+    # --- Etappe 19k.3: Lage in Block-Zonen ----------------------------------
+    # Nur brauchbare Zonen (Zahlen, w/h > 0) zählen - kaputte Einträge meldet
+    # pruefe_blocked bereits als Fehler/Warnung.
+    def zonen_aus(map)
+      liste = map['blocked']
+      return [] unless liste.is_a?(Array)
+
+      liste.select do |b|
+        b.is_a?(Hash) && %w[x z w h].all? { |k| zahl?(b[k]) } &&
+          b['w'] > 0 && b['h'] > 0
+      end
+    end
+
+    # Liegt (x, z) in einer Block-Zone? Rand gehört dazu (wie Passage/Physik).
+    def in_zone?(x, z)
+      return false unless zahl?(x) && zahl?(z)
+
+      @block_zonen.any? do |b|
+        (x.to_f - b['x'].to_f).abs * 2.0 <= b['w'].to_f &&
+          (z.to_f - b['z'].to_f).abs * 2.0 <= b['h'].to_f
+      end
+    end
+
     # ------------------------------------------------------------------ Karte
     def pruefe_name(map)
       melde(WARNUNG, @karte_name, "'name' fehlt oder ist leer") unless text?(map['name'])
@@ -240,6 +267,9 @@ module MapCheck
 
       %w[x z].each do |k|
         melde(FEHLER, wo, "'#{k}' fehlt oder ist keine Zahl") unless zahl?(st[k])
+      end
+      if in_zone?(st['x'], st['z'])
+        melde(WARNUNG, wo, 'liegt in einer Block-Zone (Spieler steckt fest)')
       end
     end
 
@@ -404,6 +434,7 @@ module MapCheck
         %w[x z].each do |k|
           melde(FEHLER, w, "'#{k}' fehlt oder ist keine Zahl") unless zahl?(e[k])
         end
+        melde(WARNUNG, w, 'steht in einer Block-Zone (nicht erreichbar)') if in_zone?(e['x'], e['z'])
         if e.key?('radius') && !(zahl?(e['radius']) && e['radius'] > 0)
           melde(WARNUNG, w, "'radius' muss > 0 sein")
         end
@@ -685,6 +716,7 @@ module MapCheck
         %w[x z].each do |k|
           melde(FEHLER, w, "'#{k}' fehlt oder ist keine Zahl") unless zahl?(n[k])
         end
+        melde(WARNUNG, w, 'steht in einer Block-Zone (kommt nicht heraus)') if in_zone?(n['x'], n['z'])
         if n.key?('speed') && !(zahl?(n['speed']) && n['speed'] > 0)
           melde(WARNUNG, w, "'speed' muss > 0 sein")
         end
@@ -709,7 +741,11 @@ module MapCheck
         pw = "#{w} ##{i + 1}"
         unless p.is_a?(Array) && p.size == 2 && p.all? { |v| zahl?(v) }
           melde(FEHLER, pw, 'muss ein Paar [x, z] aus Zahlen sein')
+          next
         end
+        # Etappe 19k.3: Der NPC läuft bis an die Zone heran und wartet dann -
+        # ein Wegpunkt in der Wand ist fast immer ein Versehen.
+        melde(WARNUNG, pw, 'liegt in einer Block-Zone') if in_zone?(p[0], p[1])
       end
       melde(WARNUNG, w, 'nur ein Wegpunkt (NPC läuft nirgends hin)') if path.size == 1
     end

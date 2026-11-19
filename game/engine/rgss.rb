@@ -45,6 +45,7 @@
 # ============================================================================
 
 require 'json'
+require 'passage'   # Etappe 19k.3: Block-Zonen + Hindernisse (eine Quelle)
 
 module RGSS
   VERSION = 'RGSS1-kompatibel (Rune3D 0.8)'.freeze
@@ -339,11 +340,11 @@ module RGSS
       make_encounter_count if @encounter_count <= 0
     end
 
-    # Passierbar (Etappe 19h, echt soweit möglich): innerhalb der Karten-
-    # grenzen, keine zu hohe Geländestufe und keine Block-Zone (19k.2).
-    # Richtungen wie XP: 2=unten (+z), 4=links (-x), 6=rechts (+x),
-    # 8=oben (-z) - ohne Richtung wird die Zielstelle selbst geprüft.
-    # Objekt-Kollision fehlt weiterhin (Backlog).
+    # Passierbar (Etappe 19h, seit 19k.3 vollständig): innerhalb der Karten-
+    # grenzen, keine zu hohe Geländestufe, keine Block-Zone und kein
+    # Hindernis (Objekt-Kasten über der Steiggrenze). Richtungen wie XP:
+    # 2=unten (+z), 4=links (-x), 6=rechts (+x), 8=oben (-z) - ohne
+    # Richtung wird die Zielstelle selbst geprüft.
     MAX_STUFE = 1.2   # Meter Höhenunterschied, die ein Schritt überwindet
 
     def passable?(x, z, direction = nil)
@@ -365,8 +366,9 @@ module RGSS
         w = $game_map.width
         h = $game_map.height
         return false if (w > 0 && (tx < 0 || tx > w)) || (h > 0 && (tz < 0 || tz > h))
-        # Etappe 19k.2: Block-Zonen (unsichtbare Wände) der Karte.
-        return false if $game_map.blocked?(tx, tz)
+        # Etappe 19k.2/19k.3: Block-Zonen der Karte und Objekt-Hindernisse
+        # (Passage ist dieselbe Quelle, die auch NPCs und Routen fragen).
+        return false if Passage.blockiert?(tx, tz)
       end
 
       # Die Stufe misst am SPIELER: (x, z) ist der Ausgangspunkt des Schritts
@@ -426,17 +428,14 @@ module RGSS
     # Etappe 19k.2: Block-Zonen der Karte ("blocked": [{x,z,w,h}] mit
     # x/z = Mitte in Weltmetern, w/h = Größe). Die Physik blockt sie über
     # alle Höhen (unsichtbare Wände, kein Überspringen); passable? und
-    # eigene Scripts fragen blocked? ab.
-    def blocked_zones
-      Array((Game.map || {})['blocked']).select { |b| b.is_a?(Hash) }
-    end
+    # eigene Scripts fragen blocked? ab. Seit 19k.3 liegt die Rechnung in
+    # Passage (eine Quelle für Spieler, NPCs und Bewegungs-Routen).
+    def blocked_zones = Passage.zonen
 
-    def blocked?(x, z)
-      blocked_zones.any? do |b|
-        (x.to_f - b['x'].to_f).abs * 2.0 <= b['w'].to_f &&
-          (z.to_f - b['z'].to_f).abs * 2.0 <= b['h'].to_f
-      end
-    end
+    def blocked?(x, z) = Passage.zone?(x, z)
+
+    # Etappe 19k.3: zusätzlich die Objekt-Hindernisse (nur mit Engine).
+    def hindernis?(x, z) = Passage.hindernis?(x, z)
   end
 
   # ---------------------------------------------------------- $game_screen

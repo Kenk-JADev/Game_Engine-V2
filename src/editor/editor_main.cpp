@@ -813,6 +813,28 @@ static void issues_scan_commands(const JsonValue& list, const std::string& where
     }
 }
 
+// Etappe 19k.3: Liegt (x, z) in einer Block-Zone der aktuellen Karte?
+// Gleiche Rechnung wie Passage.zone? (Ruby) und Physics::is_blocked (C++):
+// x/z = Mitte, Rand gehört dazu, wirkungslose Zonen (w/h <= 0) zählen nicht.
+static bool blocked_zone_at(float x, float z) {
+    const JsonValue* bl = g.map_root.find("blocked");
+    if (!bl || !bl->is_arr()) return false;
+    for (const JsonValue& b : bl->arr) {
+        if (!b.is_obj()) continue;
+        auto num = [&b](const char* k) {
+            const JsonValue* v = b.find(k);
+            return v ? static_cast<float>(v->number(0.0)) : 0.0f;
+        };
+        const float w = num("w"), h = num("h");
+        if (w <= 0.0f || h <= 0.0f) continue;
+        if (std::fabs(x - num("x")) * 2.0f <= w &&
+            std::fabs(z - num("z")) * 2.0f <= h) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Die geladene Karte komplett prüfen und den Backlog neu füllen.
 void issues_scan_map() {
     issue_clear();
@@ -863,6 +885,59 @@ void issues_scan_map() {
                                            "' fehlt oder ist keine Zahl");
                     } else if ((k[0] == 'w' || k[0] == 'h') && v->number(0.0) <= 0.0) {
                         issue_report(1, w, std::string("'") + k + "' muss > 0 sein");
+                    }
+                }
+            }
+        }
+    }
+
+    // Etappe 19k.3: Positionen in Block-Zonen (Parität zu MapCheck) - der
+    // Spieler käme dort nicht hinein, NPCs stünden an der Wand und Wegpunkte
+    // wären unerreichbar.
+    if (const JsonValue* bl2 = g.map_root.find("blocked");
+        bl2 && bl2->is_arr() && !bl2->arr.empty()) {
+        auto punkt = [](const JsonValue& o, float& x, float& z) {
+            const JsonValue* vx = o.find("x");
+            const JsonValue* vz = o.find("z");
+            if (!vx || !vx->is_num() || !vz || !vz->is_num()) return false;
+            x = static_cast<float>(vx->number(0.0));
+            z = static_cast<float>(vz->number(0.0));
+            return true;
+        };
+        float px = 0.0f, pz = 0.0f;
+        const JsonValue* st = g.map_root.find("start");
+        if (st && st->is_obj() && punkt(*st, px, pz) && blocked_zone_at(px, pz)) {
+            issue_report(1, mapname + " Startpunkt",
+                         "liegt in einer Block-Zone (Spieler steckt fest)");
+        }
+        if (JsonValue* ev2 = g.map_root.find("events"); ev2 && ev2->is_arr()) {
+            for (int i = 0; i < static_cast<int>(ev2->arr.size()); ++i) {
+                const JsonValue& e = ev2->arr[i];
+                if (!e.is_obj() || !punkt(e, px, pz)) continue;
+                if (blocked_zone_at(px, pz)) {
+                    issue_report(1, mapname + " Event #" + std::to_string(i + 1),
+                                 "steht in einer Block-Zone (nicht erreichbar)");
+                }
+            }
+        }
+        if (JsonValue* np = g.map_root.find("npcs"); np && np->is_arr()) {
+            for (int i = 0; i < static_cast<int>(np->arr.size()); ++i) {
+                const JsonValue& n = np->arr[i];
+                if (!n.is_obj()) continue;
+                const std::string nw = mapname + " NPC #" + std::to_string(i + 1);
+                if (punkt(n, px, pz) && blocked_zone_at(px, pz)) {
+                    issue_report(1, nw, "steht in einer Block-Zone (kommt nicht heraus)");
+                }
+                const JsonValue* pfad = n.find("path");
+                if (!pfad || !pfad->is_arr()) continue;
+                for (int j = 0; j < static_cast<int>(pfad->arr.size()); ++j) {
+                    const JsonValue& wp = pfad->arr[j];
+                    if (!wp.is_arr() || wp.arr.size() != 2) continue;
+                    if (!wp.arr[0].is_num() || !wp.arr[1].is_num()) continue;
+                    if (blocked_zone_at(static_cast<float>(wp.arr[0].number(0.0)),
+                                        static_cast<float>(wp.arr[1].number(0.0)))) {
+                        issue_report(1, nw + " Wegpunkt #" + std::to_string(j + 1),
+                                     "liegt in einer Block-Zone");
                     }
                 }
             }

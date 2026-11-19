@@ -32,6 +32,18 @@ bool Physics::is_blocked(float x, float z) const {
     return false;
 }
 
+// Etappe 19k.3: liegt der Punkt in einem Objekt-Hindernis?
+bool Physics::solid_at(float x, float y, float z) const {
+    for (const Aabb& b : m_solids) {
+        if (x >= b.min.x && x <= b.max.x &&
+            y >= b.min.y && y <= b.max.y &&
+            z >= b.min.z && z <= b.max.z) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Überlappt das Rechteck (x0..x1, z0..z1) eine Block-Zone?
 bool Physics::blocked_overlaps(float x0, float z0, float x1, float z1) const {
     for (const BlockedRect& r : m_blocked) {

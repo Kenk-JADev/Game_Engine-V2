@@ -10,6 +10,8 @@
 #  Kopflos testbar: ruby -I game/engine tools/npc_test.rb
 # ============================================================================
 
+require 'passage'   # Etappe 19k.3: Block-Zonen/Hindernisse respektieren
+
 class Npc
   attr_reader :name, :event, :node
   attr_accessor :speed, :path
@@ -58,6 +60,14 @@ class Npc
     return if @path.empty?
 
     tx, tz = @path[@target]
+
+    # Etappe 19k.3: liegt der Wegpunkt selbst in einer Block-Zone, wird er
+    # übersprungen - sonst stünde die Patrouille dauerhaft vor der Wand.
+    if Passage.zone?(tx, tz)
+      @target = (@target + 1) % @path.size
+      return
+    end
+
     x, z = position
     dx = tx - x
     dz = tz - z
@@ -78,6 +88,10 @@ class Npc
       ddx = nx - px
       ddz = nz - pz
       return if ddx * ddx + ddz * ddz < block_radius * block_radius
+
+      # Etappe 19k.3: Block-Zone oder Hindernis im Weg? Dann anstossen
+      # (stehen bleiben) statt hindurchzulaufen - wie der Spieler.
+      return if Passage.blockiert?(nx, nz)
 
       @event.x = nx
       @event.z = nz

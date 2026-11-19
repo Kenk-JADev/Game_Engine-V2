@@ -38,6 +38,12 @@ public:
     // Punkt-Test (XZ) - auch für RGSS passable? und den Editor.
     bool is_blocked(float x, float z) const;
 
+    // Etappe 19k.3: Punkt-Test gegen die Objekt-Hindernisse (solids).
+    // Ruby fragt damit ab, ob an einer Stelle etwas Höheres als die
+    // Steiggrenze steht (RGSS passable?, NPC-Routen) - dieselben AABBs,
+    // die auch den Spieler physikalisch stoppen.
+    bool solid_at(float x, float y, float z) const;
+
     void update(float dt, const core::InputState& in, float yaw, const Terrain& terrain);
 
     math::Vec3 position() const { return m_pos; }

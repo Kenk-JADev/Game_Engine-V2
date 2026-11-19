@@ -39,12 +39,11 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Es fehlen weiterhin: `Tilemap`/`Plane` (3D-Terrain ersetzt Kachel-Ebenen),
   Bitmap aus Dateien laden (nur Farbe/Text-Merker), Viewport-Clipping,
   Sprite-Tonwerte (tone), Marshal-Format (bleibt JSON), Audio-Pitch,
-  visuelle `Graphics.freeze/transition`, Hindernis-Kollision in `passable?`
-  (keine blocked?-Abfrage - hängt am Passierbarkeitsthema insgesamt);
+  visuelle `Graphics.freeze/transition`;
   seit 19h.2 zusätzlich: Screen-Tonwerte/Flash/Shake ohne Renderer, Timer
   ohne HUD-Anzeige, change_graphic/opacity/blending-Schritte wirkungslos.
-  Block-Zonen („blocked" im Karten-JSON) prüft `passable?` seit 19k.2;
-  Objekt-Kollision (solid-AABBs) fehlt in `passable?` weiterhin.
+  `passable?` ist seit 19k.3 vollständig (Block-Zonen + Objekt-Kollision
+  über `Passage`) - erledigt, siehe Erledigt-Eintrag 19k.3.
 - Betroffene Stellen: `game/engine/rgss.rb`, `game/engine/graphics.rb`,
   `docs/architecture.md` (19e/19h).
 - Gefunden in: Etappe 19e (User-Vorgabe „RGSS wie RPG Maker XP Online-Hilfe").
@@ -183,6 +182,26 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Etappe 19a.
 
 ## Erledigt
+### [Engine/Editor] Passierbarkeit rund gemacht — erledigt (19k.3)
+- Wunsch: die 19k.2-Restlücken schließen (NPCs/Routen liefen durch Zonen,
+  `passable?` kannte keine Objekt-Kollision) - eine Quelle statt drei
+  eigener Prüfungen.
+- Umsetzung: `game/engine/passage.rb` (`Passage.zonen/zone?/hindernis?/
+  blockiert?`), Physik `solid_at(x,y,z)` + Binding `Rune::Physics.
+  solid_at?`, Tastpunkte über der Steiggrenze (0.45/1.2 bei kMaxStep 0.35);
+  `passable?`/`$game_map.blocked?` delegieren an Passage; NPC stösst an und
+  überspringt blockierte Wegpunkte; `Mover.bewege` bricht den Schritt an
+  Wänden ab (auch Spieler-teleport); Start-in-Zone-Warnung in `enter_map`;
+  MapCheck-Lage-Warnungen (Start/Event/NPC/Wegpunkt) + C++-Parität
+  (`blocked_zone_at` im issues_scan_map).
+- Tests: neu `tools/passage_test.rb`, plus Checks in rgss_test, npc_test,
+  move_route_test, mapcheck_test.
+- Grenzen: NPCs weichen nicht aus (kein Pfad um die Wand), Routen rutschen
+  nicht an Wänden entlang, `hindernis?` tastet zwei feste Höhen.
+- Betroffene Stellen: `game/engine/{passage,rgss,npc,mover,mapcheck,boot}.rb`,
+  `game/main.rb`, `src/world/physics.{h,cpp}`, `src/ruby/vm.cpp`,
+  `src/editor/editor_main.cpp`, `tools/*_test.rb`.
+
 ### [Engine/Editor] Passierbarkeits-System: Block-Zonen — erledigt (19k.2)
 - Symptom (alt): Spieler läuft überall, wo kein `solid`-Objekt steht;
   Zonen/Flächen waren nicht blockierbar.
@@ -191,8 +210,8 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
   Ruby-Bindings, enter_map-Wiring, `$game_map.blocked?` + `passable?`,
   MapCheck-Regeln + C++-Issues-Parität, Editor: F2-Feld „Block-Zonen" +
   rote Flach-Quader im Viewport. Tests: mapcheck_test (5), rgss_test (8).
-- Rest (bleibt offen im RGSS-/NPC-Eintrag): NPC-Pfade und Bewegungs-Routen
-  ignorieren Zonen, `passable?` kennt weiterhin keine Objekt-Kollision.
+- Rest: war „NPC-Pfade/Routen ignorieren Zonen, `passable?` ohne Objekt-
+  Kollision" - beides seit 19k.3 erledigt (siehe Eintrag darüber).
 - Betroffene Stellen: `src/world/physics.{h,cpp}`, `src/ruby/vm.cpp`,
   `game/main.rb`, `game/engine/{rgss,mapcheck}.rb`,
   `src/editor/editor_main.cpp`, `tools/{mapcheck_test,rgss_test}.rb`.
@@ -280,8 +299,8 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
   (wait blockiert bis zum Ende, repeat+wait warnt statt zu blockieren),
   Editor-Befehlstyp ohne neue Controls, MapCheck-Prüfung, Context-Helfer
   `move_route` (RGSS-Leitlinie), `Mover.reset!` bei Kartenwechsel.
-- Grenzen: keine Kollisions-/Passierbarkeitsprüfung (eigener Offener
-  Eintrag), keine Dreh-Schritte.
+- Grenzen: keine Dreh-Schritte. (Kollisions-/Passierbarkeitsprüfung fehlt
+  seit 19k.3 nicht mehr: `Mover.bewege` stoppt an Block-Zonen/Hindernissen.)
 - Betroffene Stellen: `game/engine/{mover,npc,interpreter,scripts,boot}.rb`,
   `game/main.rb`, `game/engine/mapcheck.rb`, `src/editor/editor_main.cpp`,
   `tools/{move_route_test,script_test,mapcheck_test}.rb`.

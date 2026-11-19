@@ -68,6 +68,22 @@ module Rune
     def self.pressed?(key) = @pressed.include?(key)
     def self.down?(key) = @down.include?(key)
   end
+
+  # Physik-Attrappe (Etappe 19k.3): solids = Liste von AABBs
+  # [x0, y0, z0, x1, y1, z1]; solid_at? ist der Punkt-Test, den Passage
+  # über der Steiggrenze benutzt.
+  module Physics
+    @solids = []
+    class << self
+      attr_accessor :solids
+    end
+
+    def self.solid_at?(x, y, z)
+      @solids.any? do |b|
+        x >= b[0] && x <= b[3] && y >= b[1] && y <= b[4] && z >= b[2] && z <= b[5]
+      end
+    end
+  end
 end
 
 # Game-Attrappe: $game_map/$game_player brauchen Karte, Events und gy.
@@ -275,6 +291,20 @@ check('passable?: Richtung 6 in die Zone -> false') { !$game_player.passable?(59
 check('passable?: neben der Zone -> true') { $game_player.passable?(10.0, 10.0) }
 Game.map.delete('blocked')
 check('ohne blocked-Schlüssel: alles passierbar') { !$game_map.blocked?(60.0, 45.0) }
+
+# Etappe 19k.3: Objekt-Hindernisse (Physik-Abfrage über der Steiggrenze).
+Rune::Physics.solids = [[29.0, 0.0, 29.0, 31.0, 1.5, 31.0]]
+check('passable?: hohes Objekt im Weg -> false') { !$game_player.passable?(30.0, 30.0) }
+check('$game_map.hindernis? sieht das Objekt') { $game_map.hindernis?(30.0, 30.0) }
+check('hindernis? daneben -> false') { !$game_map.hindernis?(32.0, 30.0) }
+Rune::Physics.solids = [[29.0, 0.0, 29.0, 31.0, 0.3, 31.0]]
+check('passable?: flacher Kasten ist eine Stufe -> true') { $game_player.passable?(30.0, 30.0) }
+Rune::Physics.solids = [[29.0, 0.8, 29.0, 31.0, 2.0, 31.0]]
+check('passable?: schwebender Kasten (Körperhöhe) -> false') do
+  !$game_player.passable?(30.0, 30.0)
+end
+Rune::Physics.solids = []
+check('ohne Hindernisse wieder passierbar') { $game_player.passable?(30.0, 30.0) }
 $game_temp.passable = false
 check('passable? abgeschaltet -> immer true') { $game_player.passable?(999.0, 999.0) }
 $game_temp.passable = true

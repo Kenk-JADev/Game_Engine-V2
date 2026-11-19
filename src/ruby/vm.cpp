@@ -617,6 +617,16 @@ VALUE rune_physics_blocked_count(VALUE) {
     return INT2NUM(app().physics ? app().physics->blocked_count() : 0);
 }
 
+// Etappe 19k.3: Punkt-Test gegen Objekt-Hindernisse. Ruby tastet damit
+// über der Steiggrenze (kMaxStep) ab, ob an einer Stelle eine Wand steht -
+// niedrige Kästen bleiben begehbar (Stufen), genau wie in der Physik.
+VALUE rune_physics_solid_at(VALUE, VALUE x, VALUE y, VALUE z) {
+    if (!app().physics) return Qfalse;
+    return app().physics->solid_at(static_cast<float>(NUM2DBL(x)),
+                                   static_cast<float>(NUM2DBL(y)),
+                                   static_cast<float>(NUM2DBL(z))) ? Qtrue : Qfalse;
+}
+
 VALUE rune_physics_is_blocked(VALUE, VALUE x, VALUE z) {
     if (!app().physics) return Qfalse;
     return app().physics->is_blocked(static_cast<float>(NUM2DBL(x)),
@@ -758,6 +768,8 @@ void register_bindings() {
     rb_define_module_function(mPhys, "add_blocked", RUBY_METHOD_FUNC(rune_physics_add_blocked), 4);
     rb_define_module_function(mPhys, "blocked_count", RUBY_METHOD_FUNC(rune_physics_blocked_count), 0);
     rb_define_module_function(mPhys, "blocked?", RUBY_METHOD_FUNC(rune_physics_is_blocked), 2);
+    // Etappe 19k.3: Objekt-Hindernisse abfragen (RGSS passable?, Routen).
+    rb_define_module_function(mPhys, "solid_at?", RUBY_METHOD_FUNC(rune_physics_solid_at), 3);
 }
 
 struct TickArgs {

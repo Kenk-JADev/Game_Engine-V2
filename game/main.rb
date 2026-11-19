@@ -149,6 +149,11 @@ end
     st = @map['start'] || Database.system['start'] || { 'x' => 0.0, 'z' => 0.0 }
     Rune::Player.teleport(st['x'].to_f, gy(st['x'].to_f, st['z'].to_f) + 0.2, st['z'].to_f)
     Rune::Camera.yaw = (st['yaw'] || Math::PI).to_f
+    # Etappe 19k.3: Ein Startpunkt in der Block-Zone wäre ein feststeckender
+    # Spieler - MapCheck und der Editor warnen, hier zusätzlich zur Laufzeit.
+    if defined?(Passage) && Passage.zone?(st['x'].to_f, st['z'].to_f)
+      Rune::Log.warn('Startpunkt liegt in einer Block-Zone (Spieler steckt fest)')
+    end
     Rune::Log.info("Karte '#{@map['name']}' aktiv: #{@events.size} Events, " \
                    "#{@map['objects'].size} Objekte, #{Rune::Physics.solid_count} Hindernisse")
   end

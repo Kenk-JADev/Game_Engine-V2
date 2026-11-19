@@ -46,6 +46,8 @@
 #  Kopflos testbar: ruby -I game/engine tools/move_route_test.rb
 # ============================================================================
 
+require 'passage'   # Etappe 19k.3: Routen stoppen an Wänden/Hindernissen
+
 module Mover
   # Kanonische Schritte (XP-Namen). MapCheck::MOVER_SCHRITTE muss dazu passen
   # (move_route_test assertet den Sync; mapcheck.rb lädt vor mover.rb).
@@ -418,21 +420,41 @@ module Mover
     r.spieler ? [Rune::Player.position[0], Rune::Player.position[2]] : r.objekt.position
   end
 
+  # Zielpunkt eines Teilschritts in XZ (für Kollisionsprüfung und Bewegung).
+  def self.teil_ziel(r, weg)
+    if r.spieler
+      px, _py, pz = Rune::Player.position
+      [px + r.dx * weg, pz + r.dz * weg]
+    else
+      x, z = r.objekt.position
+      [x + r.dx * weg, z + r.dz * weg]
+    end
+  end
+
   # Restmeter des aktuellen Schritts ablaufen (Spieler: gleiten per
   # teleport wie move_player; NPC: move_to setzt Event + Node).
   def self.bewege(r, dt)
     weg = r.speed * dt
     weg = r.distanz if weg > r.distanz
+
+    # Etappe 19k.3: Block-Zonen und Hindernisse stoppen auch Routen. Ohne
+    # die Prüfung liefen move_*-Schritte durch die unsichtbaren Wände (der
+    # Spieler-teleport umgeht die Physik, NPC-move_to sowieso). Der Schritt
+    # gilt dann als abgelaufen, die Route macht mit dem nächsten Befehl
+    # weiter - genau wie ein Charakter, der gegen eine Wand läuft.
+    nx, nz = teil_ziel(r, weg)
+    if Passage.blockiert?(nx, nz)
+      r.distanz = 0.0
+      warn_once('Mover: Schritt an Block-Zone/Hindernis gestoppt')
+      return
+    end
+
     r.distanz -= weg
 
     if r.spieler
-      px, _py, pz = Rune::Player.position
-      nx = px + r.dx * weg
-      nz = pz + r.dz * weg
       Rune::Player.teleport(nx, Game.gy(nx, nz) + 0.2, nz)
     else
-      x, z = r.objekt.position
-      r.objekt.move_to(x + r.dx * weg, z + r.dz * weg)
+      r.objekt.move_to(nx, nz)
     end
   end
 

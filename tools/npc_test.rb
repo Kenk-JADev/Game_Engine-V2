@@ -25,8 +25,13 @@ module Rune
   end
 end
 
-# Game.gy-Attrappe (Höhe 0), bevor npc.rb geladen wird.
+# Game-Attrappe (Höhe 0, Karte ohne Block-Zonen), bevor npc.rb geladen wird.
 module Game
+  @map = {}
+  class << self
+    attr_accessor :map
+  end
+
   def self.gy(_x, _z) = 0.0
 end
 
@@ -106,6 +111,26 @@ check('NPC wartet, wenn Spieler im Weg') { blocker.position[0] == 0.0 }
 Rune.ppos = [1.5, 0.0, 5.0]   # Spieler zur Seite
 blocker.update(0.5)
 check('NPC läuft weiter, wenn Weg frei') { blocker.position[0] > 0.9 }
+
+# --- Block-Zonen (Etappe 19k.3) ----------------------------------------------
+# Zone von x = 2..4 (Mitte 3, Breite 2) auf der Laufstrecke nach (10, 0).
+Game.map = { 'blocked' => [{ 'x' => 3.0, 'z' => 0.0, 'w' => 2.0, 'h' => 2.0 }] }
+wand = Npc.new({ 'name' => 'Wandläufer', 'x' => 0.0, 'z' => 0.0, 'speed' => 2.0,
+                 'path' => [[10.0, 0.0]] }, scene)
+wand.update(0.5)   # nächste Position (1, 0) ist frei
+check('NPC läuft bis vor die Block-Zone') { wand.position[0] == 1.0 }
+wand.update(1.0)   # nächste Position (3, 0) läge in der Zone
+check('NPC läuft nicht in die Block-Zone (stösst an)') { wand.position[0] == 1.0 }
+
+tour = Npc.new({ 'name' => 'Tour', 'x' => 0.0, 'z' => 0.0, 'speed' => 10.0,
+                 'path' => [[3.0, 0.0], [0.0, 6.0]] }, scene)
+tour.update(1.0)   # Wegpunkt (3,0) liegt in der Zone -> übersprungen
+tour.update(1.0)   # läuft dafür den zweiten Wegpunkt an
+check('Blockierter Wegpunkt wird übersprungen') { tour.position == [0.0, 6.0] }
+
+Game.map = {}
+wand.update(1.0)
+check('Ohne Zonen läuft der NPC weiter') { wand.position[0] > 1.0 }
 
 # --- Snapshot / Restore (Etappe 15) ------------------------------------------
 blocker.update(1.0)           # weiterlaufen lassen
