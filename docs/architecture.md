@@ -1117,7 +1117,7 @@ außerhalb davon blieb unangetastet — 113 Dateien, ~1550 Zeilen.
 
 **Zweite Hälfte des Fundes:** Der Editor schickte datenhaltige Texte durch
 ANSI-Win32-Aufrufe (`SendMessageA`, `SetWindowTextA`, `GetWindowTextA`). Mit
-UTF-8-Namen wie „Hütte" wäre daraus in der Liste „HÃ¼tte" geworden (CP1252
+UTF-8-Namen wie „Hütte" wäre daraus in der Liste Doppelkodierung in Ã-Form geworden (CP1252
 liest die UTF-8-Bytes als Einzelzeichen). Alle 24 Textaufrufe in
 `editor_main.cpp`, `main.cpp` und `ruby/vm.cpp` nutzen jetzt die W-Varianten
 mit `utf8_to_wide`/`wide_to_utf8`; `ev_set_text` war bereits W-basiert. Damit

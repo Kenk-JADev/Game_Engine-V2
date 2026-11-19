@@ -1959,7 +1959,7 @@ void sync_object_list() {
     if (!g.list_objs || !g.objects) return;
     // Etappe 19b: durchgehend W-Varianten - die Namen kommen als UTF-8 aus
     // dem Karten-JSON und dürfen nicht durch die ANSI-Codepage (CP1252)
-    // laufen, sonst wird "Hütte" in der Liste zu "HÃ¼tte".
+    // laufen, sonst erscheint "Hütte" in der Liste doppelt kodiert (Ã-Form).
     SendMessageW(g.list_objs, LB_RESETCONTENT, 0, 0);
     wchar_t buf[160];
     for (int i = 0; i < static_cast<int>(g.objects->arr.size()); ++i) {
