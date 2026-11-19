@@ -199,7 +199,11 @@ Battle.singleton_class.send(:define_method, :rand) { 0.9 }
 Battle.start('waldweg')
 2.times { druck(:down) }
 druck(:enter)
-check('Flucht fehlschlagen -> Aktionsphase (Runde 2, Gegner waren dran)') do
+check('Flucht fehlschlagen: Runde beendet (Phase execute)') do
+  Battle.active? && Battle.phase == :execute
+end
+Battle.update(0.016)   # execute: Aktionen + Gegnerzug + Runde 2
+check('Aktionsphase gelaufen -> wieder Befehle (Runde 2)') do
   Battle.active? && Battle.phase == :command && Battle.turn == 1
 end
 Battle.abort!
@@ -226,9 +230,11 @@ druck(:enter)
 check('Item gewählt -> nächster Held (Mira)') do
   Battle.phase == :command && Battle.current_actor.name == 'Mira'
 end
-# Mira greift an; danach läuft die Aktionsphase und das Item wirkt.
+# Mira greift an -> Runde beendet; execute im nächsten Frame: Item wirkt
+# (heilt den ersten verletzten Helden = Arik), Gegnerzug, Runde 2 beginnt.
 druck(:enter)
 druck(:enter)
+Battle.update(0.016)
 check('Aktionsphase gelaufen (Wieder Befehle, Runde 2)') do
   Battle.phase == :command && Battle.turn == 1
 end
@@ -243,11 +249,10 @@ end
 
 puts '== Sieg =='
 Battle.enemies.each { |g| g.damage(9999) }
-Battle.update(0.016)   # Befehlsphase -> execute? erst Aktionen leeren
 Battle.instance_variable_set(:@actions, [])
 Battle.instance_variable_set(:@phase, :execute)
 gold0 = Party.gold
-Battle.update(0.016)
+Battle.update(0.016)   # execute: keine Aktionen, alle Gegner tot -> Sieg
 check('Ergebnis Sieg') { Battle.result == :sieg && !Battle.active? }
 check('Belohnung: Gold gestiegen (Goblin 8 + Wolf 0)') { Party.gold >= gold0 + 8 }
 check('Exp auf Party-Helden verteilt') do
