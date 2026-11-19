@@ -1,0 +1,13 @@
+{
+  "name": "Rune3D - Dorf der Kristalle",
+  "start": { "map": "dorf", "x": 0.0, "z": 8.0, "yaw": 3.14159 },
+  "switches": {
+    "kristall_aktiv": false,
+    "kristall_0_genommen": false,
+    "kristall_1_genommen": false,
+    "kristall_2_genommen": false
+  },
+  "variables": {
+    "kristalle": 0
+  }
+}

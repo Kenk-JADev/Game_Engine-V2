@@ -1,0 +1,15 @@
+{
+  "name": "Neue Welt",
+  "terrain": {
+    "size": 240,
+    "resolution": 192,
+    "seed": 6456,
+    "amplitude": 18.0
+  },
+  "objects": [],
+  "events": [],
+  "start": {
+    "x": 0.0,
+    "z": 0.0
+  }
+}

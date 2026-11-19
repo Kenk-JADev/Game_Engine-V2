@@ -1,0 +1,12 @@
+{
+  "scripts": [
+    {
+      "name": "dorf_begruessung",
+      "code": "# Projekt-Script: wird aus einem Event mit\n# {\"cmd\":\"script\",\"name\":\"dorf_begruessung\"} aufgerufen.\nlog 'dorf_begruessung laeuft'\nadd_variable 'script_aufrufe', 1\nsay ['Das ist ein Projekt-Script.',\n     'Bearbeitet wird es im Script-Editor des Editors.']\n"
+    },
+    {
+      "name": "kristalle_zaehlen",
+      "code": "# Liest eine Variable und schreibt sie ins Log.\nn = variable('kristalle')\nlog \"kristalle=#{n}\"\n"
+    }
+  ]
+}

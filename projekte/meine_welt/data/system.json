@@ -1,0 +1,11 @@
+{
+  "name": "meine welt",
+  "start": {
+    "map": "welt01",
+    "x": 0.0,
+    "z": 0.0,
+    "yaw": 3.141592653589793
+  },
+  "switches": {},
+  "variables": {}
+}

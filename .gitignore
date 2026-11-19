@@ -1,0 +1,10 @@
+build/
+log/
+*.log
+*.exe
+*.o
+*.dll
+.vs/
+*.user
+projekte/*/saves/
+opencode.json

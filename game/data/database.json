@@ -1,0 +1,69 @@
+{
+  "gold": 120,
+  "actors": [
+    {
+      "id": "arik",
+      "name": "Arik",
+      "class": "Krieger",
+      "level": 1,
+      "hp": 120,
+      "mp": 15,
+      "atk": 14,
+      "def": 10,
+      "spi": 4,
+      "agi": 8,
+      "exp": 0
+    },
+    {
+      "id": "mira",
+      "name": "Mira",
+      "class": "Magierin",
+      "level": 1,
+      "hp": 80,
+      "mp": 40,
+      "atk": 6,
+      "def": 6,
+      "spi": 15,
+      "agi": 10,
+      "exp": 0
+    }
+  ],
+  "items": [
+    {
+      "id": "heiltrank",
+      "name": "Heiltrank",
+      "kind": "heal",
+      "power": 40,
+      "price": 25,
+      "start": 2,
+      "desc": "Heilt 40 HP eines Helden."
+    },
+    {
+      "id": "manatrank",
+      "name": "Manatrank",
+      "kind": "mana",
+      "power": 20,
+      "price": 30,
+      "start": 1,
+      "desc": "Stellt 20 MP wieder her."
+    },
+    {
+      "id": "kristall",
+      "name": "Wasserkristall",
+      "kind": "quest",
+      "power": 0,
+      "price": 0,
+      "start": 0,
+      "desc": "Seltsamer blauer Kristall aus dem Brunnen."
+    },
+    {
+      "id": "goldbeutel",
+      "name": "Goldbeutel",
+      "kind": "money",
+      "power": 50,
+      "price": 0,
+      "start": 0,
+      "desc": "Bringt 50 Gold beim Oeffnen."
+    }
+  ]
+}

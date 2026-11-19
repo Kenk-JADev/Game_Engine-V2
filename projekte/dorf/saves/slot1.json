@@ -1,0 +1,26 @@
+{
+  "map": "dorf",
+  "player": {
+    "x": 2.0040341041749343e-05,
+    "y": 0.0,
+    "z": 0.09510689973831177,
+    "yaw": 3.141590118408203,
+    "mode": "third"
+  },
+  "state": {
+    "switches": {
+      "kristall_aktiv": false,
+      "kristall_0_genommen": false,
+      "kristall_1_genommen": false,
+      "kristall_2_genommen": false
+    },
+    "variables": {
+      "kristalle": 0.0
+    }
+  },
+  "fired": [
+    "Wegweiser am Zaun"
+  ],
+  "time": 9.91547869797796,
+  "saved": "2026-11-16 11:36"
+}

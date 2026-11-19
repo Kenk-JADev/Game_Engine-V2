@@ -1,0 +1,536 @@
+{
+  "name": "Dorf",
+  "terrain": {
+    "size": 240,
+    "resolution": 192,
+    "seed": 7,
+    "amplitude": 18.0
+  },
+  "objects": [
+    {
+      "type": "weg",
+      "x": 0.0,
+      "z": -4.0,
+      "rot": 0.0
+    },
+    {
+      "type": "weg",
+      "x": 0.0,
+      "z": -7.0,
+      "rot": 0.0
+    },
+    {
+      "type": "weg",
+      "x": 0.0,
+      "z": -10.0,
+      "rot": 0.0
+    },
+    {
+      "type": "weg",
+      "x": 0.0,
+      "z": -13.0,
+      "rot": 0.0
+    },
+    {
+      "type": "weg",
+      "x": 0.0,
+      "z": -16.0,
+      "rot": 0.0
+    },
+    {
+      "type": "weg",
+      "x": 0.0,
+      "z": -19.0,
+      "rot": 0.0
+    },
+    {
+      "type": "weg",
+      "x": 0.0,
+      "z": -22.0,
+      "rot": 0.0
+    },
+    {
+      "type": "weg",
+      "x": 0.0,
+      "z": -25.0,
+      "rot": 0.0
+    },
+    {
+      "type": "weg",
+      "x": 0.0,
+      "z": -28.0,
+      "rot": 0.0
+    },
+    {
+      "type": "weg",
+      "x": 0.0,
+      "z": -31.0,
+      "rot": 0.0
+    },
+    {
+      "type": "weg",
+      "x": 0.0,
+      "z": -34.0,
+      "rot": 0.0
+    },
+    {
+      "type": "weg",
+      "x": 0.0,
+      "z": -37.0,
+      "rot": 0.0
+    },
+    {
+      "type": "weg",
+      "x": 0.0,
+      "z": -40.0,
+      "rot": 0.0
+    },
+    {
+      "type": "weg",
+      "x": 0.0,
+      "z": -43.0,
+      "rot": 0.0
+    },
+    {
+      "type": "weg",
+      "x": 0.0,
+      "z": -46.0,
+      "rot": 0.0
+    },
+    {
+      "type": "weg",
+      "x": 0.0,
+      "z": -49.0,
+      "rot": 0.0
+    },
+    {
+      "type": "weg",
+      "x": 0.0,
+      "z": -52.0,
+      "rot": 0.0
+    },
+    {
+      "type": "weg",
+      "x": 0.0,
+      "z": -55.0,
+      "rot": 0.0
+    },
+    {
+      "type": "zaun",
+      "x": -6.0,
+      "z": -3.0,
+      "rot": 0.0
+    },
+    {
+      "type": "zaun",
+      "x": -4.0,
+      "z": -3.0,
+      "rot": 0.0
+    },
+    {
+      "type": "zaun",
+      "x": -2.0,
+      "z": -3.0,
+      "rot": 0.0
+    },
+    {
+      "type": "zaun",
+      "x": 0.0,
+      "z": -3.0,
+      "rot": 0.0
+    },
+    {
+      "type": "zaun",
+      "x": 2.0,
+      "z": -3.0,
+      "rot": 0.0
+    },
+    {
+      "type": "zaun",
+      "x": 4.0,
+      "z": -3.0,
+      "rot": 0.0
+    },
+    {
+      "type": "zaun",
+      "x": 6.0,
+      "z": -3.0,
+      "rot": 0.0
+    },
+    {
+      "type": "brunnen",
+      "x": -5.0,
+      "z": 3.0,
+      "rot": 0.0
+    },
+    {
+      "type": "haus",
+      "x": -10.0,
+      "z": -8.0,
+      "rot": 0.0
+    },
+    {
+      "type": "haus",
+      "x": 10.0,
+      "z": -8.0,
+      "rot": 0.0
+    },
+    {
+      "type": "haus",
+      "x": -11.0,
+      "z": -18.0,
+      "rot": 0.0
+    },
+    {
+      "type": "haus",
+      "x": 11.0,
+      "z": -18.0,
+      "rot": 0.0
+    },
+    {
+      "type": "haus",
+      "x": -9.0,
+      "z": -28.0,
+      "rot": 0.0
+    },
+    {
+      "type": "haus",
+      "x": 9.0,
+      "z": -28.0,
+      "rot": 0.0
+    },
+    {
+      "type": "kristall",
+      "x": -4.0,
+      "z": -12.0,
+      "rot": 0.0
+    },
+    {
+      "type": "kristall",
+      "x": 4.0,
+      "z": -12.0,
+      "rot": 0.6
+    },
+    {
+      "type": "kristall",
+      "x": 0.0,
+      "z": -22.0,
+      "rot": 1.8
+    },
+    {
+      "type": "laterne",
+      "x": -3.0,
+      "z": -6.0,
+      "rot": 0.0
+    },
+    {
+      "type": "laterne",
+      "x": 3.0,
+      "z": -6.0,
+      "rot": 0.0
+    },
+    {
+      "type": "laterne",
+      "x": -3.0,
+      "z": -26.0,
+      "rot": 0.0
+    },
+    {
+      "type": "laterne",
+      "x": 3.0,
+      "z": -26.0,
+      "rot": 0.0
+    }
+  ],
+  "events": [
+    {
+      "id": 1,
+      "name": "Waechter Mara",
+      "x": 0.0,
+      "z": 4.5,
+      "radius": 3.2,
+      "trigger": "action",
+      "commands": [
+        {
+          "cmd": "if_switch",
+          "name": "kristall_aktiv",
+          "value": true,
+          "then": [
+            {
+              "cmd": "text",
+              "lines": [
+                "Mara: Die Kristalle singen wieder.",
+                "Du hast das Dorf gerettet."
+              ]
+            }
+          ],
+          "else": [
+            {
+              "cmd": "text",
+              "lines": [
+                "Mara: Drei Kristalle traegt der Weg nach Norden.",
+                "Hol sie dir, dann oeffnen sich die Tore."
+              ]
+            },
+            {
+              "cmd": "if_variable",
+              "name": "kristalle",
+              "op": ">=",
+              "value": 3,
+              "then": [
+                {
+                  "cmd": "text",
+                  "lines": [
+                    "Mara: Du hast alle drei!",
+                    "Mara: Ich aktiviere den Schutzkreis."
+                  ]
+                },
+                {
+                  "cmd": "switch",
+                  "name": "kristall_aktiv",
+                  "value": true
+                },
+                {
+                  "cmd": "variable",
+                  "name": "kristalle",
+                  "add": 0
+                },
+                {
+                  "cmd": "log",
+                  "text": "Quest abgeschlossen: kristall_aktiv = true"
+                }
+              ],
+              "else": [
+                {
+                  "cmd": "text",
+                  "lines": [
+                    "Mara: Noch nicht genug. Zaehle sie selbst nach."
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Kristall (links)",
+      "x": -4.0,
+      "z": -12.0,
+      "radius": 2.4,
+      "trigger": "action",
+      "commands": [
+        {
+          "cmd": "if_switch",
+          "name": "kristall_0_genommen",
+          "value": true,
+          "then": [
+            {
+              "cmd": "text",
+              "lines": [
+                "Der Kristall ist schon geborgen."
+              ]
+            }
+          ],
+          "else": [
+            {
+              "cmd": "text",
+              "lines": [
+                "Ein kalter Kristall. Du nimmst ihn an dich."
+              ]
+            },
+            {
+              "cmd": "switch",
+              "name": "kristall_0_genommen",
+              "value": true
+            },
+            {
+              "cmd": "variable",
+              "name": "kristalle",
+              "add": 1
+            },
+            {
+              "cmd": "effect",
+              "name": "sparkle",
+              "height": 1.2
+            },
+            {
+              "cmd": "log",
+              "text": "Kristall 0 geborgen"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Kristall (rechts)",
+      "x": 4.0,
+      "z": -12.0,
+      "radius": 2.4,
+      "trigger": "action",
+      "commands": [
+        {
+          "cmd": "if_switch",
+          "name": "kristall_1_genommen",
+          "value": true,
+          "then": [
+            {
+              "cmd": "text",
+              "lines": [
+                "Der Kristall ist schon geborgen."
+              ]
+            }
+          ],
+          "else": [
+            {
+              "cmd": "text",
+              "lines": [
+                "Der Kristall summt leise in deiner Hand."
+              ]
+            },
+            {
+              "cmd": "switch",
+              "name": "kristall_1_genommen",
+              "value": true
+            },
+            {
+              "cmd": "variable",
+              "name": "kristalle",
+              "add": 1
+            },
+            {
+              "cmd": "effect",
+              "name": "sparkle",
+              "height": 1.2
+            },
+            {
+              "cmd": "log",
+              "text": "Kristall 1 geborgen"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "Kristall (Mitte)",
+      "x": 0.0,
+      "z": -22.0,
+      "radius": 2.4,
+      "trigger": "action",
+      "commands": [
+        {
+          "cmd": "if_switch",
+          "name": "kristall_2_genommen",
+          "value": true,
+          "then": [
+            {
+              "cmd": "text",
+              "lines": [
+                "Der Kristall ist schon geborgen."
+              ]
+            }
+          ],
+          "else": [
+            {
+              "cmd": "text",
+              "lines": [
+                "Der groesste der drei. Er wird schwer.",
+                "Geh zurueck zu Mara."
+              ]
+            },
+            {
+              "cmd": "switch",
+              "name": "kristall_2_genommen",
+              "value": true
+            },
+            {
+              "cmd": "variable",
+              "name": "kristalle",
+              "add": 1
+            },
+            {
+              "cmd": "effect",
+              "name": "sparkle",
+              "height": 1.2
+            },
+            {
+              "cmd": "log",
+              "text": "Kristall 2 geborgen"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "Alter Brunnen",
+      "x": -5.0,
+      "z": 3.0,
+      "radius": 2.2,
+      "trigger": "action",
+      "commands": [
+        {
+          "cmd": "text",
+          "lines": [
+            "Ein tiefer Brunnen. Irgendwo da unten tropft Wasser."
+          ]
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "Wegweiser am Zaun",
+      "x": 0.0,
+      "z": -1.2,
+      "radius": 2.6,
+      "trigger": "touch",
+      "commands": [
+        {
+          "cmd": "text",
+          "lines": [
+            "Ein Schild: 'Die Kristalle liegen hinter dem Zaun, im Norden.'",
+            "Der Weg fuehrt nach links um die Weide herum."
+          ]
+        }
+      ]
+    }
+  ],
+  "npcs": [
+    {
+      "name": "Wanderer",
+      "x": 2.0,
+      "z": 6.0,
+      "speed": 1.2,
+      "path": [
+        [
+          4.0,
+          4.0
+        ],
+        [
+          4.0,
+          -1.0
+        ],
+        [
+          -2.0,
+          -1.0
+        ],
+        [
+          -2.0,
+          4.0
+        ]
+      ],
+      "commands": [
+        {
+          "cmd": "text",
+          "lines": [
+            "Wanderer: Schoenes Waetter heute, nicht?",
+            "Ich patrouilliere das Dorf rundherum."
+          ]
+        }
+      ]
+    }
+  ]
+}

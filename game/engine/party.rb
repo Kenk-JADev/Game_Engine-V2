@@ -1,0 +1,201 @@
+#encoding: utf-8
+# ============================================================================
+#  Party + Inventar (Etappe 17g, RPG-Maker-XP-Datenbank).
+#
+#  Die Datenbank steht in data/database.json:
+#    {
+#      "gold": 120,
+#      "actors": [ { "id":"arik", "name":"Arik", "class":"Krieger",
+#                    "level":1, "hp":120, "mp":20, "atk":14, "def":10,
+#                    "spi":6, "agi":9, "exp":0 } ],
+#      "items":  [ { "id":"heiltrank", "name":"Heiltrank", "kind":"heal",
+#                    "power":40, "price":25, "desc":"Heilt 40 HP." } ]
+#    }
+#
+#  Party haelt den veraenderlichen Spielzustand (HP/MP, Gold, Inventar) und
+#  wandert als Snapshot in die Spielstaende. Die Item-Definitionen bleiben in
+#  der Datenbank; das Inventar speichert nur Mengen.
+# ============================================================================
+
+class Party
+  Actor = Struct.new(:id, :name, :klass, :level, :max_hp, :max_mp, :hp, :mp,
+                     :atk, :def, :spi, :agi, :exp, keyword_init: true) do
+    def damaged? = hp < max_hp
+
+    def hp_line
+      "#{name}  Lv #{level}  HP #{hp}/#{max_hp}  MP #{mp}/#{max_mp}"
+    end
+  end
+
+  @actors = []
+  @items = {}
+  @gold = 0
+
+  class << self
+    attr_reader :actors, :items, :gold
+  end
+
+  # Aus der Datenbank (Hash) neu aufsetzen; HP/MP starten voll.
+  def self.setup(db)
+    db ||= {}
+    @actors = (db['actors'] || []).filter_map do |h|
+      next unless h.is_a?(Hash)
+      id = h['id'].to_s
+      next if id.empty?
+      max_hp = (h['hp'] || 100).to_i
+      max_mp = (h['mp'] || 20).to_i
+      Actor.new(id: id, name: (h['name'] || id).to_s, klass: h['class'].to_s,
+                level: (h['level'] || 1).to_i,
+                max_hp: max_hp, max_mp: max_mp, hp: max_hp, mp: max_mp,
+                atk: (h['atk'] || 10).to_i, def: (h['def'] || 8).to_i,
+                spi: (h['spi'] || 6).to_i, agi: (h['agi'] || 8).to_i,
+                exp: (h['exp'] || 0).to_i)
+    end
+    @items = {}
+    (db['items'] || []).each do |h|
+      next unless h.is_a?(Hash)
+      id = h['id'].to_s
+      next if id.empty?
+      @items[id] = (h['start'] || 0).to_i if (h['start'] || 0).to_i.positive?
+    end
+    @gold = (db['gold'] || 0).to_i
+    Rune::Log.info("Party: #{@actors.size} Helden, #{@items.size} Item-Sorten, " \
+                   "#{@gold} Gold")
+    @actors
+  end
+
+  def self.leader
+    @actors.first
+  end
+
+  def self.find(id)
+    @actors.find { |a| a.id == id.to_s }
+  end
+
+  # ------------------------------------------------------------- Inventar
+
+  def self.item_def(id)
+    list = (Database.database['items'] || [])
+    list.find { |h| h.is_a?(Hash) && h['id'].to_s == id.to_s }
+  end
+
+  def self.item_name(id)
+    (item_def(id) || {})['name'] || id.to_s
+  end
+
+  def self.item_count(id)
+    @items[id.to_s].to_i
+  end
+
+  # Menge aendern (negative Werte nehmen weg, nie unter 0).
+  def self.add_item(id, count = 1)
+    key = id.to_s
+    return 0 if key.empty?
+    n = item_count(key) + count.to_i
+    n = 0 if n.negative?
+    if n.zero?
+      @items.delete(key)
+    else
+      @items[key] = n
+    end
+    Rune::Log.info("Party: Item '#{key}' #{count.to_i >= 0 ? '+' : ''}#{count.to_i} " \
+                   "(jetzt #{n})")
+    n
+  end
+
+  def self.take_item(id, count = 1)
+    add_item(id, -count.to_i.abs)
+  end
+
+  # Item benutzen: heilende Items wirken auf den ersten verletzten Helden.
+  def self.use_item(id)
+    key = id.to_s
+    defi = item_def(key)
+    unless defi
+      Rune::Log.warn("Party: unbekanntes Item '#{key}'")
+      Issues.report('Party', "unbekanntes Item '#{key}'")
+      return false
+    end
+    return false unless item_count(key).positive?
+
+    case defi['kind'].to_s
+    when 'heal'
+      target = @actors.find(&:damaged?) || leader
+      return false unless target
+      amount = (defi['power'] || 0).to_i
+      target.hp = [target.hp + amount, target.max_hp].min
+      Rune::Log.info("Party: #{target.name} benutzt #{item_name(key)} (+#{amount} HP)")
+    when 'mana'
+      target = @actors.find { |a| a.mp < a.max_mp } || leader
+      return false unless target
+      amount = (defi['power'] || 0).to_i
+      target.mp = [target.mp + amount, target.max_mp].min
+      Rune::Log.info("Party: #{target.name} benutzt #{item_name(key)} (+#{amount} MP)")
+    else
+      Rune::Log.info("Party: #{item_name(key)} kann nicht benutzt werden")
+      return false
+    end
+    take_item(key, 1)
+    true
+  end
+
+  # --------------------------------------------------------------- Gold/HP
+
+  def self.add_gold(amount)
+    @gold = [@gold + amount.to_i, 0].max
+    Rune::Log.info("Party: Gold #{amount.to_i >= 0 ? '+' : ''}#{amount.to_i} (jetzt #{@gold})")
+    @gold
+  end
+
+  # amount <= 0 heilt vollstaendig, sonst um amount.
+  def self.heal_all(amount = 0)
+    @actors.each do |a|
+      a.hp = amount.to_i.positive? ? [a.hp + amount.to_i, a.max_hp].min : a.max_hp
+      a.mp = amount.to_i.positive? ? [a.mp + amount.to_i, a.max_mp].min : a.max_mp
+    end
+    Rune::Log.info("Party: geheilt (#{amount.to_i.positive? ? "+#{amount.to_i}" : 'voll'})")
+    true
+  end
+
+  # ------------------------------------------------------- Speichern/Laden
+
+  def self.snapshot
+    {
+      'gold' => @gold,
+      'items' => @items.dup,
+      'actors' => @actors.map do |a|
+        { 'id' => a.id, 'level' => a.level, 'hp' => a.hp, 'mp' => a.mp, 'exp' => a.exp }
+      end
+    }
+  end
+
+  def self.restore!(snap)
+    snap ||= {}
+    @gold = (snap['gold'] || 0).to_i
+    @items = (snap['items'] || {}).map { |k, v| [k.to_s, v.to_i] }.reject { |_, v| v <= 0 }.to_h
+    (snap['actors'] || []).each do |h|
+      a = find(h['id'])
+      next unless a
+      a.level = (h['level'] || a.level).to_i
+      a.exp = (h['exp'] || a.exp).to_i
+      a.hp = [[(h['hp'] || a.hp).to_i, a.max_hp].min, 0].max
+      a.mp = [[(h['mp'] || a.mp).to_i, a.max_mp].min, 0].max
+    end
+    Rune::Log.info("Party wiederhergestellt: #{@gold} Gold, #{@items.size} Item-Sorten")
+    true
+  end
+
+  # Zeilen fuer das Menue-Panel.
+  def self.status_lines
+    lines = @actors.map(&:hp_line)
+    lines << "Gold: #{@gold}"
+    if @items.empty?
+      lines << 'Inventar: leer'
+    else
+      @items.sort_by { |id, _| item_name(id) }.each do |id, n|
+        lines << "#{item_name(id)} x#{n}"
+      end
+    end
+    lines
+  end
+end
