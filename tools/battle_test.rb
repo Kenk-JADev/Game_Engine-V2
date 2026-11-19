@@ -219,6 +219,7 @@ Battle.singleton_class.send(:remove_method, :rand)
 
 puts '== Item =='
 Battle.start('waldweg')
+menge0 = Party.item_count('heiltrank') + 1
 Party.add_item('heiltrank', 1)
 Battle.actors[0].damage(20)
 check('usable_items enthält heiltrank') { Battle.usable_items.include?('heiltrank') }
@@ -232,15 +233,20 @@ check('Item gewählt -> nächster Held (Mira)') do
 end
 # Mira greift an -> Runde beendet; execute im nächsten Frame: Item wirkt
 # (heilt den ersten verletzten Helden = Arik), Gegnerzug, Runde 2 beginnt.
+# Gegnerzug stubben: keine Kritik (0.9), kleinste Streuung -> Arik bleibt
+# berechenbar bei max-20+heilung.
+Battle.singleton_class.send(:define_method, :rand) { 0.9 }
 druck(:enter)
 druck(:enter)
 Battle.update(0.016)
+Battle.singleton_class.send(:remove_method, :rand)
 check('Aktionsphase gelaufen (Wieder Befehle, Runde 2)') do
   Battle.phase == :command && Battle.turn == 1
 end
 a0 = Battle.actors[0]
-check("Heiltrank wirkt (ist hp=#{a0.hp}/#{a0.max_hp} item=#{Party.item_count('heiltrank')} log=#{Battle.instance_variable_get(:@log).last(3).join(' | ')})") do
-  a0.hp >= a0.max_hp - 15 && Party.item_count('heiltrank').zero?
+check("Heiltrank wirkt (ist hp=#{a0.hp}/#{a0.max_hp} menge=#{Party.item_count('heiltrank')} log=#{Battle.instance_variable_get(:@log).last(3).join(' | ')})") do
+  # Heiltrank (+30) auf 100 geheilt, Gegnerzug zieht max. ~6 wieder ab.
+  a0.hp >= a0.max_hp - 26 && Party.item_count('heiltrank') == menge0 - 1
 end
 Battle.abort!
 check('abort!: Kampf aus, in_battle zurück') do
@@ -248,6 +254,7 @@ check('abort!: Kampf aus, in_battle zurück') do
 end
 
 puts '== Sieg =='
+Battle.start('waldweg')   # frischer Kampf (abort! vorher hat alles geleert)
 Battle.enemies.each { |g| g.damage(9999) }
 Battle.instance_variable_set(:@actions, [])
 Battle.instance_variable_set(:@phase, :execute)
