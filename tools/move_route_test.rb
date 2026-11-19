@@ -292,26 +292,32 @@ Mover.reset!
 xp2 = FakeNpc.new('Xena', 0.0, 0.0, 1.0)
 Game.npcs = [xp2]
 Mover.start('Xena', %w[turn_left move_forward])
-Mover.update(0.5)
+# Pro Update-Frame führt die Route genau EINEN neuen Schritt aus.
+Mover.update(0.1)
 check('turn_left: yaw = pi/2 (XP-Richtung 4)') { (xp2.yaw - Math::PI / 2).abs < 0.001 }
+Mover.update(0.5)   # move_forward gestartet: halber Meter in 0.5 s
 check('move_forward läuft in Blickrichtung (x = -0.5)') do
   nah?(xp2.position, [-0.5, 0.0])
 end
 Mover.update(0.5)
-Mover.update(0.1)
+Mover.update(0.1)   # Restmeter + Abschluss-Frame
 check('Route fertig nach einem Meter') { Mover.routes.empty? && nah?(xp2.position, [-1.0, 0.0]) }
 
 Mover.reset!
 dreher = FakeNpc.new('Dreh', 0.0, 0.0, 1.0)
 Game.npcs = [dreher]
 r = Mover.start('Dreh', %w[turn_down turn_90d_right turn_180d])
-Mover.update(0.1)
+Mover.update(0.1)   # Schritt 1: turn_down
+Mover.update(0.1)   # Schritt 2: turn_90d_right
 check('turn_90d_right von unten(2) -> links(4): yaw pi/2') do
   (dreher.yaw - Math::PI / 2).abs < 0.001
 end
+Mover.update(0.1)   # Schritt 3: turn_180d
 check('turn_180d von links(4) -> rechts(6): yaw -pi/2') do
-  (dreher.yaw + Math::PI / 2).abs < 0.001 && !Mover.running?(r)
+  (dreher.yaw + Math::PI / 2).abs < 0.001
 end
+Mover.update(0.1)   # Abschluss-Frame
+check('Dreh-Route ist danach fertig') { !Mover.running?(r) }
 
 Mover.reset!
 gucker = FakeNpc.new('Guck', 3.0, 4.0, 1.0)
@@ -342,9 +348,14 @@ Mover.reset!
 flitzer = FakeNpc.new('Flitz', 0.0, 0.0, 1.0)
 Game.npcs = [flitzer]
 rr = Mover.start('Flitz', %w[change_speed move_up], code: 3.0)
+Mover.update(0.1)   # Schritt 1: change_speed
 check('change_speed: Tempo aus code (3 m/s)') { (rr.speed - 3.0).abs < 0.001 }
-Mover.update(0.5)
-check('change_speed wirkt: 1.5 m in 0.5 s') { nah?(flitzer.position, [0.0, -1.0]) }
+Mover.update(0.5)   # Schritt 2: move_up mit 3 m/s -> 1 m (Rest) in 0.33 s
+check('change_speed wirkt: Meter mit 3 m/s gelaufen') do
+  nah?(flitzer.position, [0.0, -1.0])
+end
+Mover.update(0.1)   # Abschluss-Frame
+check('Tempo-Route fertig') { Mover.routes.empty? }
 
 Mover.reset!
 Scripte = Scripts
@@ -352,7 +363,7 @@ skriptler = FakeNpc.new('Skript', 0.0, 0.0, 1.0)
 Game.npcs = [skriptler]
 Scripte::CALLS.clear
 Mover.start('Skript', %w[script], code: "log 'aus der Route'")
-Mover.update(0.1)
+Mover.update(0.1)   # Schritt 1: script
 check('script-Schritt ruft Scripts.run_code mit dem code') do
   Scripte::CALLS == [['move_route', "log 'aus der Route'"]]
 end
@@ -361,7 +372,8 @@ Mover.reset!
 huepfer = FakeNpc.new('Hüpf', 0.0, 0.0, 1.0)
 Game.npcs = [huepfer]
 Mover.start('Hüpf', %w[jump])
-Mover.update(0.1)
+Mover.update(0.1)   # Schritt 1: jump
+Mover.update(0.1)   # Abschluss-Frame
 check('jump: Route endet ohne Bewegung (Effekt ohne Effects-Modul)') do
   Mover.routes.empty? && nah?(huepfer.position, [0.0, 0.0])
 end
@@ -420,10 +432,11 @@ check('speed <= 0 -> Warnung') do
                                   'steps' => %w[up], 'speed' => 0 }]), **OPTS),
        "'speed' muss eine Zahl > 0 sein", MapCheck::WARNUNG)
 end
-check('XP-Vokabular gültig (turn_left/jump/script): keine Funde') do
-  MapCheck.scan(karte_mit([{ 'cmd' => 'move_route', 'target' => 'x',
-                             'steps' => %w[turn_left jump script],
-                             'code' => 'log 1' }]), **OPTS).empty?
+funde = MapCheck.scan(karte_mit([{ 'cmd' => 'move_route', 'target' => 'x',
+                                   'steps' => %w[turn_left jump script],
+                                   'code' => 'log 1' }]), **OPTS)
+check("XP-Vokabular gültig (turn_left/jump/script): keine Funde [#{funde.map(&:to_s).first(3).join(' | ')}]") do
+  funde.empty?
 end
 check("switch_on ohne 'code' -> Warnung") do
   hat?(MapCheck.scan(karte_mit([{ 'cmd' => 'move_route', 'target' => 'x',
