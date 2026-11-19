@@ -32,33 +32,45 @@ Laufzeit neu geladen werden.
   einstellbarer Größe, Shift = Radierer
 - **Höhe malen**: Berge und Senken direkt im Viewport, mehrfach klicken stapelt
 - Tileset-Editor: Boden-Textur, Kachelgröße, eigene Kacheln erzeugen
-- Event-Editor mit **Seiten** (Bedingungen über Schalter/Variablen), Triggern
-  (`action`, `touch`, `auto`, `parallel`) und 20 Befehlen in Kategorien
+- Event-Editor mit **Seiten** (Bedingungen über Schalter/Variablen/Self-
+  Switches), Triggern (`action`, `touch`, `auto`, `parallel`) und 26 Befehlen
+  in Kategorien (inkl. Bewegungsroute, Zahleneingabe, Kampf starten)
 - Script-Editor, Materialbase (PNG/BMP-Import per WIC, auch per Drag & Drop),
   Datenbank (Helden, Items, Gold), Sound-Test, Probleme-Dialog (F10)
 - Playtest: startet `Rune3D.exe --project <name>` mit der gespeicherten Karte
 
 **Engine**: Third-Person-Spieler mit Physik (Schwerkraft, Sprung, `solid`-Teile
 als Hindernisse, Kartengrenze), Event-Interpreter mit Verzweigungen und
-Wahlmöglichkeiten, Party/Helden mit Items und Gold, NPC-Patrouillen mit
-Wegpunkten, Partikel-Effekte, Wetter (Regen/Schnee), prozedurale Texturen und
-Sounds, Spielstände in drei Slots, Projektverwaltung.
+Wahlmöglichkeiten, Party/Helden mit Items und Gold, **rundenbasiertes
+Kampf-Grundgerüst** (Angriff/Item/Flucht, Exp/Gold/Beute, Game-Over-Flag),
+**Zahleneingabe** wie XP „Input Number", NPC-Patrouillen mit Wegpunkten und
+**Bewegungsrouten** (XP-Schrittnamen und -Codes), Bildschirmblende,
+Partikel-Effekte, Wetter (Regen/Schnee), prozedurale Texturen und Sounds,
+Spielstände in drei Slots, Projektverwaltung. Dazu eine **RGSS-Schicht**:
+`$game_system/$game_switches/$game_variables/$game_party/$game_player/
+$game_map/$game_screen/$game_temp`, `Graphics`, `Input`, `Audio`,
+`Sprite/Window/Viewport`, `$scene` — eigene Scripte laufen wie beim Vorbild
+(Script-Editor, F5 = neu laden).
 
 ## Vergleich mit RPG Maker XP
 
 | XP-Funktion | Rune3D | Stand |
 |---|---|---|
 | Kartenliste / Karten-Eigenschaften | Kartenbaum + Dialog | ✅ |
-| Event-Editor, Seiten, Bedingungen | 20 Befehle, 4 Trigger | ✅ |
+| Event-Editor, Seiten, Bedingungen | 26 Befehle, 4 Trigger, Self-Switches A-D | ✅ |
 | Schalter & Variablen | `GameState` | ✅ |
-| Datenbank (Helden, Items) | Helden, Items, Gold | ✅ teilweise |
+| Datenbank (Helden, Items) | Helden, Items, Gold, Gegner, Truppen | ✅ teilweise |
 | Tileset / Boden | Splat-Böden, Höhen-Malwerkzeug | ✅ |
 | Script-Editor (Ruby) | `Scripts`-Sandbox + Editor | ✅ |
 | Playtest | F4 | ✅ |
 | Nebel / Panorama / Wetter | Karten-JSON + Interpreter | ✅ |
-| Kampfsystem | — | ❌ fehlt |
-| Bewegungsfolgen (Move Routes) | NPCs haben nur Wegpunkte | ❌ fehlt |
-| Self-Switches, Zahleneingabe, Fade, Ballons | — | ❌ fehlt |
+| Kampfsystem | Rundenkampf-Grundgerüst (`battle.rb`): Angriff/Item/Flucht, Exp/Gold/Drops; keine Skills/Zustände | ✅ teilweise |
+| Bewegungsfolgen (Move Routes) | `mover.rb`, XP-Schrittnamen + Codes, Routen im Event-Befehl | ✅ |
+| Self-Switches | A-D, Seiten-Bedingung + Befehle | ✅ |
+| Zahleneingabe (Input Number) | `input_number`-Befehl, Ziffernfeld 1-6 Stellen | ✅ |
+| Fade (Bildschirmblende) | `fade`-Befehl, ein/aus mit Sekunden | ✅ |
+| RGSS-Script-Schicht | `$game_*`, `Graphics`, `Sprite/Window`, `$scene` — ohne Tilemap/Bitmap-Dateien | ✅ teilweise |
+| Ballons, Animationen, Tilemap | — | ❌ fehlt |
 | Autotiles, weiche Boden-Übergänge | ein Quad = eine Textur | ❌ fehlt |
 | Charakter-Grafiken | Figuren sind Quader | ❌ fehlt |
 | Passierbarkeit (blockierte Zonen) | nur `solid`-Objekte | ❌ fehlt |
@@ -102,14 +114,14 @@ Drei Ebenen, alle headless:
 
 ```powershell
 .\build.ps1 -Test                              # alles zusammen
-ruby tools\test_all.rb                         # 17 Ruby-Modultests
+ruby tools\test_all.rb                         # alle Ruby-Modultests
 ruby -I game\engine game\engine\mapcheck.rb    # Karten-Daten prüfen
 ruby tools\lint_repo.rb                        # Repo-Hygiene
 ```
 
 | Ebene | Was | Wo |
 |---|---|---|
-| Ruby-Modultests | Engine-Logik mit `Rune::*`-Stubs (Events, Seiten, Interpreter, Party, Wetter, Scripte, Projekte, Speichern) | `tools/*_test.rb`, Runner `tools/test_all.rb` |
+| Ruby-Modultests | Engine-Logik mit `Rune::*`-Stubs (Events, Seiten, Interpreter, Party, Kampf, Wetter, Scripte, Projekte, Speichern) + Ruby/C++-Vokabular-Sync | `tools/*_test.rb`, Runner `tools/test_all.rb` |
 | C++-Logiktest | JSON-Schicht des Editors: Parser, Schreiber, Zahlen-Treue, Umlaute, Roundtrip echter Karten | `tools/json_test.cpp` |
 | JSON-Brücke | Schreibt C++ bytegleich zu Ruby `JSON.pretty_generate`? | `tools/json_bridge_check.rb` |
 | Karten-Scan | Daten-Validierung (Befehle, Trigger, Bedingungen, Wegpunkte, Terrain) | `game/engine/mapcheck.rb` |

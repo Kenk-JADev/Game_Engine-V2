@@ -140,7 +140,7 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Betroffene Stellen: `src/editor/editor_main.cpp` (`tool_row`-Aufrufe 0/1).
 - Gefunden in: Etappe 18i.
 
-### [Engine/Editor] MapCheck (Ruby) und issues_scan_map (C++) sind zwei Implementationen — offen (Sync-Pflicht)
+### [Engine/Editor] MapCheck (Ruby) und issues_scan_map (C++) sind zwei Implementationen — offen (Sync-Pflicht, seit 19j maschinell bewacht)
 - Symptom: Befehlsliste, Trigger, Vergleichsoperatoren und Bedingungen stehen
   zweimal im Code: `MapCheck::CMD_TYPES`/`TRIGGER`/`VERGLEICH` (Ruby, 19a) und
   `ISSUE_CMD_TYPES`/`EV_TYPES`/`EV_TRIGGERS`/`EV_OPS` (C++, 18f/18h).
@@ -148,9 +148,13 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
   Engine), das Spiel kein C++. Eine gemeinsame Quelle wäre eine JSON-Datei
   (z. B. `game/data/befehle.json`), die beide Seiten lesen — Kandidat für eine
   eigene Etappe, bis dahin gilt die Doppel-Pflege.
+- Seit Etappe 19j bewacht `tools/sync_test.rb` die Doppel-Pflege maschinell:
+  EV_TYPES/ISSUE_CMD_TYPES/EV_TYPE_LABELS/Enum EvType gegen
+  MapCheck::CMD_TYPES, Trigger/Operatoren/Wetter/Self-Switches/Effekte und
+  die when-Listen des Interpreters. Eine vergessene Seite kippt den Test.
 - Betroffene Stellen: `game/engine/mapcheck.rb`, `src/editor/editor_main.cpp`
-  (`ISSUE_CMD_TYPES`, `EV_TYPES`, `issues_scan_map`), `tools/mapcheck_test.rb`
-  (prüft `CMD_TYPES.size == 20`), `game/engine/interpreter.rb`.
+  (`ISSUE_CMD_TYPES`, `EV_TYPES`, `issues_scan_map`), `tools/sync_test.rb`,
+  `game/engine/interpreter.rb`.
 - Gefunden in: Etappe 19a.
 
 ### [Tests] Live-Tests (Fenster-Injektion) laufen nicht in CI — offen (Test-Wissen)
@@ -183,6 +187,19 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Etappe 19a.
 
 ## Erledigt
+### [Tests/Doku] Professionalisierungs-Runde: Sync-Test + README-Auffrischung — erledigt (19j)
+- Wunsch (User): „Alles anschauen ob man es professionell bessern/einbauen
+  kann" — Auswahl per Frage: Professionalisierungs-Runde.
+- Umsetzung: `tools/sync_test.rb` (16 Checks) gleicht die Ruby/C++-Doppel-
+  definitionen maschinell ab (Befehlstypen inkl. Enum-Reihenfolge und
+  Labels, Trigger, Vergleichsoperatoren, Wetter, Self-Switches, Effekte,
+  when-Listen des Interpreters, Datenbank-Dialogfelder gegen database.json,
+  Gegner/Truppen-Referenzen); README auf den Stand 19d-19i gebracht
+  (26 Befehle, Kampf/Routen/Zahleneingabe/Fade/RGSS in der XP-Tabelle,
+  Engine-Beschreibung, Test-Tabelle).
+- Betroffene Stellen: `tools/sync_test.rb`, `README.md`, `docs/BACKLOG.md`
+  (Sync-Eintrag: „maschinell bewacht").
+
 ### [Engine/Editor] Zahleneingabe + Kampf-Grundgerüst — erledigt (19i)
 - Wunsch: „Ja alles" auf die Roadmap (Bewegungsrouten/RGSS-Vertiefung/
   Zahleneingabe+Kampf), bestätigt per „Beides nacheinander"; Orientierung

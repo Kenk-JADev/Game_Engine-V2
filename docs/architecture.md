@@ -1494,6 +1494,33 @@ Niederlage+gameover+can_lose, Formel, Interpreter-Blockade battle/
 input_number inkl. Abbruch und clamp) + script_test-Abschnitt 8
 (battle-Helfer) + mapcheck_test (26 Typen, input_number/battle-Regeln).
 
+## Professionalisierung: Sync-Test + README (Etappe 19j)
+
+Die Sync-Pflicht für neue Befehlstypen (MapCheck::CMD_TYPES in Ruby =
+ISSUE_CMD_TYPES + EV_TYPES in C++) war bisher Handarbeit mit einer
+Zähl-Assertion. `tools/sync_test.rb` macht daraus eine maschinelle Prüfung:
+Der Test parst `src/editor/editor_main.cpp` als Text (kein Compiler nötig)
+und vergleicht
+
+- `EV_TYPES` (Reihenfolge) und `ISSUE_CMD_TYPES` (Menge) mit
+  `MapCheck::CMD_TYPES`, `EV_TYPE_LABELS`-Anzahl und die `enum EvType`-
+  Einträge (Name + Reihenfolge) mit denselben Listen,
+- die `when`-Zeilen des Interpreters (6er-Einzug = Befehls-case) mit
+  `CMD_TYPES` — ein Befehl ohne Interpreter-Implementierung fällt auf,
+- `EV_TRIGGERS`/`EV_OPS` mit `MapCheck::TRIGGER`/`VERGLEICH`, die Wetter-
+  und Self-Switch-Combos (Inline-Listen) mit `WETTER`/
+  `SELF_SWITCH_BUCHSTABEN`, die Effekt-Beschriftung mit `EFFEKTE`,
+- die Dialogfelder `KEYS`/`ACTOR_LABELS`/`ITEM_LABELS` des Datenbank-
+  Dialogs mit den echten Schlüsseln in `game/data/database.json` sowie
+  die Gegner-/Truppen-Referenzen (19i).
+
+Damit ist der offene Backlog-Eintrag „zwei Implementationen" nicht
+aufgelöst (eine gemeinsame JSON-Quelle bleibt das Ziel), aber jede
+vergessene Seite kippt jetzt einen Test statt erst den Editor-Alltag.
+Zweite Maßnahme: README-Vergleichstabelle und Feature-Beschreibung auf
+den Stand 19d-19i gebracht (Kampf-Grundgerüst, Bewegungsrouten, Self-
+Switches, Zahleneingabe, Fade, RGSS-Schicht, 26 Befehle).
+
 ## Ruby-API (Stand Etappe 2)
 
 | API | Bedeutung |
