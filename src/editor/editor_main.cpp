@@ -35,6 +35,7 @@
 #include <cstdio>
 #include <cstdlib>   // Etappe 19k.2: std::atof (Block-Zonen-Feld)
 #include <cstring>
+#include <cwchar>
 #include <string>
 #include <vector>
 
@@ -43,6 +44,8 @@
 #include "core/sound.h"
 #include "editor/json.h"
 #include "editor/encounter_check.h"
+#include "editor/encounter_form.h"
+#include "editor/map_props_form.h"
 #include "gfx/camera.h"      // nur fuer Kamera-Konstanten, falls noetig
 #include "gfx/renderer.h"
 #include "math/math.h"
@@ -322,7 +325,7 @@ void rebuild_map_menu();
 void open_map_props();
 void open_map_new();
 void delete_current_map();
-void apply_props_from_dlg();
+bool apply_props_from_dlg();
 void apply_new_from_dlg();
 void push_undo();
 void undo_action();
@@ -345,7 +348,6 @@ void maptree_select_current();
 
 // Etappe 18c: Tileset-Editor.
 void open_tileset_dialog();
-uint32_t parse_hex_color(const std::string& s);
 
 // Etappe 18d: Splat-Boden (Boden-Flächen pro Karte).
 std::vector<world::SplatRect> read_splats(const JsonValue* t);
@@ -373,6 +375,7 @@ bool material_editor_focused();
 
 // Etappe 17g: Datenbank-Dialog (Helden/Items/Gold).
 void open_database_dialog();
+bool database_editor_open();
 bool database_editor_focused();
 
 // Etappe 17h: Sound-Test + Playtest.
@@ -1729,6 +1732,9 @@ bool create_project(const std::string& name) {
 
 // Auf ein Projekt umschalten (Karten/Texturen/Menüs/Listen komplett neu).
 bool switch_project(const std::string& name) {
+    // F9 hält eine eigene Kopie der Datenbank. Ein Projektwechsel bei
+    // offenem F9 würde diese sonst unter dem Pfad des neuen Projekts speichern.
+    if (database_editor_open()) return false;
     const std::string data = g.root + "\\projekte\\" + name + "\\data";
     if (GetFileAttributesA((data + "\\system.json").c_str()) == INVALID_FILE_ATTRIBUTES) {
         core::log_error("Projekt nicht gefunden: " + name);
@@ -1794,6 +1800,19 @@ LRESULT CALLBACK project_dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_COMMAND: {
             const int id = LOWORD(wp);
             const int code = HIWORD(wp);
+            const bool project_action = id == IDPR_OPEN || id == IDPR_CREATE ||
+                                        (id == IDPR_LIST && code == LBN_DBLCLK);
+            if (project_action && g.props_dlg) {
+                MessageBoxW(h, L"Bitte zuerst den Karten-Dialog bestätigen oder abbrechen.",
+                            L"Projekt wechseln", MB_OK | MB_ICONINFORMATION);
+                SetForegroundWindow(g.props_dlg);
+                return 0;
+            }
+            if (project_action && database_editor_open()) {
+                MessageBoxW(h, L"Bitte zuerst die Datenbank speichern und schließen.",
+                            L"Projekt wechseln", MB_OK | MB_ICONINFORMATION);
+                return 0;
+            }
             if (id == IDPR_OPEN || (id == IDPR_LIST && code == LBN_DBLCLK)) {
                 const int sel = static_cast<int>(SendMessageW(g_prj.list, LB_GETCURSEL, 0, 0));
                 if (sel >= 0) {
@@ -3754,6 +3773,10 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         }
 
         case WM_CLOSE:
+            if (g.props_dlg) {
+                SetForegroundWindow(g.props_dlg);
+                return 0;   // erst den offenen Dialog bestätigen oder abbrechen
+            }
             if (g.dirty) {
                 const int r = MessageBoxW(h, L"Ungespeicherte Änderungen verwerfen?",
                                           L"RuneEditor", MB_YESNO | MB_ICONQUESTION);
@@ -3816,6 +3839,15 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             }
             if (nm->idFrom != IDC_MAPTREE || !nm->hwndFrom) break;
             switch (nm->code) {
+                case TVN_SELCHANGING: {
+                    // Der Dialog ist moduslos. Maus/Tastatur dürfen nicht zu
+                    // einer anderen Karte wechseln, bevor er geschlossen ist.
+                    // Programmgesteuerte Auswahl (z.B. maptree_fill) bleibt ok.
+                    const NMTREEVIEWW* tv = reinterpret_cast<const NMTREEVIEWW*>(lp);
+                    if (g.props_dlg && (tv->action == TVC_BYMOUSE ||
+                                        tv->action == TVC_BYKEYBOARD)) return TRUE;
+                    return FALSE;
+                }
                 case TVN_SELCHANGED: {
                     const NMTREEVIEWW* tv = reinterpret_cast<const NMTREEVIEWW*>(lp);
                     if (tv->action == TVC_BYMOUSE || tv->action == TVC_BYKEYBOARD) {
@@ -3846,6 +3878,7 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                     }
                     return 0;
                 case TVN_BEGINLABELEDIT: {
+                    if (g.props_dlg) return TRUE;
                     // Nur Karten (nicht die Wurzel) sind umbenennbar.
                     const NMTVDISPINFOW* di =
                         reinterpret_cast<const NMTVDISPINFOW*>(lp);
@@ -3857,6 +3890,7 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                     return FALSE;
                 }
                 case TVN_ENDLABELEDIT: {
+                    if (g.props_dlg) return FALSE;
                     const NMTVDISPINFOW* di =
                         reinterpret_cast<const NMTVDISPINFOW*>(lp);
                     if (di->item.pszText && di->item.pszText[0]) {
@@ -3878,6 +3912,10 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         // Etappe 18k: Rechtsklick auf eine Karte = Kontextmenü.
         case WM_CONTEXTMENU: {
             if (reinterpret_cast<HWND>(wp) != g.map_tree) break;
+            if (g.props_dlg) {
+                SetForegroundWindow(g.props_dlg);
+                return 0;   // Kontextmenü lädt sonst trotz Dialog eine andere Karte
+            }
             const int idx = maptree_selected();
             POINT pt{ GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
             HMENU popup = CreatePopupMenu();
@@ -3954,12 +3992,36 @@ enum {
     IDLG_WTYPE       = 4113,   // Etappe 17h: Wetter-Typ (Combobox)
     IDLG_WINT        = 4114,   // Etappe 17h: Wetter-Intensität
     IDLG_BLOCKED     = 4115,   // Etappe 19k.2: Block-Zonen (x,z,w,h pro Zeile)
+    IDLG_ENC_STEPS   = 4116,   // Etappe 19m: mittlere Schrittzahl
+    IDLG_ENC_TROOPS  = 4117,   // eine Truppen-ID pro Zeile
+    IDLG_ENC_COMBO   = 4118,   // vorhandene Projekt-Truppen
+    IDLG_ENC_ADD     = 4119,
+    IDLG_ENC_RELOAD  = 4120,
+    IDLG_ENC_STATUS  = 4121,
+    IDLG_ENC_DB      = 4122,   // Datenbank auch bei offenem F2 öffnen
 };
 
 static HWND g_dlg = nullptr;
 
+struct EncounterDlgState {
+    EncounterForm before;
+    MapPropsForm props_before;
+    std::vector<EncounterTroopChoice> choices;
+    std::string project;
+    std::string map_file;
+    int map_index = -1;
+    bool syncing = false;
+    bool troops_touched = false;
+    bool steps_touched = false;
+};
+static EncounterDlgState g_enc_dlg;
+
+void encounter_refresh_choices();
+void encounter_add_choice();
+
 HWND dlg_control(const wchar_t* cls, const wchar_t* text, DWORD style,
                  int x, int y, int w, int h, int id) {
+    if (id != 0 && std::wcscmp(cls, L"Static") != 0) style |= WS_TABSTOP;
     HWND c = CreateWindowExW(0, cls, text, WS_CHILD | WS_VISIBLE | style,
                              x, y, w, h, g_dlg,
                              reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),
@@ -3995,41 +4057,141 @@ void dlg_set_text(int id, const std::string& s) {
     SetDlgItemTextW(g_dlg, id, utf8_to_wide(s).c_str());
 }
 
-// Hexfarbe "BFD8EC" oder "0xBFD8EC" -> 0x00BFD8EC (0 bei Unsinn).
-uint32_t parse_hex_color(const std::string& s) {
-    std::string t = s;
-    if (t.rfind("0x", 0) == 0 || t.rfind("0X", 0) == 0) t = t.substr(2);
-    if (t.size() != 6) return 0;
-    uint32_t v = 0;
-    for (char c : t) {
-        v <<= 4;
-        if (c >= '0' && c <= '9') v |= static_cast<uint32_t>(c - '0');
-        else if (c >= 'a' && c <= 'f') v |= static_cast<uint32_t>(c - 'a' + 10);
-        else if (c >= 'A' && c <= 'F') v |= static_cast<uint32_t>(c - 'A' + 10);
-        else return 0;
+// Alle angezeigten allgemeinen Werte als Vergleichsstand aufnehmen. So
+// schreibt ein reines Encounter-Edit weder gerundete Terrain-Werte noch
+// unberührte Block-Zonen oder unbekannte Eigenschaften zurück.
+MapPropsForm dlg_map_props_form() {
+    MapPropsForm form;
+    form.name = dlg_text_long(IDLG_NAME);
+    form.width = dlg_text_long(IDLG_WIDTH);
+    form.height = dlg_text_long(IDLG_HEIGHT);
+    form.seed = dlg_text_long(IDLG_SEED);
+    form.amplitude = dlg_text_long(IDLG_AMP);
+    form.mountains = IsDlgButtonChecked(g_dlg, IDLG_BERGE) == BST_CHECKED;
+    form.fog_on = IsDlgButtonChecked(g_dlg, IDLG_FOG) == BST_CHECKED;
+    form.fog_far = dlg_text_long(IDLG_FOGFAR);
+    form.fog_color = dlg_text_long(IDLG_FOGCOL);
+    form.panorama_color = dlg_text_long(IDLG_PANCOL);
+    form.weather_type = static_cast<int>(SendMessageW(GetDlgItem(g_dlg, IDLG_WTYPE),
+                                                       CB_GETCURSEL, 0, 0));
+    form.weather_intensity = dlg_text_long(IDLG_WINT);
+    form.note = dlg_text_long(IDLG_NOTE);
+    form.blocked = dlg_text_long(IDLG_BLOCKED);
+    return form;
+}
+
+// Nur gespeicherte Projekt-Datenbank lesen; F9 kann als eigenes modusloses
+// Fenster offen sein. Nicht gespeicherte F9-Änderungen gelten im Spiel nicht.
+bool encounter_read_database(JsonValue& db, std::wstring& status) {
+    std::string text;
+    if (!read_file(g.project_dir + "\\database.json", text)) {
+        status = L"Datenbank fehlt oder ist nicht lesbar.\r\nF9: anlegen und speichern.";
+        return false;
     }
-    return v;
+    try {
+        db = json_parse(text);
+    } catch (const std::exception&) {
+        status = L"Datenbank: ungültiges JSON.\r\nDatei vor F9-Speichern prüfen.";
+        return false;
+    }
+    const JsonValue* troops = db.is_obj() ? db.find("troops") : nullptr;
+    if (!db.is_obj() || (troops && !troops->is_null() && !troops->is_arr())) {
+        status = L"Ungültige Truppenliste.\r\nDatei vor F9-Speichern prüfen.";
+        return false;
+    }
+    status.clear();
+    return true;
+}
+
+void encounter_refresh_choices() {
+    HWND combo = GetDlgItem(g_dlg, IDLG_ENC_COMBO);
+    SendMessageW(combo, CB_RESETCONTENT, 0, 0);
+    g_enc_dlg.choices.clear();
+    JsonValue db;
+    std::wstring status;
+    if (encounter_read_database(db, status)) {
+        g_enc_dlg.choices = encounter_database_choices(db);
+        status = g_enc_dlg.choices.empty()
+            ? L"Keine Truppen: in F9 anlegen,\r\nspeichern und hier neu laden."
+            : L"Nur gespeicherte F9-Truppen\r\nwerden hier angezeigt.";
+        for (size_t i = 0; i < g_enc_dlg.choices.size(); ++i) {
+            const EncounterTroopChoice& choice = g_enc_dlg.choices[i];
+            std::wstring label = utf8_to_wide(choice.id);
+            if (encounter_id_editable(choice.name) && choice.name != choice.id) {
+                label += L" — " + utf8_to_wide(choice.name);
+            }
+            const LRESULT item = SendMessageW(combo, CB_ADDSTRING, 0,
+                                              reinterpret_cast<LPARAM>(label.c_str()));
+            if (item != CB_ERR && item != CB_ERRSPACE) {
+                SendMessageW(combo, CB_SETITEMDATA, static_cast<WPARAM>(item),
+                             static_cast<LPARAM>(i));
+            }
+        }
+    }
+    const LRESULT count = SendMessageW(combo, CB_GETCOUNT, 0, 0);
+    if (count > 0) SendMessageW(combo, CB_SETCURSEL, 0, 0);
+    EnableWindow(GetDlgItem(g_dlg, IDLG_ENC_ADD), count > 0 ? TRUE : FALSE);
+    SetDlgItemTextW(g_dlg, IDLG_ENC_STATUS, status.c_str());
+}
+
+void encounter_add_choice() {
+    HWND combo = GetDlgItem(g_dlg, IDLG_ENC_COMBO);
+    const LRESULT selected = SendMessageW(combo, CB_GETCURSEL, 0, 0);
+    if (selected == CB_ERR) return;
+    const LRESULT index = SendMessageW(combo, CB_GETITEMDATA,
+                                       static_cast<WPARAM>(selected), 0);
+    if (index < 0 || static_cast<size_t>(index) >= g_enc_dlg.choices.size()) return;
+    std::string lines = dlg_text_long(IDLG_ENC_TROOPS);
+    if (!lines.empty() && lines.back() != '\r' && lines.back() != '\n') lines += "\r\n";
+    else if (!lines.empty() && lines.back() == '\r') lines += '\n';
+    lines += g_enc_dlg.choices[static_cast<size_t>(index)].id;
+    dlg_set_text(IDLG_ENC_TROOPS, lines);
+    g_enc_dlg.troops_touched = true;
+    HWND edit = GetDlgItem(g_dlg, IDLG_ENC_TROOPS);
+    const int len = GetWindowTextLengthW(edit);
+    SendMessageW(edit, EM_SETSEL, len, len);
+    SendMessageW(edit, EM_SCROLLCARET, 0, 0);
+    SetFocus(edit);
 }
 
 LRESULT CALLBACK dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
-        case WM_COMMAND:
-            if (LOWORD(wp) == IDLG_OK) {
-                if (g.dlg_mode == 1) apply_props_from_dlg();
+        // Das Fenster nutzt eine eigene Klasse statt eines Dialog-Templates;
+        // IsDialogMessage muss trotzdem den Standard-Button ermitteln können.
+        case DM_GETDEFID:
+            return MAKELRESULT(IDLG_OK, DC_HASDEFID);
+        case WM_COMMAND: {
+            const int id = LOWORD(wp);
+            const int code = HIWORD(wp);
+            if (g.dlg_mode == 1 && !g_enc_dlg.syncing) {
+                if (code == EN_CHANGE && id == IDLG_ENC_TROOPS) g_enc_dlg.troops_touched = true;
+                if (code == EN_CHANGE && id == IDLG_ENC_STEPS) g_enc_dlg.steps_touched = true;
+                if (code == BN_CLICKED && id == IDLG_ENC_ADD) { encounter_add_choice(); return 0; }
+                if (code == BN_CLICKED && id == IDLG_ENC_RELOAD) { encounter_refresh_choices(); return 0; }
+                if (code == BN_CLICKED && id == IDLG_ENC_DB) { open_database_dialog(); return 0; }
+            }
+            if (id == IDLG_OK || id == IDOK) {
+                if (g.dlg_mode == 1 && !apply_props_from_dlg()) return 0;
                 if (g.dlg_mode == 2) apply_new_from_dlg();
                 DestroyWindow(h);
                 return 0;
             }
-            if (LOWORD(wp) == IDLG_CANCEL) {
+            if (id == IDLG_CANCEL || id == IDCANCEL) {
                 DestroyWindow(h);
                 return 0;
             }
             break;
+        }
         case WM_CLOSE:
             DestroyWindow(h);
             return 0;
         case WM_DESTROY:
-            if (g.props_dlg == h) g.props_dlg = nullptr;
+            if (g.props_dlg == h) {
+                g.props_dlg = nullptr;
+                g.dlg_mode = 0;
+                if (g.map_tree) EnableWindow(g.map_tree, TRUE);
+            }
+            if (g_dlg == h) g_dlg = nullptr;
             return 0;
     }
     return DefWindowProcW(h, msg, wp, lp);
@@ -4244,8 +4406,15 @@ void apply_map_atmosphere_editor() {
 }
 
 void open_map_props() {
-    if (g.cur_map < 0) return;
+    if (g.cur_map < 0 || g.cur_map >= static_cast<int>(g.map_files.size())) return;
     if (g.props_dlg) { SetForegroundWindow(g.props_dlg); return; }   // schon offen
+
+    g_enc_dlg = EncounterDlgState{};
+    g_enc_dlg.syncing = true;
+    g_enc_dlg.before = encounter_form_read(g.map_root.find("encounters"));
+    g_enc_dlg.project = g.project_dir;
+    g_enc_dlg.map_index = g.cur_map;
+    g_enc_dlg.map_file = g.map_files[g.cur_map];
 
     WNDCLASSW wc{};
     wc.lpfnWndProc = dlg_proc;
@@ -4255,14 +4424,41 @@ void open_map_props() {
     wc.hbrBackground = GetSysColorBrush(COLOR_BTNFACE);
     RegisterClassW(&wc);
 
-    const int W = 460, H = 660;   // 19k.2: Platz für das Block-Zonen-Feld
-    RECT mr;
+    // Zwei Spalten statt eines noch höheren Dialogs. Aus der benötigten
+    // Clientfläche die Fenstergröße mit DPI-abhängigem Rahmen berechnen,
+    // damit auch bei hohen DPI die unteren Knöpfe nicht abgeschnitten sind.
+    const DWORD window_style = WS_POPUP | WS_CAPTION | WS_SYSMENU;
+    const DWORD window_ex_style = WS_EX_DLGMODALFRAME;
+    RECT frame{0, 0, 770, 504};
+    const UINT dpi = GetDpiForWindow(g.main);
+    if (!AdjustWindowRectExForDpi(&frame, window_style, FALSE, window_ex_style, dpi)) {
+        AdjustWindowRectEx(&frame, window_style, FALSE, window_ex_style);
+    }
+    const int W = static_cast<int>(frame.right - frame.left);
+    const int H = static_cast<int>(frame.bottom - frame.top);
+    // Auf dem aktuellen Bildschirm zentrieren und dessen Arbeitsfläche nutzen.
+    RECT mr{};
     GetWindowRect(g.main, &mr);
-    g_dlg = CreateWindowExW(WS_EX_DLGMODALFRAME, L"RuneEditorDlg",
-                            L"Karten-Eigenschaften",
-                            WS_POPUP | WS_CAPTION | WS_SYSMENU,
-                            mr.left + 200, mr.top + 80, W, H,
+    int x = static_cast<int>((mr.left + mr.right - W) / 2);
+    int y = static_cast<int>((mr.top + mr.bottom - H) / 2);
+    MONITORINFO mi{};
+    mi.cbSize = sizeof(mi);
+    if (GetMonitorInfoW(MonitorFromWindow(g.main, MONITOR_DEFAULTTONEAREST), &mi)) {
+        const int left = static_cast<int>(mi.rcWork.left);
+        const int top = static_cast<int>(mi.rcWork.top);
+        const int right = std::max(left, static_cast<int>(mi.rcWork.right) - W);
+        const int bottom = std::max(top, static_cast<int>(mi.rcWork.bottom) - H);
+        x = std::clamp(x, left, right);
+        y = std::clamp(y, top, bottom);
+    }
+    g_dlg = CreateWindowExW(window_ex_style, L"RuneEditorDlg",
+                            L"Karten-Eigenschaften", window_style,
+                            x, y, W, H,
                             g.main, nullptr, GetModuleHandleW(nullptr), nullptr);
+    if (!g_dlg) return;
+
+    // Der Rahmen muss vor den darin liegenden Steuerelementen entstehen.
+    dlg_control(L"Button", L"Zufallskämpfe", BS_GROUPBOX, 446, 12, 314, 440, 0);
 
     dlg_label(L"Name", 16, 16, 100);
     dlg_control(L"Edit", nullptr, WS_BORDER | ES_LEFT, 120, 12, 310, 24, IDLG_NAME);
@@ -4300,20 +4496,49 @@ void open_map_props() {
     dlg_control(L"Edit", nullptr, WS_BORDER | ES_LEFT, 330, 232, 60, 24, IDLG_WINT);
 
     dlg_label(L"Kommentar", 16, 268, 140);
-    dlg_control(L"Edit", nullptr,
-                WS_BORDER | WS_VSCROLL | ES_LEFT | ES_MULTILINE | ES_AUTOVSCROLL,
-                16, 290, 414, 110, IDLG_NOTE);
+    HWND note_edit = dlg_control(L"Edit", nullptr,
+                WS_BORDER | WS_VSCROLL | ES_LEFT | ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN,
+                16, 288, 414, 50, IDLG_NOTE);
+    SendMessageW(note_edit, EM_SETLIMITTEXT, 0, 0);
 
     // Etappe 19k.2: Block-Zonen (Passierbarkeit) - „x,z,w,h" pro Zeile,
     // x/z = Mitte in Metern, w/h = Größe. Wirkt im Spiel als unsichtbare
     // Wand über alle Höhen (Physik + RGSS passable?).
-    dlg_label(L"Block-Zonen (x,z,w,h pro Zeile)", 16, 408, 300);
-    dlg_control(L"Edit", nullptr,
-                WS_BORDER | WS_VSCROLL | ES_LEFT | ES_MULTILINE | ES_AUTOVSCROLL,
-                16, 428, 414, 150, IDLG_BLOCKED);
+    dlg_label(L"Block-Zonen (x,z,w,h pro Zeile)", 16, 346, 300);
+    HWND blocked_edit = dlg_control(L"Edit", nullptr,
+                WS_BORDER | WS_VSCROLL | ES_LEFT | ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN,
+                16, 366, 414, 85, IDLG_BLOCKED);
+    SendMessageW(blocked_edit, EM_SETLIMITTEXT, 0, 0);
 
-    dlg_control(L"Button", L"OK", BS_DEFPUSHBUTTON, 240, 590, 90, 30, IDLG_OK);
-    dlg_control(L"Button", L"Abbrechen", BS_PUSHBUTTON, 340, 590, 90, 30, IDLG_CANCEL);
+    // Etappe 19m: IDs dürfen auch direkt eingegeben, mehrfach verwendet oder
+    // durch Löschen aller Zeilen deaktiviert werden. F9-Auswahl ist optional.
+    dlg_label(L"Schritte (Mittelwert)", 460, 38, 150);
+    dlg_control(L"Edit", nullptr, WS_BORDER | ES_LEFT, 614, 34, 128, 24, IDLG_ENC_STEPS);
+    dlg_label(L"Leeres Feld = 30", 460, 64, 260);
+    dlg_label(L"Projekt-Truppen (F9)", 460, 92, 260);
+    dlg_control(L"ComboBox", nullptr, CBS_DROPDOWNLIST | WS_VSCROLL,
+                460, 112, 282, 180, IDLG_ENC_COMBO);
+    dlg_control(L"Button", L"Hinzufügen", BS_PUSHBUTTON, 460, 145, 102, 27, IDLG_ENC_ADD);
+    dlg_control(L"Button", L"Neu laden", BS_PUSHBUTTON, 567, 145, 91, 27, IDLG_ENC_RELOAD);
+    dlg_control(L"Button", L"F9 öffnen", BS_PUSHBUTTON, 663, 145, 79, 27, IDLG_ENC_DB);
+    dlg_control(L"Static", L"", 0, 460, 180, 282, 40, IDLG_ENC_STATUS);
+    dlg_label(L"Kartenliste (eine ID pro Zeile)", 460, 226, 282);
+    HWND troops_edit = dlg_control(L"Edit", nullptr,
+                WS_BORDER | WS_VSCROLL | ES_LEFT | ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN,
+                460, 248, 282, 106, IDLG_ENC_TROOPS);
+    SendMessageW(troops_edit, EM_SETLIMITTEXT, 0, 0);
+    dlg_control(L"Static", L"Leere Liste = keine Zufallskämpfe.\r\n"
+                           L"Mehrfach: Truppe wird häufiger gewählt.",
+                0, 460, 362, 282, 44, 0);
+    const bool bad_encounter = g_enc_dlg.before.bad_object || g_enc_dlg.before.bad_troops ||
+                               g_enc_dlg.before.bad_steps;
+    dlg_control(L"Static", bad_encounter
+        ? L"Altdaten ungültig/nicht darstellbar;\r\nÄnderung nur nach Rückfrage."
+        : L"Nach OK mit Strg+S speichern.",
+        0, 460, 409, 282, 38, 0);
+
+    dlg_control(L"Button", L"OK", BS_DEFPUSHBUTTON, 562, 464, 90, 30, IDLG_OK);
+    dlg_control(L"Button", L"Abbrechen", BS_PUSHBUTTON, 662, 464, 90, 30, IDLG_CANCEL);
 
     // Felder füllen
     const JsonValue* t = g.map_root.find("terrain");
@@ -4391,107 +4616,107 @@ void open_map_props() {
         dlg_set_text(IDLG_BLOCKED, zeilen);
     }
 
-    ShowWindow(g_dlg, SW_SHOW);
-    SetFocus(GetDlgItem(g_dlg, IDLG_NAME));
+    dlg_set_text(IDLG_ENC_STEPS, g_enc_dlg.before.steps);
+    dlg_set_text(IDLG_ENC_TROOPS, g_enc_dlg.before.troops);
+    encounter_refresh_choices();
+    g_enc_dlg.props_before = dlg_map_props_form();
+    g_enc_dlg.syncing = false;
     g.props_dlg = g_dlg;      // moduslos: Hauptschleife rendert weiter
     g.dlg_mode = 1;
+    if (g.map_tree) EnableWindow(g.map_tree, FALSE);
+    ShowWindow(g_dlg, SW_SHOW);
+    SetFocus(GetDlgItem(g_dlg, IDLG_NAME));
 }
 
 // Werte aus dem offenen Eigenschaften-Dialog in die Karte übernehmen (OK).
-void apply_props_from_dlg() {
+// Bei Fehler oder abgelehnter Rückfrage bleibt der Dialog geöffnet und die
+// gesamte Karte unverändert.
+bool apply_props_from_dlg() {
     HWND dlg = g.props_dlg;
-    if (!dlg) return;
+    if (!dlg) return false;
+    if (g_enc_dlg.project != g.project_dir || g_enc_dlg.map_index != g.cur_map ||
+        g.cur_map < 0 || g.cur_map >= static_cast<int>(g.map_files.size()) ||
+        g_enc_dlg.map_file != g.map_files[g.cur_map]) {
+        MessageBoxW(dlg, L"Die Karte oder das Projekt hat sich geändert. "
+                         L"Bitte den Dialog abbrechen und erneut öffnen.",
+                    L"Karten-Eigenschaften", MB_OK | MB_ICONWARNING);
+        return false;
+    }
+
+    // Erst ALLE neuen Felder prüfen und Rückfragen stellen, bevor irgendein
+    // Kartenwert geändert wird. Abbrechen lässt auch Name/Terrain unangetastet.
+    EncounterEdit enc = encounter_form_prepare(g.map_root.find("encounters"), g_enc_dlg.before,
+        dlg_text_long(IDLG_ENC_TROOPS), dlg_text_long(IDLG_ENC_STEPS),
+        g_enc_dlg.troops_touched, g_enc_dlg.steps_touched);
+    if (!enc.ok) {
+        MessageBoxW(dlg, utf8_to_wide(enc.error).c_str(), L"Zufallskämpfe",
+                    MB_OK | MB_ICONWARNING);
+        SetFocus(GetDlgItem(dlg, enc.troops_error ? IDLG_ENC_TROOPS : IDLG_ENC_STEPS));
+        return false;
+    }
+    if (enc.replaces_invalid && MessageBoxW(dlg,
+        L"Die vorhandenen Begegnungsdaten sind ungültig oder nicht vollständig "
+        L"darstellbar. Das bearbeitete Feld bzw. Begegnungsobjekt wird ersetzt.\r\n\r\n"
+        L"Trotzdem übernehmen?", L"Zufallskämpfe",
+        MB_YESNO | MB_DEFBUTTON2 | MB_ICONWARNING) != IDYES) return false;
+
+    const JsonValue* ids = enc.troops_changed ? enc.value.find("troops") : nullptr;
+    if (ids && ids->is_arr() && !ids->arr.empty()) {
+        // Während F2 offen war, kann die F9-Datenbank geändert worden sein.
+        // Vor der Warnung stets noch einmal den gespeicherten Stand lesen.
+        JsonValue db;
+        std::wstring status;
+        if (!encounter_read_database(db, status)) {
+            const std::wstring text = status +
+                L"\r\n\r\nDie Truppen können nicht geprüft werden. Trotzdem übernehmen?";
+            if (MessageBoxW(dlg, text.c_str(), L"Zufallskämpfe",
+                            MB_YESNO | MB_DEFBUTTON2 | MB_ICONWARNING) != IDYES) return false;
+        } else {
+            const std::vector<std::string> unknown = encounter_unknown_troops(*ids, db);
+            if (!unknown.empty()) {
+                std::wstring text = L"Diese Truppen fehlen in der gespeicherten Datenbank:\r\n";
+                const size_t limit = std::min<size_t>(unknown.size(), 5);
+                for (size_t i = 0; i < limit; ++i) {
+                    std::wstring id = utf8_to_wide(unknown[i]);
+                    if (id.size() > 80) id = id.substr(0, 80) + L"…";
+                    text += L"\r\n• " + id;
+                }
+                if (unknown.size() > limit) text += L"\r\n… und weitere.";
+                text += L"\r\n\r\nIm Spiel kann dafür möglicherweise kein Kampf starten. "
+                        L"Trotzdem übernehmen?";
+                if (MessageBoxW(dlg, text.c_str(), L"Zufallskämpfe",
+                                MB_YESNO | MB_DEFBUTTON2 | MB_ICONWARNING) != IDYES) return false;
+            }
+        }
+    }
+
     {
         JsonValue& root = g.map_root;
-        root.set("name", JsonValue::make_str(dlg_text(IDLG_NAME)));
+        const MapPropsForm props = dlg_map_props_form();
+        const MapPropsChanges general = map_props_apply(root, g_enc_dlg.props_before, props);
 
-        const JsonValue* t = g.map_root.find("terrain");
-        JsonValue ter = t ? *t : JsonValue::make_obj();
-        ter.set("width", JsonValue::make_num(std::atof(dlg_text(IDLG_WIDTH).c_str()), false));
-        ter.set("height", JsonValue::make_num(std::atof(dlg_text(IDLG_HEIGHT).c_str()), false));
-        const bool berge = IsDlgButtonChecked(dlg, IDLG_BERGE) == BST_CHECKED;
-        ter.set("seed", JsonValue::make_num(std::atof(dlg_text(IDLG_SEED).c_str()), true));
-        ter.set("amplitude", JsonValue::make_num(
-            berge ? std::atof(dlg_text(IDLG_AMP).c_str()) : 0.0, false));
-        ter.set("resolution", JsonValue::make_num(
-            t && t->find("resolution") ? t->find("resolution")->number(192) : 192, true));
-        root.set("terrain", ter);
+        // Fehlende/null/unbearbeitete Encounter-Felder bleiben unverändert;
+        // beim Ändern behält enc auch unbekannte Eigenschaften und Duplikate.
+        if (enc.changed) root.set("encounters", std::move(enc.value));
+        if (!general.changed && !enc.changed) return true;
 
-        JsonValue fogv = JsonValue::make_obj();
-        fogv.set("on", JsonValue::make_bool(
-            IsDlgButtonChecked(dlg, IDLG_FOG) == BST_CHECKED));
-        fogv.set("far", JsonValue::make_num(std::atof(dlg_text(IDLG_FOGFAR).c_str()), false));
-        fogv.set("color", JsonValue::make_num(
-            static_cast<double>(parse_hex_color(dlg_text(IDLG_FOGCOL))), true));
-        root.set("fog", fogv);
-
-        JsonValue panv = JsonValue::make_obj();
-        panv.set("color", JsonValue::make_num(
-            static_cast<double>(parse_hex_color(dlg_text(IDLG_PANCOL))), true));
-        root.set("panorama", panv);
-
-        // Etappe 17h: Wetter in das Karten-JSON schreiben.
-        {
-            LRESULT sel = SendMessageW(GetDlgItem(dlg, IDLG_WTYPE), CB_GETCURSEL, 0, 0);
-            JsonValue wv = JsonValue::make_obj();
-            if (sel == 1)      wv.set("type", JsonValue::make_str("regen"));
-            else if (sel == 2) wv.set("type", JsonValue::make_str("schnee"));
-            else               wv.set("type", JsonValue::make_str("kein"));
-            double wint = std::atof(dlg_text(IDLG_WINT).c_str());
-            if (wint <= 0.0) wint = 1.0;
-            wv.set("intensity", JsonValue::make_num(wint, false));
-            root.set("weather", wv);
+        // set()/erase() können die Wurzel-Vector-Einträge verschieben. Der
+        // Objektzeiger muss vor dem nächsten Rendern neu geholt werden.
+        g.objects = root.find("objects");
+        if (!g.objects || !g.objects->is_arr()) {
+            g.objects = &root.set("objects", JsonValue::make_arr());
         }
-
-        root.set("note", JsonValue::make_str(dlg_text_long(IDLG_NOTE)));
-
-        // Etappe 19k.2: Block-Zonen - „x,z,w,h" pro Zeile -> JSON-Array.
-        // Wirkungslose Zeilen (w/h <= 0, zu wenige Zahlen) werden überlesen;
-        // eine leere Liste entfernt den Schlüssel ganz.
-        {
-            JsonValue zones = JsonValue::make_arr();
-            const std::string text = dlg_text_long(IDLG_BLOCKED);
-            size_t pos = 0;
-            while (pos <= text.size()) {
-                const size_t nl = text.find_first_of("\r\n", pos);
-                const std::string line = text.substr(
-                    pos, nl == std::string::npos ? std::string::npos : nl - pos);
-                pos = (nl == std::string::npos) ? text.size() + 1 : nl + 1;
-                std::vector<std::string> toks;
-                size_t t0 = 0;
-                for (size_t i = 0; i <= line.size(); ++i) {
-                    if (i == line.size() || line[i] == ',' || line[i] == ';') {
-                        toks.push_back(line.substr(t0, i - t0));
-                        t0 = i + 1;
-                    }
-                }
-                if (toks.size() < 4) continue;
-                const double zx = std::atof(toks[0].c_str());
-                const double zz = std::atof(toks[1].c_str());
-                const double zw = std::atof(toks[2].c_str());
-                const double zh = std::atof(toks[3].c_str());
-                if (zw <= 0.0 || zh <= 0.0) continue;
-                JsonValue zone = JsonValue::make_obj();
-                zone.set("x", JsonValue::make_num(zx, false));
-                zone.set("z", JsonValue::make_num(zz, false));
-                zone.set("w", JsonValue::make_num(zw, false));
-                zone.set("h", JsonValue::make_num(zh, false));
-                zones.arr.push_back(std::move(zone));
-            }
-            if (zones.arr.empty()) json_remove_key(root, "blocked");
-            else root.set("blocked", zones);
-        }
-
         g.dirty = true;
-        regen_terrain();
-        apply_map_atmosphere_editor();
-        if (g.cur_map < static_cast<int>(g.map_names.size())) {
-            g.map_names[g.cur_map] = dlg_text(IDLG_NAME);
+        if (general.terrain) regen_terrain();
+        if (general.atmosphere) apply_map_atmosphere_editor();
+        if (general.name && g.cur_map < static_cast<int>(g.map_names.size())) {
+            g.map_names[g.cur_map] = props.name;
             rebuild_map_menu();
         }
         update_title();
         core::log_info("Karten-Eigenschaften geändert");
     }
+    return true;
 }
 
 // Neue Karte: kleiner Dialog (Name, Breite, Höhe, Berge) -> JSON-Datei.
@@ -4513,6 +4738,7 @@ void open_map_new() {
                             WS_POPUP | WS_CAPTION | WS_SYSMENU,
                             mr.left + 240, mr.top + 160, W, H,
                             g.main, nullptr, GetModuleHandleW(nullptr), nullptr);
+    if (!g_dlg) return;
 
     dlg_label(L"Name", 16, 16, 100);
     dlg_control(L"Edit", L"Neue Welt", WS_BORDER | ES_LEFT, 120, 12, 230, 24, IDLG_NAME);
@@ -4525,10 +4751,11 @@ void open_map_new() {
     dlg_control(L"Button", L"OK", BS_DEFPUSHBUTTON, 160, 170, 90, 30, IDLG_OK);
     dlg_control(L"Button", L"Abbrechen", BS_PUSHBUTTON, 260, 170, 90, 30, IDLG_CANCEL);
 
-    ShowWindow(g_dlg, SW_SHOW);
-    SetFocus(GetDlgItem(g_dlg, IDLG_NAME));
     g.props_dlg = g_dlg;      // moduslos: Hauptschleife rendert weiter
     g.dlg_mode = 2;
+    if (g.map_tree) EnableWindow(g.map_tree, FALSE);
+    ShowWindow(g_dlg, SW_SHOW);
+    SetFocus(GetDlgItem(g_dlg, IDLG_NAME));
 }
 
 // Neue Karte aus dem Dialog anlegen (OK).
@@ -7395,6 +7622,10 @@ void open_database_dialog() {
     SetForegroundWindow(g_db.win);
 }
 
+bool database_editor_open() {
+    return g_db.win != nullptr;
+}
+
 bool database_editor_focused() {
     if (!g_db.win) return false;
     HWND fg = GetForegroundWindow();
@@ -7952,6 +8183,9 @@ int main(int argc, char** argv) {
         MSG msg;
         while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
             if (msg.message == WM_QUIT) { running = false; break; }
+            // Auch die moduslosen Karten-Dialoge brauchen Tab/Esc/Enter;
+            // Mehrzeiler behalten Enter dank ES_WANTRETURN als Zeilenumbruch.
+            if (g.props_dlg && IsDialogMessageW(g.props_dlg, &msg)) continue;
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }

@@ -18,6 +18,8 @@
 
 #include "editor/json.h"
 #include "editor/encounter_check.h"
+#include "editor/encounter_form.h"
+#include "editor/map_props_form.h"
 
 #include <cmath>
 #include <cstdio>
@@ -109,6 +111,300 @@ int roundtrip_modus(int argc, char** argv) {
     }
     std::printf("roundtrip: %s -> %s\n", argv[2], argv[3]);
     return 0;
+}
+
+// Der Win32-Dialog benutzt dieselben Funktionen. So können wir auch ohne
+// Fenster nachweisen, dass Eingaben vor dem Anwenden geprüft werden und
+// unbekannte/optionale Kartendaten nicht nebenbei verschwinden.
+void encounter_form_tests(const std::string& wurzel) {
+    using namespace rune::editor;
+    std::printf("== Editor: F2-Zufallskämpfe (Datenmodell) ==\n");
+
+    for (const char* text : {R"({})", R"({"encounters":null})", R"({"encounters":{}})",
+                             R"({"encounters":{"troops":null,"steps":null}})",
+                             R"({"encounters":{"troops":[]}})"}) {
+        const JsonValue root = json_parse(text);
+        const EncounterForm form = encounter_form_read(root.find("encounters"));
+        const EncounterEdit unchanged = encounter_form_prepare(root.find("encounters"), form,
+                                                                form.troops, form.steps, false, false);
+        check("optional: leer, Default 30 und unverändert",
+              form.troops.empty() && form.steps == "30" && !form.bad_object && !form.bad_troops &&
+              !form.bad_steps && unchanged.ok && !unchanged.changed);
+    }
+    {
+        JsonValue root = json_parse(R"({"objects":[{"type":"haus"}],"events":[{"id":1}],)"
+                                    R"("encounters":{"troops":["waldweg"," banditen ","waldweg"],)"
+                                    R"("steps":30.0,"extra":{"wetter":"Regen"}}})");
+        const std::string before_json = json_write(root);
+        const JsonValue* old = root.find("encounters");
+        const EncounterForm form = encounter_form_read(old);
+        check("Duplikate, Leerzeichen und ganzzahligen Float lesen",
+              form.troops == "waldweg\r\n banditen \r\nwaldweg" && form.steps == "30" &&
+              !form.bad_object && !form.bad_troops && !form.bad_steps);
+        const EncounterEdit same = encounter_form_prepare(old, form, form.troops, form.steps, true, true);
+        check("angefasst, aber gleich: Float und JSON bleiben unangetastet",
+              same.ok && !same.changed && json_write(root) == before_json);
+
+        const EncounterEdit step = encounter_form_prepare(old, form, form.troops, "45", false, true);
+        check("nur Schrittzahl ändern bewahrt Liste und unbekannte Eigenschaften",
+              step.ok && step.changed && !step.troops_changed && !step.replaces_invalid &&
+              step.value.find("steps")->is_int && step.value.find("steps")->num == 45 &&
+              json_write(*step.value.find("troops")) == json_write(*old->find("troops")) &&
+              step.value.find("extra")->find("wetter")->str == "Regen");
+        check("Vorbereitung verändert die Karte nicht", json_write(root) == before_json);
+
+        const EncounterEdit list = encounter_form_prepare(old, form,
+            "waldweg\r\n banditen \nwaldweg\r  \t\r\ntrupp_ä", form.steps, true, false);
+        const JsonValue* ids = list.value.find("troops");
+        check("CRLF/LF/CR, Leerzeilen, Umlaute und Gewichte",
+              list.ok && list.troops_changed && ids && ids->arr.size() == 4 &&
+              ids->arr[0].str == "waldweg" && ids->arr[1].str == " banditen " &&
+              ids->arr[2].str == "waldweg" && ids->arr[3].str == "trupp_ä");
+        check("nur Liste ändern bewahrt 30.0 und Zusatzfelder",
+              list.value.find("steps")->num == 30 && !list.value.find("steps")->is_int &&
+              list.value.find("extra")->find("wetter")->str == "Regen");
+        root.set("encounters", list.value);
+        const JsonValue saved = json_parse(json_write(root));
+        check("übernehmen und JSON-Roundtrip erhält Begegnungen und andere Kartenfelder",
+              saved.find("encounters")->find("troops")->arr.size() == 4 &&
+              saved.find("encounters")->find("extra")->find("wetter")->str == "Regen" &&
+              saved.find("objects")->arr[0].find("type")->str == "haus" &&
+              saved.find("events")->arr[0].find("id")->num == 1);
+
+        const EncounterForm again = encounter_form_read(root.find("encounters"));
+        const EncounterEdit empty = encounter_form_prepare(root.find("encounters"), again,
+                                                            "\r\n  \t\n", again.steps, true, false);
+        check("leere Liste deaktiviert Kämpfe ohne Zusatzdaten zu entfernen",
+              empty.ok && empty.changed && empty.value.find("troops")->is_arr() &&
+              empty.value.find("troops")->arr.empty() && empty.value.find("steps")->num == 30 &&
+              empty.value.find("extra") != nullptr);
+    }
+    {
+        JsonValue root = json_parse(R"({"objects":[],"events":[]})");
+        const EncounterForm form = encounter_form_read(nullptr);
+        EncounterEdit list = encounter_form_prepare(nullptr, form, "wolf\r\nwolf", "30", true, false);
+        check("erste Truppenliste ohne steps anlegen: Default bleibt implizit",
+              list.ok && list.changed && list.value.find("steps") == nullptr &&
+              list.value.find("troops")->arr.size() == 2);
+        root.obj.shrink_to_fit(); // Das nächste set() darf die Objektadresse verschieben.
+        root.set("encounters", std::move(list.value));
+        JsonValue* objects = root.find("objects");
+        objects->arr.push_back(JsonValue::make_obj());
+        check("nach neuem Wurzelfeld erneut geholter Objektzeiger ist benutzbar",
+              json_parse(json_write(root)).find("objects")->arr.size() == 1);
+        const EncounterEdit step = encounter_form_prepare(nullptr, form, "", "21", false, true);
+        check("Schrittzahl allein anlegen aktiviert keine Begegnungen",
+              step.ok && step.changed && step.value.find("steps")->num == 21 &&
+              step.value.find("troops") == nullptr);
+    }
+    {
+        JsonValue ids;
+        const std::string mit_nul("wolf\0bandit", 11);
+        check("NUL in IDs wird nicht still abgeschnitten", !encounter_parse_troops(mit_nul, ids));
+        check("Steuerzeichen in Datenbank-ID nicht auswählbar",
+              !encounter_id_editable(mit_nul) && !encounter_id_editable("zeile\nneu") &&
+              !encounter_id_editable("trupp\tneu"));
+        const EncounterForm form = encounter_form_read(nullptr);
+        const EncounterEdit bad_id = encounter_form_prepare(nullptr, form, "wolf\tbandit", "30", true, false);
+        check("Steuerzeichen in Eingaben melden das betroffene Truppenfeld",
+              !bad_id.ok && bad_id.troops_error && !bad_id.changed);
+        std::string many;
+        for (int i = 0; i < 7000; ++i) many += "truppe_" + std::to_string(i) + "\r\n";
+        check("lange Liste ohne 512- oder 32767-Zeichen-Limit parsen",
+              many.size() > 32767 && encounter_parse_troops(many, ids) &&
+              ids.arr.size() == 7000 && ids.arr.back().str == "truppe_6999");
+    }
+    {
+        std::uint64_t n = 0;
+        check("leere Schrittzahl und Leerraum ergeben 30",
+              encounter_parse_steps(" \t", n) && n == 30);
+        check("positive ganze Zahl mit Rand-Leerraum",
+              encounter_parse_steps(" 42 ", n) && n == 42);
+        check("Grenzwert exakt darstellbar",
+              encounter_parse_steps("9007199254740991", n) && n == ENCOUNTER_MAX_STEPS);
+        for (const char* text : {"0", "-1", "+3", "1.5", "1e2", "12x", "1 2",
+                                 "9007199254740992", "999999999999999999999999999999999"}) {
+            check("ungültige oder zu große Schrittzahl abweisen", !encounter_parse_steps(text, n));
+        }
+        const JsonValue original = json_parse(R"({"troops":["wald"],"steps":9,"zukunft":true})");
+        const EncounterForm form = encounter_form_read(&original);
+        const std::string snapshot = json_write(original);
+        const EncounterEdit invalid = encounter_form_prepare(&original, form, "neu", "0", true, true);
+        check("ungültige Eingabe erzeugt keinen Teil-Commit",
+              !invalid.ok && !invalid.changed && json_write(original) == snapshot);
+        const EncounterEdit defaults = encounter_form_prepare(&original, form, form.troops, "", false, true);
+        check("Schrittzahl leeren setzt Default 30",
+              defaults.ok && defaults.value.find("steps")->num == 30);
+        const EncounterEdit maximum = encounter_form_prepare(&original, form, form.troops,
+                                                               "9007199254740991", false, true);
+        check("Grenzwert bleibt beim JSON-Speichern exakt",
+              maximum.ok && json_write(maximum.value).find("9007199254740991") != std::string::npos);
+    }
+    {
+        const JsonValue bad = json_parse(R"(["nicht","objekt"])" );
+        const EncounterForm form = encounter_form_read(&bad);
+        const EncounterEdit same = encounter_form_prepare(&bad, form, form.troops, form.steps, false, false);
+        const EncounterEdit replace = encounter_form_prepare(&bad, form, "wolf", form.steps, true, false);
+        check("ungültiges encounters-Objekt unberührt behalten", form.bad_object && same.ok && !same.changed);
+        check("Objekt ersetzen erfordert Bestätigung",
+              replace.ok && replace.changed && replace.replaces_invalid && replace.value.is_obj());
+
+        const JsonValue mixed = json_parse(R"({"troops":["wolf",42,"  ","zeile\nneu"],)"
+                                           R"("steps":15,"extra":"bewahren"})");
+        const EncounterForm f = encounter_form_read(&mixed);
+        check("nicht darstellbare Truppen als Altdaten markieren", f.bad_troops && f.troops == "wolf");
+        const EncounterEdit only_steps = encounter_form_prepare(&mixed, f, f.troops, "16", false, true);
+        check("andere Felder ändern bewahrt kaputte Liste verlustfrei",
+              only_steps.ok && !only_steps.replaces_invalid &&
+              json_write(*only_steps.value.find("troops")) == json_write(*mixed.find("troops")) &&
+              only_steps.value.find("extra")->str == "bewahren");
+        const EncounterEdit replace_list = encounter_form_prepare(&mixed, f, f.troops, f.steps, true, false);
+        check("auch gleiche sichtbare Liste ersetzt Altdaten nur mit Rückfrage",
+              replace_list.ok && replace_list.replaces_invalid &&
+              replace_list.value.find("troops")->arr.size() == 1);
+
+        const JsonValue invalid_steps = json_parse(R"({"troops":["wolf"],"steps":-5,"extra":1})");
+        const EncounterForm fs = encounter_form_read(&invalid_steps);
+        const EncounterEdit list_only = encounter_form_prepare(&invalid_steps, fs, "wolf\nbandit", fs.steps,
+                                                                true, false);
+        check("ungültige steps bleiben bei Listenänderung erhalten",
+              fs.bad_steps && list_only.ok && !list_only.replaces_invalid &&
+              list_only.value.find("steps")->num == -5);
+        const EncounterEdit replace_steps = encounter_form_prepare(&invalid_steps, fs, fs.troops, "30",
+                                                                    false, true);
+        check("ungültige steps nur nach Bestätigung ersetzen",
+              replace_steps.ok && replace_steps.replaces_invalid &&
+              replace_steps.value.find("steps")->num == 30);
+        const JsonValue too_large = json_parse(R"({"steps":9007199254740992})");
+        check("bestehende zu große Zahl wird als nicht darstellbar markiert",
+              encounter_form_read(&too_large).bad_steps);
+    }
+    {
+        const JsonValue db = json_parse(R"({"troops":[)"
+            R"({"id":"wald","name":"Wälder"},{"id":"wald","name":"Zweiter Name"},)"
+            R"({"id":"band","name":"Banditen"},{"id":"","name":"Nur Name"},)"
+            R"({"id":"zeile\nneu","name":"Neu"},42,{"id":null}]})");
+        const auto choices = encounter_database_choices(db);
+        check("F9-Auswahl filtert defekte und doppelte IDs",
+              choices.size() == 2 && choices[0].id == "wald" && choices[0].name == "Wälder" &&
+              choices[1].id == "band");
+        JsonValue ids;
+        encounter_parse_troops("wald\nWälder\nZweiter Name\nNur Name\nfehlt\nfehlt\nband", ids);
+        const auto unknown = encounter_unknown_troops(ids, db);
+        check("Prüfung akzeptiert ID und alle Namen, fasst unbekannte Duplikate zusammen",
+              unknown.size() == 1 && unknown[0] == "fehlt");
+        check("fehlende Datenbank ergibt keine Auswahl", encounter_database_choices(JsonValue{}).empty());
+    }
+    {
+        std::string map_text, db_text;
+        const bool read_map = datei_lesen(wurzel + "/game/data/maps/dorf.json", map_text);
+        const bool read_db = datei_lesen(wurzel + "/game/data/database.json", db_text);
+        check("Demo-Karte und Projektvorlage lesbar", read_map && read_db);
+        if (read_map && read_db) {
+            JsonValue map = json_parse(map_text);
+            const JsonValue db = json_parse(db_text);
+            const EncounterForm form = encounter_form_read(map.find("encounters"));
+            const auto choices = encounter_database_choices(db);
+            check("F2 liest echte Demo-Begegnungen und Datenbank",
+                  form.troops == "waldweg\r\nbanditen" && form.steps == "30" && choices.size() >= 3);
+            const EncounterEdit edit = encounter_form_prepare(map.find("encounters"), form,
+                form.troops + "\r\nbrunnen", "12", true, true);
+            const JsonValue* ids = edit.value.find("troops");
+            const auto unknown = ids ? encounter_unknown_troops(*ids, db) : std::vector<std::string>{};
+            check("Demo-Truppen sind bekannt und Auswahl bleibt gewichtet",
+                  edit.ok && edit.changed && ids && unknown.empty() && ids->arr.size() == 3);
+            map.set("encounters", edit.value);
+            const JsonValue roundtrip = json_parse(json_write(map));
+            const auto validation = encounter_funde(json_write(roundtrip));
+            check("F2-Daten der Demo bestehen JSON-Roundtrip und Editorprüfung",
+                  validation.empty() && roundtrip.find("encounters")->find("steps")->num == 12 &&
+                  roundtrip.find("encounters")->find("troops")->arr[2].str == "brunnen");
+        }
+    }
+}
+
+void map_props_form_tests() {
+    using namespace rune::editor;
+    std::printf("== Editor: F2 erhält unberührte Karteneigenschaften ==\n");
+    JsonValue root = json_parse(R"({"name":"Alt","terrain":{"width":240.25,"height":120.75,)"
+        R"("resolution":192.0,"seed":7,"amplitude":2.345,"extra":"Berg"},)"
+        R"("fog":{"on":false,"far":123.456,"color":42,"extra":"Nebel"},)"
+        R"("panorama":{"color":11,"extra":"Himmel"},)"
+        R"("weather":{"type":"regen","intensity":0.55,"extra":"Wolken"},)"
+        R"("blocked":[{"x":1.234567890123,"z":2,"w":3,"h":4,"extra":"Wand"}],)"
+        R"("objects":[{"type":"haus"}],"events":[{"id":1}],)"
+        R"("encounters":{"troops":["wolf","wolf"],"steps":30.0,"extra":true}})");
+    MapPropsForm before;
+    before.name = "Alt";
+    before.width = "240"; before.height = "120"; before.seed = "7"; before.amplitude = "2.3";
+    before.mountains = true; before.fog_far = "123"; before.fog_color = "00002A";
+    before.panorama_color = "00000B"; before.weather_type = 1; before.weather_intensity = "0.6";
+    before.blocked = "1.23456789,2,3,4";
+    const std::string untouched = json_write(root);
+    MapPropsChanges changes = map_props_apply(root, before, before);
+    check("unveränderte F2-Felder schreiben nichts, trotz gerundeter Anzeige",
+          !changes.changed && json_write(root) == untouched);
+
+    // Derselbe Ablauf wie im Dialog: allgemeine Felder vorbereiten, dann
+    // Encounter übernehmen. Gerundete oder versteckte Daten bleiben erhalten.
+    const EncounterForm enc = encounter_form_read(root.find("encounters"));
+    const EncounterEdit only_enc = encounter_form_prepare(root.find("encounters"), enc,
+                                                           "wolf\nbandit", "30", true, false);
+    root.set("encounters", only_enc.value);
+    const JsonValue saved = json_parse(json_write(root));
+    check("nur Begegnungen ändern bewahrt Gelände, Nebel, Wetter und Zonen exakt",
+          saved.find("terrain")->find("width")->num == 240.25 &&
+          saved.find("terrain")->find("resolution")->is_int == false &&
+          saved.find("fog")->find("far")->num == 123.456 &&
+          saved.find("weather")->find("intensity")->num == 0.55 &&
+          saved.find("blocked")->arr[0].find("x")->num == 1.234567890123 &&
+          saved.find("blocked")->arr[0].find("extra")->str == "Wand");
+
+    const std::string original_terrain = json_write(*root.find("terrain"));
+    MapPropsForm after = before;
+    after.name = "Neu";
+    changes = map_props_apply(root, before, after);
+    check("nur Namen ändern lässt andere Felder und Encounter-Zusätze stehen",
+          changes.changed && changes.name && !changes.terrain && !changes.atmosphere &&
+          root.find("name")->str == "Neu" && json_write(*root.find("terrain")) == original_terrain &&
+          root.find("encounters")->find("extra")->b && root.find("note") == nullptr);
+
+    after = before;
+    after.width = "300";
+    changes = map_props_apply(root, before, after);
+    const JsonValue* terrain = root.find("terrain");
+    check("Terrain nur gezielt ändern und übrige Präzision erhalten",
+          changes.changed && changes.terrain && !changes.atmosphere && terrain->find("width")->num == 300 &&
+          terrain->find("height")->num == 120.75 && terrain->find("amplitude")->num == 2.345 &&
+          !terrain->find("resolution")->is_int && terrain->find("extra")->str == "Berg");
+
+    after = before;
+    after.fog_on = true; after.fog_color = "BFD8EC"; after.panorama_color = "0x123456";
+    after.weather_type = 2; after.note = "Hallo";
+    changes = map_props_apply(root, before, after);
+    check("Atmosphäre/Wetter behalten nicht bearbeitete Schlüssel",
+          changes.changed && changes.atmosphere && root.find("fog")->find("on")->b &&
+          root.find("fog")->find("color")->num == 0xBFD8EC &&
+          root.find("fog")->find("far")->num == 123.456 && root.find("fog")->find("extra")->str == "Nebel" &&
+          root.find("panorama")->find("color")->num == 0x123456 &&
+          root.find("panorama")->find("extra")->str == "Himmel" &&
+          root.find("weather")->find("type")->str == "schnee" &&
+          root.find("weather")->find("intensity")->num == 0.55 &&
+          root.find("weather")->find("extra")->str == "Wolken" && root.find("note")->str == "Hallo");
+    check("Farbparser wie im übrigen Editor",
+          parse_hex_color("0X12Ab56") == 0x12AB56 && parse_hex_color("kaputt") == 0);
+
+    after = before;
+    after.blocked = "3,4,5,6\r\n1;2;0;4";
+    changes = map_props_apply(root, before, after);
+    check("nur explizit bearbeitete Block-Zonen neu parsen",
+          changes.changed && root.find("blocked")->arr.size() == 1 &&
+          root.find("blocked")->arr[0].find("x")->num == 3);
+    before.blocked = after.blocked;
+    after.blocked.clear();
+    changes = map_props_apply(root, before, after);
+    check("explizit geleerte Block-Zonen entfernen den Schlüssel",
+          changes.changed && root.find("blocked") == nullptr);
 }
 
 } // namespace
@@ -321,6 +617,9 @@ int main(int argc, char** argv) {
               null[0].severity == 1 && bruch[0].severity == 1 && text[0].severity == 1 &&
               bruch[0].text == "'steps' muss eine ganze Zahl > 0 sein");
     }
+
+    encounter_form_tests(wurzel);
+    map_props_form_tests();
 
     std::printf("== JSON: Grosse/tiefe Dokumente ==\n");
     {

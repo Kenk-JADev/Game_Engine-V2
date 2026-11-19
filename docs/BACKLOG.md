@@ -21,6 +21,28 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 ---
 
 ## Offen
+### [Editor] Große JSON-Ganzzahlen können beim Laden gerundet werden — offen (Daten-Treue)
+- Symptom: Der C++-JSON-Parser speichert Zahlen als `double`; z. B. kann
+  `9007199254740993` schon beim Laden zu `9007199254740992` werden und beim
+  Speichern geändert zurückkommen, auch ohne absichtliche Feldänderung.
+- Analyse: Dies betrifft grundsätzlich Karten/JSON, nicht nur Encounters.
+  19m begrenzt neu eingegebene Encounter-Schrittzahlen auf 2^53−1 und
+  überschreibt unberührte Werte nicht zusätzlich; der Parser selbst kann
+  bestehende übergroße Ganzzahlen aber noch nicht verlustfrei halten.
+- Betroffene Stellen: `src/editor/json.{h,cpp}`, `src/editor/encounter_form.h`,
+  `tools/json_test.cpp`, `tools/json_bridge_check.rb`.
+- Gefunden in: Etappe 19m.
+
+### [Editor] Bearbeitete Block-Zonen verlieren Zusatzfelder — offen (Daten-Treue)
+- Symptom: Beim tatsächlichen Editieren der F2-Blockzonenliste werden
+  die Einträge aus `x,z,w,h` neu erzeugt; weitere Eigenschaften und sehr
+  genaue Koordinaten können dabei verloren gehen.
+- Analyse: 19m erhält die ursprüngliche Liste vollständig, solange das Feld
+  nicht geändert wird; bei expliziter Bearbeitung fehlt noch eine Zuordnung
+  der Textzeilen zu bestehenden JSON-Einträgen.
+- Betroffene Stellen: `src/editor/map_props_form.h`, `src/editor/editor_main.cpp`.
+- Gefunden in: Etappe 19m (ursprüngliches Feld aus 19k.2).
+
 ### [Engine] Kampf-Grundgerüst deckt noch nicht alles ab — offen (Feature-Fehlend)
 - Stand 19i: Rundenkampf mit Angriff/Item/Flucht, Sieg/Niederlage/Exp/
   Gold/Drops, Gegner als 3D-Kästen mit HP-Balken.
@@ -182,6 +204,25 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Etappe 19a.
 
 ## Erledigt
+### [Editor] Zufallskämpfe pro Karte bearbeiten — erledigt (19m)
+- Wunsch: Truppen und mittlere Schrittzahl ohne JSON-Handarbeit über F2
+  einstellen, mit Zugriff auf gespeicherte F9-Truppen.
+- Umsetzung: F2-Auswahl mit Hinzufügen, F9 öffnen/Neu laden und frei
+  editierbarer Zeilenliste; Mehrfacheinträge gewichten, leere Liste
+  deaktiviert. Schrittzahl prüfen (leer = 30, sonst 1 bis 2^53−1).
+  Unbekannte Truppen und nicht darstellbare Altwerte erfordern Bestätigung;
+  ungültige Eingaben ändern die Karte nicht. OK übernimmt in den Speicher,
+  Strg+S speichert. Kartenbaum/Projektwechsel sind während F2 gesperrt;
+  ein offenes F9 muss vor dem Projektwechsel gespeichert und geschlossen
+  werden, damit seine Projekt-Datenbank nicht versehentlich überschrieben wird.
+  Unbearbeitete Encounter- und allgemeine Kartenfelder bleiben erhalten;
+  `g.objects` wird nach Wurzeländerungen neu gebunden.
+- Tests: `tools/json_test.cpp` prüft die portable Formularlogik,
+  Demo-Datenbank, JSON-Roundtrip, Fehlerfälle und unveränderte Felder.
+  Der Windows-Build läuft in CI; ein grafischer F2-Live-Test steht noch aus.
+- Betroffene Stellen: `src/editor/{editor_main.cpp,encounter_form.h,
+  map_props_form.h}`, `tools/json_test.cpp`, `README.md`.
+
 ### [Engine] Zufallskämpfe beim Laufen — erledigt (19l)
 - Wunsch: eine Lücke des Kampf-Grundgerüsts (19i) schließen - Kämpfe
   gab es nur per Event-Befehl, Karten konnten keine Kämpfe auslösen.
@@ -198,9 +239,9 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Tests: `encounter_test.rb` testet Spielstart, Kartenwechsel, tatsächliche
   Kampfstarts und Sperren; `rgss_test.rb`, `mapcheck_test.rb` und der
   C++-Logiktest `json_test.cpp` prüfen Zähler und Datenvalidierung.
-- Grenzen: kein F2-Editorfeld für `encounters` (JSON von Hand), keine
-  Kampf-BGM/-Bilder, keine Gebiets-Tabellen wie XP. Bestehende Projekte
-  werden nicht automatisch mit Gegnern/Truppen und Encounters versehen.
+- Grenzen: keine Kampf-BGM/-Bilder, keine Gebiets-Tabellen wie XP.
+  Bestehende Projekte werden nicht automatisch mit Gegnern/Truppen und
+  Encounters versehen. Das F2-Editorfeld kam in Etappe 19m hinzu.
 - Betroffene Stellen: `game/engine/{rgss,mapcheck,interpreter,scripts}.rb`, `game/main.rb`,
   `src/editor/{editor_main.cpp,encounter_check.h}`, `game/data/maps/dorf.json`,
   `tools/{encounter_test,rgss_test,mapcheck_test}.rb`, `tools/json_test.cpp`.

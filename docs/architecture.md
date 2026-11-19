@@ -1660,8 +1660,9 @@ Event-Befehl. Seit 19l lösen Karten selbst Kämpfe aus - wie XP
   Laden wird neu gewürfelt; der Zähler ist nicht Teil des Spielstands.
 - **MapCheck + Editor**: `pruefe_encounters` bzw. `issue_scan_encounters`
   prüfen Objekt, Liste aus nicht-leeren Text-IDs und positive ganze
-  `steps` (null/fehlend ist optional). Die Existenz der Truppen prüft
-  erst `Battle.start` gegen die Projekt-Datenbank.
+  `steps` (null/fehlend ist optional). F2 warnt beim Bearbeiten der Liste
+  vor unbekannten Truppen; den tatsächlichen Kampfstart samt Gegnern und
+  Party prüft `Battle.start` gegen die Projekt-Datenbank.
 - **Demo**: Die Vorlage `game/data/maps/dorf.json` verweist auf Truppen
   aus `game/data/database.json`. Bestehende Projekte, darunter das
   mitgelieferte `projekte/dorf`, werden nicht automatisch geändert und
@@ -1672,9 +1673,43 @@ mit `Battle`, Interpreter und Demo-Datenbank aus; `rgss_test.rb` und
 `mapcheck_test.rb` prüfen die Datenregeln. `json_test.cpp` testet dieselbe
 C++-Editorprüfung direkt und kopflos.
 
-Grenzen (Backlog): kein F2-Editorfeld für `encounters` (JSON von Hand
-editieren), keine Kampf-Hintergrundmusik/-bilder, keine
+Grenzen (Backlog): keine Kampf-Hintergrundmusik/-bilder und keine
 Gebiets-/Schritt-abhängigen Encounter-Tabellen wie XP.
+
+## Zufallskämpfe im Karten-Editor (Etappe 19m)
+
+**F2 → Zufallskämpfe** bearbeitet Truppen und mittlere Schrittzahl für die
+aktuelle Karte. Die Auswahl liest gespeicherte Truppen aus der eigenen
+`database.json`; F9 ist aus dem Dialog erreichbar und „Neu laden“ aktualisiert
+die Auswahl nach dem Speichern. „Hinzufügen“ fügt eine ID an die editierbare
+Zeilenliste an. Identische Zeilen bleiben erhalten und gewichten die zufällige
+Auswahl; eine leere Liste deaktiviert Begegnungen. Unbekannte IDs oder eine
+nicht lesbare Datenbank führen bei Listenänderung zu einer Rückfrage. Diese
+Prüfung bestätigt keine vollständige Kampffähigkeit (Gegner/Party).
+
+Schritte müssen im Formular leer (= 30) oder ganzzahlig zwischen 1 und
+9007199254740991 sein. Dieser Grenzwert verhindert Rundungsverlust bei neu
+eingegebenen Ganzzahlen in der double-basierten C++-JSON-Schicht; zur Grenze
+vorhandener großer JSON-Zahlen siehe Backlog. Fehler oder abgelehnte
+Rückfragen lassen den Dialog offen und die gesamte Karte unverändert.
+„OK“ übernimmt in den Speicher, Strg+S schreibt anschließend die Karte.
+
+`encounter_form.h` liest/bereitet Begegnungen ohne Win32 vor: Unbearbeitete
+fehlende/null-Felder, ganzzahlige Floats, Duplikate und unbekannte Schlüssel
+bleiben erhalten. Nicht darstellbare oder fehlerhafte Altwerte werden erst
+nach ausdrücklicher Bestätigung ersetzt. `map_props_form.h` übernimmt auch
+allgemeine F2-Felder nur bei tatsächlicher Änderung, erhält unberührte
+gerundete Anzeigen, Block-Zonen und unbekannte Eigenschaften. Nach
+Änderungen an der Kartenwurzel wird `g.objects` neu gebunden; der Kartenbaum
+und der Projektwechsel bleiben während des moduslosen Dialogs gesperrt.
+F9 muss vor einem Projektwechsel geschlossen werden, damit seine geladene
+Datenbank nicht unter dem Pfad eines anderen Projekts gespeichert wird.
+
+Tests: `tools/json_test.cpp` prüft das Dialog-Datenmodell, optionale und
+fehlerhafte Altwerte, lange Listen, Duplikate, Werte-Grenzen, die echte
+Demo-Datenbank, JSON-Roundtrips und unberührte allgemeine Eigenschaften.
+CI baut/linkt den Win32-Editor, hat aber keine GPU/Fenster für einen echten
+grafischen Live-Test (siehe Backlog und Handoff).
 
 ## Ruby-API (Stand Etappe 2)
 

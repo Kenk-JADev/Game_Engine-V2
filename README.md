@@ -65,7 +65,7 @@ $game_map/$game_screen/$game_temp`, `Graphics`, `Input`, `Audio`,
 | Script-Editor (Ruby) | `Scripts`-Sandbox + Editor | ✅ |
 | Playtest | F4 | ✅ |
 | Nebel / Panorama / Wetter | Karten-JSON + Interpreter | ✅ |
-| Kampfsystem | Rundenkampf-Grundgerüst (`battle.rb`): Angriff/Item/Flucht, Exp/Gold/Drops; Zufallskämpfe beim Laufen per Karten-JSON (`encounters`); keine Skills/Zustände | ✅ teilweise |
+| Kampfsystem | Rundenkampf-Grundgerüst (`battle.rb`): Angriff/Item/Flucht, Exp/Gold/Drops; Zufallskämpfe pro Karte im F2-Dialog; keine Skills/Zustände | ✅ teilweise |
 | Bewegungsfolgen (Move Routes) | `mover.rb`, XP-Schrittnamen + Codes, Routen im Event-Befehl | ✅ |
 | Self-Switches | A-D, Seiten-Bedingung + Befehle | ✅ |
 | Zahleneingabe (Input Number) | `input_number`-Befehl, Ziffernfeld 1-6 Stellen | ✅ |
@@ -218,13 +218,24 @@ Karten sind JSON unter `projekte/<name>/data/maps/<id>.json`:
 w/h = Größe in Metern) — im Editor unter F2 editierbar und als rote
 Flach-Quader sichtbar.
 
-`encounters` ist optional: Die Truppen-IDs müssen in der `database.json`
-desselben Projekts existieren; `steps` ist eine positive ganze mittlere
-Schrittzahl (Standard 30). Ohne Truppen gibt es keine Zufallskämpfe. Das
-Feld wird direkt im Karten-JSON bearbeitet; ein F2-Feld gibt es noch nicht.
-Die Vorlage `game/data` enthält passende Beispieltruppen. Bestehende
-Projekte, auch `projekte/dorf`, werden nicht automatisch umgestellt und
-benötigen bei Bedarf eigene Gegner und Truppen in ihrer Datenbank (F9).
+`encounters` ist optional. Im Editor die gewünschte Karte wählen und **F2**
+öffnen: Unter „Zufallskämpfe“ eine gespeicherte Projekt-Truppe auswählen
+und „Hinzufügen“ klicken, oder IDs direkt eingeben (eine pro Zeile).
+Mehrfache Einträge machen eine Truppe entsprechend wahrscheinlicher; eine
+leere Liste schaltet Zufallskämpfe aus. „Schritte (Mittelwert)“ ist eine
+positive ganze Zahl, ein leeres Feld bedeutet 30. Neue Eingaben sind auf
+1 bis 9007199254740991 begrenzt, damit der C++-JSON-Editor sie exakt speichert.
+
+Gegner und Truppen werden in **F9** angelegt und dort gespeichert; F2 kann
+F9 öffnen und über „Neu laden“ dessen gespeicherte Truppen aktualisieren.
+Vor einem Projektwechsel F9 speichern und schließen. Bei einer geänderten
+Liste führen unbekannte IDs oder eine nicht lesbare Datenbank zu einer
+Rückfrage vor dem Übernehmen. Ein Kampf braucht außerdem eine Truppe mit gültigen Gegnern
+und eine spielbare Party. **OK** übernimmt die Änderungen zunächst in die
+Karte, **Strg+S** speichert sie auf Platte; Abbrechen verwirft den Dialog.
+Die Vorlage `game/data` enthält Beispieltruppen. Bestehende Projekte, auch
+`projekte/dorf`, werden nicht automatisch umgestellt und benötigen bei
+Bedarf eigene Gegner und Truppen in ihrer Datenbank.
 
 Regeln: Editor und Spiel schreiben beide `JSON.pretty_generate`-Format (LF,
 2 Leerzeichen, kürzeste exakte Zahlendarstellung) — deshalb wirft Speichern
