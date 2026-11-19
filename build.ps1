@@ -149,9 +149,17 @@ if ($Test) {
     $JsonTestExe = Join-Path $BuildDir 'json_test.exe'
 
     Write-Step 'Baue C++-Logiktest (src/editor/json.cpp + tools/json_test.cpp) ...'
-    & $Gcc '-std=c++20', '-O1', '-Wall', '-Wextra', '-Wno-unused-parameter',
-           "-I$ProjectRoot\src", "$ProjectRoot\src\editor\json.cpp",
-           "$ProjectRoot\tools\json_test.cpp", '-o', $JsonTestExe
+    # Argumente als Array und mit @ splatten: Im Argument-Modus von PowerShell
+    # ist ein Komma KEIN Trenner, sondern bleibt am Token kleben (g++ bekommt
+    # dann "-std=c++20," und der Linker sucht eine Datei dieses Namens).
+    $JsonTestFlags = @(
+        '-std=c++20', '-O1', '-Wall', '-Wextra', '-Wno-unused-parameter',
+        "-I$ProjectRoot\src",
+        "$ProjectRoot\src\editor\json.cpp",
+        "$ProjectRoot\tools\json_test.cpp",
+        '-o', $JsonTestExe
+    )
+    & $Gcc @JsonTestFlags
     if ($LASTEXITCODE -ne 0) { throw 'json_test.exe konnte nicht gebaut werden' }
 
     Write-Step 'C++-JSON-Test ...'
@@ -159,11 +167,14 @@ if ($Test) {
     if ($LASTEXITCODE -ne 0) { throw 'C++-JSON-Test fehlgeschlagen' }
 
     Write-Step 'Ruby-Testsuite (tools/test_all.rb) ...'
-    & $Ruby.Exe (Join-Path $ProjectRoot 'tools\test_all.rb')
+    $SuiteArgs = @((Join-Path $ProjectRoot 'tools\test_all.rb'))
+    if ($Clean -or (Test-Path $EdExe)) { $SuiteArgs += '--strict' }   # mit EXE muss auch tex_import laufen
+    & $Ruby.Exe @SuiteArgs
     if ($LASTEXITCODE -ne 0) { throw 'Ruby-Testsuite fehlgeschlagen' }
 
     Write-Step 'JSON-Bruecke (C++-Schreiber gegen Ruby JSON.pretty_generate) ...'
-    & $Ruby.Exe (Join-Path $ProjectRoot 'tools\json_bridge_check.rb'), $JsonTestExe, '--strict-format'
+    $BrueckeArgs = @((Join-Path $ProjectRoot 'tools\json_bridge_check.rb'), $JsonTestExe, '--strict-format')
+    & $Ruby.Exe @BrueckeArgs
     if ($LASTEXITCODE -ne 0) { throw 'JSON-Brueckenpruefung fehlgeschlagen' }
 
     Write-Host 'ALLE TESTS GRUEN' -ForegroundColor Green

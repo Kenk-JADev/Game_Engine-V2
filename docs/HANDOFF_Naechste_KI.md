@@ -1,6 +1,6 @@
-# Handoff für die nächste KI - Rune3D, Stand nach Etappe 18l
+# Handoff für die nächste KI - Rune3D, Stand nach Etappe 19a
 
-**Datum des Stands:** HEAD (nach Commit) — Etappe 18l: Höhen-Malwerkzeug + Kartengrenze
+**Datum des Stands:** HEAD (nach Commit) — Etappe 19a: CI (GitHub Actions), portabler Build, Daten-Validierung
 **Projekt:** `C:/Users/jusagu/Desktop/Engine` — Windows-Only 3D-RPG-Engine (C++20/Win32/D3D11 + echtes CRuby 3.4.11), Editor = eigenes Programm `RuneEditor.exe`.
 
 ## 0. Auftrag und Fortschritt (RPG-Maker-XP-Überholung)
@@ -30,8 +30,16 @@ Der User beauftragte eine Überarbeitung von Engine und Editor **im Stil von RPG
 | 18k | `03d23f7` | Kartenbaum (XP-Kartenliste): TreeView links oben, Doppelklick = Eigenschaften, Rechtsklick-Kontextmenue mit Inplace-Umbenennen |
 | — | `8abfdd2` | Fix Vollbild-Resize: hbrBackground im Hauptfenster (schwarze Ränder beim Maximieren weg) |
 | 18l | `a0107fa` | Höhen-Malwerkzeug („Höhe malen“, ID 3029): Berge/Senken per Maus, terrain.heights im Karten-JSON; Kartengrenze (Physics-Clamp); Terrain-Bau pro Kartenwechsel (enter_map→build_terrain) |
+| 19a | `0cd940d` + Nacharbeit | GitHub Actions (4 Jobs), `build.ps1` portabel + `-Test`, `tools/test_all.rb`, `tools/json_test.cpp` (88 Checks), `tools/json_bridge_check.rb`, `tools/lint_repo.rb`, `game/engine/mapcheck.rb` + Test, README.md, einheitliche Zeilenenden, **Fix: `json_write` beschnitt Kommazahlen (`%.12g`)** |
 
 Alle Etappen sind gebaut, live getestet (headless Ruby-Tests + Fenster-Injektion) und committed. Es gibt **keine uncommitteten Quelländerungen**; `opencode.json` ist lokaler Harness-Kram (steht jetzt im .gitignore).
+
+**Nacharbeit 19a (notiert für die Historie):** Der erste CI-Lauf hat genau das getan,
+wofür er da ist: `build.ps1 -Test` übergab g++ Argumente mit angehängtem Komma
+(PowerShell-Argument-Modus — Array + `@`-Splatting nötig) und `tools/mapcheck_test.rb`
+suchte Fundorte im `message`-Feld statt in `Finding#to_s`. Beides im Folge-Commit
+repariert; der Windows-Job baute `Rune3D.exe` (1106 KB) und `RuneEditor.exe` (1584 KB)
+mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirklich mit.
 
 **Nacharbeit 18f (notiert für die Historie):** Der 18f-Stand lag beim Übergabezeitpunkt uncommittet im Baum (Handoff behauptete das Gegenteil). Er wurde verifiziert (Build + 14 Tests grün) und als `82ceab9` committet, bevor 18g begann.
 
@@ -43,9 +51,26 @@ Alle Etappen sind gebaut, live getestet (headless Ruby-Tests + Fenster-Injektion
 - Build: `.\build.ps1` → `build\Rune3D.exe` + `build\RuneEditor.exe`.
   Vor dem Bauen laufende Exes stoppen: `Get-Process RuneEditor,Rune3D | Stop-Process -Force` (sonst „Permission denied" beim Linken).
   Ruby-PATH vor Tests: `$env:PATH = "C:\Ruby34-x64\msys64\ucrt64\bin;C:\Ruby34-x64\bin;$env:PATH"`.
-- Tests — **alle 16 müssen Exit 0 liefern** (13 + event18f + event_pages + issues seit 18h):
-  `ruby -I game/engine tools\{editor,event,event_pages,event18f,issues,npc,pick,save,sound,project,effects,script,tex_import,project_tex,party,weather}_test.rb`
+- Tests — **zentral seit 19a, keine handgepflegte Liste mehr**:
+  `ruby tools/test_all.rb` (findet `tools/*_test.rb` selbst, startet jeden Test als
+  eigenen Prozess, wertet Exit-Codes aus, überspringt `tex_import_test.rb` ohne
+  gebaute `RuneEditor.exe`; `--strict` = Übersprungene zählen als Fehler,
+  `-v` = Ausgaben auch bei Grün, `--only NAME` = filtern).
+  Auf Windows dasselbe in einem Rutsch: `.\build.ps1 -Test` (baut zusätzlich
+  `build/json_test.exe`, läuft die Ruby-Suite mit `--strict` und prüft die
+  JSON-Brücke). Stand 19a: 17 Ruby-Tests + C++-JSON-Test (88 Checks).
   Achtung: Tests, die Engine-Module direkt laden, brauchen `require 'issues'` (Muster siehe tools/add_issues_requires.rb).
+- **CI läuft automatisch** (`.github/workflows/ci.yml`, bei push und pull_request):
+  `hygiene` (lint_repo), `engine` (test_all + mapcheck), `cpp-logik` (json_test mit
+  `-Werror` + Brücke) auf ubuntu, `windows` (build.ps1 -Clean und -Test, EXEs als
+  Artefakt) auf windows-2022. **Ein Commit gilt erst als fertig, wenn der Lauf grün
+  ist.** Artifacts: `Rune3D-Windows`.
+- **Build ist portabel (19a):** `build.ps1` sucht Ruby (`-RubyRoot` >
+  `RUNE_RUBY_ROOT` > `ruby.exe` im PATH via RbConfig > `C:\Ruby34-x64`) und die
+  ucrt64-Toolchain (`RUNE_MSYS_ROOT` > `<Ruby>\msys64\ucrt64` > `C:\msys64\ucrt64`);
+  Header, libdir, `-l…ruby340` und DLL-Name kommen aus `RbConfig`. Der feste Pfad
+  `C:\Ruby34-x64` ist nur noch Rückfall. An der Link-Reihenfolge (`-lucrtbase` VOR
+  der Ruby-Bibliothek) ändert das nichts.
 - Live-Verifikation über Fenster-Injektion: `tools/edclick.psm1` + Vorlage `log/live17h.ps1` (Wichtig: Fenster per `EnumWindows` nach Klassenname suchen, **nicht** `FindWindowW` über Prozessgrenzen — das ist unzuverlässig; Befehle per `SendMessage` statt `PostMessage`).
 - Editor-Dialoge sind **modeless**; Screenshots via `CopyFromScreen` gehen auf dem isolierten Desktop **nicht** — stattdessen F12 im Editor (`request_screenshot`).
 - **Editor startet nur mit Ruby im PATH** (x64-ucrt-ruby340.dll); sonst kein Fenster und kein `log/editor.log` — ~~das ist kein Bug~~ **seit Etappe 18e+ behoben:** build.ps1 kopiert `x64-ucrt-ruby340.dll`, `libgmp-10.dll`, `libwinpthread-1.dll` + `ruby_builtin_dlls\` nach `build/` (SxS-Assembly, sonst 0xc0150002), winpthread wird statisch gelinkt (`-Wl,-Bstatic,--whole-archive -lwinpthread`), und `vm.cpp` setzt `RUBYLIB` auf die Ruby-Stdlib-Pfade (sonst `LoadError: json` bei Doppelklick-Start). Beide EXEn starten jetzt ohne Ruby-PATH per Doppelklick.
@@ -55,7 +80,9 @@ Alle Etappen sind gebaut, live getestet (headless Ruby-Tests + Fenster-Injektion
 ## 2. Architektur-Kurzreferenz
 
 - **Spiel:** `src/main.cpp` (Schleife, F5=Ruby-Reload) → Ruby `game/engine/boot.rb` (Requires) → `game/main.rb` (`Game.setup/update/draw`, Launcher, Menü, Playtest in-game via F4 seit 16b).
-  **Module:** `Database` (JSON laden, `database.json` seit 17g), `GameState`, `Party`+Actor (17g), `Event`/`Npc`/`Interpreter`, `Scripts` (Sandbox `Scripts::Context` mit Helfern say/switch/variable/teleport/sound/effect/item/gold/heal/weather…), `Pick`, `Effects`+`Weather` (Partikel via `Rune::Gfx.box`), `Textures`/`Sounds` (prozedural), `Project`, `Launcher`.
+  **Module:** `Database` (JSON laden, `database.json` seit 17g), `GameState`, `Party`+Actor (17g), `Event`/`Npc`/`Interpreter`, `Scripts` (Sandbox `Scripts::Context` mit Helfern say/switch/variable/teleport/sound/effect/item/gold/heal/weather…), `Pick`, `Effects`+`Weather` (Partikel via `Rune::Gfx.box`), `Textures`/`Sounds` (prozedural), `Project`, `Launcher`, `MapCheck` (19a: Karten-Daten
+  prüfen, dieselben Regeln wie `issues_scan_map` im Editor; `Game.enter_map` meldet harte
+  Fehler an `Issues`).
 - **Editor:** `src/editor/editor_main.cpp` (eine große Datei, ~4700 Zeilen). Eigene Fensterklassen: `RuneEditorMain`, Viewport `RuneEditorView`, Dialoge `RuneEditorDlg`/`DlgNew` (Karten), `RuneEditorEventDlg`, `ScriptDlg`, `MatDlg`, `DbDlg`, `SoundDlg` — **alle modeless**.
 - Editor-IDs: Menü 100–115 (115=TILESET; 112=SOUNDTEST, 113=PLAYTEST, 114=PROJECT), Haupt-Controls 3001–3029 (Toolbar 3025, Boden-malen-Radio 3026, Kartenbaum 3027, **Höhe-malen-Radio 3029**), Karten-Dialog 4100–4114 (Wetter 4113/4114), Projekt-Dialog 4201–4205, Tileset-Dialog 4301–4319 (Liste 4301, Kachelgröße 4303, Übernehmen 4304, Speichern 4305, Erzeugen 4306, Farben/Muster/Name 4307–4310, Schließen 4311, Vorschau 4312, Splat-Flächen X/Z/B/T 4313–4316, Hinzufügen 4317, Entfernen 4318, Flächen-Liste 4319), Event 5001–5045, Script 6001–6016, Material 7001–7013, DB 8001–8055, Sound 8101–8107. F-Tasten: F1 Hilfe, F2 Eigenschaften, F3 Materialbase, F4 Playtest, F6 Events, **F7 Tileset**, F8 Sound-Test, F9 Datenbank, F11 Scripts.
 - **Toolbar:** 8 Buttons, Icons prozedural per GDI gezeichnet (`make_toolbar_icon` + Namensraum `ico`), senden Menü-IDs via `WM_COMMAND`. F-Tasten: F1 Hilfe, F2 Eigenschaften, F3 Materialbase, F4 Playtest, F6 Events, F8 Sound-Test, F9 Datenbank, F11 Scripts.
@@ -83,7 +110,11 @@ Alle Etappen sind gebaut, live getestet (headless Ruby-Tests + Fenster-Injektion
 - **Resize-Fakten (belegt):** Swapchain/Viewport folgen korrekt (`ResizeBuffers` fehlerfrei, Screenshot-Größe == Viewport-Größe), auch das Spiel behandelt `WM_SIZE` (`window.cpp` → `consume_resize()` → `renderer.resize()`). Bei Resize-Verdacht zuerst `log/editor.log` auf `Viewport: …` prüfen. F12-Screenshot geht **nur** per echtem Tastendruck (`[EdClick]::Key(0x7B)`) — `PostMessage(WM_KEYDOWN)` wirkt nicht, weil `handle_shortcuts` `GetAsyncKeyState` fragt.
 - **Event-Seiten (18g):** Events haben `pages` (Liste aus `{conditions, trigger, commands}`); die Seite mit dem **höchsten Index** mit erfüllten Bedingungen gewinnt (Seite 0 = Standard, leere Bedingungen = immer). Bedingungen: `switch` {name,value} und `variable` {name,op,value} (UND-verknüpft). `Event.refresh_page!` läuft in main.rb vor den Trigger-Schleifen; **Seitenwechsel setzt `fired` zurück** (touch/auto feuern erneut). Alte Karten ohne `pages` → implizite Seite 0; der Editor migriert das geöffnete Event sofort (`ev_ensure_pages`) und speichert dann ohne Top-Level-trigger/commands. Editor-IDs: Seitenliste 5046, Neue Seite 5047, Seite löschen 5048, Seite übernehmen 5049, Bedingungsfelder 5050–5054. Der Trigger-ComboBox (5015) sitzt jetzt in der Gruppenbox „Seite". Tests: `tools/event_pages_test.rb` (44 Checks), `log/live18g.ps1`.
 - **Event-Editor (18f):** 20 Befehlstypen mit Kategorie-Präfixen (Enum EvType ersetzt magische Indizes!), `choices` (Wahlmöglichkeiten mit Zweigen als „Wenn [x]:"-Kopfzeilen), `toggle_switch`, `move_player`, `weather`, `save_game`/`load_game`, Trigger `parallel`. Neue Tests: `tools/event18f_test.rb` (23 Checks, Mock-Muster wie event_test.rb). **Live-Test-Falle:** Der Event-Dialog blockiert Strg+S des Hauptfensters (`event_editor_focused()`) → im Test erst Dialog schließen (IDEV_CLOSE 5005), dann speichern. `load_game` im Interpreter baut die Karte neu auf und ersetzt den laufenden Interpreter (dokumentiert).
-- **Nächste Kandidaten:** Move-Routes (Bewegungsfolgen für Events/NPCs), Show-Animation/Balloon, Bildschirm ein/ausblenden (Fade), Zahleneingabe, Kampf-Befehle, Undo/Redo für Splats, Passierbarkeits-Regeln, Self-Switches (lokal pro Event, RPG-Maker-Stil).
+- **Nächste Kandidaten:** die beiden User-Wünsche aus `docs/BACKLOG.md` (Platzier-Vorschau
+  statt Sofort-Einfügen + bessere Objektliste; NPC-/Platzier-Dialog mit X/Y/Z und
+  Text-Objekten), danach Move-Routes, Self-Switches, Kampf-Befehle, Fade, Zahleneingabe,
+  Passierbarkeits-Regeln, Undo/Redo für Splats. Seit 19a ist jeder dieser Schritte durch
+  CI abgesichert (Windows-Job kompiliert den Editor wirklich).
 - **WICHTIG bei Skript-Rewrites von Quellen:** NIEMALS `Get-Content -Raw` + `Set-Content -Encoding utf8` für C++-Dateien mit Umlauten — PowerShell liest dann CP1252 und produziert Doppelkodierung („Ã¼") + BOM. Reparatur per `tools/repair_mojibake.rb` (UTF-8 → CP1252 → UTF-8), Scan per `tools/scan_mojibake_bytes.rb`.
 - **Nächste Kandidaten:** Passierbarkeits-Regeln (blockierte Zonen), Autotiles, Weich-Übergänge per Weightmap, Undo/Redo für Splat-Operationen (derzeit nur Objekte).
 - Boden/Tileset (18c): `terrain.texture` + `terrain.tile` im Karten-JSON; Shader skaliert Terrain-UV mit 2.0/tile über `gParams.z` (Boxen nutzen `gParams.y`, Shadow-Pass beide 0 — nicht vermischen!). `Renderer::texture_rgba` liefert Pixel für Vorschauen; `Rune::Gfx.terrain_texture(name, tile_meters)` hat jetzt 2 Argumente (2. optional).

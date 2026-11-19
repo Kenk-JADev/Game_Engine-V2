@@ -21,6 +21,30 @@ require 'rbconfig'
 
 ROOT = File.expand_path('..', __dir__)
 
+# GitHub Actions schreibt Meldungen aus dem Protokoll in die Oberfläche
+# (Annotations) — dort sieht man den Grund, ohne das Log aufklappen zu müssen.
+# Ausserhalb von CI (GITHUB_ACTIONS nicht gesetzt) passiert nichts.
+def ci_text(text)
+  text.to_s.gsub('%', '%25').gsub("\r", '%0D').gsub("\n", '%0A')
+          .gsub(':', '%3A').gsub(',', '%2C')
+end
+
+def ci_meldung(stufe, titel, text)
+  return unless ENV['GITHUB_ACTIONS'] == 'true'
+
+  puts "::#{stufe} title=#{ci_text(titel)}::#{ci_text(text)}"
+end
+
+# Aus der Testausgabe die wichtigen Zeilen holen (FAIL-Zeilen + letzte Zeile).
+def ci_auszug(ausgabe, maximal = 1200)
+  zeilen = ausgabe.to_s.lines.map(&:rstrip)
+  treffer = zeilen.select { |z| z.include?('FAIL') || z.include?('Error') || z.include?('error') }
+  treffer = zeilen.last(6) if treffer.empty?
+  text = treffer.first(12).join("\n")
+  text = text[0, maximal] + ' [...]' if text.size > maximal
+  text
+end
+
 # Tests, die mehr brauchen als Ruby: Pfad relativ zu ROOT. Fehlt eine
 # Voraussetzung, wird der Test uebersprungen (mit Grund) statt rot zu werden —
 # auf dem Build-Rechner bzw. im Windows-Job der CI ist er dann dabei.
@@ -80,6 +104,8 @@ tests.each do |t|
 
   if fehlend
     puts format('%-24s UEBERSPRUNGEN  (fehlt: %s)', t, fehlend.join(', '))
+    ci_meldung('warning', "Test uebersprungen: #{t}",
+               "Voraussetzung fehlt: #{fehlend.join(', ')}. Build mit .\\build.ps1, dann erneut laufen lassen.")
     ergebnis << [:skip, t, 0.0, "fehlt: #{fehlend.join(', ')}"]
     next
   end
@@ -96,6 +122,7 @@ tests.each do |t|
   else
     puts format('%-24s FEHLER  %6.2f s  (Exit %s)', t, dauer, status.inspect)
     puts ausgabe.to_s.gsub(/^/, '    | ')
+    ci_meldung('error', "Test fehlgeschlagen: #{t}", ci_auszug(ausgabe))
     ergebnis << [:fail, t, dauer, ausgabe.to_s]
   end
 
@@ -110,6 +137,9 @@ zeit  = ergebnis.sum { |e| e[2] }
 puts '-' * 68
 puts format('Ergebnis: %d OK, %d fehlgeschlagen, %d uebersprungen (%.1f s)',
             ok, kaputt, ueber, zeit)
+ci_meldung(kaputt.positive? ? 'error' : 'notice', 'Rune3D-Testsuite',
+           format('%d OK, %d fehlgeschlagen, %d uebersprungen (%.1f s, Ruby %s)',
+                  ok, kaputt, ueber, zeit, RUBY_VERSION))
 if ueber.positive? && !optionen[:strict]
   puts 'Hinweis: uebersprungene Tests brauchen eine gebaute EXE (build.ps1).'
 end

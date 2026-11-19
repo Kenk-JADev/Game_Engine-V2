@@ -924,6 +924,156 @@ Pinsel in `compute_heights` ein; `height_at`/Kollision/sichtbare Geometrie
 stimmen automatisch.
 
 
+## Verifikation: CI, portabler Build und Daten-Validierung (Etappe 19a)
+
+Bis 18l stand die Prüfprozedur als Fließtext im Handoff: ein einzeiliger Befehl
+mit 16 Testnamen, `build.ps1` mit hart kodiertem `C:\Ruby34-x64`, und kein
+einziger automatischer Lauf. Etappe 19a macht daraus Werkzeug, das von selbst
+läuft — und findet dabei einen echten Datenfehler.
+
+### Vier Ebenen, vier Jobs
+
+`.github/workflows/ci.yml` läuft bei jedem Push und Pull Request:
+
+| Job | Runner | Was |
+|---|---|---|
+| `hygiene` | ubuntu | `tools/lint_repo.rb` |
+| `engine` | ubuntu | `tools/test_all.rb` + `game/engine/mapcheck.rb` |
+| `cpp-logik` | ubuntu | `tools/json_test.cpp` (`-Werror`) + `tools/json_bridge_check.rb` |
+| `windows` | windows-2022 | `build.ps1 -Clean` und `-Test`, EXEs als Artefakt |
+
+Getrennt statt in einem Job, damit ein Fehlschlag sofort sagt, WELCHE Ebene
+kaputt ist. Der Windows-Job ist der einzige Ort, an dem Win32/D3D11 wirklich
+kompiliert und gelinkt wird; starten lassen sich die EXEs dort nicht (keine GPU
+im Runner), grafische Prüfung bleibt bei `tools/edclick.psm1` am echten Rechner.
+
+### Portabler Build
+
+`build.ps1` suchte Ruby bisher nur unter `C:\Ruby34-x64` und rechnete fest mit
+`include/ruby-3.4.0` und `-lx64-ucrt-ruby340`. Jetzt:
+
+- **Ruby**: `-RubyRoot` > `$env:RUNE_RUBY_ROOT` > `ruby.exe` im PATH (via
+  `RbConfig::CONFIG['prefix']`) > `C:\Ruby34-x64`/`33`/`32`.
+- **Toolchain**: `$env:RUNE_MSYS_ROOT\ucrt64` > `<Ruby>\msys64\ucrt64` >
+  `C:\msys64\ucrt64` > ein `ucrt64`-g++ aus dem PATH.
+- **Header, libdir, Importbibliothek, DLL-Name** kommen aus `RbConfig`
+  (`rubyhdrdir`, `rubyarchhdrdir`, `libdir`, `LIBRUBYARG_SHARED`,
+  `RUBY_SO_NAME`), mit RubyInstaller-3.4-Fallback, falls die Abfrage leer ist.
+- Neu: `-Test` = C++-JSON-Test + Ruby-Suite + JSON-Brücke. Fehlende
+  Laufzeit-DLLs warnen nur noch statt den Build abzubrechen.
+
+Die Reihenfolge `-lucrtbase` VOR der Ruby-Importbibliothek bleibt unantastbar
+(siehe `fclose`-Falle im Handoff).
+
+### Test-Runner mit Voraussetzungen
+
+`tools/test_all.rb` findet `tools/*_test.rb` per Glob, startet jeden Test als
+eigenen Prozess (`RbConfig.ruby -I game/engine <datei>`) und wertet den
+Exit-Code aus. `tex_import_test.rb` braucht `build/RuneEditor.exe` und wird ohne
+sie als ÜBERSPRUNGEN gemeldet statt mit `raise` umzukippen — deshalb läuft die
+Suite auf einem frischen Checkout und in CI auf Linux. `--strict` macht
+Übersprungene zu Fehlern (Windows-Job), `-v` zeigt Ausgaben auch bei Grün,
+`--only NAME` filtert.
+
+### Karten-Validierung in Ruby: MapCheck
+
+Der Editor prüft Karten seit 18h in C++ (`issues_scan_map`). Dieselben Regeln
+gab es nirgends sonst — das Spiel hat kaputte Daten still geschluckt, und CI
+konnte sie gar nicht sehen. `game/engine/mapcheck.rb` ist die
+plattformunabhängige Fassung:
+
+- **Befehle**: alle 20 Typen, rekursiv durch `then`/`else`/`branches`;
+  Pflichtfelder pro Typ (`lines`, `options`+`branches`, `name`, `amount`,
+  `slot` 1..3, `seconds` ≥ 0, `op` aus `== != < <= > >=`).
+- **Events**: Seiten, Trigger, Bedingungen (`switch`/`variable`), doppelte Ids,
+  fehlende Position.
+- **Terrain**: `width`/`height`/`resolution`/`amplitude`, Höhen-Pinsel
+  (`x,z,r,h`), Splat-Flächen (`tex,x,z,w,h`), Material gegen die geladene
+  Materialbase.
+- **NPCs**: Wegpunkte als `[x, z]`-Paare, `speed`, `radius`, eigene Befehle.
+- **Atmosphäre**: Nebel/Panorama-Farbe in `0x000000..0xFFFFFF`, Wettertyp,
+  Zielkarten von `teleport`.
+
+Schweregrade wie im Editor: 1 = Warnung, 2 = Fehler. Aufrufe: `MapCheck.scan`,
+`scan_file`, `scan_tree`, `report!` (→ `Issues.report`), `summary`; als CLI
+`ruby -I game/engine game/engine/mapcheck.rb` (Exit 1 bei Fehlern).
+`Game.enter_map` meldet seit 19a harte Fehler ins Laufzeit-Backlog
+(`log/issues.json`) — Warnungen bleiben Editor und CI vorbehalten, damit das
+Log nicht volläuft.
+
+**Zwei Implementierungen, eine Regel:** `ISSUE_CMD_TYPES`/`issues_scan_map`
+(C++) und `MapCheck::CMD_TYPES` (Ruby) müssen zusammenpassen. Beim Ergänzen
+eines Befehls also IMMER beide ändern (und `EV_TYPES` + `EvType` im
+Event-Editor). `tools/mapcheck_test.rb` prüft zusätzlich die mitgelieferten
+Karten, wodurch eine Regeländerung, die vorhandene Daten bricht, sofort rot wird.
+
+### JSON-Brücke und der %.12g-Fehler
+
+`tools/json_test.cpp` testet Parser und Schreiber der Editor-JSON-Schicht
+(88 Checks): Reihenfolge, doppelte Schlüssel, Escapes, Surrogatpaare,
+Fehlermeldungen mit Position, echte Karten, Idempotenz. Der Modus
+`--roundtrip ein.json aus.json` schreibt eine Datei genau so, wie der Editor sie
+speichern würde. `tools/json_bridge_check.rb` vergleicht das Ergebnis mit Rubys
+`JSON.pretty_generate`: erst semantisch (hart), dann bytegleich
+(`--strict-format`).
+
+**Dabei gefunden:** `write_number` nutzte `%.12g` und beschnitt still jede
+Kommazahl auf 12 signifikante Stellen. Aus dem Startblickwinkel
+`3.141592653589793` wurde beim Speichern im Editor `3.14159265359`, aus
+Spielstandskoordinaten `2.0040341041749343e-05` wurden `2.00403410417e-05`.
+Zusätzlich kippte `%g` schon kleine Werte in die Exponentenschreibweise — die
+Kartenbreite `240.0` wäre als `2.4e+02` gespeichert worden, obwohl der
+Kommentar im Code „wie Ruby JSON.pretty_generate" versprach.
+
+Neu: kürzeste Präzision 1..17 mit `strtod`-Gegenprobe, Festkomma bei Exponent
+`[-4, 16)` (Ruby/Python-Verhalten), `NaN`/`Unendlich` → `null` (bleibt lesbar
+und wird von MapCheck gemeldet), Ganzzahlen außerhalb `long long` stürzen nicht
+mehr ab. Alle 13 JSON-Dateien des Repos roundtrips jetzt bytegleich — CI prüft
+das mit `--strict-format`.
+
+### Repo-Hygiene
+
+`tools/lint_repo.rb` prüft JSON-Parsebarkeit, UTF-8 ohne BOM, Doppelkodierung
+(Mojibake-Muster, mit Whitelist für die Reparatur-/Scan-Werkzeuge),
+Zeilenenden-Konvention, `boot.rb`-Requires in beide Richtungen, ignorierte
+Dateien im Index, Binär-Artefakte, Grundausstattung und meldet übergroße
+Quellen als Info. Ohne Git lauffähig.
+
+**Zeilenenden:** `.gitattributes` stand auf `* -text` (keine Umwandlung),
+wodurch 12 Dateien CRLF und der Rest LF hatten. Der Editor schreibt LF, Ruby
+ebenso — jede CRLF-Karte kippte beim Speichern komplett um. Jetzt einheitlich
+LF, CRLF nur für `*.ps1`/`*.psm1`/`*.manifest`; 20 Dateien wurden umgestellt
+und die Regel wird von `lint_repo.rb` bewacht.
+
+### Repo-Hygiene: README
+
+Das Repo hatte keine Startseite. `README.md` nennt jetzt Zweck, den
+Vergleich mit RPG Maker XP (was da ist, was fehlt), Voraussetzungen, Build-,
+Test- und CI-Befehle, Projektstruktur, Bedienung und das Karten-Format.
+
+### Fallstricke dieser Etappe
+
+- **PowerShell-Argument-Modus:** `& $Gcc '-std=c++20', '-O1', ...` übergibt die
+  Kommas MIT — g++ bekommt `-std=c++20,` und der Linker sucht eine Datei dieses
+  Namens. Argumentlisten immer als Array bauen und mit `@` splatten
+  (`$flags = @('-std=c++20', '-O1'); & $Gcc @flags`), wie es `Build-Target` mit
+  `@CxxFlags`/`@Libs` schon immer tat.
+- **setup-ruby bringt das DevKit mit:** Auf `windows-2022` liegt Ruby unter
+  `C:\hostedtoolcache\windows\Ruby\3.4.x\x64` und MSYS2 darunter in
+  `msys64\ucrt64` (GCC 16.2). `RI_DEVKIT` zeigt darauf. Der
+  `msys2/setup-msys2`-Rücksprung im Workflow ist deshalb nur eine Versicherung
+  und bleibt normalerweise übersprungen.
+- **`%.12g` ist kein Format für Daten:** Wer Zahlen round-trippen will, braucht
+  die kürzeste exakt runde Darstellung mit Gegenprobe (`strtod`) und eine
+  Festkomma-Regel — sonst stimmt das Ergebnis nicht mit Ruby/Python überein.
+- **CI-Annotationen:** `tools/test_all.rb` gibt bei Fehlschlag
+  `::error title=…::…` aus, damit der Grund direkt in der Lauf-Übersicht steht
+  (Escaping: `%` → `%25`, `:` → `%3A`, `,` → `%2C`, Zeilenumbruch → `%0A`).
+- **Zeilenenden sind Daten:** Solange `.gitattributes` auf `* -text` steht,
+  entscheidet der Zufall (bzw. der letzte Editor) über CRLF/LF. `lint_repo.rb`
+  bewacht die Konvention jetzt bei jedem Lauf.
+
+
 ## Ruby-API (Stand Etappe 2)
 
 | API | Bedeutung |

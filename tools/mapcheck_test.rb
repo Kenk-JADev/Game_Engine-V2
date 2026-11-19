@@ -27,10 +27,12 @@ rescue StandardError => e
   $fail += 1
 end
 
-# Funde bequem durchsuchen: hat es eine Meldung, die `fragment` enthaelt?
+# Funde bequem durchsuchen: Enthält der Fund (Ort + Meldung, also Finding#to_s)
+# das Fragment? Gegen to_s und nicht gegen message prüfen, weil die Stelle
+# ("karte terrain.heights") im where-Feld steht, der Grund im message-Feld.
 def hat?(funde, fragment, severity = nil)
   funde.any? do |f|
-    f.message.include?(fragment) && (severity.nil? || f.severity == severity)
+    f.to_s.include?(fragment) && (severity.nil? || f.severity == severity)
   end
 end
 
