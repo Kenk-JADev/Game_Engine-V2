@@ -48,7 +48,7 @@ module MapCheck
     item gold
     save_game load_game
     self_switch if_self_switch fade
-    move_route
+    move_route input_number battle
   ].freeze
 
   TRIGGER   = %w[action touch auto parallel].freeze
@@ -613,6 +613,18 @@ module MapCheck
            !text?(c['code'])
           melde(WARNUNG, w, "Schritte #{MOVER_CODE_PFLICHT.join('/')} brauchen 'code'")
         end
+      when 'input_number'
+        # Etappe 19i: Zahleneingabe (XP Input Number Processing).
+        melde(FEHLER, w, "'name' fehlt oder ist leer") unless text?(c['name'])
+        if c.key?('digits') && !(zahl?(c['digits']) && (1..6).cover?(c['digits'].to_i))
+          melde(WARNUNG, w, "'digits' muss 1..6 sein")
+        end
+        if c.key?('initial') && !(zahl?(c['initial']) && c['initial'] >= 0)
+          melde(WARNUNG, w, "'initial' muss eine Zahl >= 0 sein")
+        end
+      when 'battle'
+        # Etappe 19i: Kampf gegen eine Truppe aus database.json.
+        melde(FEHLER, w, "'name' fehlt oder ist leer") unless text?(c['name'])
       end
     end
 

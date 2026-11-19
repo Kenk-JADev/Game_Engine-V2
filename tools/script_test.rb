@@ -58,6 +58,8 @@ require 'interpreter'
 require 'scripts'
 require 'fade'      # Etappe 19e: fade-Helfer im Context
 require 'mover'     # Etappe 19g: move_route-Helfer im Context
+require 'party'     # Etappe 19i: battle-Helfer braucht die Party
+require 'battle'    # Etappe 19i: Kampf-Grundgerüst
 
 module Effects
   LOG = []
@@ -192,6 +194,14 @@ begin
   Scripts.run_code('route', "move_route 'spieler', %w[up]", interp, ev)
   check('move_route-Helfer startet Route') { Mover.active? }
   Mover.reset!
+
+  # 8) Context-Helfer (Etappe 19i): battle startet einen Kampf.
+  Party.setup(Database.database)
+  ok = Scripts.run_code('kampf_unbekannt', "battle 'gibt_es_nicht'", interp, ev)
+  check('battle-Helfer: unbekannte Truppe -> false') { ok == false }
+  ok = Scripts.run_code('kampf', "battle 'waldweg'", interp, ev)
+  check('battle-Helfer startet echten Kampf') { ok == true && Battle.active? }
+  Battle.abort!
 ensure
   FileUtils.remove_entry(tmp)
 end

@@ -43,6 +43,7 @@ require 'state'
 require 'issues'
 require 'mapcheck'   # Etappe 19a: Karten-Daten prüfen (Regeln wie im Editor)
 require 'party'
+require 'battle'     # Etappe 19i: Kampf-Grundgerüst (XP Scene_Battle)
 require 'event'
 require 'npc'
 require 'mover'      # Etappe 19g: Bewegungsrouten (XP Move Routes)

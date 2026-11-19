@@ -42,6 +42,16 @@ end
     @npcs || []
   end
 
+  # Laufzeit-Zugriff für die RGSS-Schicht (19h.2: $game_system.map_interpreter)
+  # und für Tests.
+  def self.interpreter
+    @interpreter
+  end
+
+  def self.time
+    @time || 0.0
+  end
+
   # Karte laden: ID, Events, Objekte, Editor - und Spieler an den Startpunkt.
   # Wird vom ersten Setup und vom Kartenwechsel im Editor benutzt.
   # Himmel/Nebel/Panorama aus der Karte übernehmen (Etappe 17b).
@@ -89,6 +99,7 @@ end
     Fade.reset!   # Etappe 19d: nie mit dunklem Bildschirm in eine Karte kommen
     Mover.reset!  # Etappe 19g: Routen sind flüchtig (Ziel-NPCs sind neu)
     RGSS.reset!   # Etappe 19h: Sprites/Fenster/$scene sind flüchtig
+    Battle.abort! # Etappe 19i: Kämpfe sind flüchtig (Kartenwechsel)
     @events = (@map['events'] || []).map { |h| Event.new(h) }
     @map['objects'] ||= []
     # Etappe 18l: Terrain gehört zur Karte - beim Wechsel neu aufbauen,
@@ -207,6 +218,13 @@ end
   rescue StandardError => e
     Rune::Log.error("Laden fehlgeschlagen: #{e.message}")
     false
+  end
+
+  # Kampf starten (19i): für Scripts und Events - Battle.start mit Absicherung.
+  def self.battle_start(troop_id, can_escape: true, can_lose: false)
+    return false unless defined?(Battle)
+
+    Battle.start(troop_id, can_escape: can_escape, can_lose: can_lose)
   end
 
   # Zurück zum Titelbildschirm (19h.2: $game_temp.to_title/gameover wie XP).
@@ -426,9 +444,22 @@ end
       end
     end
 
+    # Etappe 19i: Im Kampf steht die Welt - nur der Kampf läuft.
+    if defined?(Battle) && Battle.active?
+      Battle.update(dt)
+      Effects.update(dt)
+      Fade.update(dt)
+      return
+    end
+
     # Interpreter zürst: blockiert er (Textfenster offen), wird nichts Neues
     # ausgelöst und auch kein Prompt gesetzt.
     @interpreter.update(dt)
+    # Zahleneingabe (19i): Eingabe am Eingabefeld weiterdrehen.
+    if @interpreter.busy_number?
+      ni = @interpreter.num_input
+      @interpreter.instance_variable_set(:@num_input, nil) unless UI.nummer_eingabe(ni)
+    end
 
     # Sound: Schritte, Sprung, Landung (nur im Spiel, nicht im Menü).
     unless @mode == :launcher
@@ -760,6 +791,8 @@ end
       c = @interpreter.choices
       UI.choices(c[:options], c[:sel])
     end
+    UI.nummer_eingabe(@interpreter.num_input) if @interpreter.busy_number?
+    Battle.draw if defined?(Battle) && (Battle.active? || @interpreter.busy_battle?)
     UI.text(16, 54, "> #{@prompt}  (E)") if @prompt && !@interpreter.running?
     draw_hover_label(@editor.active? ? 248 : 16, @editor.active? ? 88 : 78) if zeige
     draw_crosshair

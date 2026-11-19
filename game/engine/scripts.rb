@@ -143,6 +143,13 @@ module Scripts
       Mover.start(target, Array(steps), repeat: repeat, speed: speed, code: code)
     end
 
+    # Kampf starten (Etappe 19i): battle('waldweg') wie der Event-Befehl.
+    def battle(troop_id, can_escape: true, can_lose: false)
+      return false unless defined?(Battle)
+
+      Battle.start(troop_id, can_escape: can_escape, can_lose: can_lose)
+    end
+
     # Self-Switch des Besitzer-Events: ohne Argument lesen, mit Argument
     # setzen. Ohne Event (nil) liefern beide nil - das Script läuft ins Leere.
     def self_switch(letter, value = nil)

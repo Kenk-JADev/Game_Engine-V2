@@ -760,7 +760,7 @@ const char* const ISSUE_CMD_TYPES[] = {
     "item", "gold",
     "save_game", "load_game",
     "self_switch", "if_self_switch", "fade",
-    "move_route"
+    "move_route", "input_number", "battle"
 };
 const int ISSUE_CMD_TYPE_COUNT =
     static_cast<int>(sizeof(ISSUE_CMD_TYPES) / sizeof(ISSUE_CMD_TYPES[0]));
@@ -802,6 +802,12 @@ static void issues_scan_commands(const JsonValue& list, const std::string& where
             const JsonValue* lines = c.find("lines");
             if (!lines || !lines->is_arr() || lines->arr.empty())
                 issue_report(1, w, "'lines' fehlt/leer");
+        }
+        // Etappe 19i: Zahleneingabe + Kampf brauchen 'name'.
+        if (cmd->str == "input_number" || cmd->str == "battle") {
+            const JsonValue* nm = c.find("name");
+            if (!nm || !nm->is_str() || nm->str.empty())
+                issue_report(2, w, "'name' fehlt oder ist leer");
         }
     }
 }
@@ -4526,6 +4532,8 @@ enum EvType {
     ET_SAVE_GAME, ET_LOAD_GAME,
     ET_SELF_SWITCH, ET_IF_SELF_SWITCH, ET_FADE,   // Etappe 19d (XP-Features)
     ET_MOVE_ROUTE,                                // Etappe 19g (XP-Feature)
+    ET_INPUT_NUMBER,                              // Etappe 19i (XP-Feature)
+    ET_BATTLE,                                    // Etappe 19i (XP-Feature)
     ET_COUNT
 };
 const char* const EV_TYPES[ET_COUNT] = {
@@ -4537,7 +4545,7 @@ const char* const EV_TYPES[ET_COUNT] = {
     "item", "gold",
     "save_game", "load_game",
     "self_switch", "if_self_switch", "fade",
-    "move_route"
+    "move_route", "input_number", "battle"
 };
 const wchar_t* const EV_TYPE_LABELS[ET_COUNT] = {
     L"[Nachricht] Text", L"[Nachricht] Wahlmöglichkeiten", L"[Nachricht] Log",
@@ -4551,7 +4559,9 @@ const wchar_t* const EV_TYPE_LABELS[ET_COUNT] = {
     L"[Spiel] Spiel speichern", L"[Spiel] Spiel laden",
     L"[Steuerung] Self-Switch", L"[Steuerung] Wenn Self-Switch",
     L"[Welt] Bild aus-/einblenden",
-    L"[Bewegung] Bewegungsroute"
+    L"[Bewegung] Bewegungsroute",
+    L"[Steuerung] Zahleneingabe",
+    L"[Kampf] Kampf starten"
 };
 const wchar_t* const EV_TRIGGERS[4] = { L"action", L"touch", L"auto", L"parallel" };
 const wchar_t* const EV_OPS[6] = { L"==", L"!=", L"<", L"<=", L">", L">=" };
@@ -4729,6 +4739,14 @@ std::string ev_cmd_label(const JsonValue& c) {
         return "Bewegungsroute: " + ev_str_of(c, "target") + " (" +
                std::to_string(n) + (n == 1 ? " Schritt" : " Schritte") +
                (ev_bool_of(c, "repeat") ? ", wiederholend)" : ")");
+    }
+    if (type == "input_number") {
+        return "Zahleneingabe -> " + ev_str_of(c, "name") + " (" +
+               ev_num_str(ev_num_of(c, "digits", 1.0), 0) + " Ziffern)";
+    }
+    if (type == "battle") {
+        return std::string("Kampf: ") + ev_str_of(c, "name") +
+               (ev_bool_of(c, "can_escape", true) ? "" : " (keine Flucht)");
     }
     if (type == "teleport") {
         return "Teleport nach (" + ev_num_str(ev_num_of(c, "x"), 1) + ", " +
@@ -5046,19 +5064,20 @@ void ev_cmd_visibility() {
                           t == ET_IF_SWITCH || t == ET_IF_VARIABLE || t == ET_SCRIPT ||
                           t == ET_SOUND || t == ET_EFFECT || t == ET_ITEM || t == ET_WEATHER ||
                           t == ET_SELF_SWITCH || t == ET_IF_SELF_SWITCH || t == ET_FADE ||
-                          t == ET_MOVE_ROUTE);
+                          t == ET_MOVE_ROUTE || t == ET_INPUT_NUMBER || t == ET_BATTLE);
     const bool has_val1 = (t == ET_WAIT || t == ET_VARIABLE || t == ET_IF_VARIABLE ||
                           t == ET_TELEPORT || t == ET_MOVE_PLAYER || t == ET_SOUND ||
                           t == ET_EFFECT || t == ET_GOLD || t == ET_HEAL ||
                           t == ET_WEATHER || t == ET_SAVE_GAME || t == ET_LOAD_GAME ||
-                          t == ET_FADE || t == ET_MOVE_ROUTE);
+                          t == ET_FADE || t == ET_MOVE_ROUTE || t == ET_INPUT_NUMBER);
     const bool has_val2 = (t == ET_VARIABLE || t == ET_TELEPORT || t == ET_MOVE_PLAYER ||
-                          t == ET_EFFECT || t == ET_ITEM || t == ET_MOVE_ROUTE);
+                          t == ET_EFFECT || t == ET_ITEM || t == ET_MOVE_ROUTE ||
+                          t == ET_INPUT_NUMBER || t == ET_BATTLE);
     const bool has_val3 = (t == ET_TELEPORT || t == ET_MOVE_ROUTE);
     const bool has_op = (t == ET_IF_VARIABLE);
     const bool has_bool = (t == ET_SWITCH || t == ET_IF_SWITCH ||
                           t == ET_SELF_SWITCH || t == ET_IF_SELF_SWITCH ||
-                          t == ET_MOVE_ROUTE);
+                          t == ET_MOVE_ROUTE || t == ET_INPUT_NUMBER || t == ET_BATTLE);
 
     show(g_ev.lbl_name, has_name);
     show(g_ev.ed_ce_name, has_name);
@@ -5093,6 +5112,18 @@ void ev_cmd_visibility() {
         // XP-Codes 11..57, deutsche Kurznamen gehen weiter) - mover.rb-Kopf.
         SetWindowTextW(g_ev.lbl_val3, L"Code-Parameter (switch_on/change_speed/script)");
         SetWindowTextW(g_ev.lbl_text, L"Schritte, einer pro Zeile (an/aus = wiederholen)");
+    }
+    if (t == ET_INPUT_NUMBER) {
+        // Etappe 19i: XP "Input Number Processing".
+        SetWindowTextW(g_ev.lbl_name, L"Variable");
+        SetWindowTextW(g_ev.lbl_val1, L"Ziffern (1-6)");
+        SetWindowTextW(g_ev.lbl_val2, L"Startwert");
+        SetWindowTextW(g_ev.lbl_text, L"Zahleneingabe: an/aus = Abbrechen erlaubt (Esc -> 0)");
+    }
+    if (t == ET_BATTLE) {
+        SetWindowTextW(g_ev.lbl_name, L"Gegnergruppe (troops-ID aus database.json)");
+        SetWindowTextW(g_ev.lbl_val2, L"Niederlage ohne Game Over (1 = ja)");
+        SetWindowTextW(g_ev.lbl_text, L"Kampf: an/aus = Flucht möglich (Standard an)");
     }
     if (t == ET_VARIABLE) { SetWindowTextW(g_ev.lbl_name, L"Variable");
                   SetWindowTextW(g_ev.lbl_val1, L"Wert (leer = lassen)");
@@ -5205,6 +5236,19 @@ void ev_load_cmd_form() {
         if (ev_bool_of(c, "wait")) ev_set_text(g_ev.ed_ce_val2, "1");
         if (c.find("code")) ev_set_text(g_ev.ed_ce_val3, ev_str_of(c, "code"));
         SendMessageW(g_ev.cb_ce_bool, CB_SETCURSEL, ev_bool_of(c, "repeat") ? 0 : 1, 0);
+    } else if (type == "input_number") {
+        // Etappe 19i: Variable + Ziffern + Startwert; an/aus = Abbruch erlaubt.
+        if (c.find("digits"))
+            ev_set_text(g_ev.ed_ce_val1, ev_num_str(ev_num_of(c, "digits", 1.0), 0));
+        if (c.find("initial"))
+            ev_set_text(g_ev.ed_ce_val2, ev_num_str(ev_num_of(c, "initial", 0.0), 0));
+        SendMessageW(g_ev.cb_ce_bool, CB_SETCURSEL,
+                     ev_bool_of(c, "cancel", true) ? 0 : 1, 0);
+    } else if (type == "battle") {
+        // Etappe 19i: Truppe im Namensfeld; an/aus = Flucht, Wert 2 = can_lose.
+        if (ev_bool_of(c, "can_lose")) ev_set_text(g_ev.ed_ce_val2, "1");
+        SendMessageW(g_ev.cb_ce_bool, CB_SETCURSEL,
+                     ev_bool_of(c, "can_escape", true) ? 0 : 1, 0);
     } else if (type == "variable") {
         if (c.find("value")) ev_set_text(g_ev.ed_ce_val1, ev_num_str(ev_num_of(c, "value"), 2));
         if (c.find("add"))   ev_set_text(g_ev.ed_ce_val2, ev_num_str(ev_num_of(c, "add"), 2));
@@ -5563,6 +5607,23 @@ JsonValue ev_build_command(const JsonValue* existing) {
         }
         const int b = static_cast<int>(SendMessageW(g_ev.cb_ce_bool, CB_GETCURSEL, 0, 0));
         if (b == 0) cmd.set("repeat", JsonValue::make_bool(true));
+    } else if (ti == ET_INPUT_NUMBER) {
+        // Etappe 19i: Variable (Namensfeld), Ziffern/Startwert, an/aus = cancel.
+        cmd.set("name", JsonValue::make_str(ev_text(g_ev.ed_ce_name)));
+        const int digits = static_cast<int>(ev_number(g_ev.ed_ce_val1, 1.0));
+        cmd.set("digits", JsonValue::make_num(digits < 1 ? 1 : (digits > 6 ? 6 : digits), false));
+        const int initial = static_cast<int>(ev_number(g_ev.ed_ce_val2, 0.0));
+        if (initial > 0) cmd.set("initial", JsonValue::make_num(initial, false));
+        const int cb = static_cast<int>(SendMessageW(g_ev.cb_ce_bool, CB_GETCURSEL, 0, 0));
+        if (cb != 0) cmd.set("cancel", JsonValue::make_bool(false));
+    } else if (ti == ET_BATTLE) {
+        // Etappe 19i: Truppe (Namensfeld), an/aus = Flucht möglich,
+        // Wert 2 = Niederlage ohne Game Over.
+        cmd.set("name", JsonValue::make_str(ev_text(g_ev.ed_ce_name)));
+        const int cb = static_cast<int>(SendMessageW(g_ev.cb_ce_bool, CB_GETCURSEL, 0, 0));
+        if (cb != 0) cmd.set("can_escape", JsonValue::make_bool(false));
+        if (ev_number(g_ev.ed_ce_val2, 0.0) != 0.0)
+            cmd.set("can_lose", JsonValue::make_bool(true));
     } else if (ti == ET_TOGGLE_SWITCH) {
         cmd.set("name", JsonValue::make_str(ev_text(g_ev.ed_ce_name)));
     } else if (ti == ET_VARIABLE) {

@@ -1425,6 +1425,75 @@ Viewport/dispose, Window-Cursor/-Zeichnen, $scene, reset!, passable?) +
 19h-Abschnitt in `rgss_test.rb` ($game_temp/$data_* gegen die echte
 database.json).
 
+## Zahleneingabe + Kampf-Grundgerüst (Etappe 19i)
+
+Die dritte Feature-Gruppe aus der 19e-Roadmap, orientiert an den
+Default-Scripts des User-Uploads (053 - Window_InputNumber.rb,
+081..084 - Scene_Battle.rb, 007..012 - Game_Battler/Actor/Enemy).
+
+**Zahleneingabe (XP "Input Number Processing"):** neuer Befehl
+`{"cmd":"input_number","name":"ziffern","digits":3,"initial":0,
+"cancel":true}` (25. Typ). Der Interpreter blockiert mit `@num_input`;
+`UI.nummer_eingabe(state)` zeichnet das Ziffernfeld und liest die Tasten:
+↑↓ ändert die Ziffer, ←→ wechselt die Stelle, 0-9 setzt direkt,
+E/Enter bestätigt, Esc bricht ab (nur mit `cancel`, sonst blockiert es
+weiter - wie XP "cancel not possible"). Bestätigen/Abbruch schreibt die
+Variable (Abbruch = 0) und die Befehlsliste läuft weiter. digits clamp 1..6.
+
+**Kampf (game/engine/battle.rb):** rundenbasiertes Grundgerüst Party gegen
+Truppe. Daten: `database.json` bekommt `enemies` (id/name/hp/mp/atk/def/spi/
+agi/exp/gold/drop/drop_rate/color) und `troops` (id/name/enemies[]) -
+vier Gegner (Goblin/Wolf/Bandit/Kristallwache) und drei Truppen
+(waldweg/banditen/brunnen) liegen bei. `Battle::Battler` ist die gemeinsame
+Game_Battler-Entsprechung für Helden (gespiegelt von Party::Actor, HP/MP
+werden zurückgesynct) und Gegner.
+
+Ablauf (Scene_Battle-Phasen, vereinfacht): `start(troop_id, can_escape:,
+can_lose:)` -> Befehlsphase pro lebendem Helden (Angriff/Item/Flucht,
+Cursor ↑↓ + E wie XP) -> Angriff geht in die Zielwahl (←→ auf lebende
+Gegner) -> Aktionsphase: Heldenaktionen nach Agilität sortiert (Items über
+`Party.use_item`), dann Gegnerzug (zufälliger lebender Held), dann
+Sieg-/Niederlage-Prüfung. Schaden = `atk - def/2`, ±15 % Streuung, min 1,
+Kritikchance `agi/64` (x3 Helden, +25 % Gegner). Sieg: Exp auf lebende
+Helden, Gold an die Party, Drop-Würfe; Niederlage: `$game_temp.gameover`
+(-> `Game.to_title!` aus Game.update, 19h.2), außer `can_lose`. Flucht:
+50 %, ohne `can_escape` nicht möglich.
+
+**Darstellung:** Gegner stehen als 3D-Kästen (Farbe aus `color`/Palette)
+vor dem Spieler, HP-Balken + Namen als 2D-Overlay; Befehls-/Itemfenster,
+Party- und Gegnerstatus, Kampflog (letzte 6 Zeilen) zeichnet `Battle.draw`
+über dem abgedunkelten Bild. Während `Battle.active?` friert `Game.update`
+die Welt ein (nur Battle/Effects/Fade laufen), `Game.draw` zeigt das
+Kampf-Overlay. Kartenwechsel bricht Kämpfe ab (`Battle.abort!` aus
+`enter_map`, neben `RGSS.reset!`).
+
+**Event-Befehl:** `{"cmd":"battle","name":"waldweg","can_escape":true,
+"can_lose":false}` (26. Typ) - der Interpreter blockiert bis zum Kampfende
+(`@battle_wait`); schlägt `start` fehl (Truppe unbekannt), läuft die Liste
+einfach weiter. Sync: CMD_TYPES/ISSUE_CMD_TYPES/EV_TYPES = 26,
+mapcheck_test-Zählung nachgezogen.
+
+**Editor:** "[Steuerung] Zahleneingabe" (Variable/Ziffern/Startwert,
+an/aus = Abbruch erlaubt) und "[Kampf] Kampf starten" (Truppe im
+Namensfeld, an/aus = Flucht möglich, Wert 2 = Niederlage ohne Game Over);
+C++-Issues-Scan prüft `name`-Pflicht beider Typen.
+
+**Ruby-Zugang (RGSS-Leitlinie):** `Battle.start('waldweg')` + Context-Helfer
+`battle('waldweg', can_escape: false)`; `$game_temp.in_battle` wird
+geführt, Zahleneingabe zusätzlich als RGSS-Zustand (`num_input_*` in
+`$game_temp` vorhanden, der Interpreter nutzt seinen eigenen State).
+
+**Grenzen (Backlog):** keine Skills/Magie (MP ungenutzt), keine Zustände
+(Vergiftung etc.), keine Gegner-KI außer "Angriff auf zufälligen Helden",
+keine Formationen/Positionen, Zufallskämpfe beim Laufen fehlen
+(encounter_count liegt bereit), Kampfhintergrund = abgedunkelte Karte.
+
+**Tests:** `tools/battle_test.rb` (kopflos, ~45 Checks: Datenbank, Start/
+Absagen, Befehls-/Item-/Zielwahl-Cursor, Schaden, Sieg+Belohnung,
+Niederlage+gameover+can_lose, Formel, Interpreter-Blockade battle/
+input_number inkl. Abbruch und clamp) + script_test-Abschnitt 8
+(battle-Helfer) + mapcheck_test (26 Typen, input_number/battle-Regeln).
+
 ## Ruby-API (Stand Etappe 2)
 
 | API | Bedeutung |

@@ -21,6 +21,16 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 ---
 
 ## Offen
+### [Engine] Kampf-Grundgerüst deckt noch nicht alles ab — offen (Feature-Fehlend)
+- Stand 19i: Rundenkampf mit Angriff/Item/Flucht, Sieg/Niederlage/Exp/
+  Gold/Drops, Gegner als 3D-Kästen mit HP-Balken.
+- Es fehlen u. a.: Skills/Magie (MP bleibt ungenutzt), Zustände (Vergiftung,
+  Schlaf ...), Gegner-KI jenseits „Angriff auf zufälligen Helden",
+  Formationen/Positionen, Kampf-Hintergrundmusik/-Hintergrundbild,
+  Zufallskämpfe beim Laufen (encounter_count/$game_system.encounter_disabled
+  liegen bereit), Kampftagebuch-Fenster zum Wegklicken.
+- Betroffene Stellen: `game/engine/battle.rb`, `docs/architecture.md` (19i).
+- Gefunden in: Etappe 19i (Roadmap aus 19e, XP-Defaultscript als Referenz).
 ### [Engine] RGSS-Schicht deckt noch nicht alles ab — offen (Feature-Fehlend)
 - Stand 19h: `$game_*` komplett inkl. `$game_temp`, `$data_actors/items/system`
   (Hashes mit String-IDs), `Sprite/Window/Viewport/Bitmap` (über die UI-
@@ -173,6 +183,23 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Etappe 19a.
 
 ## Erledigt
+### [Engine/Editor] Zahleneingabe + Kampf-Grundgerüst — erledigt (19i)
+- Wunsch: „Ja alles" auf die Roadmap (Bewegungsrouten/RGSS-Vertiefung/
+  Zahleneingabe+Kampf), bestätigt per „Beides nacheinander"; Orientierung
+  am User-Upload XP-Defaultscript (Window_InputNumber, Scene_Battle).
+- Umsetzung: Befehle input_number (25) + battle (26) mit Interpreter-
+  Blockade, UI.nummer_eingabe (Zifferntasten/Cursor/Esc-Abbruch),
+  battle.rb (Battler, Befehls-/Item-/Ziel-/Aktionsphase, Gegnerzug,
+  Sieg mit Exp/Gold/Drop, Niederlage mit gameover bzw. can_lose,
+  Flucht 50 %), database.json enemies+troops (4 Gegner, 3 Truppen),
+  Editor-Typen + C++-Issues-Scan, MapCheck-Regeln, Context-Helfer battle.
+- Grenzen: eigener Offener Eintrag „Kampf-Grundgerüst deckt noch nicht
+  alles ab".
+- Betroffene Stellen: `game/engine/{battle,interpreter,ui,scripts,mapcheck,
+  boot}.rb`, `game/main.rb`, `game/data/database.json`,
+  `src/editor/editor_main.cpp`, `tools/{battle_test,script_test,
+  mapcheck_test}.rb`.
+
 ### [Engine] RGSS an XP-Defaultscripts ausgerichtet — erledigt (19h.2)
 - Wunsch (User): „XP-Defaultscript hochgeladen, dies sind die default codes,
   damit kannst du es vielleicht umstellen, besser für das RGSS-Coding."

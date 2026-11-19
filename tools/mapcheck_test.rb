@@ -302,8 +302,25 @@ check('log ohne text -> Warnung') do
   hat?(MapCheck.scan(karte_mit({ 'cmd' => 'log' }), **OPTS),
        "'text' fehlt oder ist leer", MapCheck::WARNUNG)
 end
-check('alle 24 Befehlstypen sind bekannt') do
-  MapCheck::CMD_TYPES.size == 24 &&
+check('input_number ohne name -> Fehler') do
+  hat?(MapCheck.scan(karte_mit({ 'cmd' => 'input_number', 'digits' => 3 }), **OPTS),
+       "'name' fehlt oder ist leer", MapCheck::FEHLER)
+end
+check('input_number digits ausserhalb 1..6 -> Warnung') do
+  hat?(MapCheck.scan(karte_mit({ 'cmd' => 'input_number', 'name' => 'v',
+                                 'digits' => 9 }), **OPTS),
+       "'digits' muss 1..6 sein", MapCheck::WARNUNG)
+end
+check('input_number gültig: keine Funde') do
+  MapCheck.scan(karte_mit({ 'cmd' => 'input_number', 'name' => 'v',
+                            'digits' => 3, 'initial' => 5 }), **OPTS).empty?
+end
+check('battle ohne name -> Fehler') do
+  hat?(MapCheck.scan(karte_mit({ 'cmd' => 'battle' }), **OPTS),
+       "'name' fehlt oder ist leer", MapCheck::FEHLER)
+end
+check('alle 26 Befehlstypen sind bekannt') do
+  MapCheck::CMD_TYPES.size == 26 &&
     MapCheck.scan(karte_mit({ 'cmd' => 'heal' }), **OPTS).empty? &&
     MapCheck.scan(karte_mit({ 'cmd' => 'move_player', 'x' => 1.0, 'z' => 1.0 }), **OPTS).empty? &&
     MapCheck.scan(karte_mit({ 'cmd' => 'toggle_switch', 'name' => 's' }), **OPTS).empty? &&

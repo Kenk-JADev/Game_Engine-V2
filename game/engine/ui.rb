@@ -127,6 +127,71 @@ module UI
     text(x + w - 150, y + h - 18, '↑↓ + E', TEXT_DIM, 12)
   end
 
+  # Zahleneingabe (Etappe 19i, RPG Maker XP "Input Number"): Ziffernfeld,
+  # hoch/runter ändert die markierte Ziffer, links/rechts markiert,
+  # E/Enter bestätigt, Esc bricht ab (0), Zifferntasten setzen direkt.
+  # state = {variable:, digits:, ziffern:[9,9,9], sel:0, cancel:true}.
+  # Rückgabe: true wenn weiter blockiert, false wenn fertig (Wert steht in
+  # GameState - Abbruch mit cancel=false setzt ebenfalls 0 wie bei XP).
+  def self.nummer_eingabe(state)
+    ziffern = state[:ziffern]
+    n = ziffern.size
+    cw = 40
+    w = n * cw + 40
+    x = (Rune::Window.width - w) / 2
+    y = 200
+    panel(x, y, w, 104, PANEL, 0.92)
+    panel(x, y, w, 2, ACCENT, 0.85)
+    text(x + 16, y + 10, "Zahl eingeben: #{state[:variable]}", TEXT_DIM, 14)
+    ziffern.each_with_index do |z, i|
+      zx = x + 20 + i * cw
+      if i == state[:sel]
+        panel(zx - 4, y + 34, cw - 4, 44, ACCENT, 0.25)
+        text(zx + 8, y + 42, z.to_s, ACCENT, 26)
+      else
+        text(zx + 8, y + 42, z.to_s, TEXT, 26)
+      end
+    end
+    text(x + 16, y + 84, '↑↓ Ziffer   ←→ Stelle   0-9 direkt   E = OK' +
+         (state[:cancel] ? '   Esc = Abbruch' : ''), TEXT_DIM, 12)
+
+    geaendert = false
+    if Rune::Input.pressed?(:up)
+      ziffern[state[:sel]] = (ziffern[state[:sel]] + 1) % 10
+      geaendert = true
+    elsif Rune::Input.pressed?(:down)
+      ziffern[state[:sel]] = (ziffern[state[:sel]] - 1) % 10
+      geaendert = true
+    elsif Rune::Input.pressed?(:left)
+      state[:sel] = (state[:sel] - 1) % n
+      geaendert = true
+    elsif Rune::Input.pressed?(:right)
+      state[:sel] = (state[:sel] + 1) % n
+      geaendert = true
+    end
+    ('0'..'9').each do |t|
+      next unless Rune::Input.pressed?(t.to_sym)
+      ziffern[state[:sel]] = t.to_i
+      state[:sel] = (state[:sel] + 1) % n
+      geaendert = true
+    end
+    Rune::Sound.play('klick', 0.35) if geaendert
+
+    if Rune::Input.pressed?(:enter) || Rune::Input.pressed?(:e) ||
+       Rune::Input.pressed?(:space)
+      GameState.set_variable(state[:variable], ziffern.join.to_i)
+      Rune::Sound.play('jingle', 0.5)
+      return false
+    end
+    if state[:cancel] && Rune::Input.pressed?(:escape)
+      GameState.set_variable(state[:variable], 0)
+      Rune::Sound.play('ablehnen', 0.6)
+      return false
+    end
+
+    true
+  end
+
   # Kopfzeile mit Position, FPS und Kamera-Zustand (zum Einmessen der Welt).
   def self.hud(x = 16, y = 12)
     px, py, pz = Rune::Player.position

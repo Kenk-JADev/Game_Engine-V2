@@ -28,6 +28,10 @@
 #    {"cmd":"fade","direction":"aus","seconds":0.5}      (Bildschirmblende, 19d)
 #    {"cmd":"move_route","target":"Wanderer","steps":["up","warte"],
 #     "repeat":false,"wait":false,"speed":2.0}        (Bewegungsroute, 19g)
+#    {"cmd":"input_number","name":"ziffern","digits":3,"initial":0,
+#     "cancel":true}                            (Zahleneingabe, 19i)
+#    {"cmd":"battle","name":"waldweg","can_escape":true,"can_lose":false}
+#                                                       (Kampf, 19i)
 #    {"cmd":"save_game","slot":1} / {"cmd":"load_game","slot":1}           (18f)
 #    {"cmd":"script","name":"projekt_script"}  |  {"cmd":"script","code":"..."}
 # ============================================================================
@@ -41,11 +45,24 @@ class Interpreter
     @choices = nil   # Wahlmöglichkeiten {options:, branches:, sel:}
     @wait_left = 0.0
     @route_wait = nil  # Etappe 19g: move_route mit wait blockiert hier
+    @num_input = nil   # Etappe 19i: Zahleneingabe blockiert hier
+    @battle_wait = false   # Etappe 19i: battle blockiert bis Kampfende
   end
 
   def running?
     !@stack.empty? || !@message.nil? || !@choices.nil? || @wait_left > 0.0 ||
-      !@route_wait.nil?
+      !@route_wait.nil? || !@num_input.nil? || @battle_wait
+  end
+
+  # Zahleneingabe (19i): UI-Status für Game.draw / UI.nummer_eingabe.
+  attr_reader :num_input
+
+  def busy_number?
+    !@num_input.nil?
+  end
+
+  def busy_battle?
+    @battle_wait
   end
 
   def busy_text?
@@ -91,6 +108,15 @@ class Interpreter
     if @route_wait
       return if Mover.running?(@route_wait)
       @route_wait = nil
+    end
+
+    # Etappe 19i: Zahleneingabe blockiert; Eingabe läuft über UI.nummer_eingabe.
+    return if @num_input
+
+    # Etappe 19i: battle blockiert, bis Battle.active? endet.
+    if @battle_wait
+      return if defined?(Battle) && Battle.active?
+      @battle_wait = false
     end
 
     # Kommandos abarbeiten, bis eines blockiert oder die Liste leer ist.
@@ -192,6 +218,24 @@ class Interpreter
         Weather.set(cmd['name'] || 'kein', (cmd['intensity'] || 1.0).to_f)
       when 'fade'   # {"cmd":"fade","direction":"aus","seconds":0.5} (Etappe 19d)
         Fade.start(cmd['direction'] || 'aus', cmd['seconds'] || 0.5)
+      when 'input_number'   # Zahleneingabe (Etappe 19i, RPG Maker XP)
+        digits = (cmd['digits'] || 1).to_i.clamp(1, 6)
+        start = (cmd['initial'] || 0).to_i.clamp(0, 10**digits - 1)
+        @num_input = { variable: cmd['name'].to_s, digits: digits,
+                       ziffern: start.digits(10).then { |d| Array.new(digits) { |i| d[i] || 0 } }.reverse,
+                       sel: 0, cancel: cmd['cancel'] != false }
+        return
+      when 'battle'   # Kampf-Grundgerüst (Etappe 19i, RPG Maker XP)
+        if defined?(Battle)
+          ok = Battle.start(cmd['name'], can_escape: cmd['can_escape'] != false,
+                            can_lose: cmd['can_lose'] == true)
+          if ok
+            @battle_wait = true
+            return
+          end
+        else
+          Rune::Log.warn('Interpreter: battle ohne Battle-Modul übersprungen')
+        end
       when 'move_route'   # Bewegungsroute (Etappe 19g, RPG Maker XP)
         route = Mover.start(cmd['target'], cmd['steps'], repeat: cmd['repeat'],
                             speed: cmd['speed'], code: cmd['code'])
