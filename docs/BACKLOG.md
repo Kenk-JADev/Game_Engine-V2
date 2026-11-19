@@ -170,6 +170,20 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Etappe 19a.
 
 ## Erledigt
+### [CI/Build] Artefakt enthielt keine Laufzeit-Daten — erledigt (19f)
+- Symptom (User-Konsole unter Downloads/Build): „Ruby-Fehler in
+  game\editor\boot.rb: LoadError", „prefabs.json nicht gefunden",
+  „Projekt nicht gefunden: dorf" - alle drei beim Start des Editors.
+- Ursache: `Rune3D-Windows`-Artefakt lud nur EXEs/DLLs hoch; `find_root()`
+  findet `game/` aber nur neben der EXE, eine Ebene höher oder im CWD.
+- Fix: CI kopiert `game/` + `projekte/` nach `build/` und lädt beides mit
+  hoch (Artefakt ist selbstlaufend, EXEs liegen neben den Daten). Zusätzlich
+  melden Rune3D.exe und RuneEditor.exe beim Start einen klaren Hinweis,
+  wenn unter der Wurzel kein `game/` liegt.
+- Betroffene Stellen: `.github/workflows/ci.yml`, `src/main.cpp`,
+  `src/editor/editor_main.cpp`.
+- Gefunden in: User-Konsolenausgabe (Download des 19e-Artefakts).
+
 ### [Engine/Launcher] RGSS-Schicht + Ersteinrichtung ohne Projekt — erledigt (19e)
 - Wunsch (User): die Engine soll wie RPG Maker XP per RGSS in Ruby nutzbar
   sein, damit Spieler später im Script-Editor eigenen Custom-Code schreiben;

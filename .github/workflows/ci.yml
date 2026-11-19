@@ -140,6 +140,16 @@ jobs:
         shell: pwsh
         run: .\build.ps1 -Test
 
+      # Etappe 19f: Das Artefakt muss SELBSTLAUFEND sein - die EXEs finden
+      # ihre Daten (game/, projekte/) neben sich oder eine Ebene höher. Ein
+      # Download nur mit EXEs erzeugte beim Start LoadError/prefabs/Projekt-
+      # Fehler (User-Konsole 19e). Kopieren + mit hochladen.
+      - name: Laufzeit-Daten neben die EXEs kopieren
+        shell: pwsh
+        run: |
+          Copy-Item -Recurse -Force game build/game
+          Copy-Item -Recurse -Force projekte build/projekte
+
       - name: Gebaute Programme als Artefakt
         uses: actions/upload-artifact@v7
         with:
@@ -150,4 +160,6 @@ jobs:
             build/*.dll
             build/RuneEditor.exe.manifest
             build/ruby_builtin_dlls/
+            build/game/
+            build/projekte/
           if-no-files-found: error

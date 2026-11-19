@@ -7180,6 +7180,16 @@ int main(int argc, char** argv) {
     core::log_info("=== RuneEditor startet ===");
     core::log_info("Wurzel: " + g.root);
 
+    // Etappe 19f: Daten-Check mit klarem Hinweis (siehe main.cpp). Ohne
+    // game/-Ordner fehlt dem Editor boot.rb (Ruby-Szene), prefabs.json und
+    // das Projekt dorf - die drei Folgefehler wirken sonst unerklärlich.
+    if (GetFileAttributesA((g.root + "\\game").c_str()) == INVALID_FILE_ATTRIBUTES) {
+        core::log_error(
+            "Engine-Daten fehlen: kein game/-Ordner unter der Wurzel. "
+            "Bitte den KOMPLETTEN Build entpacken (EXEs + game/ + projekte/ "
+            "in einen Ordner) - einzelne EXEs finden ihre Daten nicht.");
+    }
+
     // WIC (Bildimport) braucht COM; D3D und Ruby stören sich nicht daran.
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 

@@ -134,6 +134,17 @@ int main(int argc, char** argv) {
     rune::core::log_info("=== Rune3D startet ===");
     rune::core::log_info("Projektwurzel: " + root);
 
+    // Etappe 19f: Daten-Check mit klarem Hinweis. Ohne game/-Ordner neben der
+    // EXE (oder eine Ebene höher) fehlen boot.rb, prefabs.json und Projekte;
+    // die Folgefehler (LoadError/„nicht gefunden") sind sonst schwer zu deuten
+    // - genau das passierte mit einem Artefakt-Download, der nur EXEs enthielt.
+    if (GetFileAttributesA((root + "\\game").c_str()) == INVALID_FILE_ATTRIBUTES) {
+        rune::core::log_error(
+            "Engine-Daten fehlen: kein game/-Ordner unter der Projektwurzel. "
+            "Bitte den KOMPLETTEN Build entpacken (EXEs + game/ + projekte/ "
+            "in einen Ordner) - einzelne EXEs finden ihre Daten nicht.");
+    }
+
     // Etappe 17h: Playtest-Start aus dem Editor.
     //   Rune3D.exe --project <name>
     // Der Name landet in RUNE_PROJECT; main.rb springt damit direkt ins
