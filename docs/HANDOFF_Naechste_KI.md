@@ -1,4 +1,4 @@
-# Handoff für die nächste KI - Rune3D, Stand nach Etappe 19d
+# Handoff für die nächste KI - Rune3D, Stand nach Etappe 19e
 
 **Datum des Stands:** HEAD (nach Commit) — Etappe 19a: CI (GitHub Actions), portabler Build, Daten-Validierung
 **Projekt:** `C:/Users/jusagu/Desktop/Engine` — Windows-Only 3D-RPG-Engine (C++20/Win32/D3D11 + echtes CRuby 3.4.11), Editor = eigenes Programm `RuneEditor.exe`.
@@ -34,6 +34,7 @@ Der User beauftragte eine Überarbeitung von Engine und Editor **im Stil von RPG
 | 19b | `2f589ba` | Echte Umlaute überall: Prosa (Kommentare, UI-/Spieltexte, Doku, Daten-Namen) schreibt ä/ö/ü, Identifier bleiben ASCII; 24 Win32-Textaufrufe von A auf W (`utf8_to_wide`/`wide_to_utf8`); `build.ps1` mit UTF-8-BOM |
 | 19c | `20494e1` + Nacharbeit `ad9ac18`, `3687d3a` (CI-Grün) | Editor-Hauptfenster professionell: linke Spalte als drei Gruppen mit Radio-Modi (`set_mode`), Objektliste als ListView (6 Spalten, sortierbar per Kopflick), Platzier-Vorschau („Geist" folgt dem Cursor, `R` dreht in 15°), Kontextmenü für Viewport und Liste, `log/editor_objects.json` als Leseweg für Live-Tests (edclick) |
 | 19d | `e56b692` + Nacharbeit `0660de3` (CI-Grün) | XP-Features Welle 1: Self-Switches A-D pro Event (GameState, Seiten-Bedingung, `self_switch`/`if_self_switch`, Savegame, Editor-Combos im Seite-Kasten) + Bildschirmblende (`fade.rb`, Befehl `fade`, Reset bei Kartenwechsel); 23 Befehlstypen synchron in CMD_TYPES/ISSUE_CMD_TYPES/EV_TYPES; Tests `self_switch_test.rb`, `fade_test.rb` |
+| 19e | HEAD | RGSS-Schicht (`game/engine/rgss.rb`): `$game_*`-Globale, `Graphics`/`Input`/`Audio`/`load_data`+`save_data` wie RPG Maker XP (Abweichungen: JSON statt Marshal, Namen statt IDs, kein `$scene`-Loop) + Launcher-Ersteinrichtung `:first` (ohne Projekt: Enter/N = erstellen, D = Demo, Esc = beenden; `ensure_demo` nicht mehr automatisch) + Context-Helfer `fade`/`self_switch` + `$game_system.menu_disabled/save_disabled` beachtet; Tests `rgss_test.rb`, script_test-Abschnitt 6 |
 
 Alle Etappen sind gebaut, live getestet (headless Ruby-Tests + Fenster-Injektion) und committed. Es gibt **keine uncommitteten Quelländerungen**; `opencode.json` ist lokaler Harness-Kram (steht jetzt im .gitignore).
 
@@ -73,6 +74,17 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
   (`R` = Vorschau drehen); Objektliste sortiert per Klick auf den Spaltenkopf;
   Rechtsklick im Viewport/auf der Liste = Kontextmenü. Live-Tests lesen die
   Objektliste aus `log/editor_objects.json` (nicht per SendMessage).
+- **RGSS ist Produktziel (User-Vorgabe 19e):** Spieler sollen die Engine
+  später wie RPG Maker XP per Ruby (RGSS) im Script-Editor (F11) customizen.
+  Deshalb: NEUE Engine-Funktionen immer auch aus Ruby erreichbar machen
+  (Context-Helfer in `scripts.rb` und/oder `$game_*`-Wrapper in `rgss.rb`);
+  die bewussten Abweichungen (JSON statt Marshal/RxData, Namen statt Integer-
+  IDs, Engine-Takt statt `$scene`-Loop) sind in der rgss.rb-Kopfdoku und im
+  BACKLOG-Offeneintrag dokumentiert - dort nachlesen, bevor man RGSS-Features
+  erweitert.
+- **Launcher-Ersteinrichtung (19e):** Ohne Projekte führt `:first` durch die
+  Erstellung (Enter/N = Name, D = Demo-Dorf, Esc = beenden); kein
+  automatisches `ensure_demo` mehr.
 - **Event-Regie seit 19d:** Self-Switches (A-D) gehören zum auslösenden Event
   (Schlüssel `karte|name`), Seitenbedingungen können sie prüfen; der Befehl
   `fade` blendet den Bildschirm nicht-blockierend ab/auf. Neue Befehlstypen

@@ -21,6 +21,18 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 ---
 
 ## Offen
+### [Engine] RGSS-Schicht deckt noch nicht alles ab — offen (Feature-Fehlend)
+- Stand 19e: `$game_system/$game_switches/$game_variables/$game_self_switches/
+  $game_party/$game_player/$game_map/$game_screen`, `Graphics` (Fade),
+  `Input` (RGSS-Konstanten), `Audio`, `load_data/save_data` (JSON) sind da.
+- Es fehlen u. a.: `$game_temp` und `$data_*` (keine Entsprechung im
+  Datenmodell), `Sprite`/`Window`/`Tilemap`/`Plane`/`Viewport` (2D-Objekt-
+  klassen - die UI-Schicht ist Engine-seitig), `$scene`-Hauptschleife
+  (Frame-Takt kommt von Rune.tick, nicht aus Scripts), Marshal-Format
+  (bleibt JSON), Audio-Pitch, visuelle `Graphics.freeze/transition`,
+  echte Passierbarkeitsprüfung (`$game_player.passable?` ist Platzhalter).
+- Betroffene Stellen: `game/engine/rgss.rb`, `docs/architecture.md` (19e).
+- Gefunden in: Etappe 19e (User-Vorgabe „RGSS wie RPG Maker XP Online-Hilfe").
 ### [Editor] NPC-Editor / Platzier-Tool für viele Dinge (x/y/z, Text) — offen (User-Wunsch)
 - Symptom: NPCs sind im Editor gar nicht editierbar (nur im Karten-JSON);
   Text/Schild-Objekte fehlen als platzierbarer Typ.
@@ -158,6 +170,23 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Etappe 19a.
 
 ## Erledigt
+### [Engine/Launcher] RGSS-Schicht + Ersteinrichtung ohne Projekt — erledigt (19e)
+- Wunsch (User): die Engine soll wie RPG Maker XP per RGSS in Ruby nutzbar
+  sein, damit Spieler später im Script-Editor eigenen Custom-Code schreiben;
+  ausserdem: gibt es kein Projekt, muss der Spieler eines erstellen können.
+- Umsetzung: `game/engine/rgss.rb` legt die XP-API über die Engine
+  (`$game_system/$game_switches/$game_variables/$game_self_switches/
+  $game_party/$game_player/$game_map/$game_screen`, `Graphics`, `Input`,
+  `Audio`, `load_data/save_data`); `RGSS.setup` läuft aus `Game.setup`.
+  Launcher: ohne Projekte führt ein Willkommensbildschirm (:first) in die
+  Projekterstellung (Enter/N = Name tippen, D = Demo-Dorf, Esc = beenden);
+  `Project.ensure_demo` wird nicht mehr automatisch beim Start aufgerufen.
+  `$game_system.menu_disabled/save_disabled` werden von Menü (Esc) und
+  `Game.save_game` beachtet. Context-Helfer `fade`/`self_switch` ergänzt.
+- Offene Reste: eigener Offen-Eintrag „RGSS-Schicht deckt noch nicht alles ab".
+- Betroffene Stellen: `game/engine/{rgss,launcher,scripts,fade,boot}.rb`,
+  `game/main.rb`, `tools/{rgss_test,script_test}.rb`.
+
 ### [Engine/Editor] Self-Switches + Bildschirmblende (XP-Features) — erledigt (19d)
 - Wunsch: RPG-Maker-XP-Funktionen ergänzen (User-Vorgabe nach Etappe 19c).
 - Umsetzung: Self-Switches A-D pro Event (`GameState`, Seiten-Bedingung

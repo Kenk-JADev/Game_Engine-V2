@@ -32,6 +32,16 @@ end
     @map_id
   end
 
+  # Events/NPCs der aktuellen Karte (Etappe 19e: RGSS-Wrapper $game_map liest
+  # sie, z.B. um Self-Switch-Schlüssel per Event-ID aufzulösen).
+  def self.events
+    @events || []
+  end
+
+  def self.npcs
+    @npcs || []
+  end
+
   # Karte laden: ID, Events, Objekte, Editor - und Spieler an den Startpunkt.
   # Wird vom ersten Setup und vom Kartenwechsel im Editor benutzt.
   # Himmel/Nebel/Panorama aus der Karte übernehmen (Etappe 17b).
@@ -126,6 +136,10 @@ end
   # Spielstand in Slot 1..3 ablegen: Karte, Position, Blick, Kamera,
   # Schalter/Variablen, ausgelöste Events, Spielzeit.
   def self.save_game(slot)
+    if $game_system && $game_system.save_disabled
+      Rune::Log.warn('Speichern gesperrt ($game_system.save_disabled)')
+      return false
+    end
     px, py, pz = Rune::Player.position
     data = {
       'map'       => @map_id,
@@ -352,6 +366,7 @@ end
     # Etappe 18l: Terrain-Bau ist nach enter_map gewandert (Kartenwechsel
     # baut es ebenfalls auf, damit Kartengrenze und gemalte Berge stimmen).
     enter_map(map_id)
+    RGSS.setup   # Etappe 19e: $game_*-Globale (RPG-Maker-XP-Schicht)
     Rune::Camera.mode = :third
     Rune::Camera.distance = 7   # Launcher-Überblick (28) -> normaler Follow-Cam
     Rune::Sound.loop('musik', 0.22)   # im Spiel etwas lauter als im Titel
@@ -378,7 +393,13 @@ end
 
     # Menü (Esc): friert Spiellogik, Interpreter und Events ein.
     if Rune::Input.pressed?(:escape)
-      @menu ? close_menu : open_menu
+      # Etappe 19e: $game_system.menu_disabled (RGSS) unterdrückt das Öffnen;
+      # ein bereits offenes Menü schliesst Esc immer.
+      if @menu
+        close_menu
+      elsif !$game_system || !$game_system.menu_disabled
+        open_menu
+      end
     end
     if @menu
       update_menu

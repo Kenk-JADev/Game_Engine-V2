@@ -1220,6 +1220,72 @@ Seitenwahl, Interpreter-Zweige, MapCheck) und `tools/fade_test.rb`
 (Blendenverlauf, Minimaldauer, Reset, draw-Alpha, Interpreter, MapCheck),
 beide kopflos wie die übrigen Engine-Tests.
 
+## RGSS-Schicht und Ersteinrichtung (Etappe 19e)
+
+User-Vorgabe: Die Engine soll später wie RPG Maker XP über RGSS (Ruby Game
+Scripting System) in Ruby genutzt werden - Spieler schreiben ihr Custom-Game
+im Script-Editor (F11) in Ruby. Zweite Vorgabe: Existiert kein Projekt,
+muss der Spieler eines erstellen können (statt stiller Demo-Kopie).
+
+**RGSS-Kompatibilitätsschicht (`game/engine/rgss.rb`):** legt die XP-Namen
+über die Rune3D-Engine, initialisiert aus `Game.setup` (`RGSS.setup`, auch
+bei F5/Playtest):
+
+- `$game_system` — `menu_disabled`/`save_disabled` werden beachtet: Esc
+  öffnet das Menü dann nicht, `Game.save_game` verweigert sich (Log-Warnung).
+- `$game_switches`, `$game_variables` — delegieren auf `GameState`; RGSS
+  nutzt Integer-IDs, Rune3D Namen - beides geht (`to_s`).
+- `$game_self_switches` — versteht das XP-Schlüsselformat
+  `[karte, event, letter]` (Event als ID über `Game.events` aufgelöst oder
+  als Name) und den internen String `karte|event|letter`; delegiert auf die
+  Self-Switch-Tabelle aus 19d.
+- `$game_party` (gold/gain_gold/lose_gold/items/gain_item/lose_item/
+  use_item), `$game_player` (x/y/z/moveto — 3D: moveto setzt auf den Boden),
+  `$game_map` (map_id/display_name/events/npcs/event(id_oder_name)/width/
+  height), `$game_screen` (weather mit RGSS-Zahlen 0-3 ODER Rune3D-Namen;
+  Sturm=3 fällt auf dichten Schnee, weil es Sturm-Wetter noch nicht gibt).
+- `Graphics` — `fadeout(n)`/`fadein(n)` rechnen Frames (frame_rate,
+  RGSS-Default 40) in Sekunden der 19d-Bildschirmblende um;
+  `brightness=`/`brightness` (0..255) setzen `Fade.alpha=` direkt;
+  `freeze`/`transition` sind Zustandsmerker ohne Bild-Effekt, `update` zählt
+  nur `frame_count` — den Frame-Takt gibt `Rune.tick` vor, nicht das Script.
+- `Input` — RGSS1-Konstanten (DOWN=2 ... F9=29) und `trigger?/press?/
+  repeat?/dir4` auf `Rune::Input.pressed?/down?`; C (Bestätigen) liegt auf
+  Space/Enter/E, B (Abbrechen) auf Esc, A auf Shift; Symbol-Argumente
+  (`Input.trigger?(:e)`) gehen auch. `repeat?` = `trigger?` (kein
+  Auto-Repeat in der Engine), `update` ist No-Op.
+- `Audio` — `bgm_play/bgs_play` (Schleifen), `me_play/se_play` (Einmal),
+  `*_stop`; Lautstärke 0..100 wie RGSS, Pitch wird ignoriert, Pfad-/
+  Endungs-Kürzung (`Audio/BGM/musik.ogg` -> `musik`).
+- `load_data`/`save_data` — JSON statt Marshal (RxData-Format gibt es hier
+  nicht); Rundlauf inkl. Umlauten getestet.
+
+Bewusste Abweichungen stehen als Kopfdoku in rgss.rb und als Offener Eintrag
+im BACKLOG (u. a. `$game_temp`, `$data_*`, Sprite/Window/Tilemap-Klassen,
+`$scene`-Schleife). Wichtig für künftige Etappen: **neue Engine-Funktionen
+sollen immer auch einen RGSS-/Script-Zugang bekommen** (Context-Helfer oder
+$game_-Wrapper) - Ruby-Modding ist das Produktziel.
+
+**Context-Helfer (scripts.rb):** `fade(direction, seconds)` und
+`self_switch(letter, value = nil)` (lesen ohne, setzen mit Argument; nur mit
+Besitzer-Event) ergänzen say/switch/variable/teleport/sound/effect/log.
+
+**Launcher-Ersteinrichtung (:first):** `Launcher.activate` ruft
+`Project.ensure_demo` NICHT mehr automatisch. Ohne Projekte startet der
+Titelbildschirm im Zustand `:first`: Willkommenspanel mit
+[Enter/N] = neues Projekt (Name tippen, Slug wird automatisch eindeutig),
+[D] = Demo-Projekt „Dorf" anlegen und direkt spielen, [Esc] = beenden.
+Nach dem Löschen des letzten Projekts landet man ebenfalls in `:first`
+(früher: leere Liste). Kulisse bleibt die Demo-Welt aus game/data - sie
+braucht kein Projekt.
+
+**Game-Zugriffe für die Wrapper:** `Game.events`/`Game.npcs` (neu) liefern
+die Events/NPCs der aktuellen Karte; `Game.map_id` kam mit 19d.
+
+**Tests:** `tools/rgss_test.rb` (Globalen, alle Wrapper, Input-Mapping,
+Graphics-Frame-Umrechnung, Audio-Kürzung, JSON-Rundlauf) und Abschnitt 6 in
+`tools/script_test.rb` (fade/self_switch-Context-Helfer), beide kopflos.
+
 ## Ruby-API (Stand Etappe 2)
 
 | API | Bedeutung |

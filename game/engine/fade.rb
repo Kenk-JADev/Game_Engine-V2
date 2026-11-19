@@ -68,6 +68,14 @@ module Fade
     end
   end
 
+  # Abdunklung direkt setzen (RGSS Graphics.brightness=, Etappe 19e):
+  # keine Animation, Ziel und Rate springen mit.
+  def self.alpha=(value)
+    @alpha = value.to_f.clamp(0.0, 1.0)
+    @ziel  = @alpha
+    @rate  = 0.0
+  end
+
   # Sofort auf "hell" zurücksetzen (Kartenwechsel, Playtest-Ende).
   def self.reset!
     @alpha = 0.0

@@ -50,6 +50,7 @@ require 'weather'
 require 'fade'        # Etappe 19d: Bildschirm ein-/ausblenden (XP-Feature)
 require 'interpreter'
 require 'scripts'
+require 'rgss'       # Etappe 19e: RPG-Maker-XP-Schicht ($game_*, Graphics, ...)
 require 'pick'
 require 'prefabs'
 require 'editor'

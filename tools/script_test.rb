@@ -56,6 +56,7 @@ require 'state'
 require 'issues'
 require 'interpreter'
 require 'scripts'
+require 'fade'      # Etappe 19e: fade-Helfer im Context
 
 module Effects
   LOG = []
@@ -163,6 +164,27 @@ begin
   check('effect am Event') { Effects::LOG.last[0] == :sparkle && Effects::LOG.last[1] == 3.0 }
   check('teleport gesetzt') { Rune.pos == [1.5, 0.2, 2.5] }
   check('yaw gesetzt') { Rune.yaw.to_f == 1.0 }
+
+  # 6) Context-Helfer (Etappe 19e): fade + self_switch. Die RGSS-Schicht
+  #    ($game_*, Graphics, Input, Audio) prüft tools/rgss_test.rb separat.
+  Fade.reset!
+  interp = Interpreter.new
+  Scripts.run_code('blende', "fade 'aus', 0.5", interp, ev)
+  check('fade-Helfer startet die Blende') { Fade.laeuft? }
+  Fade.reset!
+
+  evs = Struct.new(:x, :z).new(1.0, 2.0)
+  def evs.self_switch_key
+    'welt01|TestEvent'
+  end
+  Scripts.run_code('setzen', "self_switch 'B', true", interp, evs)
+  check('self_switch-Helfer setzt am Besitzer-Event') do
+    GameState.self_switch('welt01|TestEvent', 'B')
+  end
+  Scripts.run_code('lesen', "$rgss_gelesen = self_switch 'B'", interp, evs)
+  check('self_switch-Helfer liest ohne Argument') { $rgss_gelesen == true }
+  Scripts.run_code('ohne_event', "$rgss_ohne = self_switch 'C'", interp, ev)
+  check('self_switch ohne Besitzer-Event -> nil') { $rgss_ohne.nil? }
 ensure
   FileUtils.remove_entry(tmp)
 end

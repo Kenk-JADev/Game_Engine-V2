@@ -7,6 +7,12 @@
 #  Tasten:  Hoch/Runter oder Maus = wählen · Enter/Klick = spielen ·
 #           1..9 Projekt direkt laden · N neues Projekt (Namen tippen) ·
 #           D/Entf Projekt löschen (J = ja) · Esc abbrechen/beenden
+#
+#  Etappe 19e (User-Vorgabe, RPG-Maker-Stil): Existiert KEIN Projekt, führt
+#  der Willkommensbildschirm (:first) durch die Ersteinrichtung - Enter/N
+#  legt ein eigenes Projekt an, D erstellt auf Wunsch das Demo-Dorf, Esc
+#  beendet. Früher wurde das Demo-Projekt still kopiert (ensure_demo);
+#  jetzt entscheidet der Spieler.
 # ============================================================================
 
 module Launcher
@@ -24,7 +30,6 @@ module Launcher
   module_function
 
   def activate
-    Project.ensure_demo
     # Rückkehr aus dem Spiel: Projektbindung lösen, damit die Kulisse
     # wieder die Demo-Welt aus game/data zeigt.
     $project_root = nil
@@ -32,7 +37,8 @@ module Launcher
     @projects = Project.list
     @infos = @projects.to_h { |n| [n, Project.info(n)] }
     @sel = 0
-    @state = :list
+    # Etappe 19e: ohne Projekte direkt in die Ersteinrichtung.
+    @state = @projects.empty? ? :first : :list
     @name = ''
     @t = 0.0
     build_backdrop
@@ -93,9 +99,29 @@ module Launcher
     @scene.update(dt) if @scene
 
     case @state
-    when :list then update_list
-    when :name then update_name
-    when :del  then update_del
+    when :first then update_first
+    when :list  then update_list
+    when :name  then update_name
+    when :del   then update_del
+    end
+  end
+
+  # Etappe 19e: Ersteinrichtung, wenn kein Projekt existiert.
+  def update_first
+    if Rune::Input.pressed?(:enter) || Rune::Input.pressed?(:n)
+      Rune::Sound.play('klick', 0.8)
+      @state = :name
+      @name = ''
+    elsif Rune::Input.pressed?(:d)
+      # Demo-Dorf aus game/data anlegen und direkt spielen (ensure_demo ist
+      # idempotent - gäbe es das Projekt schon, wären wir nicht in :first).
+      Project.ensure_demo
+      @projects = Project.list
+      @infos = @projects.to_h { |n| [n, Project.info(n)] }
+      @sel = @projects.index('dorf') || 0
+      start('dorf')
+    elsif Rune::Input.pressed?(:escape)
+      Rune::App.quit
     end
   end
 
@@ -164,7 +190,7 @@ module Launcher
       Rune::Log.info("Neues Projekt angelegt: #{name}")
       start(name)
     elsif Rune::Input.pressed?(:escape)
-      @state = :list
+      @state = @projects.empty? ? :first : :list
     end
   end
 
@@ -176,7 +202,7 @@ module Launcher
       @projects = Project.list
       @infos = @projects.to_h { |x| [x, Project.info(x)] }
       @sel = @projects.any? ? @sel.clamp(0, @projects.size - 1) : 0
-      @state = :list
+      @state = @projects.any? ? :list : :first
     elsif Rune::Input.pressed?(:n) || Rune::Input.pressed?(:escape)
       @state = :list
     end
@@ -190,6 +216,10 @@ module Launcher
     h = Rune::Window.height
 
     case @state
+    when :first
+      draw_list(w, h)
+      abdunkeln(w)
+      draw_first(w, h)
     when :list then draw_list(w, h)
     when :name
       draw_list(w, h)
@@ -218,7 +248,7 @@ module Launcher
 
     y0 = 168
     if n.zero?
-      UI.text(56, y0 + 8, 'Keine Projekte mehr.', UI::TEXT_DIM, 16)
+      UI.text(56, y0 + 8, 'Keine Projekte gefunden.', UI::TEXT_DIM, 16)
       UI.text(56, y0 + 34, 'N drücken für ein neues.', UI::TEXT_DIM, 16)
     end
     shown.times do |i|
@@ -247,6 +277,28 @@ module Launcher
             '[Hoch/Runter] Wählen   [Enter] Spielen   [L] Fortsetzen   [N] Neu   [D] Löschen   [Esc] Beenden',
             UI::TEXT_DIM, 15)
     UI.text(w - 150, 12, 'Rune3D v0.8', UI::TEXT_DIM, 13)
+  end
+
+  # Willkommensdialog der Ersteinrichtung (Etappe 19e).
+  def draw_first(w, h)
+    bw = 600
+    bh = 252
+    bx = w / 2 - bw / 2
+    by = h / 2 - bh / 2
+    UI.panel(bx, by, bw, bh, 0x101826, 0.96)
+    rahmen(bx, by, bw, bh, UI::ACCENT, 0.9)
+    UI.text(bx + 24, by + 18, 'Willkommen bei Rune3D', UI::ACCENT, 24)
+    UI.text(bx + 24, by + 62,
+            'Es wurde noch kein Projekt gefunden - jedes Spiel braucht eins.',
+            UI::TEXT, 15)
+    UI.text(bx + 24, by + 102, '[Enter / N]   Neues Projekt erstellen (Name tippen)',
+            UI::TEXT, 16)
+    UI.text(bx + 24, by + 132, "[D]           Demo-Projekt 'Dorf' anlegen und ausprobieren",
+            UI::TEXT, 16)
+    UI.text(bx + 24, by + 162, '[Esc]         Rune3D beenden', UI::TEXT_DIM, 15)
+    UI.text(bx + 24, by + 206,
+            'Projekte leben unter projekte/ - mit Karten, Ruby-Scripts und Spielständen.',
+            UI::TEXT_DIM, 13)
   end
 
   def draw_name(w)

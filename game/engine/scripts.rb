@@ -9,8 +9,13 @@
 #  Events rufen sie mit {"cmd":"script","name":"gruss"} auf; alternativ trägt
 #  ein Befehl den Code direkt in "code". Der Code läuft in einem Context, der
 #  die RPG-Maker-typischen Helfer anbietet (say, switch, variable, teleport,
-#  sound, effect, log) - kein Zugriff auf den Interpreter-Stack, damit
-#  Scripts nicht mitten in der Abarbeitung Listen verändern.
+#  sound, effect, log, fade, self_switch) - kein Zugriff auf den Interpreter-
+#  Stack, damit Scripts nicht mitten in der Abarbeitung Listen verändern.
+#
+#  Seit Etappe 19e steht Project-Scripts zusätzlich die RGSS-Schicht offen
+#  (game/engine/rgss.rb): $game_switches/$game_party/$game_player/...,
+#  Graphics.fadeout, Input.trigger?, Audio.se_play - die RPG-Maker-XP-API
+#  für eigenes Custom-Ruby im Script-Editor (F11).
 #
 #  Kopflos testbar: ruby -I game/engine tools/script_test.rb
 # ============================================================================
@@ -124,6 +129,23 @@ module Scripts
     def weather(name = nil, intensity = 1.0)
       return Weather.type if name.nil?
       Weather.set(name.to_s, intensity.to_f)
+    end
+
+    # Etappe 19e: Bildschirmblende und Self-Switches als Kurz-Helfer
+    # (RGSS-Scripts nutzen alternativ Graphics.fadeout/$game_self_switches).
+    def fade(direction = 'aus', seconds = 0.5)
+      Fade.start(direction.to_s, seconds.to_f)
+    end
+
+    # Self-Switch des Besitzer-Events: ohne Argument lesen, mit Argument
+    # setzen. Ohne Event (nil) liefern beide nil - das Script läuft ins Leere.
+    def self_switch(letter, value = nil)
+      return nil unless @event.respond_to?(:self_switch_key)
+
+      key = @event.self_switch_key
+      return GameState.self_switch(key, letter) if value.nil?
+
+      GameState.set_self_switch(key, letter, !!value)
     end
 
     # Partikel am Event (oder am Spieler, wenn kein Event bekannt ist).
