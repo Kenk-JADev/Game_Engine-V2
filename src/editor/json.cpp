@@ -7,7 +7,9 @@
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <limits>
 
 namespace rune::editor {
 
@@ -214,22 +216,65 @@ void write_string(const std::string& s, std::string& out) {
     out.push_back('"');
 }
 
+// Zahl schreiben.
+//  - Ganzzahlen ohne Nachkomma (1 statt 1.0), solange sie in long long passen.
+//  - Kommazahlen in der KUERZESTEN Form, die den Wert exakt wiederherstellt
+//    (1..17 signifikante Stellen, Vergleich per strtod). Damit schreibt der
+//    Editor dieselben Bytes wie Ruby (JSON.pretty_generate). Der alte feste
+//    Wert %.12g hat still Zahlen beschnitten: aus dem Startblickwinkel
+//    3.141592653589793 wurde 3.14159265359, aus Spielstaenden wie
+//    2.0040341041749343e-05 wurden 2.00403410417e-05 — jede gespeicherte Karte
+//    unterschied sich danach vom Ruby-Ergebnis (Diff-Flut + Werteverlust).
+//  - NaN/Unendlich sind kein gueltiges JSON: sie werden zu null, damit die
+//    Datei lesbar bleibt und der Karten-Scan (MapCheck/Probleme-Dialog) den
+//    kaputten Wert meldet statt ihn zu verschlucken.
 void write_number(const JsonValue& v, std::string& out) {
-    if (v.is_int) {
-        char buf[32];
-        std::snprintf(buf, sizeof(buf), "%lld", static_cast<long long>(v.num));
-        out += buf;
+    if (!std::isfinite(v.num)) {
+        out += "null";
         return;
     }
-    char buf[40];
-    std::snprintf(buf, sizeof(buf), "%.12g", v.num);
-    // Kommazahlen optisch als solche kennzeichnen (wie Ruby: 0.0 statt 0).
-    if (!std::strchr(buf, '.') && !std::strchr(buf, 'e') && !std::strchr(buf, 'n')) {
-        out += buf;
-        out += ".0";
-    } else {
-        out += buf;
+    if (v.is_int) {
+        constexpr double ll_min = static_cast<double>(std::numeric_limits<long long>::min());
+        constexpr double ll_max = static_cast<double>(std::numeric_limits<long long>::max());
+        if (v.num >= ll_min && v.num <= ll_max) {
+            char buf[32];
+            std::snprintf(buf, sizeof(buf), "%lld", static_cast<long long>(v.num));
+            out += buf;
+            return;
+        }
+        // Zu gross fuer long long: als Kommazahl schreiben (Wert bleibt erhalten).
     }
+
+    if (v.num == 0.0) {
+        out += std::signbit(v.num) ? "-0.0" : "0.0";
+        return;
+    }
+
+    // 1) Kuerzeste Praezision suchen, die den Wert exakt wiederherstellt.
+    char buf[64];
+    int prec = 17;
+    for (int p = 1; p <= 17; ++p) {
+        std::snprintf(buf, sizeof(buf), "%.*g", p, v.num);
+        if (std::strtod(buf, nullptr) == v.num) { prec = p; break; }
+    }
+    std::string text(buf);
+
+    // 2) %g wechselt schon bei wenigen Stellen in die Exponentenschreibweise
+    //    (240.0 -> "2.4e+02"), Ruby und Python bleiben bis Exponent 16 bei
+    //    Festkomma (240.0). Fuer Karten- und Systemdaten ist Festkomma das,
+    //    was beide Seiten schreiben — also bei Exponent [-4, 16) umformatieren,
+    //    aber nur, wenn der Wert dabei exakt bleibt.
+    const int exp10 = static_cast<int>(std::floor(std::log10(std::fabs(v.num))));
+    if (exp10 >= -4 && exp10 < 16) {
+        char fest[64];
+        const int decimals = prec - 1 - exp10;
+        std::snprintf(fest, sizeof(fest), "%.*f", decimals > 0 ? decimals : 0, v.num);
+        if (std::strtod(fest, nullptr) == v.num) text = fest;
+    }
+
+    // Kommazahlen optisch als solche kennzeichnen (wie Ruby: 0.0 statt 0).
+    if (text.find_first_of(".e") == std::string::npos) text += ".0";
+    out += text;
 }
 
 void write_value(const JsonValue& v, int indent, std::string& out) {

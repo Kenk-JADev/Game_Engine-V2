@@ -84,7 +84,10 @@ public:
 // Parst JSON-Text (UTF-8). Wirft std::runtime_error mit Position bei Fehlern.
 JsonValue json_parse(const std::string& text);
 
-// Schreibt pretty-printed JSON (2 Leerzeichen, Zahlen-Arrays in einer Zeile).
+// Schreibt pretty-printed JSON: 2 Leerzeichen Einrueckung, ein Element pro
+// Zeile und Zahlen in der kuerzesten exakt runden Form — dasselbe Layout wie
+// Ruby JSON.pretty_generate, damit Editor und Spiel beim Speichern nicht
+// gegenseitig das Format umwerfen (siehe write_number in json.cpp).
 std::string json_write(const JsonValue& v);
 
 } // namespace rune::editor

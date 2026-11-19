@@ -41,6 +41,7 @@ require 'ui'
 require 'data'
 require 'state'
 require 'issues'
+require 'mapcheck'   # Etappe 19a: Karten-Daten pruefen (Regeln wie im Editor)
 require 'party'
 require 'event'
 require 'npc'

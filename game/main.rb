@@ -85,6 +85,15 @@ end
     Effects.clear
     Weather.load_map(@map)   # Etappe 17h: Wetter der Karte aktivieren
 
+    # Etappe 19a: Kartendaten pruefen. Der Editor scannt dieselben Regeln in
+    # C++ (issues_scan_map in editor_main.cpp), hier landen nur harte Fehler im
+    # Laufzeit-Backlog (log/issues.json) - Warnungen bleiben Editor und CI.
+    # Der defined?-Schutz haelt main.rb lauffaehig, falls das Modul fehlt.
+    if defined?(MapCheck) && defined?(Issues)
+      funde = MapCheck.scan(@map, name: id.to_s).select(&:fehler?)
+      MapCheck.report!(funde) unless funde.empty?
+    end
+
     @editor = Editor.new(@map_id, @map['objects'])
     Editor.rebuild(@map['objects'], @scene)
     @hover = nil
