@@ -54,7 +54,7 @@ npc = Npc.new(
 )
 
 check('NPC startet an seiner Position') { npc.position == [0.0, 0.0] }
-check('NPC-Node in der Szene') { scene.root.children.any? { |n| n.name == 'npc_Waechter' } }
+check('NPC-Node in der Szene') { scene.root.children.any? { |n| n.name == 'npc_Wächter' } }
 
 # --- Bewegung ----------------------------------------------------------------
 npc.update(1.0)   # 2 m in Richtung (4, 0)
