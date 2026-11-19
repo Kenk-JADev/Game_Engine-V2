@@ -1548,6 +1548,39 @@ die 19i-Daten (`enemies`, `troops`) waren reine JSON-Handarbeit. Jetzt:
 Einträgen vorkommen (erste Spalte immer `id`) - editiert der Dialog ins
 Leere, kippt der Test.
 
+## Block-Zonen / Passierbarkeit (Etappe 19k.2)
+
+Zweiter Teil der Editor-Lücken-Runde: der offene Backlog-Punkt „Kein
+Passierbarkeits-System". Karten bekommen einen optionalen Schlüssel
+`"blocked": [{"x","z","w","h"}]` - Rechtecke in Weltmetern (x/z = Mitte,
+w/h = Größe), die als **unsichtbare Wände über alle Höhen** wirken (kein
+Überspringen, kein Durchlaufen).
+
+- **Physik (C++)**: `Physics::add_blocked/is_blocked/blocked_overlaps`
+  (`src/world/physics.*`); `overlaps_any` prüft die Zonen zusätzlich zu den
+  `solid`-AABBs, damit die achsenweise Kollisionsauflösung und `push_out`
+  (NPC-Schub) sie automatisch respektieren. Bindings: `Rune::Physics.
+  clear_blocked/add_blocked(x,z,w,h)/blocked_count/blocked?(x,z)`.
+- **Spiel**: `Game.enter_map` lädt die Zonen der Karte in die Physik
+  (respond_to?-geschützt) und loggt die Anzahl.
+- **RGSS**: `$game_map.blocked_zones`/`blocked?(x,z)` lesen dieselben
+  Rechtecke aus `Game.map`; `$game_player.passable?` liefert `false` für
+  Ziele in einer Zone (Grenzen + Geländestufe + Zonen).
+- **Editor**: F2-Karten-Eigenschaften hat ein eigenes Feld „Block-Zonen
+  (x,z,w,h pro Zeile)" (wirktungslose Zeilen werden überlesen, leere Liste
+  entfernt den Schlüssel); im Viewport zeichnet `push_blocked_zones()` jede
+  Zone als roten Flach-Quader auf Bodenhöhe. Der C++-Issues-Scan prüft
+  dieselben Regeln wie MapCheck (x/z/w/h Zahlen = Fehler, w/h <= 0 =
+  Warnung, keine Liste/Objekt = Fehler).
+- **MapCheck**: `pruefe_blocked` mit denselben Regeln; Tests in
+  `mapcheck_test.rb` (5 Checks) und `rgss_test.rb` (blocked?/passable?,
+  8 Checks).
+
+Grenzen (Backlog): NPC-Pfadfindung (`move_to`) und Bewegungs-Routen laufen
+weiter durch Zonen (nur der Spieler wird physikalisch geblockt); Objekt-
+Kollision für `passable?` fehlt weiterhin; Zonen sind Rechtecke ohne
+Rotation/Höhenbereich.
+
 ## Ruby-API (Stand Etappe 2)
 
 | API | Bedeutung |

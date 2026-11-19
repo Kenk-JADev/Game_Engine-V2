@@ -12,6 +12,34 @@ constexpr float kMaxStep = 0.35f; // Stufen bis zu dieser Höhe werden erklommen
 
 void Physics::clear_solids() { m_solids.clear(); }
 
+// Etappe 19k.2: Block-Zonen - unsichtbare Wände über alle Höhen.
+void Physics::clear_blocked() { m_blocked.clear(); }
+
+void Physics::add_blocked(float cx, float cz, float w, float h) {
+    if (w <= 0.0f || h <= 0.0f) return;
+    BlockedRect r{};
+    r.x0 = cx - w * 0.5f;
+    r.x1 = cx + w * 0.5f;
+    r.z0 = cz - h * 0.5f;
+    r.z1 = cz + h * 0.5f;
+    m_blocked.push_back(r);
+}
+
+bool Physics::is_blocked(float x, float z) const {
+    for (const BlockedRect& r : m_blocked) {
+        if (x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1) return true;
+    }
+    return false;
+}
+
+// Überlappt das Rechteck (x0..x1, z0..z1) eine Block-Zone?
+bool Physics::blocked_overlaps(float x0, float z0, float x1, float z1) const {
+    for (const BlockedRect& r : m_blocked) {
+        if (x0 < r.x1 && x1 > r.x0 && z0 < r.z1 && z1 > r.z0) return true;
+    }
+    return false;
+}
+
 void Physics::add_solid(Vec3 center, Vec3 size) {
     Aabb b{};
     b.min = Vec3{center.x - size.x * 0.5f, center.y - size.y * 0.5f, center.z - size.z * 0.5f};
@@ -50,6 +78,8 @@ bool Physics::overlaps_any(Vec3 pos) const {
             return true;
         }
     }
+    // Etappe 19k.2: Block-Zonen ignorieren die Höhe (unsichtbare Wände).
+    if (blocked_overlaps(x0, z0, x1, z1)) return true;
     return false;
 }
 

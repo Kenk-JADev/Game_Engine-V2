@@ -340,10 +340,10 @@ module RGSS
     end
 
     # Passierbar (Etappe 19h, echt soweit möglich): innerhalb der Karten-
-    # grenzen und keine zu hohe Geländestufe. Richtungen wie XP: 2=unten
-    # (+z), 4=links (-x), 6=rechts (+x), 8=oben (-z) - ohne Richtung wird
-    # die Zielstelle selbst geprüft. Objekt-Kollision fehlt (Backlog: es
-    # gibt keine blocked?-Abfrage für Hindernisse).
+    # grenzen, keine zu hohe Geländestufe und keine Block-Zone (19k.2).
+    # Richtungen wie XP: 2=unten (+z), 4=links (-x), 6=rechts (+x),
+    # 8=oben (-z) - ohne Richtung wird die Zielstelle selbst geprüft.
+    # Objekt-Kollision fehlt weiterhin (Backlog).
     MAX_STUFE = 1.2   # Meter Höhenunterschied, die ein Schritt überwindet
 
     def passable?(x, z, direction = nil)
@@ -365,6 +365,8 @@ module RGSS
         w = $game_map.width
         h = $game_map.height
         return false if (w > 0 && (tx < 0 || tx > w)) || (h > 0 && (tz < 0 || tz > h))
+        # Etappe 19k.2: Block-Zonen (unsichtbare Wände) der Karte.
+        return false if $game_map.blocked?(tx, tz)
       end
 
       # Die Stufe misst am SPIELER: (x, z) ist der Ausgangspunkt des Schritts
@@ -419,6 +421,21 @@ module RGSS
                       (h > 0 && (z.to_f < 0 || z.to_f > h))
 
       true
+    end
+
+    # Etappe 19k.2: Block-Zonen der Karte ("blocked": [{x,z,w,h}] mit
+    # x/z = Mitte in Weltmetern, w/h = Größe). Die Physik blockt sie über
+    # alle Höhen (unsichtbare Wände, kein Überspringen); passable? und
+    # eigene Scripts fragen blocked? ab.
+    def blocked_zones
+      Array((Game.map || {})['blocked']).select { |b| b.is_a?(Hash) }
+    end
+
+    def blocked?(x, z)
+      blocked_zones.any? do |b|
+        (x.to_f - b['x'].to_f).abs * 2.0 <= b['w'].to_f &&
+          (z.to_f - b['z'].to_f).abs * 2.0 <= b['h'].to_f
+      end
     end
   end
 

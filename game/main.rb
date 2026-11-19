@@ -107,6 +107,21 @@ end
     build_terrain(@map)
     apply_map_atmosphere(@map)
 
+    # Etappe 19k.2: Block-Zonen aus dem Karten-JSON in die Physik
+    # (unsichtbare Wände über alle Höhen; RGSS passable? liest dieselben
+    # Rechtecke über Game.map['blocked']).
+    if Rune::Physics.respond_to?(:clear_blocked)
+      Rune::Physics.clear_blocked
+      zonen = 0
+      Array(@map['blocked']).each do |b|
+        next unless b.is_a?(Hash)
+
+        Rune::Physics.add_blocked(b['x'].to_f, b['z'].to_f, b['w'].to_f, b['h'].to_f)
+        zonen += 1
+      end
+      Rune::Log.info("Karte: #{zonen} Block-Zone(n)") if zonen.positive?
+    end
+
     @interpreter = Interpreter.new
     @scene = build
     @scene.refresh_solids

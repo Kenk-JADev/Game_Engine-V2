@@ -595,6 +595,34 @@ VALUE rune_physics_solid_count(VALUE) {
     return INT2NUM(app().physics ? app().physics->solid_count() : 0);
 }
 
+// Etappe 19k.2: Block-Zonen (Passierbarkeit). Rechtecke in der XZ-Ebene,
+// über alle Höhen blockierend (unsichtbare Wände). Datenquelle: das
+// „blocked"-Array im Karten-JSON ({x,z,w,h}, x/z = Mitte, Meter).
+VALUE rune_physics_clear_blocked(VALUE) {
+    if (app().physics) app().physics->clear_blocked();
+    return Qnil;
+}
+
+VALUE rune_physics_add_blocked(VALUE, VALUE x, VALUE z, VALUE w, VALUE h) {
+    if (app().physics) {
+        app().physics->add_blocked(static_cast<float>(NUM2DBL(x)),
+                                   static_cast<float>(NUM2DBL(z)),
+                                   static_cast<float>(NUM2DBL(w)),
+                                   static_cast<float>(NUM2DBL(h)));
+    }
+    return Qnil;
+}
+
+VALUE rune_physics_blocked_count(VALUE) {
+    return INT2NUM(app().physics ? app().physics->blocked_count() : 0);
+}
+
+VALUE rune_physics_is_blocked(VALUE, VALUE x, VALUE z) {
+    if (!app().physics) return Qfalse;
+    return app().physics->is_blocked(static_cast<float>(NUM2DBL(x)),
+                                     static_cast<float>(NUM2DBL(z))) ? Qtrue : Qfalse;
+}
+
 // ---------------------------------------------------------------- Registration
 
 
@@ -725,6 +753,11 @@ void register_bindings() {
     rb_define_module_function(mPhys, "clear_solids", RUBY_METHOD_FUNC(rune_physics_clear_solids), 0);
     rb_define_module_function(mPhys, "add_solid", RUBY_METHOD_FUNC(rune_physics_add_solid), -1);
     rb_define_module_function(mPhys, "solid_count", RUBY_METHOD_FUNC(rune_physics_solid_count), 0);
+    // Etappe 19k.2: Block-Zonen (Passierbarkeit).
+    rb_define_module_function(mPhys, "clear_blocked", RUBY_METHOD_FUNC(rune_physics_clear_blocked), 0);
+    rb_define_module_function(mPhys, "add_blocked", RUBY_METHOD_FUNC(rune_physics_add_blocked), 4);
+    rb_define_module_function(mPhys, "blocked_count", RUBY_METHOD_FUNC(rune_physics_blocked_count), 0);
+    rb_define_module_function(mPhys, "blocked?", RUBY_METHOD_FUNC(rune_physics_is_blocked), 2);
 }
 
 struct TickArgs {

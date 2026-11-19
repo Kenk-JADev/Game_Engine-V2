@@ -14,6 +14,13 @@ struct Aabb {
     math::Vec3 max;
 };
 
+// Etappe 19k.2: Block-Zone (Passierbarkeit). Rechteck in der XZ-Ebene,
+// das über ALLE Höhen blockiert (unsichtbare Wand - kein Überspringen).
+// Datenquelle: "blocked" im Karten-JSON ({x,z,w,h}, x/z = Mitte).
+struct BlockedRect {
+    float x0, z0, x1, z1;
+};
+
 // Spieler mit Gravitation, Sprung und Kollision. Bewusst einfach gehalten:
 // Zylinder-Ersatz als AABB, achsenweise Auflösung - reicht für ein Dorf.
 class Physics {
@@ -22,6 +29,14 @@ public:
     void add_solid(math::Vec3 center, math::Vec3 size);
     int  solid_count() const { return static_cast<int>(m_solids.size()); }
     const std::vector<Aabb>& solids() const { return m_solids; }
+
+    // Etappe 19k.2: Block-Zonen (Karten-JSON "blocked").
+    void clear_blocked();
+    void add_blocked(float cx, float cz, float w, float h);
+    int  blocked_count() const { return static_cast<int>(m_blocked.size()); }
+    const std::vector<BlockedRect>& blocked() const { return m_blocked; }
+    // Punkt-Test (XZ) - auch für RGSS passable? und den Editor.
+    bool is_blocked(float x, float z) const;
 
     void update(float dt, const core::InputState& in, float yaw, const Terrain& terrain);
 
@@ -46,6 +61,7 @@ public:
 
 private:
     bool overlaps_any(math::Vec3 pos) const;
+    bool blocked_overlaps(float x0, float z0, float x1, float z1) const;
     float terrain_floor(math::Vec3 pos, const Terrain& terrain) const;
 
     math::Vec3 m_pos{0.0f, 0.0f, 0.0f};
@@ -53,6 +69,7 @@ private:
     bool  m_on_ground = false;
     float m_ground_h = 0.0f;
     std::vector<Aabb> m_solids;
+    std::vector<BlockedRect> m_blocked;   // Etappe 19k.2
 };
 
 } // namespace rune::world

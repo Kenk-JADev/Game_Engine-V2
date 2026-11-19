@@ -215,6 +215,7 @@ module MapCheck
       pruefe_objekte(map['objects'])
       pruefe_events(map['events'])
       pruefe_npcs(map['npcs'])
+      pruefe_blocked(map['blocked'])
       pruefe_atmosphaere(map)
     end
 
@@ -290,6 +291,32 @@ module MapCheck
         end
         melde(WARNUNG, w, "'r' (Radius) muss > 0 sein") if zahl?(b['r']) && b['r'] <= 0
         melde(WARNUNG, w, "'h' ist 0 (Bürste ohne Wirkung)") if zahl?(b['h']) && b['h'].zero?
+      end
+    end
+
+    # Block-Zonen (Etappe 19k.2): [{x,z,w,h}] - x/z = Mitte in Weltmetern,
+    # w/h = Größe; die Physik blockt sie über alle Höhen.
+    def pruefe_blocked(liste)
+      return if liste.nil?
+
+      wo = "#{@karte_name} blocked"
+      unless liste.is_a?(Array)
+        melde(FEHLER, wo, 'ist keine Liste')
+        return
+      end
+
+      liste.each_with_index do |b, i|
+        w = "#{wo} ##{i + 1}"
+        unless b.is_a?(Hash)
+          melde(FEHLER, w, 'ist kein Objekt')
+          next
+        end
+        %w[x z w h].each do |k|
+          melde(FEHLER, w, "'#{k}' fehlt oder ist keine Zahl") unless zahl?(b[k])
+        end
+        %w[w h].each do |k|
+          melde(WARNUNG, w, "'#{k}' muss > 0 sein") if zahl?(b[k]) && b[k] <= 0
+        end
       end
     end
 

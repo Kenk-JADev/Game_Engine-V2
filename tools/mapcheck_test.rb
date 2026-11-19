@@ -328,6 +328,33 @@ check('alle 26 Befehlstypen sind bekannt') do
     MapCheck.scan(karte_mit({ 'cmd' => 'effect', 'name' => 'burst' }), **OPTS).empty?
 end
 
+puts '== MapCheck: Block-Zonen (19k.2) =='
+check('gültige blocked-Zone: keine Funde') do
+  k = saubere_karte
+  k['blocked'] = [{ 'x' => 1.0, 'z' => 2.0, 'w' => 3.0, 'h' => 4.0 }]
+  MapCheck.scan(k, **OPTS).empty?
+end
+check('blocked ohne w -> Fehler') do
+  k = saubere_karte
+  k['blocked'] = [{ 'x' => 1.0, 'z' => 2.0, 'h' => 4.0 }]
+  hat?(MapCheck.scan(k, **OPTS), "'w' fehlt oder ist keine Zahl", MapCheck::FEHLER)
+end
+check('blocked mit w <= 0 -> Warnung') do
+  k = saubere_karte
+  k['blocked'] = [{ 'x' => 1.0, 'z' => 2.0, 'w' => 0.0, 'h' => 4.0 }]
+  hat?(MapCheck.scan(k, **OPTS), "'w' muss > 0 sein", MapCheck::WARNUNG)
+end
+check('blocked als Hash statt Liste -> Fehler') do
+  k = saubere_karte
+  k['blocked'] = { 'x' => 1.0 }
+  hat?(MapCheck.scan(k, **OPTS), 'ist keine Liste', MapCheck::FEHLER)
+end
+check('blocked-Eintrag kein Objekt -> Fehler') do
+  k = saubere_karte
+  k['blocked'] = ['x']
+  hat?(MapCheck.scan(k, **OPTS), 'ist kein Objekt', MapCheck::FEHLER)
+end
+
 puts '== MapCheck: NPCs =='
 check('NPC ohne name -> Warnung') do
   k = saubere_karte

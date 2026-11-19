@@ -74,7 +74,7 @@ $game_map/$game_screen/$game_temp`, `Graphics`, `Input`, `Audio`,
 | Ballons, Animationen, Tilemap | — | ❌ fehlt |
 | Autotiles, weiche Boden-Übergänge | ein Quad = eine Textur | ❌ fehlt |
 | Charakter-Grafiken | Figuren sind Quader | ❌ fehlt |
-| Passierbarkeit (blockierte Zonen) | nur `solid`-Objekte | ❌ fehlt |
+| Passierbarkeit (blockierte Zonen) | „blocked"-Rechtecke im Karten-JSON: Physik-Wände, F2-Editorfeld, rote Vorschau, `$game_player.passable?` | ✅ teilweise |
 
 Offene Punkte mit Symptom und betroffener Datei stehen in
 [`docs/BACKLOG.md`](docs/BACKLOG.md).
@@ -208,9 +208,14 @@ Karten sind JSON unter `projekte/<name>/data/maps/<id>.json`:
   "npcs":    [{ "name": "Wanderer", "x": 2.0, "z": 6.0, "speed": 1.2,
                 "path": [[4.0, 4.0], [4.0, -1.0]], "commands": [] }],
   "fog": { "on": false, "far": 120.0, "color": 15263976 },
-  "weather": { "type": "kein", "intensity": 1.0 }
+  "weather": { "type": "kein", "intensity": 1.0 },
+  "blocked": [{ "x": 8.0, "z": 2.0, "w": 4.0, "h": 3.0 }]
 }
 ```
+
+`blocked` (optional) sind unsichtbare Wände über alle Höhen (x/z = Mitte,
+w/h = Größe in Metern) — im Editor unter F2 editierbar und als rote
+Flach-Quader sichtbar.
 
 Regeln: Editor und Spiel schreiben beide `JSON.pretty_generate`-Format (LF,
 2 Leerzeichen, kürzeste exakte Zahlendarstellung) — deshalb wirft Speichern

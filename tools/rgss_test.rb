@@ -261,6 +261,20 @@ check('passable?: flach in der Karte -> true') { $game_player.passable?(5.0, 5.0
 check('passable?: Richtung 6 über die Kartengrenze -> false') do
   !$game_player.passable?($game_map.width, 5.0, 6)
 end
+# Etappe 19k.2: Block-Zonen ("blocked" im Karten-JSON) - unsichtbare Wände.
+Game.map['blocked'] = [{ 'x' => 60.0, 'z' => 45.0, 'w' => 10.0, 'h' => 6.0 }]
+check('blocked_zones: Liste aus dem Karten-JSON') { $game_map.blocked_zones.size == 1 }
+check('blocked?: Punkt in der Zone (Rand gehört dazu)') do
+  $game_map.blocked?(60.0, 45.0) && $game_map.blocked?(65.0, 48.0)
+end
+check('blocked?: Punkt ausserhalb') do
+  !$game_map.blocked?(54.9, 45.0) && !$game_map.blocked?(60.0, 48.1)
+end
+check('passable?: Ziel in der Block-Zone -> false') { !$game_player.passable?(60.0, 45.0) }
+check('passable?: Richtung 6 in die Zone -> false') { !$game_player.passable?(59.0, 45.0, 6) }
+check('passable?: neben der Zone -> true') { $game_player.passable?(10.0, 10.0) }
+Game.map.delete('blocked')
+check('ohne blocked-Schlüssel: alles passierbar') { !$game_map.blocked?(60.0, 45.0) }
 $game_temp.passable = false
 check('passable? abgeschaltet -> immer true') { $game_player.passable?(999.0, 999.0) }
 $game_temp.passable = true

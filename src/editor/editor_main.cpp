@@ -33,6 +33,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>   // Etappe 19k.2: std::atof (Block-Zonen-Feld)
 #include <cstring>
 #include <string>
 #include <vector>
@@ -841,6 +842,28 @@ void issues_scan_map() {
                 const std::vector<std::string> names = mat_all_names();
                 if (std::find(names.begin(), names.end(), tex->str) == names.end()) {
                     issue_report(1, w, "Material '" + tex->str + "' ist nicht geladen");
+                }
+            }
+        }
+    }
+
+    // Etappe 19k.2: Block-Zonen (Passierbarkeit) - wie MapCheck.pruefe_blocked.
+    if (JsonValue* bl = g.map_root.find("blocked"); bl) {
+        if (!bl->is_arr()) {
+            issue_report(2, mapname + " blocked", "ist keine Liste");
+        } else {
+            for (int i = 0; i < static_cast<int>(bl->arr.size()); ++i) {
+                const JsonValue& b = bl->arr[i];
+                const std::string w = mapname + " blocked #" + std::to_string(i + 1);
+                if (!b.is_obj()) { issue_report(2, w, "ist kein Objekt"); continue; }
+                for (const char* k : { "x", "z", "w", "h" }) {
+                    const JsonValue* v = b.find(k);
+                    if (!v || !v->is_num()) {
+                        issue_report(2, w, std::string("'") + k +
+                                           "' fehlt oder ist keine Zahl");
+                    } else if ((k[0] == 'w' || k[0] == 'h') && v->number(0.0) <= 0.0) {
+                        issue_report(1, w, std::string("'") + k + "' muss > 0 sein");
+                    }
                 }
             }
         }
@@ -3083,6 +3106,25 @@ void push_hover_marker() {
                          math::Vec3{ s, 0.06f, s }, math::Vec3{}, 0xFFE27A);
 }
 
+// Etappe 19k.2: Block-Zonen der Karte als rote Flach-Quader sichtbar machen
+// (Daten: „blocked" im Karten-JSON, x/z = Mitte, w/h = Größe in Metern).
+void push_blocked_zones() {
+    const JsonValue* bl = g.map_root.find("blocked");
+    if (!bl || !bl->is_arr()) return;
+    for (const JsonValue& b : bl->arr) {
+        if (!b.is_obj()) continue;
+        auto num = [&b](const char* k) {
+            const JsonValue* v = b.find(k);
+            return v ? static_cast<float>(v->number(0.0)) : 0.0f;
+        };
+        const float cx = num("x"), cz = num("z"), w = num("w"), h = num("h");
+        if (w <= 0.0f || h <= 0.0f) continue;
+        const float y = base_y_at(cx, cz);
+        g.renderer->push_box(math::Vec3{ cx, y + 0.07f, cz },
+                             math::Vec3{ w, 0.14f, h }, math::Vec3{}, 0xFF5A5A);
+    }
+}
+
 void render_frame() {
     RECT rc;
     GetClientRect(g.view, &rc);
@@ -3100,6 +3142,7 @@ void render_frame() {
     if (g.sel_obj >= 0) push_selection_frame(g.sel_obj);
     push_ghost_object();   // Etappe 19c: Vorschau vor dem Marker
     push_hover_marker();
+    push_blocked_zones();  // Etappe 19k.2: Passierbarkeit sichtbar machen
 
     g.renderer->end_frame();
 }
@@ -3830,6 +3873,7 @@ enum {
     IDLG_NOTE        = 4112,
     IDLG_WTYPE       = 4113,   // Etappe 17h: Wetter-Typ (Combobox)
     IDLG_WINT        = 4114,   // Etappe 17h: Wetter-Intensität
+    IDLG_BLOCKED     = 4115,   // Etappe 19k.2: Block-Zonen (x,z,w,h pro Zeile)
 };
 
 static HWND g_dlg = nullptr;
@@ -3852,6 +3896,19 @@ std::string dlg_text(int id) {
     wchar_t buf[512];
     GetDlgItemTextW(g_dlg, id, buf, 512);
     return wide_to_utf8(buf);
+}
+
+// Etappe 19k.2: Text eines Dialogfelds OHNE 512-Zeichen-Limit. Mehrzeiler
+// (Kommentar, Block-Zonen) können länger sein - dlg_text würde dort still
+// abschneiden und beim Speichern Zeilen verlieren.
+std::string dlg_text_long(int id) {
+    HWND h = GetDlgItem(g_dlg, id);
+    if (!h) return std::string();
+    const int len = GetWindowTextLengthW(h);
+    if (len <= 0) return std::string();
+    std::wstring buf(static_cast<size_t>(len) + 1, L'\0');
+    GetWindowTextW(h, &buf[0], static_cast<int>(buf.size()));
+    return wide_to_utf8(buf.c_str());
 }
 
 void dlg_set_text(int id, const std::string& s) {
@@ -4118,7 +4175,7 @@ void open_map_props() {
     wc.hbrBackground = GetSysColorBrush(COLOR_BTNFACE);
     RegisterClassW(&wc);
 
-    const int W = 460, H = 560;
+    const int W = 460, H = 660;   // 19k.2: Platz für das Block-Zonen-Feld
     RECT mr;
     GetWindowRect(g.main, &mr);
     g_dlg = CreateWindowExW(WS_EX_DLGMODALFRAME, L"RuneEditorDlg",
@@ -4165,10 +4222,18 @@ void open_map_props() {
     dlg_label(L"Kommentar", 16, 268, 140);
     dlg_control(L"Edit", nullptr,
                 WS_BORDER | WS_VSCROLL | ES_LEFT | ES_MULTILINE | ES_AUTOVSCROLL,
-                16, 290, 414, 188, IDLG_NOTE);
+                16, 290, 414, 110, IDLG_NOTE);
 
-    dlg_control(L"Button", L"OK", BS_DEFPUSHBUTTON, 240, 488, 90, 30, IDLG_OK);
-    dlg_control(L"Button", L"Abbrechen", BS_PUSHBUTTON, 340, 488, 90, 30, IDLG_CANCEL);
+    // Etappe 19k.2: Block-Zonen (Passierbarkeit) - „x,z,w,h" pro Zeile,
+    // x/z = Mitte in Metern, w/h = Größe. Wirkt im Spiel als unsichtbare
+    // Wand über alle Höhen (Physik + RGSS passable?).
+    dlg_label(L"Block-Zonen (x,z,w,h pro Zeile)", 16, 408, 300);
+    dlg_control(L"Edit", nullptr,
+                WS_BORDER | WS_VSCROLL | ES_LEFT | ES_MULTILINE | ES_AUTOVSCROLL,
+                16, 428, 414, 150, IDLG_BLOCKED);
+
+    dlg_control(L"Button", L"OK", BS_DEFPUSHBUTTON, 240, 590, 90, 30, IDLG_OK);
+    dlg_control(L"Button", L"Abbrechen", BS_PUSHBUTTON, 340, 590, 90, 30, IDLG_CANCEL);
 
     // Felder füllen
     const JsonValue* t = g.map_root.find("terrain");
@@ -4225,6 +4290,27 @@ void open_map_props() {
     const JsonValue* note = g.map_root.find("note");
     dlg_set_text(IDLG_NOTE, note ? note->str : "");
 
+    // Etappe 19k.2: Block-Zonen als Textzeilen „x,z,w,h" anzeigen.
+    {
+        std::string zeilen;
+        const JsonValue* bl = g.map_root.find("blocked");
+        if (bl && bl->is_arr()) {
+            char zb[96];
+            for (const JsonValue& b : bl->arr) {
+                if (!b.is_obj()) continue;
+                auto num = [&b](const char* k) {
+                    const JsonValue* v = b.find(k);
+                    return v ? v->number(0.0) : 0.0;
+                };
+                std::snprintf(zb, sizeof(zb), "%.10g,%.10g,%.10g,%.10g",
+                              num("x"), num("z"), num("w"), num("h"));
+                if (!zeilen.empty()) zeilen += "\r\n";
+                zeilen += zb;
+            }
+        }
+        dlg_set_text(IDLG_BLOCKED, zeilen);
+    }
+
     ShowWindow(g_dlg, SW_SHOW);
     SetFocus(GetDlgItem(g_dlg, IDLG_NAME));
     g.props_dlg = g_dlg;      // moduslos: Hauptschleife rendert weiter
@@ -4277,7 +4363,44 @@ void apply_props_from_dlg() {
             root.set("weather", wv);
         }
 
-        root.set("note", JsonValue::make_str(dlg_text(IDLG_NOTE)));
+        root.set("note", JsonValue::make_str(dlg_text_long(IDLG_NOTE)));
+
+        // Etappe 19k.2: Block-Zonen - „x,z,w,h" pro Zeile -> JSON-Array.
+        // Wirkungslose Zeilen (w/h <= 0, zu wenige Zahlen) werden überlesen;
+        // eine leere Liste entfernt den Schlüssel ganz.
+        {
+            JsonValue zones = JsonValue::make_arr();
+            const std::string text = dlg_text_long(IDLG_BLOCKED);
+            size_t pos = 0;
+            while (pos <= text.size()) {
+                const size_t nl = text.find_first_of("\r\n", pos);
+                const std::string line = text.substr(
+                    pos, nl == std::string::npos ? std::string::npos : nl - pos);
+                pos = (nl == std::string::npos) ? text.size() + 1 : nl + 1;
+                std::vector<std::string> toks;
+                size_t t0 = 0;
+                for (size_t i = 0; i <= line.size(); ++i) {
+                    if (i == line.size() || line[i] == ',' || line[i] == ';') {
+                        toks.push_back(line.substr(t0, i - t0));
+                        t0 = i + 1;
+                    }
+                }
+                if (toks.size() < 4) continue;
+                const double zx = std::atof(toks[0].c_str());
+                const double zz = std::atof(toks[1].c_str());
+                const double zw = std::atof(toks[2].c_str());
+                const double zh = std::atof(toks[3].c_str());
+                if (zw <= 0.0 || zh <= 0.0) continue;
+                JsonValue zone = JsonValue::make_obj();
+                zone.set("x", JsonValue::make_num(zx, false));
+                zone.set("z", JsonValue::make_num(zz, false));
+                zone.set("w", JsonValue::make_num(zw, false));
+                zone.set("h", JsonValue::make_num(zh, false));
+                zones.arr.push_back(std::move(zone));
+            }
+            if (zones.arr.empty()) json_remove_key(root, "blocked");
+            else root.set("blocked", zones);
+        }
 
         g.dirty = true;
         regen_terrain();

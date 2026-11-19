@@ -43,6 +43,8 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
   (keine blocked?-Abfrage - hängt am Passierbarkeitsthema insgesamt);
   seit 19h.2 zusätzlich: Screen-Tonwerte/Flash/Shake ohne Renderer, Timer
   ohne HUD-Anzeige, change_graphic/opacity/blending-Schritte wirkungslos.
+  Block-Zonen („blocked" im Karten-JSON) prüft `passable?` seit 19k.2;
+  Objekt-Kollision (solid-AABBs) fehlt in `passable?` weiterhin.
 - Betroffene Stellen: `game/engine/rgss.rb`, `game/engine/graphics.rb`,
   `docs/architecture.md` (19e/19h).
 - Gefunden in: Etappe 19e (User-Vorgabe „RGSS wie RPG Maker XP Online-Hilfe").
@@ -109,12 +111,6 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Vermutung/Analyse: NIE PowerShell-String-Bastelei an Quellen; Reparatur per `tools/repair_mojibake.rb`, Scan per `tools/scan_mojibake_bytes.rb`.
 - Betroffene Stellen: alle C++-Dateien mit Umlauten.
 - Gefunden in: Etappe 18c.
-
-### [Editor] Kein Passierbarkeits-System — offen (Feature-Fehlend, kein Bug)
-- Symptom: Spieler läuft überall, wo kein `solid`-Objekt steht; Zonen/Flächen sind nicht blockierbar.
-- Vermutung/Analyse: Kandidat für eigene Etappe (blockierte Zonen als Karten-Daten + Physics-Check).
-- Betroffene Stellen: `src/world/physics.*`, Karten-JSON.
-- Gefunden in: Handoff-Kandidatenliste.
 
 ### [Editor] Kein Weich-Übergang/Autotiles für Böden — offen (Feature-Fehlend)
 - Symptom: Boden-Kanten hart; Autotile-Logik fehlt.
@@ -187,6 +183,20 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Etappe 19a.
 
 ## Erledigt
+### [Engine/Editor] Passierbarkeits-System: Block-Zonen — erledigt (19k.2)
+- Symptom (alt): Spieler läuft überall, wo kein `solid`-Objekt steht;
+  Zonen/Flächen waren nicht blockierbar.
+- Umsetzung: Karten-Schlüssel „blocked" ([{x,z,w,h}], Mitte/Größe in Metern)
+  = unsichtbare Wände über alle Höhen; Physik (add_blocked/overlaps_any),
+  Ruby-Bindings, enter_map-Wiring, `$game_map.blocked?` + `passable?`,
+  MapCheck-Regeln + C++-Issues-Parität, Editor: F2-Feld „Block-Zonen" +
+  rote Flach-Quader im Viewport. Tests: mapcheck_test (5), rgss_test (8).
+- Rest (bleibt offen im RGSS-/NPC-Eintrag): NPC-Pfade und Bewegungs-Routen
+  ignorieren Zonen, `passable?` kennt weiterhin keine Objekt-Kollision.
+- Betroffene Stellen: `src/world/physics.{h,cpp}`, `src/ruby/vm.cpp`,
+  `game/main.rb`, `game/engine/{rgss,mapcheck}.rb`,
+  `src/editor/editor_main.cpp`, `tools/{mapcheck_test,rgss_test}.rb`.
+
 ### [Editor] Datenbank-Dialog: Gegner/Truppen-Tab — erledigt (19k.1)
 - Wunsch: Editor-Lücken schließen (User-Auswahl nach 19j); Gegner/Truppen
   (19i) waren bisher nur per JSON-Handarbeit editierbar.
