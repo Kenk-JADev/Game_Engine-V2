@@ -1969,7 +1969,7 @@ void set_obj_number(int i, const char* key, float value) {
 }
 
 // Etappe 19c: zentrales Umschalten der fünf Modi. Die Knöpfe sind Radios
-// (BS_AUTORADIO); Prefab-Liste und Kontextmenü wechseln den Modus aber auch,
+// (BS_AUTORADIOBUTTON); Prefab-Liste und Kontextmenü wechseln den Modus aber auch,
 // deshalb wird der Haken hier gesetzt - genau einer ist immer aktiv.
 void set_mode(int mode) {
     g.place_mode  = (mode == 1);
