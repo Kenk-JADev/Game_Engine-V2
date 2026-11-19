@@ -155,6 +155,10 @@ interp4.update(0.016)
 check('ohne Besitzer: if_self_switch nimmt Sonst-Zweig') do
   GameState.variable('sonst2') == 1.0 && GameState.variable('dann2') == 0.0
 end
+# Interpreter-Design: pro update() wird höchstens ein fertiger Rahmen vom
+# Stack genommen - der verschachtelte Sonst-Zweig braucht also einen zweiten
+# Frame, genau wie bei if_switch/if_variable (18f).
+interp4.update(0.016)
 check('ohne Besitzer: Interpreter läuft trotzdem zu Ende') { !interp4.running? }
 
 puts '== MapCheck: Prüfung der neuen Befehle und Bedingungen =='
