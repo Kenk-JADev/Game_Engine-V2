@@ -234,8 +234,14 @@ Schilder sind noch nicht im Undo enthalten. Beim Kartenwechsel wird der
 Objekt-Undo-Stapel geleert.
 
 `blocked` (optional) sind unsichtbare Wände über alle Höhen (x/z = Mitte,
-w/h = Größe in Metern) — im Editor unter F2 editierbar und als rote
-Flach-Quader sichtbar.
+w/h = Größe in Metern). In **F2** stehen vorhandene Zonen als nummerierte
+Zeilen, etwa `#1: 0; 2; 4; 3`. Beim Bearbeiten oder Verschieben der Zeile
+die Nummer stehen lassen: So bleiben Zusatzdaten und unveränderte Werte
+erhalten. Für eine neue Zone eine Zeile ohne Nummer eingeben (`x; z; w; h`
+oder `x,z,w,h`); Dezimalkomma ist bei Semikolontrennung möglich. Entfernte
+Zeilen und das Ersetzen ungültiger Altdaten werden vor OK bestätigt. Bei
+fehlerhafter Eingabe bleibt die ganze Karte unverändert. Block-Zonen sind
+als rote Flach-Quader sichtbar. Vor F2 den Event-Editor F6 schließen.
 
 `encounters` ist optional. Im Editor die gewünschte Karte wählen und **F2**
 öffnen: Unter „Zufallskämpfe“ eine gespeicherte Projekt-Truppe auswählen

@@ -5,6 +5,7 @@
 //  Eigenschaften keine unberührten Kartendaten überschreiben.
 // ============================================================================
 
+#include "editor/blocked_form.h"
 #include "editor/json.h"
 
 #include <cstdint>
@@ -47,44 +48,12 @@ inline std::uint32_t parse_hex_color(const std::string& s) {
     return v;
 }
 
-// Block-Zonen wie bisher aus den explizit bearbeiteten Textzeilen lesen.
-// Leere/ungültige Zeilen werden überlesen; x/z sind die Mittelpunkte.
-inline JsonValue map_props_blocked(const std::string& text) {
-    JsonValue zones = JsonValue::make_arr();
-    size_t pos = 0;
-    while (pos <= text.size()) {
-        const size_t nl = text.find_first_of("\r\n", pos);
-        const std::string line = text.substr(pos, nl == std::string::npos ? nl : nl - pos);
-        pos = (nl == std::string::npos) ? text.size() + 1 : nl + 1;
-        std::vector<std::string> toks;
-        size_t t0 = 0;
-        for (size_t i = 0; i <= line.size(); ++i) {
-            if (i == line.size() || line[i] == ',' || line[i] == ';') {
-                toks.push_back(line.substr(t0, i - t0));
-                t0 = i + 1;
-            }
-        }
-        if (toks.size() < 4) continue;
-        const double x = std::atof(toks[0].c_str());
-        const double z = std::atof(toks[1].c_str());
-        const double w = std::atof(toks[2].c_str());
-        const double h = std::atof(toks[3].c_str());
-        if (w <= 0.0 || h <= 0.0) continue;
-        JsonValue zone = JsonValue::make_obj();
-        zone.set("x", JsonValue::make_num(x, false));
-        zone.set("z", JsonValue::make_num(z, false));
-        zone.set("w", JsonValue::make_num(w, false));
-        zone.set("h", JsonValue::make_num(h, false));
-        zones.arr.push_back(std::move(zone));
-    }
-    return zones;
-}
-
-// Nur nach erfolgreicher Encounter-Validierung aufrufen. Ungeänderte Felder
-// bleiben samt fehlenden/null-Werten und unbekannten Schlüsseln erhalten.
+// Nur nach erfolgreicher Encounter-/Block-Zonen-Validierung und Rückfragen
+// aufrufen. Bei ungültigen Block-Zonen wird NICHTS an der Karte geändert.
 inline MapPropsChanges map_props_apply(JsonValue& root, const MapPropsForm& before,
-                                       const MapPropsForm& after) {
+                                       const MapPropsForm& after, const BlockedEdit& blocked) {
     MapPropsChanges changes;
+    if (!blocked.ok) return changes;
     auto object_copy = [&root](const char* key) {
         const JsonValue* v = root.find(key);
         return v && v->is_obj() ? *v : JsonValue::make_obj();
@@ -156,9 +125,8 @@ inline MapPropsChanges map_props_apply(JsonValue& root, const MapPropsForm& befo
         changes.changed = true;
     }
 
-    if (before.blocked != after.blocked) {
-        JsonValue zones = map_props_blocked(after.blocked);
-        if (!zones.arr.empty()) root.set("blocked", std::move(zones));
+    if (blocked.changed) {
+        if (!blocked.value.arr.empty()) root.set("blocked", blocked.value);
         else {
             for (auto it = root.obj.begin(); it != root.obj.end(); ++it) {
                 if (it->first == "blocked") { root.obj.erase(it); break; }

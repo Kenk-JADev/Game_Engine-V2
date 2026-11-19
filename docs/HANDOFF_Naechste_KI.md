@@ -1,6 +1,6 @@
-# Handoff für die nächste KI - Rune3D, Stand nach Etappe 19o.1
+# Handoff für die nächste KI - Rune3D, Stand nach Etappe 19o.2
 
-**Datum des Stands:** 2026-11-19 — Etappe 19o.1: verlustfreie JSON-Ganzzahlen; CI-Status in GitHub Actions prüfen
+**Datum des Stands:** 2026-11-19 — Etappe 19o.2: datentreue F2-Block-Zonen; CI-Status in GitHub Actions prüfen
 **Projekt:** `C:/Users/jusagu/Desktop/Engine` — Windows-Only 3D-RPG-Engine (C++20/Win32/D3D11 + echtes CRuby 3.4.11), Editor = eigenes Programm `RuneEditor.exe`.
 
 ## 0. Auftrag und Fortschritt (RPG-Maker-XP-Überholung)
@@ -36,7 +36,8 @@ Der User beauftragte eine Überarbeitung von Engine und Editor **im Stil von RPG
 | 19d | `e56b692` + Nacharbeit `0660de3` (CI-Grün) | XP-Features Welle 1: Self-Switches A-D pro Event (GameState, Seiten-Bedingung, `self_switch`/`if_self_switch`, Savegame, Editor-Combos im Seite-Kasten) + Bildschirmblende (`fade.rb`, Befehl `fade`, Reset bei Kartenwechsel); 23 Befehlstypen synchron in CMD_TYPES/ISSUE_CMD_TYPES/EV_TYPES; Tests `self_switch_test.rb`, `fade_test.rb` |
 | 19e | `59845c1` (CI-Grün) | RGSS-Schicht (`game/engine/rgss.rb`): `$game_*`-Globale, `Graphics`/`Input`/`Audio`/`load_data`+`save_data` wie RPG Maker XP (Abweichungen: JSON statt Marshal, Namen statt IDs, kein `$scene`-Loop) + Launcher-Ersteinrichtung `:first` (ohne Projekt: Enter/N = erstellen, D = Demo, Esc = beenden; `ensure_demo` nicht mehr automatisch) + Context-Helfer `fade`/`self_switch` + `$game_system.menu_disabled/save_disabled` beachtet; Tests `rgss_test.rb`, script_test-Abschnitt 6 |
 | 19f | `96be63d` (CI-Grün) | Artefakt-Bugfix (User-Konsole): `Rune3D-Windows` enthält jetzt `game/` + `projekte/` neben den EXEs (CI kopiert sie nach `build/`); beide EXEs loggen einen klaren Hinweis, wenn `game/` unter der Wurzel fehlt |
-| 19o.1 | dieser Commit (CI-Status siehe Actions) | JSON-Ganzzahlen beliebiger Größe behalten ihren exakten Token; striktes Parsen, Inkrement ohne Rundung, Zahlenanzeige und Ruby-Brücke geprüft |
+| 19o.2 | dieser Commit (CI-Status siehe Actions) | F2-Block-Zonen: stabile Sitzungsnummern, Zusatzfelder/präzise Werte erhalten, Validierung und Rückfrage bei Verlust, F6-Zeigerschutz |
+| 19o.1 | `a35cbdf` (CI-Grün Run 44598814272) | JSON-Ganzzahlen beliebiger Größe behalten ihren exakten Token; striktes Parsen, Inkrement ohne Rundung, Zahlenanzeige und Ruby-Brücke geprüft |
 | 19n | `6b24b29` (CI-Grün Run 44597155419) | F5-Platzier-Editor für NPCs, Schilder und Objekte; X/Y/Z, Wegpunkte und Text, transaktional, NPC-Gespräche per E, portable Tests |
 | 19m | `9bc392e` (CI-Grün Run 44589056862) | F2-Zufallskämpfe: gespeicherte F9-Truppen wählen/neu laden, Zeilenliste samt Gewichtung, validierte Schrittzahl, Altwerte/andere Kartendaten erhalten, Kartenbaum gesperrt; portable Tests in json_test |
 | 19l | `5720d41`, `557a852`, `a7c4f5d` (zuletzt CI-Grün Run 44581746188) | Zufallskämpfe per Karten-JSON und XP-Formel; Start/Kartenwechsel, Event-/Editor-Vorrang, Physikpause und Teleports abgesichert, MapCheck/C++-Parität und Beispiel in game/data; Integrationstests encounter_test sowie C++-Validierung im json_test |
@@ -146,6 +147,12 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
 
 **Backlog:** Offene Fehler, Grenzen und Test-Wissen stehen zentral in `docs/BACKLOG.md` — dort nachsehen und neue Erkenntnisse dorthin eintragen (nicht mehr hier listen).
 
+- **F2-Block-Zonen (19o.2):** `blocked_form.h` zeigt stabile temporäre
+  `#n:`-Zeilenmarken; beim Editieren/Umordnen die Marke behalten, neue Zeile
+  ohne Marke. Unbekannte Felder und unberührte Zahlen bleiben erhalten;
+  kaputte alte Felder/Einträge sind geschützt, Ersetzen und Löschen nach
+  Rückfrage, ungültige Eingabe blockiert die gesamte Übernahme. F6 muss vor
+  F2 geschlossen sein (Root-Vector-Zeiger). Grafischer Live-Test steht aus.
 - **JSON-Ganzzahlen (19o.1):** `JsonValue` bewahrt den originalen Integer-
   Token beliebiger Länge; `number()` bleibt eine double-Näherung und ist
   schreibgeschützt. `make_num`/`make_integer` ersetzen Werte, `increment()`
@@ -176,7 +183,7 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
 - **Resize-Fakten (belegt):** Swapchain/Viewport folgen korrekt (`ResizeBuffers` fehlerfrei, Screenshot-Größe == Viewport-Größe), auch das Spiel behandelt `WM_SIZE` (`window.cpp` → `consume_resize()` → `renderer.resize()`). Bei Resize-Verdacht zürst `log/editor.log` auf `Viewport: …` prüfen. F12-Screenshot geht **nur** per echtem Tastendruck (`[EdClick]::Key(0x7B)`) — `PostMessage(WM_KEYDOWN)` wirkt nicht, weil `handle_shortcuts` `GetAsyncKeyState` fragt.
 - **Event-Seiten (18g):** Events haben `pages` (Liste aus `{conditions, trigger, commands}`); die Seite mit dem **höchsten Index** mit erfüllten Bedingungen gewinnt (Seite 0 = Standard, leere Bedingungen = immer). Bedingungen: `switch` {name,value} und `variable` {name,op,value} (UND-verknüpft). `Event.refresh_page!` läuft in main.rb vor den Trigger-Schleifen; **Seitenwechsel setzt `fired` zurück** (touch/auto feuern erneut). Alte Karten ohne `pages` → implizite Seite 0; der Editor migriert das geöffnete Event sofort (`ev_ensure_pages`) und speichert dann ohne Top-Level-trigger/commands. Editor-IDs: Seitenliste 5046, Neue Seite 5047, Seite löschen 5048, Seite übernehmen 5049, Bedingungsfelder 5050–5054. Der Trigger-ComboBox (5015) sitzt jetzt in der Gruppenbox „Seite". Tests: `tools/event_pages_test.rb` (44 Checks), `log/live18g.ps1`.
 - **Event-Editor (18f):** 20 Befehlstypen mit Kategorie-Präfixen (Enum EvType ersetzt magische Indizes!), `choices` (Wahlmöglichkeiten mit Zweigen als „Wenn [x]:"-Kopfzeilen), `toggle_switch`, `move_player`, `weather`, `save_game`/`load_game`, Trigger `parallel`. Neue Tests: `tools/event18f_test.rb` (23 Checks, Mock-Muster wie event_test.rb). **Live-Test-Falle:** Der Event-Dialog blockiert Strg+S des Hauptfensters (`event_editor_focused()`) → im Test erst Dialog schließen (IDEV_CLOSE 5005), dann speichern. `load_game` im Interpreter baut die Karte neu auf und ersetzt den laufenden Interpreter (dokumentiert).
-- **Nächste Kandidaten:** Datentreue bei bearbeiteten Block-Zonen sowie F6/F9/Objektformularen, danach Undo/Redo über Objekte hinaus und Kampf-/RGSS-Ausbau (siehe Backlog).
+- **Nächste Kandidaten:** Datentreue der F6/F9/Objektformulare, danach Undo/Redo über Objekte hinaus und Kampf-/RGSS-Ausbau (siehe Backlog).
 - **WICHTIG bei Skript-Rewrites von Quellen:** NIEMALS `Get-Content -Raw` + `Set-Content -Encoding utf8` für C++-Dateien mit Umlauten — PowerShell liest dann CP1252 und produziert Doppelkodierung („Ã¼") + BOM. Reparatur per `tools/repair_mojibake.rb` (UTF-8 → CP1252 → UTF-8), Scan per `tools/scan_mojibake_bytes.rb`.
 - **Nächste Kandidaten:** Passierbarkeits-Regeln (blockierte Zonen), Autotiles, Weich-Übergänge per Weightmap, Undo/Redo für Splat-Operationen (derzeit nur Objekte).
 - Boden/Tileset (18c): `terrain.texture` + `terrain.tile` im Karten-JSON; Shader skaliert Terrain-UV mit 2.0/tile über `gParams.z` (Boxen nutzen `gParams.y`, Shadow-Pass beide 0 — nicht vermischen!). `Renderer::texture_rgba` liefert Pixel für Vorschauen; `Rune::Gfx.terrain_texture(name, tile_meters)` hat jetzt 2 Argumente (2. optional).
@@ -192,6 +199,16 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
 - Hardware: i5-10400T, 7,7 GB RAM, Intel UHD 630, keine Admin-Rechte.
 
 ## 5. Live-Test-Vorlage
+
+**Noch offen für 19o.2 (echter Windows-Rechner):** F6 schließen, Karte mit
+zwei Zonen und unterschiedlichen Zusatzfeldern laden; F2 öffnen, eine
+markierte Zeile ändern, die Zeilen umordnen, eine neue ohne Nummer ergänzen,
+OK und Strg+S. JSON auf erhaltene Zusatzdaten/Präzision und Zuordnung
+kontrollieren. Zeilenlöschen und Ersetzen kaputter Daten mit Nein/Ja prüfen,
+unzulässige Breite und doppelte Nummer testen (keine Teilübernahme), F2-
+Layout/Tab/Enter bei 1024×640/DPI testen. F6-Guard und Terrain-Kollision
+im Playtest prüfen.
+
 
 **Noch offen für 19n (echter Windows-Rechner):** F6 schließen, F5 öffnen,
 NPC mit eindeutiger Bezeichnung, Y-Versatz, Text und zwei Wegpunkten anlegen;

@@ -458,6 +458,97 @@ void encounter_form_tests(const std::string& wurzel) {
     }
 }
 
+void blocked_form_tests() {
+    using namespace rune::editor;
+    std::printf("== Editor: Block-Zonen datentreu bearbeiten (19o.2) ==\n");
+    const JsonValue old = json_parse(R"([
+      {"x":1.2345678901234567,"z":2,"w":3,"h":4,"extra":{"nr":9007199254740993}},
+      {"x":1.2345678901234567,"z":2,"w":3,"h":4,"extra":{"nr":7}}])");
+    const std::string before = blocked_form_read(&old);
+    check("alte Zonen haben eindeutige Sitzungsnummern und volle Präzision",
+          before == "#1: 1.2345678901234567; 2; 3; 4\r\n#2: 1.2345678901234567; 2; 3; 4");
+    const BlockedEdit unchanged = blocked_form_prepare(&old, before, before);
+    check("unveränderte Liste erzeugt keine Änderung", unchanged.ok && !unchanged.changed);
+    const std::string text = "#2: 1.2345678901234567; 2; 3; 4\r\n"
+                             "#1: 1.2345678901234567; 9; 3; 4\r\n"
+                             "1,5; -2,25; 3; 4\r\n5,6,7,8";
+    const BlockedEdit edit = blocked_form_prepare(&old, before, text);
+    check("Umordnung, Koordinatenänderung und neue Zonen sind gültig",
+          edit.ok && edit.changed && edit.removed == 0 && edit.value.arr.size() == 4);
+    if (edit.ok && edit.value.arr.size() == 4) {
+        const JsonValue& a = edit.value.arr[0];
+        const JsonValue& b = edit.value.arr[1];
+        check("identische Geometrie behält bei Umordnung ihre eigenen Zusatzfelder",
+              a.find("extra")->find("nr")->number() == 7 &&
+              json_write(*b.find("extra")->find("nr")) == "9007199254740993\n");
+        check("nur tatsächlich geänderte Koordinate wird ersetzt",
+              json_write(*b.find("x")) == "1.2345678901234567\n" &&
+              b.find("w")->is_int && b.find("z")->number() == 9);
+        check("Dezimalkomma und alte Komma-Trennung für neue Zonen",
+              edit.value.arr[2].find("x")->number() == 1.5 &&
+              edit.value.arr[2].find("z")->number() == -2.25 &&
+              edit.value.arr[3].find("x")->number() == 5);
+        check("keine Zusatzfelder werden auf neue Zeilen übertragen",
+              edit.value.arr[2].find("extra") == nullptr && edit.value.arr[3].find("extra") == nullptr);
+        check("bearbeitete Zonen überstehen einen JSON-Roundtrip exakt",
+              json_write(json_parse(json_write(edit.value))) == json_write(edit.value));
+    }
+    const BlockedEdit equivalent = blocked_form_prepare(&old, before,
+        "#1: 1.2345678901234567; 2.0; 3; 4\r\n#2: 1.2345678901234567; 2; 3; 4\r\n");
+    check("gleichwertige Schreibweise und Leerzeile erhalten die alten Zahlentypen",
+          equivalent.ok && !equivalent.changed);
+    const BlockedEdit deletion = blocked_form_prepare(&old, before,
+        "#2: 1.2345678901234567; 2; 3; 4");
+    check("entfernte Zone wird gezählt und verbleibende Metadaten sind richtig",
+          deletion.ok && deletion.changed && deletion.removed == 1 &&
+          deletion.value.arr[0].find("extra")->find("nr")->number() == 7);
+    const BlockedEdit untagged = blocked_form_prepare(&old, before, "1,2,3,4");
+    check("Zeile ohne Nummer ist neu und warnt vor Entfernung beider Altzonen",
+          untagged.ok && untagged.removed == 2 && untagged.value.arr[0].find("extra") == nullptr);
+    for (const char* invalid : {
+        "#3: 1; 2; 3; 4", "#0: 1; 2; 3; 4", "#99999999999999999999999999: 1; 2; 3; 4",
+        "#1 1; 2; 3; 4",
+        "#1: 1; 2; 3; 4\r\n#1: 1; 2; 3; 4", "#1: 1; 2; 0; 4",
+        "#1: 1; 2; -1; 4", "#1: 1; 2; inf; 4", "1;2;3", "1,2,3,4,5", "1;2;3x;4"}) {
+        const BlockedEdit bad = blocked_form_prepare(&old, before, invalid);
+        const std::string name = std::string("ungültige Eingabe wird ohne Teiländerung abgelehnt: ") + invalid;
+        check(name.c_str(), !bad.ok && !bad.error.empty() && old.arr.size() == 2);
+    }
+    const JsonValue malformed = json_parse(R"([{"x":"kaputt","z":2,"w":3,"h":null,"extra":"bleibt"},42])");
+    const std::string malformed_before = blocked_form_read(&malformed);
+    check("ungültige Alt-Einträge und fehlende Felder sind sichtbar",
+          malformed_before == "#1: ?; 2; 3; ?\r\n#2: [ungültiger Eintrag]");
+    const BlockedEdit kept = blocked_form_prepare(&malformed, malformed_before,
+        "#1: ?; 2.5; 3; ?\r\n#2: [ungültiger Eintrag]");
+    check("andere Änderung erhält kaputte Felder und vollständigen Nicht-Objekt-Eintrag",
+          kept.ok && kept.removed == 0 && kept.replaces_invalid_entries == 0 &&
+          kept.value.arr[0].find("x")->str == "kaputt" && kept.value.arr[0].find("h")->is_null() &&
+          kept.value.arr[0].find("extra")->str == "bleibt" && kept.value.arr[1].number() == 42);
+    const BlockedEdit replace_invalid = blocked_form_prepare(&malformed, malformed_before,
+        "#1: ?; 2; 3; ?\r\n#2: 1; 2; 3; 4");
+    check("Ersetzen eines ungültigen Eintrags erfordert Bestätigung",
+          replace_invalid.ok && replace_invalid.replaces_invalid_entries == 1 && replace_invalid.removed == 0);
+    const JsonValue bad_list = json_parse(R"({"fremd":true})");
+    const std::string bad_list_before = blocked_form_read(&bad_list);
+    const BlockedEdit new_list = blocked_form_prepare(&bad_list, bad_list_before, "1,2,3,4");
+    check("Ersetzen einer ungültigen Liste erfordert Bestätigung",
+          new_list.ok && new_list.replaces_invalid_list && new_list.changed);
+    const JsonValue large = json_parse(R"([{"x":9007199254740993,"z":0,"w":1,"h":2,"extra":"ja"}])");
+    const std::string large_before = blocked_form_read(&large);
+    const BlockedEdit large_edit = blocked_form_prepare(&large, large_before,
+                                                        "#1: 9007199254740993; 3; 1; 2");
+    check("große Alt-Ganzzahl bleibt bei anderer Feldänderung exakt",
+          large_edit.ok && json_write(*large_edit.value.arr[0].find("x")) == "9007199254740993\n");
+    const std::string very_big(400, '9');
+    const JsonValue riesig = json_parse("[{\"x\":" + very_big + ",\"z\":0,\"w\":1,\"h\":2}]");
+    const BlockedEdit riesig_edit = blocked_form_prepare(&riesig, blocked_form_read(&riesig),
+                                                         "#1: " + very_big + "; 3; 1; 2");
+    check("Ganzzahl jenseits des double-Bereichs bleibt bei anderer Feldänderung exakt",
+          riesig_edit.ok && json_write(*riesig_edit.value.arr[0].find("x")) == very_big + "\n");
+    const BlockedEdit none = blocked_form_prepare(nullptr, "", "  \r\n");
+    check("leeres Feld ohne alte Liste legt keine neue Liste an", none.ok && !none.changed);
+}
+
 void map_props_form_tests() {
     using namespace rune::editor;
     std::printf("== Editor: F2 erhält unberührte Karteneigenschaften ==\n");
@@ -474,9 +565,13 @@ void map_props_form_tests() {
     before.width = "240"; before.height = "120"; before.seed = "7"; before.amplitude = "2.3";
     before.mountains = true; before.fog_far = "123"; before.fog_color = "00002A";
     before.panorama_color = "00000B"; before.weather_type = 1; before.weather_intensity = "0.6";
-    before.blocked = "1.23456789,2,3,4";
+    before.blocked = blocked_form_read(root.find("blocked"));
+    auto apply = [&root](const MapPropsForm& was, const MapPropsForm& now) {
+        const BlockedEdit blocked = blocked_form_prepare(root.find("blocked"), was.blocked, now.blocked);
+        return map_props_apply(root, was, now, blocked);
+    };
     const std::string untouched = json_write(root);
-    MapPropsChanges changes = map_props_apply(root, before, before);
+    MapPropsChanges changes = apply(before, before);
     check("unveränderte F2-Felder schreiben nichts, trotz gerundeter Anzeige",
           !changes.changed && json_write(root) == untouched);
 
@@ -498,7 +593,7 @@ void map_props_form_tests() {
     const std::string original_terrain = json_write(*root.find("terrain"));
     MapPropsForm after = before;
     after.name = "Neu";
-    changes = map_props_apply(root, before, after);
+    changes = apply(before, after);
     check("nur Namen ändern lässt andere Felder und Encounter-Zusätze stehen",
           changes.changed && changes.name && !changes.terrain && !changes.atmosphere &&
           root.find("name")->str == "Neu" && json_write(*root.find("terrain")) == original_terrain &&
@@ -506,7 +601,7 @@ void map_props_form_tests() {
 
     after = before;
     after.width = "300";
-    changes = map_props_apply(root, before, after);
+    changes = apply(before, after);
     const JsonValue* terrain = root.find("terrain");
     check("Terrain nur gezielt ändern und übrige Präzision erhalten",
           changes.changed && changes.terrain && !changes.atmosphere && terrain->find("width")->number() == 300 &&
@@ -516,7 +611,7 @@ void map_props_form_tests() {
     after = before;
     after.fog_on = true; after.fog_color = "BFD8EC"; after.panorama_color = "0x123456";
     after.weather_type = 2; after.note = "Hallo";
-    changes = map_props_apply(root, before, after);
+    changes = apply(before, after);
     check("Atmosphäre/Wetter behalten nicht bearbeitete Schlüssel",
           changes.changed && changes.atmosphere && root.find("fog")->find("on")->b &&
           root.find("fog")->find("color")->number() == 0xBFD8EC &&
@@ -530,16 +625,27 @@ void map_props_form_tests() {
           parse_hex_color("0X12Ab56") == 0x12AB56 && parse_hex_color("kaputt") == 0);
 
     after = before;
-    after.blocked = "3,4,5,6\r\n1;2;0;4";
-    changes = map_props_apply(root, before, after);
-    check("nur explizit bearbeitete Block-Zonen neu parsen",
-          changes.changed && root.find("blocked")->arr.size() == 1 &&
-          root.find("blocked")->arr[0].find("x")->number() == 3);
-    before.blocked = after.blocked;
+    after.blocked = "#1: 1.234567890123; 7; 5; 6\r\n1,2,3,4";
+    changes = apply(before, after);
+    check("bearbeitete Block-Zone behält Zusatzfeld und präzises X", changes.changed &&
+          root.find("blocked")->arr.size() == 2 &&
+          json_write(*root.find("blocked")->arr[0].find("x")) == "1.234567890123\n" &&
+          root.find("blocked")->arr[0].find("extra")->str == "Wand" &&
+          root.find("blocked")->arr[0].find("z")->number() == 7);
+    before.blocked = blocked_form_read(root.find("blocked"));
+    after = before;
+    after.name = "darf nicht übernommen werden";
+    after.blocked = "#1: 1; 2; 0; 4";
+    const std::string before_bad = json_write(root);
+    changes = apply(before, after);
+    check("ungültige Zone verhindert Änderungen am ganzen F2-Formular",
+          !changes.changed && json_write(root) == before_bad);
+    after = before;
     after.blocked.clear();
-    changes = map_props_apply(root, before, after);
-    check("explizit geleerte Block-Zonen entfernen den Schlüssel",
-          changes.changed && root.find("blocked") == nullptr);
+    const BlockedEdit removing = blocked_form_prepare(root.find("blocked"), before.blocked, after.blocked);
+    changes = map_props_apply(root, before, after, removing);
+    check("explizit geleerte Block-Zonen zählen alle gelöschten Zeilen",
+          removing.ok && removing.removed == 2 && changes.changed && root.find("blocked") == nullptr);
 }
 
 } // namespace
@@ -819,6 +925,7 @@ int main(int argc, char** argv) {
     }
 
     encounter_form_tests(wurzel);
+    blocked_form_tests();
     map_props_form_tests();
     placement_form_tests();
 

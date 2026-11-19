@@ -34,16 +34,6 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
   `ev_apply_page_fields`, `db_apply`, `apply_property_fields`).
 - Gefunden in: Etappe 19o.1.
 
-### [Editor] Bearbeitete Block-Zonen verlieren Zusatzfelder — offen (Daten-Treue)
-- Symptom: Beim tatsächlichen Editieren der F2-Blockzonenliste werden
-  die Einträge aus `x,z,w,h` neu erzeugt; weitere Eigenschaften und sehr
-  genaue Koordinaten können dabei verloren gehen.
-- Analyse: 19m erhält die ursprüngliche Liste vollständig, solange das Feld
-  nicht geändert wird; bei expliziter Bearbeitung fehlt noch eine Zuordnung
-  der Textzeilen zu bestehenden JSON-Einträgen.
-- Betroffene Stellen: `src/editor/map_props_form.h`, `src/editor/editor_main.cpp`.
-- Gefunden in: Etappe 19m (ursprüngliches Feld aus 19k.2).
-
 ### [Engine] Kampf-Grundgerüst deckt noch nicht alles ab — offen (Feature-Fehlend)
 - Stand 19i: Rundenkampf mit Angriff/Item/Flucht, Sieg/Niederlage/Exp/
   Gold/Drops, Gegner als 3D-Kästen mit HP-Balken.
@@ -207,6 +197,16 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Etappe 19a.
 
 ## Erledigt
+### [Editor] Bearbeitete Block-Zonen verlieren Zusatzfelder — erledigt (19o.2)
+- F2 zeigt temporäre Zeilenmarken; beim Ändern oder Umordnen bleiben
+  Zusatzdaten und unberührte Koordinaten exakt bei der richtigen Zone.
+  Neue Zeilen ohne Nummer; Entfernen/Ersetzen nach Rückfrage. Fehlerhafte
+  Eingaben verhindern die gesamte F2-Übernahme; alte kaputte Einträge
+  können unverändert erhalten werden. F6 vor F2 schließen (Zeigerschutz).
+- Tests: `tools/json_test.cpp`; grafischer Windows-Live-Test steht aus.
+- Betroffene Stellen: `src/editor/blocked_form.h`, `map_props_form.h`,
+  `editor_main.cpp`.
+
 ### [Editor] Große JSON-Ganzzahlen beim Laden und Speichern gerundet — erledigt (19o.1)
 - `JsonValue` bewahrt Dezimalstellen beliebig großer Integer-Tokens,
   einschließlich negativer Zahlen und solcher außerhalb des double-Bereichs.

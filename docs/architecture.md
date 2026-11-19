@@ -1711,6 +1711,28 @@ Demo-Datenbank, JSON-Roundtrips und unberührte allgemeine Eigenschaften.
 CI baut/linkt den Win32-Editor, hat aber keine GPU/Fenster für einen echten
 grafischen Live-Test (siehe Backlog und Handoff).
 
+## Datentreue Block-Zonen im F2-Dialog (Etappe 19o.2)
+
+`blocked_form.h` zeigt für jeden vorhandenen Arrayeintrag eine temporäre
+Zeilenmarke `#1:` usw. (keine neue JSON-Eigenschaft). Umordnen und Ändern
+derselben markierten Zeile behalten Zusatzfelder und unberührte Zahlen samt
+Typ/Präzision. Neue Zeilen ohne Nummer benutzen `x; z; w; h` oder die alte
+`x,z,w,h`-Syntax; Semikolon erlaubt Dezimalkommas. Entfernte Nummern und
+ungültige ersetzte Altdaten melden sich vor dem Übernehmen zur Bestätigung.
+Doppelte/unbekannte Marken, nicht endliche Zahlen, Werte über 1.000.000 und
+nichtpositive neue Breiten/Höhen werden abgelehnt; ungültige alte Einzel-
+felder (`?`) und Nicht-Objekte lassen sich unverändert mitführen. Zu lange
+bzw. im Windows-Editfeld nicht darstellbare Listen werden gesperrt.
+
+`blocked_form_prepare` baut einen validierten Entwurf ohne Schreibzugriff.
+Erst nach allen Block-/Encounter-Prüfungen und Bestätigungen übernimmt
+`map_props_apply` die F2-Felder; bei Fehler bleibt die gesamte Karte
+unverändert. F6 muss vor F2 geschlossen sein, da eine Wurzeländerung seine
+Event-Zeiger ungültig machen könnte. `json_test.cpp` prüft u. a. gleiche
+Geometrien mit verschiedenen Zusatzdaten, Umordnung, Zahlenpräzision,
+Lösch-/Ersetzungswarnungen, fehlerhafte Daten und atomare Übernahme.
+Grafischer F2-Live-Test auf Windows steht weiterhin aus.
+
 ## Exakte JSON-Ganzzahlen (Etappe 19o.1)
 
 Ganzzahlige JSON-Tokens werden in `JsonValue` zusätzlich zur double-Näherung

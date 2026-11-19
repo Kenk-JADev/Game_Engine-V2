@@ -4066,6 +4066,7 @@ enum {
     IDLG_ENC_RELOAD  = 4120,
     IDLG_ENC_STATUS  = 4121,
     IDLG_ENC_DB      = 4122,   // Datenbank auch bei offenem F2 öffnen
+    IDLG_BLOCK_LABEL = 4123,
 };
 
 static HWND g_dlg = nullptr;
@@ -4475,6 +4476,12 @@ void apply_map_atmosphere_editor() {
 void open_map_props() {
     if (g.cur_map < 0 || g.cur_map >= static_cast<int>(g.map_files.size())) return;
     if (g.props_dlg) { SetForegroundWindow(g.props_dlg); return; }   // schon offen
+    if (event_editor_open()) {
+        MessageBoxW(g.main, L"Bitte zuerst den Event-Editor schließen.\n"
+                            L"Karten-Eigenschaften können sonst dessen Datenzeiger ungültig machen.",
+                    L"Karten-Eigenschaften", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
 
     g_enc_dlg = EncounterDlgState{};
     g_enc_dlg.syncing = true;
@@ -4568,10 +4575,10 @@ void open_map_props() {
                 16, 288, 414, 50, IDLG_NOTE);
     SendMessageW(note_edit, EM_SETLIMITTEXT, 0, 0);
 
-    // Etappe 19k.2: Block-Zonen (Passierbarkeit) - „x,z,w,h" pro Zeile,
-    // x/z = Mitte in Metern, w/h = Größe. Wirkt im Spiel als unsichtbare
-    // Wand über alle Höhen (Physik + RGSS passable?).
-    dlg_label(L"Block-Zonen (x,z,w,h pro Zeile)", 16, 346, 300);
+    // #Nummern bleiben beim Editieren und Umordnen an der jeweiligen Zone;
+    // neue Zeilen ohne Nummer anlegen. Zusatzdaten bleiben so zugeordnet.
+    dlg_control(L"Static", L"Block-Zonen (# behalten; neu: x,z,w,h)", 0,
+                16, 346, 414, 20, IDLG_BLOCK_LABEL);
     HWND blocked_edit = dlg_control(L"Edit", nullptr,
                 WS_BORDER | WS_VSCROLL | ES_LEFT | ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN,
                 16, 366, 414, 85, IDLG_BLOCKED);
@@ -4662,25 +4669,16 @@ void open_map_props() {
     const JsonValue* note = g.map_root.find("note");
     dlg_set_text(IDLG_NOTE, note ? note->str : "");
 
-    // Etappe 19k.2: Block-Zonen als Textzeilen „x,z,w,h" anzeigen.
+    // Unlesbare/lange Altwerte niemals durch das Windows-Editlimit
+    // abschneiden. Die Textform enthält für jede alte Zone eine Marke.
     {
-        std::string zeilen;
-        const JsonValue* bl = g.map_root.find("blocked");
-        if (bl && bl->is_arr()) {
-            char zb[96];
-            for (const JsonValue& b : bl->arr) {
-                if (!b.is_obj()) continue;
-                auto num = [&b](const char* k) {
-                    const JsonValue* v = b.find(k);
-                    return v ? v->number(0.0) : 0.0;
-                };
-                std::snprintf(zb, sizeof(zb), "%.10g,%.10g,%.10g,%.10g",
-                              num("x"), num("z"), num("w"), num("h"));
-                if (!zeilen.empty()) zeilen += "\r\n";
-                zeilen += zb;
-            }
-        }
+        const std::string zeilen = blocked_form_read(g.map_root.find("blocked"));
         dlg_set_text(IDLG_BLOCKED, zeilen);
+        if (dlg_text_long(IDLG_BLOCKED) != zeilen) {
+            EnableWindow(GetDlgItem(g_dlg, IDLG_BLOCKED), FALSE);
+            SetDlgItemTextW(g_dlg, IDLG_BLOCK_LABEL,
+                            L"Block-Zonen zu lang/nicht darstellbar — unverändert geschützt");
+        }
     }
 
     dlg_set_text(IDLG_ENC_STEPS, g_enc_dlg.before.steps);
@@ -4721,6 +4719,26 @@ bool apply_props_from_dlg() {
         SetFocus(GetDlgItem(dlg, enc.troops_error ? IDLG_ENC_TROOPS : IDLG_ENC_STEPS));
         return false;
     }
+    const MapPropsForm props = dlg_map_props_form();
+    const BlockedEdit blocked = blocked_form_prepare(g.map_root.find("blocked"),
+                                                     g_enc_dlg.props_before.blocked, props.blocked);
+    if (!blocked.ok) {
+        MessageBoxW(dlg, utf8_to_wide(blocked.error).c_str(), L"Block-Zonen",
+                    MB_OK | MB_ICONWARNING);
+        SetFocus(GetDlgItem(dlg, IDLG_BLOCKED));
+        return false;
+    }
+    if (blocked.changed && (blocked.removed || blocked.replaces_invalid_entries ||
+                            blocked.replaces_invalid_list)) {
+        std::wstring text = L"Beim Übernehmen gehen vorhandene Block-Zonen oder ungültige Altdaten verloren:";
+        if (blocked.removed) text += L"\r\n• Entfernte Einträge: " + std::to_wstring(blocked.removed);
+        if (blocked.replaces_invalid_entries)
+            text += L"\r\n• Ersetzte ungültige Einträge: " + std::to_wstring(blocked.replaces_invalid_entries);
+        if (blocked.replaces_invalid_list) text += L"\r\n• Ungültige alte Liste wird ersetzt";
+        text += L"\r\n\r\nZusatzdaten entfernter/ersetzter Einträge gehen verloren. Trotzdem übernehmen?";
+        if (MessageBoxW(dlg, text.c_str(), L"Block-Zonen",
+                        MB_YESNO | MB_DEFBUTTON2 | MB_ICONWARNING) != IDYES) return false;
+    }
     if (enc.replaces_invalid && MessageBoxW(dlg,
         L"Die vorhandenen Begegnungsdaten sind ungültig oder nicht vollständig "
         L"darstellbar. Das bearbeitete Feld bzw. Begegnungsobjekt wird ersetzt.\r\n\r\n"
@@ -4759,8 +4777,7 @@ bool apply_props_from_dlg() {
 
     {
         JsonValue& root = g.map_root;
-        const MapPropsForm props = dlg_map_props_form();
-        const MapPropsChanges general = map_props_apply(root, g_enc_dlg.props_before, props);
+        const MapPropsChanges general = map_props_apply(root, g_enc_dlg.props_before, props, blocked);
 
         // Fehlende/null/unbearbeitete Encounter-Felder bleiben unverändert;
         // beim Ändern behält enc auch unbekannte Eigenschaften und Duplikate.
