@@ -24,15 +24,21 @@ ROOT = File.expand_path('..', __dir__)
 # GitHub Actions schreibt Meldungen aus dem Protokoll in die Oberfläche
 # (Annotations) — dort sieht man den Grund, ohne das Log aufklappen zu müssen.
 # Ausserhalb von CI (GITHUB_ACTIONS nicht gesetzt) passiert nichts.
-def ci_text(text)
+# Eigenschaften (title=...) brauchen das volle Escaping, die Nachricht selbst
+# nur % / CR / LF — sonst stehen %2C und %3A sichtbar in der Meldung.
+def ci_wert(text)
   text.to_s.gsub('%', '%25').gsub("\r", '%0D').gsub("\n", '%0A')
           .gsub(':', '%3A').gsub(',', '%2C')
+end
+
+def ci_text(text)
+  text.to_s.gsub('%', '%25').gsub("\r", '%0D').gsub("\n", '%0A')
 end
 
 def ci_meldung(stufe, titel, text)
   return unless ENV['GITHUB_ACTIONS'] == 'true'
 
-  puts "::#{stufe} title=#{ci_text(titel)}::#{ci_text(text)}"
+  puts "::#{stufe} title=#{ci_wert(titel)}::#{ci_text(text)}"
 end
 
 # Aus der Testausgabe die wichtigen Zeilen holen (FAIL-Zeilen + letzte Zeile).
