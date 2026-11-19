@@ -1,13 +1,13 @@
 #encoding: utf-8
 # ============================================================================
-#  Prefabs: die Objekttypen, die im Editor gesetzt werden koennen.
+#  Prefabs: die Objekttypen, die im Editor gesetzt werden können.
 #
-#  Eine Quelle fuer Spiel und RuneEditor: die Definitionen liegen in
+#  Eine Quelle für Spiel und RuneEditor: die Definitionen liegen in
 #  game/data/prefabs.json (Export: ruby tools/export_prefabs.rb).
 #
-#  Ein Prefab ist eine Liste von Kaesten ("parts"), alle Koordinaten relativ
-#  zur Standflaeche des Objekts (y = 0 ist der Boden). `s` = Groesse,
-#  `d` = Versatz, `c` = Farbe, `solid` = Hindernis fuer den Spieler.
+#  Ein Prefab ist eine Liste von Kästen ("parts"), alle Koordinaten relativ
+#  zur Standfläche des Objekts (y = 0 ist der Boden). `s` = Grösse,
+#  `d` = Versatz, `c` = Farbe, `solid` = Hindernis für den Spieler.
 #
 #  Im Karten-JSON steht nur:  {"type":"haus","x":-10.0,"z":-8.0,"rot":0.0}
 # ============================================================================
@@ -43,8 +43,8 @@ module Prefabs
     (by_id(id) || { name: id.to_s })[:name]
   end
 
-  # Grober Bodenradius eines Prefabs (fuer Nahe-Loeschung im Editor):
-  # groesste horizontale Ausdehnung ueber alle Teile, Drehung ignoriert.
+  # Grober Bodenradius eines Prefabs (für Nahe-Löschung im Editor):
+  # grösste horizontale Ausdehnung über alle Teile, Drehung ignoriert.
   def self.radius_of(id)
     prefab = by_id(id)
     return 0.0 unless prefab
@@ -57,9 +57,9 @@ module Prefabs
     r
   end
 
-  # Baut die Kaesten eines Objekts in die Szene. Rueckgabe: die neuen Knoten.
-  #   base_y  = Gelaendehoehe an der Objektposition
-  #   prefix  = Namenspraefix, z.B. "ed_3"
+  # Baut die Kästen eines Objekts in die Szene. Rückgabe: die neuen Knoten.
+  #   base_y  = Geländehöhe an der Objektposition
+  #   prefix  = Namenspräfix, z.B. "ed_3"
   def self.instantiate(scene, obj, base_y, prefix)
     prefab = by_id(obj['type'])
     return [] unless prefab
@@ -82,8 +82,8 @@ module Prefabs
                       solid: part[:solid] ? true : false)
       node.texture = part[:tex] if part[:tex]
       node.tile    = part[:tile].to_f if part[:tile]
-      # Etappe 17f: Objekt-Material aus der Materialbase ueberschreibt das
-      # Prefab-Teil (alle Teile, inklusive Kachelgroesse des Materials).
+      # Etappe 17f: Objekt-Material aus der Materialbase überschreibt das
+      # Prefab-Teil (alle Teile, inklusive Kachelgrösse des Materials).
       unless override.empty?
         node.texture = override
         node.tile = Textures.tile_of(override)
@@ -93,7 +93,7 @@ module Prefabs
     end
 
     # Animationen: bislang nur der Kristall (Drehen + Schweben). Der Block
-    # bekommt die Ruhehoehe mit, damit er unabhaengig vom Standort funktioniert.
+    # bekommt die Ruhehöhe mit, damit er unabhängig vom Standort funktioniert.
     if prefab[:anim] == 'spin'
       rest_y = base_y + prefab[:parts][0][:d][1]
       nodes[0].on_update do |n, dt|

@@ -11,7 +11,7 @@ namespace {
 const wchar_t* kClassName = L"Rune3DWindowClass";
 
 // Etappe 18a: eigenes Fenster-Icon (blauer Kristall), prozedural gezeichnet -
-// kein Ressourcen-File, wie bei Texturen/Sounds. Groesse sz (16 oder 32).
+// kein Ressourcen-File, wie bei Texturen/Sounds. Grösse sz (16 oder 32).
 void draw_game_icon(HDC dc, int sz) {
     HBRUSH bg = CreateSolidBrush(RGB(18, 26, 38));
     RECT rc{ 0, 0, sz, sz };

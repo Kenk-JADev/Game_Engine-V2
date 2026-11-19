@@ -1,5 +1,5 @@
 // ============================================================================
-//  RuneEditor - eigenstaendiger Scene-Editor (Etappe 17, Variante B).
+//  RuneEditor - eigenständiger Scene-Editor (Etappe 17, Variante B).
 //
 //  Der Editor ist KEIN Teil der Game-Engine: Er ist ein eigenes Programm mit
 //  nativen Windows-Steuerelementen (Werkzeug-Palette, Objektliste,
@@ -8,15 +8,15 @@
 //  NPCs, Interpreter) existiert hier nicht und kann daher nichts kaputtmachen.
 //
 //  Eingebettetes CRuby wird nur einmalig beim Start benutzt, um die
-//  prozeduralen Texturen zu erzeugen (game/editor/boot.rb) — danach laeuft
+//  prozeduralen Texturen zu erzeugen (game/editor/boot.rb) — danach läuft
 //  alles in C++.
 //
 //  Layout:
 //    +--------------------------------------------------------------+
-//    | Menueleiste (Datei / Karte / Ansicht / Hilfe)                |
+//    | Menüleiste (Datei / Karte / Ansicht / Hilfe)                |
 //    | Werkzeuge |     3D-Viewport             | Objekte            |
 //    | (Prefabs) |  freie Kamera, Klicken =    | (Liste)            |
-//    | Buttons   |  Setzen/Auswaehlen          | Eigenschaften      |
+//    | Buttons   |  Setzen/Auswählen          | Eigenschaften      |
 //    |--------------------------------------------------------------|
 //    | Statusleiste                                                 |
 //    +--------------------------------------------------------------+
@@ -68,7 +68,7 @@ enum {
     ID_MENU_PROJECT   = 114,   // Etappe 18b: Projekt wechseln...
     ID_MENU_TILESET   = 115,   // Etappe 18c: Tileset-Editor...
     ID_MENU_PROBLEMS  = 116,   // Etappe 18h: Probleme-Dialog (Backlog)
-    ID_MENU_MAP_BASE  = 200,   // dynamische Karten-Eintraege danach
+    ID_MENU_MAP_BASE  = 200,   // dynamische Karten-Einträge danach
 
     IDC_PREFAB_LIST   = 3001,
     IDC_BTN_PLACE     = 3002,
@@ -87,7 +87,7 @@ enum {
     IDC_BTN_APPLY     = 3014,
     IDC_VIEWPORT      = 3015,
     IDC_STATUSBAR     = 3016,
-    // Etappe 18j: Timer, der waehrend des interaktiven Resizes rendert.
+    // Etappe 18j: Timer, der während des interaktiven Resizes rendert.
     IDT_RESIZE        = 1,
     IDC_LBL_TOOLS     = 3017,
     IDC_LBL_OBJECTS   = 3018,
@@ -101,9 +101,9 @@ enum {
     // Etappe 18k: Kartenbaum links oben (RPG-Maker-XP-Kartenliste).
     IDC_MAPTREE       = 3027,
     IDC_LBL_MAPS      = 3028,
-    // Etappe 18l: Hoehen-Malwerkzeug (Berge/Senken)
+    // Etappe 18l: Höhen-Malwerkzeug (Berge/Senken)
     IDC_BTN_HEIGHT    = 3029,
-    // Kontextmenue des Kartenbaums (postet als WM_COMMAND an main_proc)
+    // Kontextmenü des Kartenbaums (postet als WM_COMMAND an main_proc)
     IDM_TREE_PROPS    = 3110,
     IDM_TREE_NEW      = 3111,
     IDM_TREE_RENAME   = 3112,
@@ -112,8 +112,8 @@ enum {
 
 // ------------------------------------------------------------ Prefabs
 struct PrefabPart {
-    math::Vec3 d;          // Versatz relativ zur Standflaeche
-    math::Vec3 s;          // Groesse
+    math::Vec3 d;          // Versatz relativ zur Standfläche
+    math::Vec3 s;          // Grösse
     uint32_t   c = 0xFFFFFF;
     int        tex = -1;   // Index im Renderer (nach Texturen-Boot)
     float      tile = 0.0f;
@@ -123,12 +123,12 @@ struct Prefab {
     std::string id;
     std::string name;
     std::vector<PrefabPart> parts;
-    float radius = 0.0f;   // grober Bodenradius (Nahe-Loeschung, Anzeige)
+    float radius = 0.0f;   // grober Bodenradius (Nahe-Löschung, Anzeige)
 };
 
 // ------------------------------------------------------------ Materialien (17f)
 // Importierte Grafiken liegen als rohe RGBA-Datei unter data/textures/, die
-// Metadaten (Name, Groesse, Kachel, Quelle) in data/textures.json.
+// Metadaten (Name, Grösse, Kachel, Quelle) in data/textures.json.
 struct MaterialInfo {
     std::string name;
     std::string file;      // Dateiname in data/textures/
@@ -145,7 +145,7 @@ struct MaterialInfo {
 //  Symbol (main.cpp ruft dieselbe Idee mit blauem Kristall).
 // ------------------------------------------------------------
 
-// Zeichnet das Editor-Icon (Runenstein) in ein HDC der Groesse sz.
+// Zeichnet das Editor-Icon (Runenstein) in ein HDC der Grösse sz.
 void draw_icon_editor(HDC dc, int sz) {
     HBRUSH bg = CreateSolidBrush(RGB(24, 32, 46));
     RECT rc{ 0, 0, sz, sz };
@@ -170,18 +170,18 @@ void draw_icon_editor(HDC dc, int sz) {
     const int cy = sz / 2;
     MoveToEx(dc, cx - sz / 5, cy + sz / 4, nullptr);
     LineTo(dc, cx - sz / 5, cy - sz / 4);          // Schaft
-    LineTo(dc, cx + sz / 6, cy - sz / 12);         // Schraege oben
+    LineTo(dc, cx + sz / 6, cy - sz / 12);         // Schräge oben
     MoveToEx(dc, cx - sz / 5, cy, nullptr);
     LineTo(dc, cx + sz / 6, cy + sz / 4);          // Bein
     SelectObject(dc, orr);
     DeleteObject(rune);
 }
 
-// Ein Icon einer Groesse aus einer Zeichenfunktion erzeugen.
+// Ein Icon einer Grösse aus einer Zeichenfunktion erzeugen.
 // 18a-Fix: CreateIconIndirect verlangt eine ECHT monochrome Maske -
 // CreateCompatibleBitmap erzeugt ein Farb-Bitmap, das als Maske
 // undefiniert ist und den Titelzeichnungs-Pfad zum Absturz bringen
-// kann. Zusaetzlich wird das Farb-Bitmap als 32bpp-DIB mit Alpha=255
+// kann. Zusätzlich wird das Farb-Bitmap als 32bpp-DIB mit Alpha=255
 // angelegt: DWM wertet uninitialisierte Alpha-Bytes als Transparenz.
 HICON make_icon(void (*draw)(HDC, int), int sz) {
     HDC screen = GetDC(nullptr);
@@ -246,14 +246,14 @@ struct Editor {
     HWND ed_tex = nullptr;
     HFONT font = nullptr;
     HMENU menu = nullptr;
-    HMENU menu_map = nullptr;      // Karten-Untermenue (dynamisch)
+    HMENU menu_map = nullptr;      // Karten-Untermenü (dynamisch)
     HWND   props_dlg = nullptr;    // offener Dialog (moduslos)
     int    dlg_mode = 0;           // 1 = Eigenschaften, 2 = Neue Karte
 
     gfx::Renderer*  renderer = nullptr;
     world::Terrain* terrain = nullptr;
 
-    std::string root;                 // Engine-Wurzel (uebergeordnetes Verz.)
+    std::string root;                 // Engine-Wurzel (übergeordnetes Verz.)
     std::string project_dir;          // z.B. projekte/dorf
     std::string project_name;
 
@@ -272,12 +272,12 @@ struct Editor {
     bool move_mode = false;        // Verschieben-Werkzeug (Drag im Viewport)
     bool paint_mode = false;       // Etappe 18e: Boden-Malwerkzeug (Splats)
     bool height_mode = false;      // Etappe 18l: Berge/Senken malen
-    float paint_size = 8.0f;       // Brush-Groesse in Metern (Kantenlaenge)
+    float paint_size = 8.0f;       // Brush-Grösse in Metern (Kantenlänge)
     std::string paint_tex = "weg"; // Textur des Pinsels
     bool dragging = false;         // gerade Objekt per Maus verschieben
     int  obj_drag = -1;            // Index des gezogenen Objekts
-    float drag_y = 0.0f;           // Hoehenebene des gezogenen Objekts
-    std::vector<std::string> undo_stack;   // JSON-Schnappschuesse (vor Aktion)
+    float drag_y = 0.0f;           // Höhenebene des gezogenen Objekts
+    std::vector<std::string> undo_stack;   // JSON-Schnappschüsse (vor Aktion)
     std::vector<std::string> redo_stack;
     float grid = 1.0f;
     bool dirty = false;
@@ -289,7 +289,7 @@ struct Editor {
     bool  look_drag = false;
     POINT last_mouse{};
 
-    // Maus im Viewport (Client-Koordinaten) + Terrain-Treffer fuer Status/Geist
+    // Maus im Viewport (Client-Koordinaten) + Terrain-Treffer für Status/Geist
     float mouse_x = 0.0f, mouse_y = 0.0f;
     bool  hover_valid = false;
     math::Vec3 hover_pos{};
@@ -301,7 +301,7 @@ struct Editor {
 
 static Editor g;
 
-// Vorwaertsdeklarationen (Definitionen weiter unten)
+// Vorwärtsdeklarationen (Definitionen weiter unten)
 void apply_map_atmosphere_editor();
 void rebuild_map_menu();
 void open_map_props();
@@ -332,13 +332,13 @@ void maptree_select_current();
 void open_tileset_dialog();
 uint32_t parse_hex_color(const std::string& s);
 
-// Etappe 18d: Splat-Boden (Boden-Flaechen pro Karte).
+// Etappe 18d: Splat-Boden (Boden-Flächen pro Karte).
 std::vector<world::SplatRect> read_splats(const JsonValue* t);
 void regen_terrain();
 void json_remove_key(JsonValue& v, const std::string& key);
 bool splat_edit(float cx, float cz, float sw, float sh,
                const std::string& tex, bool erase, bool snap);   // Etappe 18e
-// Etappe 18l: Berge/Senken malen (Hoehen-Pinsel im Karten-JSON).
+// Etappe 18l: Berge/Senken malen (Höhen-Pinsel im Karten-JSON).
 float height_step();
 int  height_edit(float cx, float cz, bool sink);
 
@@ -464,7 +464,7 @@ void load_prefabs() {
                 }
                 if (const JsonValue* ti = q.find("tile")) part.tile = static_cast<float>(ti->number());
                 pre.parts.push_back(part);
-                // Bodenradius: groesste horizontale Ausdehnung (wie Prefabs.radius_of)
+                // Bodenradius: grösste horizontale Ausdehnung (wie Prefabs.radius_of)
                 const float ext = std::sqrt(part.d.x * part.d.x + part.d.z * part.d.z) +
                                   std::max(part.s.x, part.s.z) * 0.5f;
                 pre.radius = std::max(pre.radius, ext);
@@ -548,7 +548,7 @@ void mat_register(const MaterialInfo& m) {
     std::string bytes;
     if (!read_file(mat_dir() + "\\" + m.file, bytes)) return;
     if (static_cast<int>(bytes.size()) != m.w * m.h * 4) {
-        core::log_warn("Textur '" + m.name + "': Groesse passt nicht zur Datei");
+        core::log_warn("Textur '" + m.name + "': Grösse passt nicht zur Datei");
         return;
     }
     g.renderer->add_texture(m.name, m.w, m.h,
@@ -565,7 +565,7 @@ void mat_load() {
     try {
         root = json_parse(text);
     } catch (const std::exception&) {
-        core::log_error("textures.json: ungueltiges JSON");
+        core::log_error("textures.json: ungültiges JSON");
         return;
     }
     const JsonValue* arr = root.is_arr() ? &root : root.find("textures");
@@ -685,7 +685,7 @@ bool mat_import_file(const std::string& src, std::string& out_name) {
     return true;
 }
 
-// Verfuegbare Materialnamen (Prefab-Texturen + importierte), sortiert.
+// Verfügbare Materialnamen (Prefab-Texturen + importierte), sortiert.
 std::vector<std::string> mat_all_names() {
     std::vector<std::string> names = g.tex_names;
     if (std::find(names.begin(), names.end(), "gras") == names.end()) names.push_back("gras");
@@ -711,7 +711,7 @@ const MaterialInfo* mat_find(const std::string& name) {
 // ============================================================================
 //  Etappe 18h: Problem-Backlog — der Editor sammelt selbst gefundene Fehler
 //  der Kartendaten (unbekannte Befehle/Trigger, kaputte Seiten, fehlende
-//  Materialien) und zeigt sie im Probleme-Dialog (F10) an. Der Scan laeuft
+//  Materialien) und zeigt sie im Probleme-Dialog (F10) an. Der Scan läuft
 //  automatisch nach jedem Kartenladen und per Knopf im Dialog.
 // ============================================================================
 enum { IDPB_LIST = 5301, IDPB_SCAN = 5302, IDPB_CLOSE = 5303, IDPB_L_COUNT = 5304 };
@@ -750,7 +750,7 @@ const char* const ISSUE_CMD_TYPES[] = {
 const int ISSUE_CMD_TYPE_COUNT =
     static_cast<int>(sizeof(ISSUE_CMD_TYPES) / sizeof(ISSUE_CMD_TYPES[0]));
 
-// Befehlsliste rekursiv pruefen (inkl. Dann-/Sonst-/Choices-Zweige).
+// Befehlsliste rekursiv prüfen (inkl. Dann-/Sonst-/Choices-Zweige).
 static void issues_scan_commands(const JsonValue& list, const std::string& where) {
     if (!list.is_arr()) return;
     for (int i = 0; i < static_cast<int>(list.arr.size()); ++i) {
@@ -791,7 +791,7 @@ static void issues_scan_commands(const JsonValue& list, const std::string& where
     }
 }
 
-// Die geladene Karte komplett pruefen und den Backlog neu fuellen.
+// Die geladene Karte komplett prüfen und den Backlog neu füllen.
 void issues_scan_map() {
     issue_clear();
     if (g.cur_map < 0 || !g.map_root.is_obj()) return;
@@ -965,7 +965,7 @@ void open_problems_dialog() {
 
 bool load_map(int index) {
     if (index < 0 || index >= static_cast<int>(g.map_files.size())) return false;
-    close_event_editor();   // Zeiger in map_root werden ungueltig
+    close_event_editor();   // Zeiger in map_root werden ungültig
     const std::string path = g.project_dir + "\\maps\\" + g.map_files[index];
     std::string text;
     if (!read_file(path, text)) {
@@ -976,8 +976,8 @@ bool load_map(int index) {
     try {
         g.map_root = json_parse(text);
     } catch (const std::exception& e) {
-        issue_report(2, "Karte", std::string("ungueltiges JSON: ") + e.what());
-        core::log_error(std::string("Karte ungueltig: ") + e.what());
+        issue_report(2, "Karte", std::string("ungültiges JSON: ") + e.what());
+        core::log_error(std::string("Karte ungültig: ") + e.what());
         return false;
     }
     g.objects = g.map_root.find("objects");
@@ -993,7 +993,7 @@ bool load_map(int index) {
     // Etappe 18d: regen_terrain behandelt Ein-Textur- und Splat-Boden.
     regen_terrain();
 
-    // Kamera auf eine gute Uebersichtsposition (Blick Richtung Kartenmitte).
+    // Kamera auf eine gute Übersichtsposition (Blick Richtung Kartenmitte).
     const float span = std::max(g.terrain->width(), g.terrain->height());
     g.cam_pos = math::Vec3{ 0.0f, span * 0.10f + 8.0f, span * 0.18f };
     g.cam_yaw = math::PI;
@@ -1009,7 +1009,7 @@ bool load_map(int index) {
     std::snprintf(buf, sizeof(buf), "Karte geladen: %s (%d Objekte)", name.c_str(),
                   static_cast<int>(g.objects->arr.size()));
     core::log_info(buf);
-    issues_scan_map();   // Etappe 18h: Karte automatisch pruefen
+    issues_scan_map();   // Etappe 18h: Karte automatisch prüfen
     maptree_fill();      // Etappe 18k: Baum (Name + Auswahl) synchronisieren
     return true;
 }
@@ -1030,15 +1030,15 @@ bool save_map() {
 // ----------------------------------------------------------------------------
 //  Etappe 18c: Tileset-Editor (modusloses Fenster)
 //
-//  Zeigt alle verfuegbaren Boden-/Kachel-Texturen (prozedurale 8 + Projekt-
-//  Importe) als Vorschau, setzt Boden-Textur + Kachelgroesse der aktuellen
+//  Zeigt alle verfügbaren Boden-/Kachel-Texturen (prozedurale 8 + Projekt-
+//  Importe) als Vorschau, setzt Boden-Textur + Kachelgrösse der aktuellen
 //  Karte (terrain.texture / terrain.tile im Karten-JSON, live im Viewport)
 //  und erzeugt eigene Kacheln (Farbe + Muster) als Projekt-Texturen.
 // ----------------------------------------------------------------------------
 enum {
     IDTS_LIST   = 4301,   // Liste aller Texturen
-    IDTS_TILE   = 4303,   // Kachelgroesse (m) Edit
-    IDTS_APPLY  = 4304,   // "Uebernehmen" (Karte + Viewport)
+    IDTS_TILE   = 4303,   // Kachelgrösse (m) Edit
+    IDTS_APPLY  = 4304,   // "Übernehmen" (Karte + Viewport)
     IDTS_SAVE   = 4305,   // "Als Projekt-Textur speichern"
     IDTS_EXPORT = 4306,   // "Kachel erzeugen" (Farbe + Muster -> neue Textur)
     IDTS_COLR   = 4307,   // Basisfarbe (hex)
@@ -1047,22 +1047,22 @@ enum {
     IDTS_NAME   = 4310,   // Name der neuen Kachel
     IDTS_CLOSE  = 4311,
     IDTS_PREVIEW = 4312,  // Vorschau (owner-drawn)
-    IDTS_SPX    = 4313,   // Etappe 18d: Flaeche X (m)
-    IDTS_SPZ    = 4314,   // Flaeche Z (m)
-    IDTS_SPW    = 4315,   // Flaeche Breite (m)
-    IDTS_SPH    = 4316,   // Flaeche Tiefe (m)
-    IDTS_SPADD  = 4317,   // "Flaeche hinzufuegen"
-    IDTS_SPDEL  = 4318,   // "Flaeche entfernen"
-    IDTS_SPLIST = 4319,   // Liste der Flaechen
+    IDTS_SPX    = 4313,   // Etappe 18d: Fläche X (m)
+    IDTS_SPZ    = 4314,   // Fläche Z (m)
+    IDTS_SPW    = 4315,   // Fläche Breite (m)
+    IDTS_SPH    = 4316,   // Fläche Tiefe (m)
+    IDTS_SPADD  = 4317,   // "Fläche hinzufügen"
+    IDTS_SPDEL  = 4318,   // "Fläche entfernen"
+    IDTS_SPLIST = 4319,   // Liste der Flächen
 };
 
 struct TileDlgState {
     HWND win = nullptr;
     HWND list = nullptr;
     HWND preview = nullptr;
-    HWND splist = nullptr;           // Etappe 18d: Flaechen-Liste
+    HWND splist = nullptr;           // Etappe 18d: Flächen-Liste
     std::vector<std::string> names;   // Texturen in Listenreihenfolge
-    std::string sel;                  // aktuell gewaehlte Textur
+    std::string sel;                  // aktuell gewählte Textur
 };
 static TileDlgState g_ts;
 
@@ -1074,7 +1074,7 @@ std::string ts_text(int id) {
 }
 
 // Eigene Kachel prozedural erzeugen (Basisfarbe + Zweitfarbe + Muster),
-// 64x64 RGBA - gleiche Groesse wie die Ruby-Texturen.
+// 64x64 RGBA - gleiche Grösse wie die Ruby-Texturen.
 std::vector<uint8_t> make_pattern_tile(const std::string& base_hex,
                                        const std::string& pat,
                                        const std::string& sec_hex) {
@@ -1162,7 +1162,7 @@ void draw_tileset_preview(HWND hwnd) {
     EndPaint(hwnd, &ps);
 }
 
-// Tileset-Liste neu fuellen (nach Kachelerzeugung).
+// Tileset-Liste neu füllen (nach Kachelerzeugung).
 void ts_fill_list() {
     SendMessageW(g_ts.list, LB_RESETCONTENT, 0, 0);
     g_ts.names = mat_all_names();
@@ -1180,7 +1180,7 @@ void ts_fill_list() {
     }
 }
 
-// Etappe 18d: Splat-Flaechen-Liste im Tileset-Dialog neu fuellen (Format:
+// Etappe 18d: Splat-Flächen-Liste im Tileset-Dialog neu füllen (Format:
 // "textur @ (x, z) 30x12"). Auswahl merken.
 void ts_fill_splats() {
     const int sel_before = static_cast<int>(
@@ -1212,7 +1212,7 @@ LRESULT CALLBACK tileset_dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 const int sel = static_cast<int>(SendMessageW(g_ts.list, LB_GETCURSEL, 0, 0));
                 if (sel >= 0 && sel < static_cast<int>(g_ts.names.size())) {
                     g_ts.sel = g_ts.names[sel];
-                    // Etappe 18e: im Mal-Modus die Pinseltextur mitfuehren.
+                    // Etappe 18e: im Mal-Modus die Pinseltextur mitführen.
                     if (g.paint_mode) {
                         g.paint_tex = g_ts.sel;
                         status_mode((L"Boden malen: " + utf8_to_wide(g.paint_tex) +
@@ -1238,17 +1238,17 @@ LRESULT CALLBACK tileset_dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                     status_mode(L"Boden übernommen");
                     core::log_info("Boden umgestellt: " + g_ts.sel +
                                    " (Kachel " + std::to_string(tile) + " m, " +
-                                   std::to_string(read_splats(ter).size()) + " Flaeche(n))");
+                                   std::to_string(read_splats(ter).size()) + " Fläche(n))");
                 } else {
-                    core::log_warn("Tileset: keine Textur gewaehlt oder keine Karte offen");
+                    core::log_warn("Tileset: keine Textur gewählt oder keine Karte offen");
                     status_mode(L"Keine Textur gewählt");
                 }
                 return 0;
             }
-            // Etappe 18d: Flaeche mit der gewaehlten Textur hinzufuegen.
+            // Etappe 18d: Fläche mit der gewählten Textur hinzufügen.
             if (id == IDTS_SPADD) {
                 if (g_ts.sel.empty() || g.cur_map < 0) {
-                    core::log_warn("Tileset: Flaeche braucht eine gewaehlte Textur");
+                    core::log_warn("Tileset: Fläche braucht eine gewählte Textur");
                     status_mode(L"Erst Textur wählen");
                     return 0;
                 }
@@ -1257,7 +1257,7 @@ LRESULT CALLBACK tileset_dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 const float w = static_cast<float>(std::atof(ts_text(IDTS_SPW).c_str()));
                 const float h = static_cast<float>(std::atof(ts_text(IDTS_SPH).c_str()));
                 if (w <= 0.0f || h <= 0.0f) {
-                    core::log_warn("Tileset: Flaeche braucht Breite/Tiefe > 0");
+                    core::log_warn("Tileset: Fläche braucht Breite/Tiefe > 0");
                     status_mode(L"Breite/Tiefe ungültig");
                     return 0;
                 }
@@ -1277,18 +1277,18 @@ LRESULT CALLBACK tileset_dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 g.dirty = true;
                 update_title();
                 status_mode((L"Fläche: " + utf8_to_wide(g_ts.sel)).c_str());
-                core::log_info("Tileset: Flaeche hinzugefuegt " + g_ts.sel +
+                core::log_info("Tileset: Fläche hinzugefügt " + g_ts.sel +
                                " @ (" + std::to_string(x) + ", " + std::to_string(z) + ") " +
                                std::to_string(w) + "x" + std::to_string(h));
                 return 0;
             }
-            // Etappe 18d: markierte Flaeche entfernen.
+            // Etappe 18d: markierte Fläche entfernen.
             if (id == IDTS_SPDEL) {
                 const int sel = static_cast<int>(SendMessageW(g_ts.splist, LB_GETCURSEL, 0, 0));
                 JsonValue* ter = g.map_root.find("terrain");
                 JsonValue* arr = ter ? ter->find("splats") : nullptr;
                 if (sel < 0 || !arr || !arr->is_arr() || sel >= static_cast<int>(arr->arr.size())) {
-                    core::log_warn("Tileset: keine Flaeche markiert");
+                    core::log_warn("Tileset: keine Fläche markiert");
                     status_mode(L"Keine Fläche markiert");
                     return 0;
                 }
@@ -1301,7 +1301,7 @@ LRESULT CALLBACK tileset_dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 g.dirty = true;
                 update_title();
                 status_mode(L"Fläche entfernt");
-                core::log_info("Tileset: Flaeche entfernt (Index " + std::to_string(sel) + ")");
+                core::log_info("Tileset: Fläche entfernt (Index " + std::to_string(sel) + ")");
                 return 0;
             }
             if (id == IDTS_EXPORT) {
@@ -1327,7 +1327,7 @@ LRESULT CALLBACK tileset_dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             }
             if (id == IDTS_SAVE) {
                 if (g_ts.sel.empty()) {
-                    core::log_warn("Tileset: keine Textur gewaehlt");
+                    core::log_warn("Tileset: keine Textur gewählt");
                     return 0;
                 }
                 g_ts.sel = ts_text(IDTS_NAME).empty() ? g_ts.sel : ts_text(IDTS_NAME);
@@ -1423,7 +1423,7 @@ void open_tileset_dialog() {
         SendMessageW(g_ts.list, LB_ADDSTRING, 0,
                      reinterpret_cast<LPARAM>(utf8_to_wide(n).c_str()));
     }
-    // Aktuell in der Karte eingestellte Boden-Textur vorwaehlen.
+    // Aktuell in der Karte eingestellte Boden-Textur vorwählen.
     {
         const JsonValue* ter = g.map_root.find("terrain");
         const JsonValue* tx = ter ? ter->find("texture") : nullptr;
@@ -1439,9 +1439,9 @@ void open_tileset_dialog() {
         }
     }
 
-    // Rechte Spalte: Vorschau + Kachelgroesse + Eigene Kachel + Buttons.
+    // Rechte Spalte: Vorschau + Kachelgrösse + Eigene Kachel + Buttons.
     // Vorschau als eigenes Fenster der Tileset-Klasse (WM_PAINT landet so
-    // in unserer Proc; ein Static-Kind wuerde selbst zeichnen).
+    // in unserer Proc; ein Static-Kind würde selbst zeichnen).
     g_ts.preview = CreateWindowExW(0, L"RuneEditorTileDlg", nullptr,
                                    WS_CHILD | WS_VISIBLE,
                                    205, 36, 180, 180, g_ts.win,
@@ -1469,7 +1469,7 @@ void open_tileset_dialog() {
     ts(L"Button", L"Übernehmen (Karte)", BS_DEFPUSHBUTTON, 205, 410, 150, 28, IDTS_APPLY);
     ts(L"Button", L"Schließen", BS_PUSHBUTTON, 375, 410, 100, 28, IDTS_CLOSE);
 
-    // Etappe 18d: rechte Spalte - Boden-Flaechen (Splats).
+    // Etappe 18d: rechte Spalte - Boden-Flächen (Splats).
     ts(L"Static", L"Boden-Flächen:", 0, 540, 12, 110, 20, 0);
     g_ts.splist = ts(L"ListBox", nullptr,
                      LBS_NOTIFY | WS_BORDER | LBS_HASSTRINGS | WS_VSCROLL,
@@ -1489,17 +1489,17 @@ void open_tileset_dialog() {
     ts(L"Button", L"Entfernen", BS_PUSHBUTTON, 540, 394, 120, 26, IDTS_SPDEL);
 
     ShowWindow(g_ts.win, SW_SHOW);
-    core::log_info("Tileset-Editor geoeffnet (" +
+    core::log_info("Tileset-Editor geöffnet (" +
                    std::to_string(g_ts.names.size()) + " Texturen)");
 }
 
 // ------------------------------------------------------------
 //  Etappe 18b: Projekt-Auswahl
 //
-//  Der Editor war bisher fest auf "dorf" eingestellt. Jetzt: Menue
+//  Der Editor war bisher fest auf "dorf" eingestellt. Jetzt: Menü
 //  "Projekt wechseln..." (Dialog mit Liste + Neuanlegen), CLI-Schalter
 //  --project <name> und Merker log/last_project.txt (beim Start
-//  automatisch laden, wenn vorhanden und gueltig).
+//  automatisch laden, wenn vorhanden und gültig).
 // ------------------------------------------------------------
 
 // Alle Projekte unter <root>/projekte/ (Verzeichnisse mit data/system.json).
@@ -1523,13 +1523,13 @@ std::vector<std::string> scan_projects() {
     return names;
 }
 
-// Neues Projekt anlegen: Verzeichnis-Geruest + system.json + Startkarte.
+// Neues Projekt anlegen: Verzeichnis-Gerüst + system.json + Startkarte.
 bool create_project(const std::string& name) {
     for (char c : name) {
         const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
                         (c >= '0' && c <= '9') || c == '_';
         if (!ok) {
-            core::log_error("Projektname ungueltig (nur Buchstaben/Zahlen/_): " + name);
+            core::log_error("Projektname ungültig (nur Buchstaben/Zahlen/_): " + name);
             return false;
         }
     }
@@ -1603,14 +1603,14 @@ bool create_project(const std::string& name) {
     return true;
 }
 
-// Auf ein Projekt umschalten (Karten/Texturen/Menues/Listen komplett neu).
+// Auf ein Projekt umschalten (Karten/Texturen/Menüs/Listen komplett neu).
 bool switch_project(const std::string& name) {
     const std::string data = g.root + "\\projekte\\" + name + "\\data";
     if (GetFileAttributesA((data + "\\system.json").c_str()) == INVALID_FILE_ATTRIBUTES) {
         core::log_error("Projekt nicht gefunden: " + name);
         return false;
     }
-    // Offene Dialoge schliessen (Zeiger werden ungueltig).
+    // Offene Dialoge schliessen (Zeiger werden ungültig).
     if (g.props_dlg) { DestroyWindow(g.props_dlg); g.props_dlg = nullptr; }
     close_event_editor();
 
@@ -1642,7 +1642,7 @@ bool switch_project(const std::string& name) {
     sync_property_fields();
     update_title();
 
-    // Merker fuer den naechsten Start schreiben.
+    // Merker für den nächsten Start schreiben.
     write_file(g.root + "\\log\\last_project.txt", name);
     core::log_info("Projekt gewechselt: " + name + " (" +
                    std::to_string(g.map_files.size()) + " Karten)");
@@ -1720,7 +1720,7 @@ LRESULT CALLBACK project_dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
 }
 
 // Kleine Helfer: Controls direkt auf dem Projekt-Dialog anlegen -
-// unabhaengig vom globalen g_dlg (das gehoert zu einem evtl. offenen
+// unabhängig vom globalen g_dlg (das gehört zu einem evtl. offenen
 // Karten-Dialog).
 HWND prj_control(const wchar_t* cls, const wchar_t* text, DWORD style,
                  int x, int y, int w, int h, int id) {
@@ -1808,7 +1808,7 @@ void scan_maps() {
     FindClose(h);
 }
 
-// Karten-Untermenue neu aufbauen (nach Anlegen/Loeschen/Laden).
+// Karten-Untermenü neu aufbauen (nach Anlegen/Löschen/Laden).
 void rebuild_map_menu() {
     if (!g.menu_map) return;
     while (DeleteMenu(g.menu_map, ID_MENU_MAP_BASE, MF_BYCOMMAND)) {}
@@ -1834,16 +1834,16 @@ void rebuild_map_menu() {
                                ID_MENU_MAP_BASE + g.cur_map, MF_BYCOMMAND);
         }
     }
-    maptree_fill();   // Etappe 18k: Baum parallel zum Menue pflegen
+    maptree_fill();   // Etappe 18k: Baum parallel zum Menü pflegen
 }
 
 // ----------------------------------------------------------------------------
 //  Etappe 18k: Kartenbaum (RPG-Maker-XP-Kartenliste)
 //
 //  Links oben im Hauptfenster: ein TreeView mit dem Projektnamen als Wurzel
-//  und allen Karten als Eintraege (Item-LPARAM = Karten-Index in map_files).
-//  Doppelklick oeffnet die Eigenschaften, Rechtsklick gibt ein Kontextmenue
-//  (Eigenschaften / Umbenennen / Neue Karte / Loeschen). Umbenennen laeuft
+//  und allen Karten als Einträge (Item-LPARAM = Karten-Index in map_files).
+//  Doppelklick öffnet die Eigenschaften, Rechtsklick gibt ein Kontextmenü
+//  (Eigenschaften / Umbenennen / Neue Karte / Löschen). Umbenennen läuft
 //  in-place (TVS_EDITLABELS, wie im RPG Maker XP); das Label-Edit deserialisiert
 //  NICHT ins Karten-JSON - beim Wechsel wird gespeichert wie gehabt (Strg+S).
 // ----------------------------------------------------------------------------
@@ -1851,7 +1851,7 @@ void maptree_fill() {
     if (!g.map_tree) return;
     SendMessageW(g.map_tree, TVM_DELETEITEM, 0,
                  reinterpret_cast<LPARAM>(TVI_ROOT));
-    // Wurzel: Projektname (Karten haengen darunter, XP-Stil).
+    // Wurzel: Projektname (Karten hängen darunter, XP-Stil).
     TVINSERTSTRUCTW ins{};
     ins.hParent = TVI_ROOT;
     ins.item.mask = TVIF_TEXT | TVIF_CHILDREN;
@@ -1874,7 +1874,7 @@ void maptree_fill() {
     maptree_select_current();
 }
 
-// Markiert die aktuelle Karte im Baum (ohne Ladefehler auszuloesen).
+// Markiert die aktuelle Karte im Baum (ohne Ladefehler auszulösen).
 void maptree_select_current() {
     if (!g.map_tree) return;
     if (g.cur_map < 0) { TreeView_SelectItem(g.map_tree, nullptr); return; }
@@ -1908,7 +1908,7 @@ int maptree_selected() {
 }
 
 // Umbenennen: Namen der Karte in map_root + Liste aktualisieren
-// (gespeichert wie ueblich per Strg+S, g.dirty markiert die Karte).
+// (gespeichert wie üblich per Strg+S, g.dirty markiert die Karte).
 void maptree_apply_rename(int index, const std::string& new_name) {
     if (index < 0 || index >= static_cast<int>(g.map_files.size())) return;
     if (new_name.empty()) return;
@@ -1957,19 +1957,23 @@ void set_obj_number(int i, const char* key, float value) {
 
 void sync_object_list() {
     if (!g.list_objs || !g.objects) return;
-    SendMessageA(g.list_objs, LB_RESETCONTENT, 0, 0);
-    char buf[128];
+    // Etappe 19b: durchgehend W-Varianten - die Namen kommen als UTF-8 aus
+    // dem Karten-JSON und dürfen nicht durch die ANSI-Codepage (CP1252)
+    // laufen, sonst wird "Hütte" in der Liste zu "HÃ¼tte".
+    SendMessageW(g.list_objs, LB_RESETCONTENT, 0, 0);
+    wchar_t buf[160];
     for (int i = 0; i < static_cast<int>(g.objects->arr.size()); ++i) {
         const std::string type = obj_type(i);
         std::string name = type;
         if (const Prefab* p = prefab_of(type)) name = p->name;
-        std::snprintf(buf, sizeof(buf), "%d. %s  (%.1f / %.1f)", i + 1, name.c_str(),
+        std::swprintf(buf, 160, L"%d. %ls  (%.1f / %.1f)", i + 1,
+                      utf8_to_wide(name).c_str(),
                       obj_number(i, "x", 0), obj_number(i, "z", 0));
-        int idx = SendMessageA(g.list_objs, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(buf));
-        SendMessageA(g.list_objs, LB_SETITEMDATA, idx, i);
+        int idx = SendMessageW(g.list_objs, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(buf));
+        SendMessageW(g.list_objs, LB_SETITEMDATA, idx, i);
     }
     if (g.sel_obj >= 0 && g.sel_obj < static_cast<int>(g.objects->arr.size())) {
-        SendMessageA(g.list_objs, LB_SETCURSEL, g.sel_obj, 0);
+        SendMessageW(g.list_objs, LB_SETCURSEL, g.sel_obj, 0);
     }
 }
 
@@ -1981,21 +1985,21 @@ void json_remove_key(JsonValue& v, const std::string& key) {
 
 void sync_property_fields() {
     if (g.sel_obj < 0) {
-        SetWindowTextA(g.ed_x, "");
-        SetWindowTextA(g.ed_z, "");
-        SetWindowTextA(g.ed_rot, "");
-        SetWindowTextA(g.ed_tex, "");
+        SetWindowTextW(g.ed_x, L"");
+        SetWindowTextW(g.ed_z, L"");
+        SetWindowTextW(g.ed_rot, L"");
+        SetWindowTextW(g.ed_tex, L"");
         return;
     }
-    char buf[32];
-    std::snprintf(buf, sizeof(buf), "%.2f", obj_number(g.sel_obj, "x", 0));
-    SetWindowTextA(g.ed_x, buf);
-    std::snprintf(buf, sizeof(buf), "%.2f", obj_number(g.sel_obj, "z", 0));
-    SetWindowTextA(g.ed_z, buf);
-    std::snprintf(buf, sizeof(buf), "%.1f", obj_number(g.sel_obj, "rot", 0) * 180.0f / 3.14159265f);
-    SetWindowTextA(g.ed_rot, buf);
+    wchar_t buf[32];
+    std::swprintf(buf, 32, L"%.2f", obj_number(g.sel_obj, "x", 0));
+    SetWindowTextW(g.ed_x, buf);
+    std::swprintf(buf, 32, L"%.2f", obj_number(g.sel_obj, "z", 0));
+    SetWindowTextW(g.ed_z, buf);
+    std::swprintf(buf, 32, L"%.1f", obj_number(g.sel_obj, "rot", 0) * 180.0f / 3.14159265f);
+    SetWindowTextW(g.ed_rot, buf);
     const JsonValue* tex = g.objects->arr[g.sel_obj].find("tex");
-    SetWindowTextA(g.ed_tex, (tex && tex->is_str()) ? tex->str.c_str() : "");
+    SetWindowTextW(g.ed_tex, (tex && tex->is_str()) ? utf8_to_wide(tex->str).c_str() : L"");
 }
 
 void select_object(int i, bool from_list) {
@@ -2011,7 +2015,7 @@ void status_mode(const wchar_t* text) {
 
 // ------------------------------------------------------------
 //  Undo/Redo (Etappe 17c): Objekt-Array als JSON-Schnappschuss.
-//  push_undo() VOR jeder Aenderung aufrufen.
+//  push_undo() VOR jeder Änderung aufrufen.
 // ------------------------------------------------------------
 void push_undo() {
     if (!g.objects) return;
@@ -2025,7 +2029,7 @@ void restore_objects(const std::string& text) {
         JsonValue v = json_parse(text);
         g.map_root.set("objects", v);
     } catch (...) {
-        core::log_error("Undo: Schnappschuss ungueltig");
+        core::log_error("Undo: Schnappschuss ungültig");
         return;
     }
     g.objects = g.map_root.find("objects");
@@ -2081,7 +2085,7 @@ void delete_selected() {
     push_undo();
     g.objects->arr.erase(g.objects->arr.begin() + g.sel_obj);
     g.dirty = true;
-    core::log_info("Objekt geloescht");
+    core::log_info("Objekt gelöscht");
     select_object(-1, false);
 }
 
@@ -2109,10 +2113,10 @@ void duplicate_selected() {
 void apply_property_fields() {
     if (g.sel_obj < 0) return;
     push_undo();
-    char buf[64];
+    wchar_t buf[64];
     auto get = [&](HWND h) {
-        GetWindowTextA(h, buf, sizeof(buf));
-        std::string s = buf;
+        GetWindowTextW(h, buf, 64);
+        std::string s = wide_to_utf8(buf);
         std::replace(s.begin(), s.end(), ',', '.');   // deutsches Komma erlauben
         return static_cast<float>(std::atof(s.c_str()));
     };
@@ -2121,9 +2125,9 @@ void apply_property_fields() {
     set_obj_number(g.sel_obj, "rot", get(g.ed_rot) * 3.14159265f / 180.0f);
 
     // Etappe 17f: Materialname (leer = Prefab-Texturen behalten).
-    char tbuf[128];
-    GetWindowTextA(g.ed_tex, tbuf, sizeof(tbuf));
-    std::string tex = tbuf;
+    wchar_t tbuf[128];
+    GetWindowTextW(g.ed_tex, tbuf, 128);
+    std::string tex = wide_to_utf8(tbuf);
     tex.erase(tex.begin(), std::find_if(tex.begin(), tex.end(),
               [](unsigned char c) { return !std::isspace(c); }));
     while (!tex.empty() && std::isspace(static_cast<unsigned char>(tex.back()))) tex.pop_back();
@@ -2153,7 +2157,7 @@ math::Vec3 ray_dir(float ndc_x, float ndc_y, float aspect) {
                   math::scale(up, ndc_y * th)));
 }
 
-// Ray-March uebers Gelaende (wie der alte Editor.terrain_hit).
+// Ray-March übers Gelände (wie der alte Editor.terrain_hit).
 bool terrain_hit(const math::Vec3& eye, const math::Vec3& dir, math::Vec3& out) {
     const float max_t = 400.0f;
     float t_prev = 0.0f;
@@ -2162,7 +2166,7 @@ bool terrain_hit(const math::Vec3& eye, const math::Vec3& dir, math::Vec3& out) 
         const math::Vec3 p = math::add(eye, math::scale(dir, t));
         const float d = p.y - g.terrain->height_at(p.x, p.z);
         if (d <= 0.0f) {
-            // Halbiere das Intervall fuer eine genaue Trefferstelle.
+            // Halbiere das Intervall für eine genaue Trefferstelle.
             float lo = t_prev, hi = t;
             for (int i = 0; i < 12; ++i) {
                 const float mid = (lo + hi) * 0.5f;
@@ -2210,7 +2214,7 @@ bool ray_box(const math::Vec3& eye, const math::Vec3& dir,
     return true;
 }
 
-// Naechstes Objekt unter dem Strahl (Teil-Kaesten im Objektraum).
+// Nächstes Objekt unter dem Strahl (Teil-Kästen im Objektraum).
 int object_hit(const math::Vec3& eye, const math::Vec3& dir, float& out_t) {
     int best = -1;
     float best_t = 1e9f;
@@ -2274,7 +2278,7 @@ void renderer_resize(int w, int h) {
 //
 //  Die Icons werden zur Laufzeit mit GDI in 16x16-Bitmaps gezeichnet (wie die
 //  Texturen/Sounds komplett im Code, kein Ressourcen-File). Die Buttons
-//  schicken dieselben IDs wie das Menue (WM_COMMAND), deshalb verteilt sich
+//  schicken dieselben IDs wie das Menü (WM_COMMAND), deshalb verteilt sich
 //  nichts doppelt.
 // ============================================================================
 
@@ -2290,7 +2294,7 @@ HICON make_toolbar_icon(void (*draw)(HDC)) {
     draw(mem);
     SelectObject(mem, old);
 
-    // Maske: alles ausser dem Weissen der Ecken bleibt sichtbar; fuer die
+    // Maske: alles ausser dem Weissen der Ecken bleibt sichtbar; für die
     // schlichten Formen reicht Schwarz (0) = opak.
     HDC mask_dc = CreateCompatibleDC(screen);
     HGDIOBJ oldm = SelectObject(mask_dc, mask);
@@ -2311,7 +2315,7 @@ HICON make_toolbar_icon(void (*draw)(HDC)) {
     return icon;
 }
 
-// Zeichen-Helfer fuer die einzelnen Icons.
+// Zeichen-Helfer für die einzelnen Icons.
 namespace ico {
 
 void diskette(HDC dc) {          // Speichern
@@ -2378,7 +2382,7 @@ void scripts(HDC dc) {           // Script-Editor (Blatt mit Zeilen)
     DeleteObject(pen);
 }
 
-void materials(HDC dc) {         // Materialbase (gemusterter Wuerfel)
+void materials(HDC dc) {         // Materialbase (gemusterter Würfel)
     HPEN pen = CreatePen(PS_SOLID, 1, RGB(60, 60, 60));
     HGDIOBJ op = SelectObject(dc, pen);
     HBRUSH br = CreateSolidBrush(RGB(120, 90, 60));
@@ -2423,7 +2427,7 @@ void speaker(HDC dc) {           // Sound-Test (Lautsprecher)
     DeleteObject(br);
 }
 
-void playtest(HDC dc) {          // Playtest (gruenes Dreieck)
+void playtest(HDC dc) {          // Playtest (grünes Dreieck)
     HPEN pen = CreatePen(PS_SOLID, 1, RGB(20, 90, 20));
     HGDIOBJ op = SelectObject(dc, pen);
     HBRUSH br = CreateSolidBrush(RGB(80, 200, 80));
@@ -2471,7 +2475,7 @@ void create_toolbar(HWND parent) {
     }
     SendMessageW(g_toolbar, TB_SETIMAGELIST, 0, reinterpret_cast<LPARAM>(il));
 
-    // Buttons: dieselben IDs wie das Menue - WM_COMMAND verteilt schon.
+    // Buttons: dieselben IDs wie das Menü - WM_COMMAND verteilt schon.
     TBBUTTON btns[8]{};
     for (int i = 0; i < 8; ++i) {
         btns[i].iBitmap = i;
@@ -2488,7 +2492,7 @@ void create_toolbar(HWND parent) {
     btns[7].idCommand = ID_MENU_PLAYTEST;
     SendMessageW(g_toolbar, TB_ADDBUTTONS, 8, reinterpret_cast<LPARAM>(btns));
 
-    // Tooltip-Texte direkt an die Buttons haengen.
+    // Tooltip-Texte direkt an die Buttons hängen.
     const wchar_t* tips[8] = {
         L"Karte speichern (Strg+S)", L"Karten-Eigenschaften (F2)",
         L"Event-Editor (F6)", L"Script-Editor (F11)",
@@ -2504,7 +2508,7 @@ void create_toolbar(HWND parent) {
                      reinterpret_cast<LPARAM>(&bi));
     }
 
-    // Hoehe ermitteln (TB_GETBUTTONSIZE liefert MAKELONG(breite, hoehe)).
+    // Höhe ermitteln (TB_GETBUTTONSIZE liefert MAKELONG(breite, höhe)).
     const DWORD bs = static_cast<DWORD>(
         SendMessageW(g_toolbar, TB_GETBUTTONSIZE, 0, 0));
     g_toolbar_h = HIWORD(bs) > 0 ? HIWORD(bs) : 24;
@@ -2534,21 +2538,21 @@ void layout_children() {
     SetWindowPos(g.view, nullptr, view_x, tb_h, view_w, view_h,
                  SWP_NOZORDER | SWP_NOACTIVATE);
 
-    // Statusleisten-Felder proportional zur Fensterbreite (frueher fest 160/
+    // Statusleisten-Felder proportional zur Fensterbreite (früher fest 160/
     // 130/220 - bei schmalen Fenstern wurde das letzte Feld zu eng).
     const int sb_parts[4] = { std::max(120, W / 8), std::max(100, W / 9),
                               std::max(170, W / 6), -1 };
     SendMessageW(g.status, SB_SETPARTS, 4, reinterpret_cast<LPARAM>(sb_parts));
 
     // Linke Spalte: Etappe 18k teilt sie in Kartenbaum (oben) und Werkzeuge
-    // (unten). Der Baum behaelt eine feste Höhe, Werkzeugliste + Bedienblock
+    // (unten). Der Baum behält eine feste Höhe, Werkzeugliste + Bedienblock
     // verteilen sich daruber wie bisher (18i-Logik).
     const int lw = left_w - 16;
     const int bx = 8;
     const int bw2 = (lw - 8) / 2;
     const int tree_h = 150;                              // Kartenbaum
     const int tools_lbl_h = 22;
-    // Etappe 18l: 8. Werkzeugzeile (Hoehe malen) -> Block waechst.
+    // Etappe 18l: 8. Werkzeugzeile (Höhe malen) -> Block wächst.
     const int block_h = 8 * 30 + 7 * 6;   // 8 Zeilen à 30 px, 7 Lücken à 6 px
     const int tools_y0 = tb_h + tree_h + tools_lbl_h;
     const int list_h = std::max(80, H - sb_h - tools_y0 - 8 - block_h);
@@ -2573,15 +2577,15 @@ void layout_children() {
     tool_row(IDC_BTN_DUPLICATE, 2, bx, lw);
     tool_row(IDC_BTN_MOVE, 3, bx, lw);
     tool_row(IDC_BTN_PAINT, 4, bx, lw);
-    // Etappe 18l: Hoehe malen (Berge/Senken) als 5. Werkzeugzeile.
+    // Etappe 18l: Höhe malen (Berge/Senken) als 5. Werkzeugzeile.
     tool_row(IDC_BTN_HEIGHT, 5, bx, lw);
-    // Etappe 18i: Undo/Redo ueber die ganze Spalte - die alten 96-px-
+    // Etappe 18i: Undo/Redo über die ganze Spalte - die alten 96-px-
     // Buttons schnitten "(Strg+Z)" bzw. "(Strg+Y)" ab.
     tool_row(IDC_BTN_UNDO, 6, bx, lw);
     tool_row(IDC_BTN_REDO, 7, bx, lw);
 
-    // Rechte Spalte: Objektliste waechst nach oben, Eigenschaften bleiben
-    // unten (fixe Hoehe) und nutzen die neue Breite fuer die Eingabefelder.
+    // Rechte Spalte: Objektliste wächst nach oben, Eigenschaften bleiben
+    // unten (fixe Höhe) und nutzen die neue Breite für die Eingabefelder.
     const int rx = W - right_w;
     const int rw = right_w - 16;
     const int py = H - sb_h - 242;
@@ -2600,7 +2604,7 @@ void layout_children() {
     move_child(GetDlgItem(g.main, IDC_BTN_APPLY), rx + 14, py + 158,
                right_w - 28, 30);
 
-    // Renderer auf die neue Viewport-Groesse bringen.
+    // Renderer auf die neue Viewport-Grösse bringen.
     renderer_resize(view_w, view_h);
 }
 
@@ -2638,7 +2642,7 @@ void update_status() {
 //  Viewport: Eingabe (Maus) + D3D-Ausgabe
 // ------------------------------------------------------------
 LRESULT CALLBACK view_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
-    // Waehrend eines offenen Dialogs keine Kamera-/Editier-Eingaben.
+    // Während eines offenen Dialogs keine Kamera-/Editier-Eingaben.
     if (g.props_dlg && (msg >= WM_MOUSEFIRST && msg <= WM_MOUSELAST)) return 0;
     switch (msg) {
         case WM_SIZE:
@@ -2666,7 +2670,7 @@ LRESULT CALLBACK view_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             g.mouse_x = static_cast<float>(mx);
             g.mouse_y = static_cast<float>(my);
             if (g.dragging && g.obj_drag >= 0 && g.obj_drag < static_cast<int>(g.objects->arr.size())) {
-                // Ray aus NDC (fov 60 Grad, Seitenverhaeltnis beachten) und
+                // Ray aus NDC (fov 60 Grad, Seitenverhältnis beachten) und
                 // Schnitt mit der horizontalen Ebene y = drag_y.
                 RECT rc;
                 GetClientRect(h, &rc);
@@ -2695,7 +2699,7 @@ LRESULT CALLBACK view_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         }
         case WM_MOUSEWHEEL: {
             // Mausrad = Zoom: Dolly entlang der Blickrichtung (Etappe 17h).
-            // Shift zusaetzlich = nur die Hohe aendern (alte Schnelluebersicht).
+            // Shift zusätzlich = nur die Hohe ändern (alte Schnellübersicht).
             const float delta = static_cast<short>(GET_WHEEL_DELTA_WPARAM(wp)) / 120.0f;
             if (wp & MK_SHIFT) {
                 g.cam_pos.y += delta * 2.0f;
@@ -2721,10 +2725,10 @@ LRESULT CALLBACK view_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             const math::Vec3 dir = ray_dir(ndc_x, ndc_y, w / hh);
 
             if (g.height_mode) {
-                // Etappe 18l: Berge malen - Linksklick = Huegel anheben,
+                // Etappe 18l: Berge malen - Linksklick = Hügel anheben,
                 // Shift+Klick = Senke abtragen. Jeder Klick ist ein weicher
                 // Pinsel (cos-Falloff) im Karten-JSON ("terrain.heights"),
-                // Mehrfachklicken stapelt die Hoehe.
+                // Mehrfachklicken stapelt die Höhe.
                 math::Vec3 hit{};
                 if (terrain_hit(g.cam_pos, dir, hit)) {
                     const bool sink = (wp & MK_SHIFT) != 0;
@@ -2747,7 +2751,7 @@ LRESULT CALLBACK view_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                     }
                 }
             } else if (g.paint_mode) {
-                // Etappe 18e: Boden malen - Linksklick = Flaeche mit der
+                // Etappe 18e: Boden malen - Linksklick = Fläche mit der
                 // Pinsel-Textur, Shift+Klick = Radierer an dieser Stelle.
                 math::Vec3 hit{};
                 if (terrain_hit(g.cam_pos, dir, hit)) {
@@ -2759,8 +2763,8 @@ LRESULT CALLBACK view_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                         g.dirty = true;
                         update_title();
                         status_mode(erase ? L"Fläche entfernt" : L"Fläche gemalt");
-                        core::log_info(std::string(erase ? "Malwerkzeug: Flaeche entfernt @ ("
-                                                         : "Malwerkzeug: Flaeche gemalt @ (") +
+                        core::log_info(std::string(erase ? "Malwerkzeug: Fläche entfernt @ ("
+                                                         : "Malwerkzeug: Fläche gemalt @ (") +
                                        std::to_string(hit.x) + ", " + std::to_string(hit.z) + ")");
                     } else {
                         status_mode(L"Keine Fläche hier");
@@ -2820,7 +2824,7 @@ void push_object(int i) {
     const float rot = obj_number(i, "rot", 0);
     const float by = base_y_at(x, z);
     const float cd = std::cos(rot), sd = std::sin(rot);
-    // Etappe 17f: optionales Objekt-Material ("tex") ueberschreibt alle Teile.
+    // Etappe 17f: optionales Objekt-Material ("tex") überschreibt alle Teile.
     int override_tex = -1;
     if (g.objects && i >= 0 && i < static_cast<int>(g.objects->arr.size())) {
         if (const JsonValue* t = g.objects->arr[i].find("tex")) {
@@ -2840,7 +2844,7 @@ void push_object(int i) {
     }
 }
 
-// Gelber Rahmen um das ausgewaehlte Objekt (12 duenne Kaesten).
+// Gelber Rahmen um das ausgewählte Objekt (12 dünne Kästen).
 void push_selection_frame(int i) {
     const Prefab* pre = prefab_of(obj_type(i));
     if (!pre) return;
@@ -2889,7 +2893,7 @@ void push_selection_frame(int i) {
 }
 
 // Gelber Platzier-Marker am Cursor (Raster-gross). Im Mal-Modus (Etappe 18e)
-// stattdessen ein flaches Quadrat in Pinselgroesse als Brush-Vorschau.
+// stattdessen ein flaches Quadrat in Pinselgrösse als Brush-Vorschau.
 void push_hover_marker() {
     if (!g.hover_valid) return;
     if (g.paint_mode) {
@@ -2898,7 +2902,7 @@ void push_hover_marker() {
                              math::Vec3{ s, 0.04f, s }, math::Vec3{}, 0x66CCFF);
         return;
     }
-    // Etappe 18l: Berge-Maler - orange Markierung in Pinselgroesse am Cursor.
+    // Etappe 18l: Berge-Maler - orange Markierung in Pinselgrösse am Cursor.
     if (g.height_mode) {
         const float s = g.paint_size * 0.98f;
         g.renderer->push_box(math::Vec3{ g.hover_pos.x, g.hover_pos.y + 0.05f, g.hover_pos.z },
@@ -2961,7 +2965,7 @@ void update_camera(float dt) {
         move = math::scale(math::normalize(move), speed * dt);
         g.cam_pos = math::add(g.cam_pos, move);
     }
-    // Nie unter dem Gelaende stecken.
+    // Nie unter dem Gelände stecken.
     const float ground = g.terrain->ready() ? g.terrain->height_at(g.cam_pos.x, g.cam_pos.z) : 0.0f;
     g.cam_pos.y = std::max(g.cam_pos.y, ground + 1.5f);
 }
@@ -2981,14 +2985,14 @@ void update_hover() {
 
 void handle_shortcuts() {
     if (g.props_dlg) return;   // kein Editieren hinter einem offenen Dialog
-    if (event_editor_focused()) return;   // Tippen im Event-Editor soll nichts ausloesen
-    if (script_editor_focused()) return;  // dito fuer den Script-Editor
+    if (event_editor_focused()) return;   // Tippen im Event-Editor soll nichts auslösen
+    if (script_editor_focused()) return;  // dito für den Script-Editor
     if (material_editor_focused()) return;
     if (database_editor_focused()) return;
     if (soundtest_focused()) return;
     // Etappe 18k: Umbenennen im Kartenbaum - Edit-Control im TreeView aktiv?
     if (g.map_tree && TreeView_GetEditControl(g.map_tree)) return;
-    // F12: Screenshot fuer Tests/Doku (einmal pro Tastendruck)
+    // F12: Screenshot für Tests/Doku (einmal pro Tastendruck)
     {
         static bool f12_was = false;
         const bool f12_now = (GetAsyncKeyState(VK_F12) & 0x8000) != 0;
@@ -3012,7 +3016,7 @@ void handle_shortcuts() {
             }
         }
     }
-    // Strg+Z / Strg+Y: Rueckgaengig und Wiederholen
+    // Strg+Z / Strg+Y: Rückgängig und Wiederholen
     {
         const bool ctrl = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
         static bool z_was = false, y_was = false;
@@ -3024,8 +3028,8 @@ void handle_shortcuts() {
         y_was = y_now;
     }
 
-    // Etappe 18e: Pinselgroesse im Mal-Modus mit +/- (auch Zehnertastatur).
-    // Etappe 18l: auch im Hoehen-Modus (Pinsel ist dort der Berg-Radius).
+    // Etappe 18e: Pinselgrösse im Mal-Modus mit +/- (auch Zehnertastatur).
+    // Etappe 18l: auch im Höhen-Modus (Pinsel ist dort der Berg-Radius).
     if (g.paint_mode || g.height_mode) {
         static bool plus_was = false, minus_was = false;
         const bool plus_now  = (GetAsyncKeyState(VK_ADD) & 0x8000) ||
@@ -3062,7 +3066,7 @@ void handle_shortcuts() {
                     (GetAsyncKeyState(VK_OEM_MINUS) & 0x8000) != 0;
     }
 
-    // Etappe 17h: F-Tasten fuer die Werkzeugleiste (wie im Menue vermerkt).
+    // Etappe 17h: F-Tasten für die Werkzeugleiste (wie im Menü vermerkt).
     {
         static bool f1w = false, f2w = false, f3w = false, f4w = false;
         static bool f6w = false, f8w = false, f9w = false, f11w = false;
@@ -3104,7 +3108,7 @@ void handle_shortcuts() {
         del_was = del_now;
     }
 
-    // Etappe 18a: Esc = Auswahl aufheben, Enter = Eigenschaften uebernehmen.
+    // Etappe 18a: Esc = Auswahl aufheben, Enter = Eigenschaften übernehmen.
     {
         static bool esc_was = false, ent_was = false;
         const bool esc_now = (GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0;
@@ -3117,7 +3121,7 @@ void handle_shortcuts() {
         if (ent_now && !ent_was && g.sel_obj >= 0) {
             apply_property_fields();
             status_mode(L"Eigenschaften übernommen");
-            core::log_info("Eigenschaften uebernommen (Enter)");
+            core::log_info("Eigenschaften übernommen (Enter)");
         }
         esc_was = esc_now;
         ent_was = ent_now;
@@ -3150,7 +3154,7 @@ void handle_shortcuts() {
 LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
         case WM_GETMINMAXINFO: {
-            // Etappe 18a: Mindestgroesse, damit das Layout nicht bricht.
+            // Etappe 18a: Mindestgrösse, damit das Layout nicht bricht.
             MINMAXINFO* mmi = reinterpret_cast<MINMAXINFO*>(lp);
             mmi->ptMinTrackSize.x = 1024;
             mmi->ptMinTrackSize.y = 640;
@@ -3161,7 +3165,7 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 layout_children();
                 // Etappe 18j: sofort einen frischen Frame zeichnen. Sonst zeigt
                 // DWM den alten (falsch skalierten) Frame oder undefinierten
-                // Backbuffer-Inhalt, bis die Hauptschleife wieder laeuft.
+                // Backbuffer-Inhalt, bis die Hauptschleife wieder läuft.
                 static bool in_size = false;
                 if (!in_size) {
                     in_size = true;
@@ -3171,9 +3175,9 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             }
             return 0;
 
-        // Etappe 18j: Beim Ziehen der Fensterkante/Vollbild-Umschalten laeuft
+        // Etappe 18j: Beim Ziehen der Fensterkante/Vollbild-Umschalten läuft
         // die Modalschleife von Windows - unsere Render-Schleife pausiert dann.
-        // Neue Flaechen blieben schwarz oder zeigten das Fenster dahinter
+        // Neue Flächen blieben schwarz oder zeigten das Fenster dahinter
         // (im Test: das Spielfenster). Ein 16-ms-Timer rendert weiter.
         case WM_ENTERSIZEMOVE:
             SetTimer(h, IDT_RESIZE, 16, nullptr);
@@ -3184,17 +3188,17 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             KillTimer(h, IDT_RESIZE);
             layout_children();
             render_frame();
-            // Beleg fuer Live-Tests: hat der Timer waehrend der Windows-
-            // Modalschleife tatsaechlich Bilder geliefert?
+            // Beleg für Live-Tests: hat der Timer während der Windows-
+            // Modalschleife tatsächlich Bilder geliefert?
             core::log_info("Resize-Timer: " + std::to_string(g.resize_ticks) +
-                           " Frames waehrend des Ziehens gerendert");
+                           " Frames während des Ziehens gerendert");
             return 0;
 
         case WM_TIMER:
             if (wp == IDT_RESIZE && !g.props_dlg) {
                 // Das Layout wird bereits durch WM_SIZE aktualisiert. Hier nur
                 // zeichnen, damit die Swapchain nicht bei jedem Tick neu
-                // erzeugt wird, obwohl sich ihre Groesse gar nicht geaendert hat.
+                // erzeugt wird, obwohl sich ihre Grösse gar nicht geändert hat.
                 render_frame();
                 ++g.resize_ticks;
                 return 0;
@@ -3217,7 +3221,7 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                     (lower.compare(lower.size() - 4, 4, ".png") == 0 ||
                      lower.compare(lower.size() - 4, 4, ".bmp") == 0);
                 if (!ok_ext) {
-                    core::log_warn("Drag&Drop uebersprungen (kein PNG/BMP): " + path);
+                    core::log_warn("Drag&Drop übersprungen (kein PNG/BMP): " + path);
                     continue;
                 }
                 std::string name;
@@ -3237,7 +3241,7 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
 
         case WM_COMMAND: {
-            if (g.props_dlg) return 0;   // kein Menue-Kommando hinter Dialog
+            if (g.props_dlg) return 0;   // kein Menü-Kommando hinter Dialog
             const int id = LOWORD(wp);
             const int code = HIWORD(wp);
             switch (id) {
@@ -3410,7 +3414,7 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                     return 0;
                 case IDC_BTN_PAINT: {
                     // Etappe 18e: Boden-Malwerkzeug. Pinseltextur = aktuelle
-                    // Tileset-Auswahl (oder Default weg), Groesse per +/- im
+                    // Tileset-Auswahl (oder Default weg), Grösse per +/- im
                     // Mal-Modus, Shift+Klick radiert.
                     g.place_mode = false;
                     g.move_mode = false;
@@ -3423,15 +3427,15 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                     SendMessageW(GetDlgItem(g.main, IDC_BTN_HEIGHT), BM_SETCHECK, BST_UNCHECKED, 0);
                     if (g_ts.win && !g_ts.sel.empty()) g.paint_tex = g_ts.sel;
                     status_mode((L"Boden malen: " + utf8_to_wide(g.paint_tex) +
-                                 L" | +/- Groesse | Shift = Radierer").c_str());
+                                 L" | +/- Grösse | Shift = Radierer").c_str());
                     core::log_info("Malwerkzeug aktiviert (Textur '" + g.paint_tex +
-                                   "', Groesse " + std::to_string(g.paint_size) + " m)");
+                                   "', Grösse " + std::to_string(g.paint_size) + " m)");
                     return 0;
                 }
                 case IDC_BTN_HEIGHT: {
-                    // Etappe 18l: Hoehen-Malwerkzeug. Berge/Senken direkt an
+                    // Etappe 18l: Höhen-Malwerkzeug. Berge/Senken direkt an
                     // der angeklickten Stelle, Default-Karten sind flach
-                    // (Amplitude 0) - Erhoehen/Lesen ohne Seed-Fummelei.
+                    // (Amplitude 0) - Erhöhen/Lesen ohne Seed-Fummelei.
                     g.place_mode = false;
                     g.move_mode = false;
                     g.paint_mode = false;
@@ -3442,9 +3446,9 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                     SendMessageW(GetDlgItem(g.main, IDC_BTN_PAINT), BM_SETCHECK, BST_UNCHECKED, 0);
                     SendMessageW(GetDlgItem(g.main, IDC_BTN_HEIGHT), BM_SETCHECK, BST_CHECKED, 0);
                     status_mode((L"Höhe malen: +" + std::to_wstring(static_cast<int>(height_step())) +
-                                 L" m pro Klick | +/- Groesse | Shift = Senke").c_str());
+                                 L" m pro Klick | +/- Grösse | Shift = Senke").c_str());
                     core::log_info("H\xC3\xB6hen-Malwerkzeug aktiviert (Schritt " +
-                                   std::to_string(height_step()) + " m, Groesse " +
+                                   std::to_string(height_step()) + " m, Grösse " +
                                    std::to_string(g.paint_size) + " m)");
                     return 0;
                 }
@@ -3509,7 +3513,7 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                             static_cast<int>(it.lParam) < static_cast<int>(g.map_files.size()) &&
                             static_cast<int>(it.lParam) != g.cur_map) {
                             // Unspeichere-Karte vorher sichern (wie Kartenwechsel
-                            // im Menue 17b: change_map sichert schmutzig).
+                            // im Menü 17b: change_map sichert schmutzig).
                             if (g.dirty) save_map();
                             if (load_map(static_cast<int>(it.lParam))) {
                                 sync_object_list();
@@ -3522,7 +3526,7 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                     return 0;
                 }
                 case NM_DBLCLK:
-                    // Doppelklick auf eine Karte = Eigenschaften oeffnen (F2).
+                    // Doppelklick auf eine Karte = Eigenschaften öffnen (F2).
                     if (maptree_selected() >= 0) {
                         PostMessageW(h, WM_COMMAND, ID_MENU_MAPPROPS, 0);
                     }
@@ -3548,7 +3552,7 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                         TreeView_GetItem(g.map_tree, &it);
                         maptree_apply_rename(static_cast<int>(it.lParam),
                                              wide_to_utf8(di->item.pszText));
-                        return TRUE;   // Text uebernehmen
+                        return TRUE;   // Text übernehmen
                     }
                     return FALSE;      // leer: Edit verwerfen
                 }
@@ -3557,7 +3561,7 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             break;
         }
 
-        // Etappe 18k: Rechtsklick auf eine Karte = Kontextmenue.
+        // Etappe 18k: Rechtsklick auf eine Karte = Kontextmenü.
         case WM_CONTEXTMENU: {
             if (reinterpret_cast<HWND>(wp) != g.map_tree) break;
             const int idx = maptree_selected();
@@ -3617,7 +3621,7 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
 // ------------------------------------------------------------
 // ------------------------------------------------------------
 //  Karten-Verwaltung (Etappe 17b): Eigenschaften-Dialog, Neue Karte,
-//  Karte loeschen. Alle Aenderungen landen direkt im Karten-JSON.
+//  Karte löschen. Alle Änderungen landen direkt im Karten-JSON.
 // ------------------------------------------------------------
 enum {
     IDLG_OK          = 4100,
@@ -3634,7 +3638,7 @@ enum {
     IDLG_PANCOL      = 4111,
     IDLG_NOTE        = 4112,
     IDLG_WTYPE       = 4113,   // Etappe 17h: Wetter-Typ (Combobox)
-    IDLG_WINT        = 4114,   // Etappe 17h: Wetter-Intensitaet
+    IDLG_WINT        = 4114,   // Etappe 17h: Wetter-Intensität
 };
 
 static HWND g_dlg = nullptr;
@@ -3717,7 +3721,7 @@ void modal_loop(HWND dlg) {
     SetForegroundWindow(g.main);
 }
 
-// Flaechen-Liste (terrain.splats) aus dem Karten-JSON lesen.
+// Flächen-Liste (terrain.splats) aus dem Karten-JSON lesen.
 std::vector<world::SplatRect> read_splats(const JsonValue* t) {
     std::vector<world::SplatRect> splats;
     const JsonValue* arr = t ? t->find("splats") : nullptr;
@@ -3740,9 +3744,9 @@ std::vector<world::SplatRect> read_splats(const JsonValue* t) {
     return splats;
 }
 
-// Etappe 18e: Boden-Flaeche anlegen (rev = false) oder Punkt-loeschen (true).
+// Etappe 18e: Boden-Fläche anlegen (rev = false) oder Punkt-löschen (true).
 // Zentriert x/z, Ausdehnung w/h; legt terrain.splats an, falls fehlt.
-// Rueckgabe: true wenn die Karte geaendert wurde.
+// Rückgabe: true wenn die Karte geändert wurde.
 bool splat_edit(float cx, float cz, float sw, float sh,
                const std::string& tex, bool erase, bool snap) {
     if (g.cur_map < 0) return false;
@@ -3767,7 +3771,7 @@ bool splat_edit(float cx, float cz, float sw, float sh,
         arr->arr.push_back(e);
         return true;
     }
-    // Loeschen: letzte (spaeteste) Flaeche entfernen, die den Punkt abdeckt.
+    // Löschen: letzte (späteste) Fläche entfernen, die den Punkt abdeckt.
     for (int i = static_cast<int>(arr->arr.size()) - 1; i >= 0; --i) {
         const JsonValue& e = arr->arr[i];
         if (!e.is_obj()) continue;
@@ -3788,12 +3792,12 @@ bool splat_edit(float cx, float cz, float sw, float sh,
     return false;
 }
 
-// Etappe 18l: Hoehen-Schritt pro Klick (Meter). Ein Klick Klick stapelt.
+// Etappe 18l: Höhen-Schritt pro Klick (Meter). Ein Klick Klick stapelt.
 float height_step() { return 2.0f; }
 
-// Etappe 18l: Berg/Senke an (cx,cz) malen. Legt terrain.heights an, haengt
-// einen weichen Pinsel {x,z,r,h} an (r = halbe Pinselgroesse, h = +-Schritt).
-// Rueckgabe: Anzahl Pinsel-Eintraege nach dem Malen (0 = kein Kartenkontext).
+// Etappe 18l: Berg/Senke an (cx,cz) malen. Legt terrain.heights an, hängt
+// einen weichen Pinsel {x,z,r,h} an (r = halbe Pinselgrösse, h = +-Schritt).
+// Rückgabe: Anzahl Pinsel-Einträge nach dem Malen (0 = kein Kartenkontext).
 int height_edit(float cx, float cz, bool sink) {
     if (g.cur_map < 0) return 0;
     // aufs Raster ziehen wie Objekte/Splats, Radius mind. 1 Rasterzelle
@@ -3808,8 +3812,8 @@ int height_edit(float cx, float cz, bool sink) {
     if (!arr || !arr->is_arr()) arr = &ter->set("heights", JsonValue::make_arr());
 
     // Aufeinanderfolgende Klicks an derselben Stelle (gleiche Kachel) zum
-    // selben Pinsel addieren, damit die JSON-Liste beim "Hoehen-Stapeln"
-    // nicht endlos waechst.
+    // selben Pinsel addieren, damit die JSON-Liste beim "Höhen-Stapeln"
+    // nicht endlos wächst.
     const double cell = static_cast<double>(g.grid);
     for (JsonValue& e : arr->arr) {
         if (!e.is_obj()) continue;
@@ -3870,8 +3874,8 @@ void regen_terrain() {
         }
     }
     g.terrain->set_height_brushes(brushes);
-    // Etappe 18d: mit Boden-Flaechen Atlas-Pfad (pro-Quad-UV), sonst der
-    // alte Ein-Textur-Pfad inkl. Kachelgroesse (live-kompatibel).
+    // Etappe 18d: mit Boden-Flächen Atlas-Pfad (pro-Quad-UV), sonst der
+    // alte Ein-Textur-Pfad inkl. Kachelgrösse (live-kompatibel).
     const std::vector<world::SplatRect> splats = read_splats(t);
     const JsonValue* tx = t ? t->find("texture") : nullptr;
     const std::string base_tex = tx ? tx->str : std::string("gras");
@@ -3883,10 +3887,10 @@ void regen_terrain() {
             g.renderer->set_terrain_tex(atlas.tex_index);
             g.renderer->set_terrain_tile(1.0f);
             core::log_info("Splat-Boden aktiv: " + std::to_string(splats.size()) +
-                           " Flaeche(n), Atlas-Slot " + std::to_string(atlas.tex_index));
+                           " Fläche(n), Atlas-Slot " + std::to_string(atlas.tex_index));
             return;
         }
-        core::log_warn("Splat-Boden: kein Atlas moeglich (keine 64x64-Texturen?)");
+        core::log_warn("Splat-Boden: kein Atlas möglich (keine 64x64-Texturen?)");
     }
     g.terrain->generate(w, h, res, seed, amp);
     g.renderer->set_terrain(g.terrain->vertices(), g.terrain->indices());
@@ -3895,7 +3899,7 @@ void regen_terrain() {
     g.renderer->set_terrain_tile(tl ? static_cast<float>(tl->number(2.0)) : 2.0f);
 }
 
-// Himmel/Nebel im Editor-Viewport aus der Karte uebernehmen.
+// Himmel/Nebel im Editor-Viewport aus der Karte übernehmen.
 void apply_map_atmosphere_editor() {
     const JsonValue* pan = g.map_root.find("panorama");
     const JsonValue* pc = pan ? pan->find("color") : nullptr;
@@ -3957,7 +3961,7 @@ void open_map_props() {
     dlg_label(L"Panorama-Farbe (hex)", 16, 204, 140);
     dlg_control(L"Edit", nullptr, WS_BORDER | ES_LEFT, 170, 200, 110, 24, IDLG_PANCOL);
 
-    // Etappe 17h: Wetter (kein/regen/schnee) + Intensitaet.
+    // Etappe 17h: Wetter (kein/regen/schnee) + Intensität.
     dlg_label(L"Wetter", 16, 236, 100);
     HWND cb_wtype = dlg_control(L"ComboBox", nullptr, CBS_DROPDOWNLIST | WS_VSCROLL,
                                 120, 232, 110, 200, IDLG_WTYPE);
@@ -3975,7 +3979,7 @@ void open_map_props() {
     dlg_control(L"Button", L"OK", BS_DEFPUSHBUTTON, 240, 488, 90, 30, IDLG_OK);
     dlg_control(L"Button", L"Abbrechen", BS_PUSHBUTTON, 340, 488, 90, 30, IDLG_CANCEL);
 
-    // Felder fuellen
+    // Felder füllen
     const JsonValue* t = g.map_root.find("terrain");
     auto tnum = [&](const char* key, double fallback) {
         if (!t) return fallback;
@@ -4013,7 +4017,7 @@ void open_map_props() {
                   static_cast<uint32_t>(pcol ? pcol->number(0x3D6FB5) : 0x3D6FB5));
     dlg_set_text(IDLG_PANCOL, buf);
 
-    // Etappe 17h: Wetter-Typ + Intensitaet aus dem Karten-JSON.
+    // Etappe 17h: Wetter-Typ + Intensität aus dem Karten-JSON.
     {
         const JsonValue* w = g.map_root.find("weather");
         const std::string wt = w ? (w->find("type") ? w->find("type")->str : "kein")
@@ -4036,7 +4040,7 @@ void open_map_props() {
     g.dlg_mode = 1;
 }
 
-// Werte aus dem offenen Eigenschaften-Dialog in die Karte uebernehmen (OK).
+// Werte aus dem offenen Eigenschaften-Dialog in die Karte übernehmen (OK).
 void apply_props_from_dlg() {
     HWND dlg = g.props_dlg;
     if (!dlg) return;
@@ -4092,11 +4096,11 @@ void apply_props_from_dlg() {
             rebuild_map_menu();
         }
         update_title();
-        core::log_info("Karten-Eigenschaften geaendert");
+        core::log_info("Karten-Eigenschaften geändert");
     }
 }
 
-// Neue Karte: kleiner Dialog (Name, Breite, Hoehe, Berge) -> JSON-Datei.
+// Neue Karte: kleiner Dialog (Name, Breite, Höhe, Berge) -> JSON-Datei.
 void open_map_new() {
     if (g.props_dlg) { SetForegroundWindow(g.props_dlg); return; }   // schon offen
 
@@ -4135,7 +4139,7 @@ void open_map_new() {
 
 // Neue Karte aus dem Dialog anlegen (OK).
 void apply_new_from_dlg() {
-    // naechste freie ID: welt01, welt02, ...
+    // nächste freie ID: welt01, welt02, ...
     int n = 1;
     std::string id;
     char buf[32];
@@ -4196,13 +4200,13 @@ void delete_current_map() {
     const std::string name = g.cur_map < static_cast<int>(g.map_names.size())
                                  ? g.map_names[g.cur_map] : "?";
     const std::wstring text = L"Karte \"" + utf8_to_wide(name) +
-                              L"\" wirklich loeschen?";
+                              L"\" wirklich löschen?";
     const int r = MessageBoxW(g.main, text.c_str(), L"Karte löschen",
                               MB_YESNO | MB_ICONWARNING);
     if (r != IDYES) return;
     const std::string path = g.project_dir + "\\maps\\" + g.map_files[g.cur_map];
     DeleteFileA(path.c_str());
-    core::log_info("Karte geloescht: " + path);
+    core::log_info("Karte gelöscht: " + path);
     scan_maps();
     rebuild_map_menu();
     if (!g.map_files.empty()) {
@@ -4321,7 +4325,7 @@ struct EventDlgState {
 static EventDlgState g_ev;
 
 // Etappe 18f: Befehlstypen mit Kategorien (RPG-Maker-XP-Gruppen).
-// Das Enum ersetzt die frueheren magischen Indexzahlen ueberall.
+// Das Enum ersetzt die früheren magischen Indexzahlen überall.
 enum EvType {
     ET_TEXT = 0, ET_CHOICES, ET_LOG,
     ET_WAIT, ET_SWITCH, ET_TOGGLE_SWITCH, ET_VARIABLE,
@@ -4429,7 +4433,7 @@ JsonValue* ev_ensure_pages(int ev_index) {
     return e.find("pages");
 }
 
-// Objekt der gewaehlten Seite (oder nullptr, wenn es sie nicht gibt).
+// Objekt der gewählten Seite (oder nullptr, wenn es sie nicht gibt).
 JsonValue* ev_page(int ev_index, int page_index) {
     JsonValue* pages = ev_ensure_pages(ev_index);
     if (!pages) return nullptr;
@@ -4441,7 +4445,7 @@ JsonValue* ev_current_page() {
     return ev_page(g_ev.sel_event, g_ev.sel_page);
 }
 
-// Befehlsliste der AKTUELLEN SEITE (frueher: Top-Level 'commands').
+// Befehlsliste der AKTÜLLEN SEITE (früher: Top-Level 'commands').
 JsonValue* ev_commands(int ev_index) {
     JsonValue* pg = ev_page(ev_index, g_ev.sel_page);
     if (!pg) return nullptr;
@@ -4688,7 +4692,7 @@ void ev_refresh_fields() {
     ev_set_text(g_ev.ed_radius, ev_num_str(ev_num_of(e, "radius", 2.0), 2));
 }
 
-// Etappe 18g: Seitenliste fuellen (Seite 1 = Standard, Bedingungen als Hinweis).
+// Etappe 18g: Seitenliste füllen (Seite 1 = Standard, Bedingungen als Hinweis).
 void ev_refresh_pages() {
     if (!g_ev.list_pages) return;
     SendMessageW(g_ev.list_pages, LB_RESETCONTENT, 0, 0);
@@ -4986,7 +4990,7 @@ void ev_refresh_cmds() {
         g_ev.sel_cmd = -1;
     }
 
-    // Ziel fuer neue Befehle anzeigen.
+    // Ziel für neue Befehle anzeigen.
     std::wstring target = L"Ziel: Wurzel";
     if (g_ev.sel_cmd >= 0 && g_ev.sel_cmd < static_cast<int>(g_ev.refs.size())) {
         const EventCmdRef& r = g_ev.refs[g_ev.sel_cmd];
@@ -5071,7 +5075,7 @@ void ev_apply_page_fields(bool mark_dirty) {
     if (mark_dirty) update_title();
 }
 
-// Etappe 18g: neue (leere) Seite ans Event haengen.
+// Etappe 18g: neue (leere) Seite ans Event hängen.
 void ev_new_page() {
     JsonValue* pages = ev_ensure_pages(g_ev.sel_event);
     if (!pages) return;
@@ -5090,12 +5094,12 @@ void ev_new_page() {
     update_title();
 }
 
-// Etappe 18g: gewaehlte Seite loeschen (die letzte bleibt).
+// Etappe 18g: gewählte Seite löschen (die letzte bleibt).
 void ev_delete_page() {
     JsonValue* pages = ev_ensure_pages(g_ev.sel_event);
     if (!pages) return;
     if (pages->arr.size() <= 1) {
-        core::log_warn("Event-Editor: die letzte Seite kann nicht geloescht werden");
+        core::log_warn("Event-Editor: die letzte Seite kann nicht gelöscht werden");
         return;
     }
     if (g_ev.sel_page < 0 || g_ev.sel_page >= static_cast<int>(pages->arr.size())) return;
@@ -5184,7 +5188,7 @@ void ev_duplicate_event() {
     update_title();
 }
 
-// Befehl aus dem Formular bauen. existing = alter Befehl (fuer Dann/Sonst).
+// Befehl aus dem Formular bauen. existing = alter Befehl (für Dann/Sonst).
 JsonValue ev_build_command(const JsonValue* existing) {
     const int t = static_cast<int>(SendMessageW(g_ev.cb_ce_type, CB_GETCURSEL, 0, 0));
     const int ti = (t >= 0 && t < ET_COUNT) ? t : 0;
@@ -5198,7 +5202,7 @@ JsonValue ev_build_command(const JsonValue* existing) {
         cmd.set("lines", arr);
     } else if (ti == ET_CHOICES) {
         // Wahlmöglichkeiten: Optionen aus den Zeilen; Zweige aus dem alten
-        // Befehl uebernehmen (sonst leere Arrays fuer jede Option).
+        // Befehl übernehmen (sonst leere Arrays für jede Option).
         const std::vector<std::string> lines = ev_split_lines(ev_text(g_ev.ed_ce_text));
         JsonValue opts = JsonValue::make_arr();
         JsonValue branches = JsonValue::make_arr();
@@ -5497,7 +5501,7 @@ void open_event_editor() {
     ev_control(L"Button", L"Löschen", BS_PUSHBUTTON, 106, 366, 88, 28, IDEV_DEL);
     ev_control(L"Button", L"Duplizieren", BS_PUSHBUTTON, 200, 366, 92, 28, IDEV_DUP);
 
-    ev_label(L"SEITEN (hoechste erfuellte gewinnt)", 12, 402, 280);
+    ev_label(L"SEITEN (höchste erfüllte gewinnt)", 12, 402, 280);
     g_ev.list_pages = ev_control(L"ListBox", nullptr,
                                  WS_VSCROLL | WS_BORDER | LBS_NOTIFY | LBS_HASSTRINGS,
                                  12, 424, 280, 130, IDEV_PAGES);
@@ -5562,7 +5566,7 @@ void open_event_editor() {
     ev_control(L"Button", L"Seite übernehmen", BS_PUSHBUTTON,
                740, 150, 190, 28, IDEV_APPLY_PAGE);
 
-    // Befehlsliste + Formular (arbeitet auf der gewaehlten Seite)
+    // Befehlsliste + Formular (arbeitet auf der gewählten Seite)
     ev_control(L"Button", L"Befehle", BS_GROUPBOX, 304, 232, 684, 458, 0);
     g_ev.list_cmds = ev_control(L"ListBox", nullptr,
                                 WS_VSCROLL | WS_BORDER | LBS_NOTIFY | LBS_HASSTRINGS,
@@ -5620,7 +5624,7 @@ void open_event_editor() {
     ev_control(L"Button", L"Hoch", BS_PUSHBUTTON, 476, 660, 96, 28, IDEV_UP);
     ev_control(L"Button", L"Runter", BS_PUSHBUTTON, 580, 660, 96, 28, IDEV_DOWN);
 
-    // Startzustand: erstes Event auswaehlen.
+    // Startzustand: erstes Event auswählen.
     JsonValue* evs = ev_events();
     g_ev.sel_event = evs->arr.empty() ? -1 : 0;
     g_ev.sel_page = 0;
@@ -5646,8 +5650,8 @@ bool event_editor_focused() {
 //  Etappe 17e: Script-Editor
 //
 //  Bearbeitet projekte/<name>/data/scripts.json ({"scripts":[{name,code}]}) in
-//  einem eigenen moduslosen Fenster. Das Spiel laedt die Datei beim Setup
-//  (Scripts.load_project); Events rufen Scripts ueber {"cmd":"script",...}.
+//  einem eigenen moduslosen Fenster. Das Spiel lädt die Datei beim Setup
+//  (Scripts.load_project); Events rufen Scripts über {"cmd":"script",...}.
 // ============================================================================
 enum {
     IDSC_LIST   = 6001,
@@ -5759,7 +5763,7 @@ void sc_apply(bool mark_dirty) {
     if (mark_dirty) {
         g_sc.dirty = true;
         sc_refresh_list();
-        sc_status("Geaendert - noch nicht gespeichert");
+        sc_status("Geändert - noch nicht gespeichert");
     }
 }
 
@@ -5799,7 +5803,7 @@ void sc_delete() {
     g_sc.dirty = true;
     sc_refresh_list();
     sc_refresh_fields();
-    sc_status("Script geloescht - Speichern nicht vergessen");
+    sc_status("Script gelöscht - Speichern nicht vergessen");
 }
 
 void sc_save() {
@@ -5818,7 +5822,7 @@ void sc_reload() {
     g_sc.sel = sc_scripts()->arr.empty() ? -1 : 0;
     sc_refresh_list();
     sc_refresh_fields();
-    sc_status("Vom Datentraeger neu geladen");
+    sc_status("Vom Datenträger neu geladen");
 }
 
 HWND sc_control(const wchar_t* cls, const wchar_t* text, DWORD style,
@@ -5993,20 +5997,20 @@ void ma_refresh_info() {
 
     if (!has_sel) {
         ev_set_text(g_md.lbl_info,
-                    "Kein Material ausgewaehlt.\n\nLinks eine Textur anklicken.");
+                    "Kein Material ausgewählt.\n\nLinks eine Textur anklicken.");
         SetWindowTextW(g_md.ed_tile, L"");
         return;
     }
     if (is_imported) {
         std::string info = "Importiert: " + m->name + "\n" +
                            "Datei: textures\\" + m->file + "\n" +
-                           "Groesse: " + std::to_string(m->w) + " x " +
+                           "Grösse: " + std::to_string(m->w) + " x " +
                            std::to_string(m->h) + " Pixel\n" +
                            "Quelle: " + m->source;
         ev_set_text(g_md.lbl_info, info);
-        char buf[32];
-        std::snprintf(buf, sizeof(buf), "%.2f", m->tile);
-        SetWindowTextA(g_md.ed_tile, buf);
+        wchar_t buf[32];
+        std::swprintf(buf, 32, L"%.2f", m->tile);
+        SetWindowTextW(g_md.ed_tile, buf);
     } else {
         ev_set_text(g_md.lbl_info,
                     "Prozedurale Textur (fest eingebaut):\n" + g_md.sel +
@@ -6036,12 +6040,12 @@ void ma_refresh_list() {
 void ma_apply_tile() {
     MaterialInfo* m = const_cast<MaterialInfo*>(mat_find(g_md.sel));
     if (!m || !m->imported) return;
-    char buf[32];
-    GetWindowTextA(g_md.ed_tile, buf, sizeof(buf));
-    std::string s = buf;
+    wchar_t buf[32];
+    GetWindowTextW(g_md.ed_tile, buf, 32);
+    std::string s = wide_to_utf8(buf);
     std::replace(s.begin(), s.end(), ',', '.');
     const double tile = std::atof(s.c_str());
-    if (tile <= 0.0) { ma_status("Kachel muss groesser als 0 sein"); return; }
+    if (tile <= 0.0) { ma_status("Kachel muss grösser als 0 sein"); return; }
     m->tile = tile;
     mat_save();
     ma_status("Kachel gespeichert: " + g_md.sel);
@@ -6081,7 +6085,7 @@ void ma_delete() {
     mat_save();
     g_md.sel.clear();
     ma_refresh_list();
-    ma_status("Material geloescht: " + name);
+    ma_status("Material gelöscht: " + name);
 }
 
 HWND ma_control(const wchar_t* cls, const wchar_t* text, DWORD style,
@@ -6152,7 +6156,7 @@ void open_import_texture() {
             ma_refresh_list();
             ma_status("Importiert: " + name);
         }
-        // Vorschau-Objekte neu zeichnen lassen (naechster Frame genuegt).
+        // Vorschau-Objekte neu zeichnen lassen (nächster Frame genügt).
     } else {
         MessageBoxW(g.main, L"Das Bild konnte nicht gelesen werden.",
                     L"Grafik-Import", MB_OK | MB_ICONWARNING);
@@ -6233,7 +6237,7 @@ bool material_editor_focused() {
 //
 //  Bearbeitet projekte/<name>/data/database.json ({"gold","actors","items"}).
 //  Das Spiel liest sie via Database.database und baut daraus die Party
-//  (Party.setup); Gold/Inventar wandern mit den Spielstaenden.
+//  (Party.setup); Gold/Inventar wandern mit den Spielständen.
 //  Zwei Reiter-artige Listen links (Helden, Items) + Formular rechts.
 // ============================================================================
 enum {
@@ -6245,7 +6249,7 @@ enum {
     IDDB_F1       = 8020,   // Formularfeld 1 (Name / Item-ID)
     IDDB_F2       = 8021,   // Formularfeld 2 (Klasse / Item-Name)
     IDDB_F3       = 8022,   // Feld 3 (Stufe / Art)
-    IDDB_F4       = 8023,   // Feld 4 (HP / Staerke)
+    IDDB_F4       = 8023,   // Feld 4 (HP / Stärke)
     IDDB_F5       = 8024,   // Feld 5 (MP / Preis)
     IDDB_F6       = 8025,   // Feld 6 (ATK / Startmenge)
     IDDB_F7       = 8026,   // Feld 7 (DEF / Beschreibung)
@@ -6274,7 +6278,7 @@ struct DatabaseDlgState {
     HWND ilist = nullptr;
     HWND ed_gold = nullptr;
     HWND ed[9] = {};      // Formularfelder 1..9
-    HWND lbl[9] = {};     // zugehoerige Labels
+    HWND lbl[9] = {};     // zugehörige Labels
     HWND lbl_status = nullptr;
     JsonValue root;      // komplette database.json
     int  tab = 0;        // 0 = Helden, 1 = Items
@@ -6315,7 +6319,7 @@ void db_load() {
     g_db.dirty = false;
 }
 
-// Formularfelder je Reiter beschriften und fuellen.
+// Formularfelder je Reiter beschriften und füllen.
 void db_form_layout() {
     const wchar_t* const ACTOR_LABELS[9] = {
         L"ID", L"Name", L"Klasse", L"HP (max)", L"MP (max)",
@@ -6339,16 +6343,17 @@ void db_form_layout() {
 
 void db_refresh_lists() {
     if (!g_db.win) return;
-    char buf[64];
+    wchar_t buf[160];
 
     SendMessageW(g_db.hlist, LB_RESETCONTENT, 0, 0);
     const JsonValue* actors = db_array("actors");
     for (int i = 0; i < static_cast<int>(actors->arr.size()); ++i) {
-        std::snprintf(buf, sizeof(buf), "%d. %s (%s)",
-                      i + 1, ev_str_of(actors->arr[i], "name", "?").c_str(),
-                      ev_str_of(actors->arr[i], "class", "-").c_str());
+        std::swprintf(buf, 160, L"%d. %ls (%ls)",
+                      i + 1,
+                      utf8_to_wide(ev_str_of(actors->arr[i], "name", "?")).c_str(),
+                      utf8_to_wide(ev_str_of(actors->arr[i], "class", "-")).c_str());
         const int idx = static_cast<int>(
-            SendMessageA(g_db.hlist, LB_ADDSTRING, 0,
+            SendMessageW(g_db.hlist, LB_ADDSTRING, 0,
                         reinterpret_cast<LPARAM>(buf)));
         SendMessageW(g_db.hlist, LB_SETITEMDATA, idx,
                      static_cast<LPARAM>(static_cast<INT_PTR>(i)));
@@ -6357,11 +6362,12 @@ void db_refresh_lists() {
     SendMessageW(g_db.ilist, LB_RESETCONTENT, 0, 0);
     const JsonValue* items = db_array("items");
     for (int i = 0; i < static_cast<int>(items->arr.size()); ++i) {
-        std::snprintf(buf, sizeof(buf), "%d. %s  [%s]",
-                      i + 1, ev_str_of(items->arr[i], "name", "?").c_str(),
-                      ev_str_of(items->arr[i], "kind", "-").c_str());
+        std::swprintf(buf, 160, L"%d. %ls  [%ls]",
+                      i + 1,
+                      utf8_to_wide(ev_str_of(items->arr[i], "name", "?")).c_str(),
+                      utf8_to_wide(ev_str_of(items->arr[i], "kind", "-")).c_str());
         const int idx = static_cast<int>(
-            SendMessageA(g_db.ilist, LB_ADDSTRING, 0,
+            SendMessageW(g_db.ilist, LB_ADDSTRING, 0,
                         reinterpret_cast<LPARAM>(buf)));
         SendMessageW(g_db.ilist, LB_SETITEMDATA, idx,
                      static_cast<LPARAM>(static_cast<INT_PTR>(i)));
@@ -6407,7 +6413,8 @@ void db_refresh_fields() {
     }
 
     if (g_db.ed_gold) {
-        SetWindowTextA(g_db.ed_gold, ev_num_str(ev_num_of(g_db.root, "gold"), 0).c_str());
+        SetWindowTextW(g_db.ed_gold,
+                       utf8_to_wide(ev_num_str(ev_num_of(g_db.root, "gold"), 0)).c_str());
     }
 }
 
@@ -6419,7 +6426,7 @@ void db_refresh() {
     g_db.syncing = false;
 }
 
-// Formular in den Eintrag zurueckschreiben.
+// Formular in den Eintrag zurückschreiben.
 void db_apply(bool mark_dirty) {
     const JsonValue* arrp = g_db.tab == 0 ? db_array("actors") : db_array("items");
     if (g_db.sel < 0 || g_db.sel >= static_cast<int>(arrp->arr.size())) return;
@@ -6451,7 +6458,7 @@ void db_apply(bool mark_dirty) {
     if (mark_dirty) {
         g_db.dirty = true;
         db_refresh_lists();
-        db_status("Geaendert - noch nicht gespeichert");
+        db_status("Geändert - noch nicht gespeichert");
     }
 }
 
@@ -6506,7 +6513,7 @@ void db_delete() {
     }
     g_db.dirty = true;
     db_refresh();
-    db_status("Eintrag geloescht - Speichern nicht vergessen");
+    db_status("Eintrag gelöscht - Speichern nicht vergessen");
 }
 
 void db_save() {
@@ -6555,7 +6562,7 @@ LRESULT CALLBACK database_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 db_load();
                 g_db.sel = -1;
                 db_refresh();
-                db_status("Vom Datentraeger neu geladen");
+                db_status("Vom Datenträger neu geladen");
                 return 0;
             }
             if (id == IDDB_CLOSE)  { DestroyWindow(h); return 0; }
@@ -6683,20 +6690,22 @@ struct SoundDlgState {
     HWND list = nullptr;
     HWND ed_vol = nullptr;
     HWND lbl_status = nullptr;
-    bool musik_loop = false;   // Loop-Zustand laesst sich nicht abfragen
+    bool musik_loop = false;   // Loop-Zustand lässt sich nicht abfragen
 };
 static SoundDlgState g_snd;
 
 void snd_status(const std::string& text) {
-    if (g_snd.lbl_status) SetWindowTextA(g_snd.lbl_status, text.c_str());
+    if (g_snd.lbl_status)
+        SetWindowTextW(g_snd.lbl_status, utf8_to_wide(text).c_str());
 }
 
 float snd_volume() {
     if (!g_snd.ed_vol) return 1.0f;
-    char buf[32];
+    wchar_t buf[32];
     buf[0] = 0;
-    GetWindowTextA(g_snd.ed_vol, buf, sizeof(buf));
-    const float v = static_cast<float>(std::atof(buf));
+    GetWindowTextW(g_snd.ed_vol, buf, 32);
+    const std::string s8 = wide_to_utf8(buf);
+    const float v = static_cast<float>(std::atof(s8.c_str()));
     return (v > 0.0f && v <= 1.0f) ? v : 1.0f;
 }
 
@@ -6704,13 +6713,14 @@ void snd_play_selected() {
     const int sel = static_cast<int>(
         SendMessageW(g_snd.list, LB_GETCURSEL, 0, 0));
     if (sel < 0 || sel >= 7) {
-        snd_status("Kein Sound ausgewaehlt");
+        snd_status("Kein Sound ausgewählt");
         return;
     }
-    char name[32];
-    name[0] = 0;
-    SendMessageA(g_snd.list, LB_GETTEXT, sel,
-                 reinterpret_cast<LPARAM>(name));
+    wchar_t wname[32];
+    wname[0] = 0;
+    SendMessageW(g_snd.list, LB_GETTEXT, sel,
+                 reinterpret_cast<LPARAM>(wname));
+    const std::string name = wide_to_utf8(wname);
     core::sound::play(name, snd_volume());
     snd_status(std::string("Spiele: ") + name);
 }
@@ -6808,7 +6818,7 @@ void open_soundtest_dialog() {
 
     g_snd.lbl_status = ctl(L"Static", L"", 0, 12, 340, 330, 20, IDSND_STATUS);
     snd_status("Sound-Engine: " +
-               std::string(core::sound::ready() ? "bereit" : "NICHT verfuegbar"));
+               std::string(core::sound::ready() ? "bereit" : "NICHT verfügbar"));
 
     ShowWindow(g_snd.win, SW_SHOW);
     SetForegroundWindow(g_snd.win);
@@ -6841,7 +6851,7 @@ void start_playtest() {
     if (!CreateProcessW(exe.c_str(), args.data(), nullptr, nullptr, FALSE,
                         0, nullptr, nullptr, &si, &pi)) {
         MessageBoxW(g.main, L"build\\Rune3D.exe konnte nicht gestartet werden. "
-                            L"Zuerst build.ps1 ausführen.",
+                            L"Zürst build.ps1 ausführen.",
                     L"RuneEditor", MB_OK | MB_ICONERROR);
         return;
     }
@@ -6878,10 +6888,10 @@ int main(int argc, char** argv) {
     core::log_info("=== RuneEditor startet ===");
     core::log_info("Wurzel: " + g.root);
 
-    // WIC (Bildimport) braucht COM; D3D und Ruby stoeren sich nicht daran.
+    // WIC (Bildimport) braucht COM; D3D und Ruby stören sich nicht daran.
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
-    // Kopfloser Import fuer Tests/Werkzeuge:
+    // Kopfloser Import für Tests/Werkzeuge:
     //   RuneEditor.exe --import-tex <bild> [name]
     if (argc >= 3 && std::string(argv[1]) == "--import-tex") {
         std::string tex_project = "dorf";
@@ -6907,7 +6917,7 @@ int main(int argc, char** argv) {
                          DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                          CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
 
-    // Menue
+    // Menü
     g.menu = CreateMenu();
     HMENU file_menu = CreatePopupMenu();
     AppendMenuW(file_menu, MF_STRING, ID_MENU_SAVE, L"Karte speichern\tStrg+S");
@@ -6915,7 +6925,7 @@ int main(int argc, char** argv) {
     AppendMenuW(file_menu, MF_STRING, ID_MENU_PROJECT, L"Projekt wechseln...");
     AppendMenuW(file_menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(file_menu, MF_STRING, ID_MENU_EXIT, L"Beenden");
-    HMENU map_menu = CreatePopupMenu();     // Karten werden dynamisch angehaengt
+    HMENU map_menu = CreatePopupMenu();     // Karten werden dynamisch angehängt
     g.menu_map = map_menu;
     AppendMenuW(map_menu, MF_STRING, ID_MENU_MAPNEW, L"Neue Karte...");
     AppendMenuW(map_menu, MF_STRING, ID_MENU_MAPPROPS, L"Eigenschaften...\tF2");
@@ -6966,9 +6976,9 @@ int main(int argc, char** argv) {
     wc.lpszClassName = L"RuneEditorMain";
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     wc.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
-    // Fix Fullbild-Resize: Ohne Hintergrund-Pinsel loescht Windows den Fenster-
-    // Hintergrund NIE - beim Maximieren/ Vergroeessern neu aufgedeckte Stellen
-    // (Raender zwischen den Controls) blieben schwarz/altes Bild stehen, weil
+    // Fix Fullbild-Resize: Ohne Hintergrund-Pinsel löscht Windows den Fenster-
+    // Hintergrund NIE - beim Maximieren/ Vergröessern neu aufgedeckte Stellen
+    // (Ränder zwischen den Controls) blieben schwarz/altes Bild stehen, weil
     // kein Control sie bemalt. BTNFACE passt zu den Controls (wie in den
     // Dialog-Klassen des Editors).
     wc.hbrBackground = GetSysColorBrush(COLOR_BTNFACE);
@@ -6994,7 +7004,7 @@ int main(int argc, char** argv) {
     // Etappe 18a: eigenes Fenster-Icon (Runenstein, prozedural gezeichnet).
     set_window_icons(g.main, draw_icon_editor);
 
-    // Etappe 17h: Werkzeugleiste unter dem Menue.
+    // Etappe 17h: Werkzeugleiste unter dem Menü.
     create_toolbar(g.main);
 
     // Etappe 18k: Kartenbaum links oben (XP-Kartenliste).
@@ -7025,7 +7035,7 @@ int main(int argc, char** argv) {
     make_control(L"Button", L"Boden malen", BS_AUTOCHECKBOX,
                  8, 662, 198, 30, IDC_BTN_PAINT);
     // Etappe 18l: Berge/Senken direkt an der Stelle malen (Default flach, da
-    // neue Karten Amplitude 0 haben); Shift+Klick traegt ab.
+    // neue Karten Amplitude 0 haben); Shift+Klick trägt ab.
     make_control(L"Button", L"Höhe malen", BS_AUTOCHECKBOX,
                  8, 698, 198, 30, IDC_BTN_HEIGHT);
     make_control(L"Button", L"Undo (Strg+Z)", BS_PUSHBUTTON,
@@ -7089,14 +7099,14 @@ int main(int argc, char** argv) {
     renderer.set_sky(0x3D6FB5, 0xBFD8EC);
     renderer.set_sun(math::Vec3{ -0.55f, 0.75f, 0.25f }, 0.35f);
 
-    // Etappe 17h: Sound-Engine fuer den Sound-Test-Dialog (waveOut).
+    // Etappe 17h: Sound-Engine für den Sound-Test-Dialog (waveOut).
     if (!core::sound::init()) {
         core::log_warn("Starte ohne Sound weiter (Sound-Test deaktiviert)");
     }
 
     // Texturen: einmalig per eingebettetem Ruby erzeugen (game/editor/boot.rb).
     if (!rune::ruby::init(0, nullptr, g.root)) {
-        core::log_warn("Ruby nicht gestartet - Editor laeuft mit untexturierten Objekten");
+        core::log_warn("Ruby nicht gestartet - Editor läuft mit untexturierten Objekten");
     } else {
         rune::ruby::load_script("game\\editor\\boot.rb");
     }
@@ -7111,7 +7121,7 @@ int main(int argc, char** argv) {
         } else {
             std::string last;
             if (read_file(g.root + "\\log\\last_project.txt", last)) {
-                // Zeilenumbrueche abschneiden
+                // Zeilenumbrüche abschneiden
                 while (!last.empty() && (last.back() == '\r' || last.back() == '\n')) {
                     last.pop_back();
                 }
@@ -7119,9 +7129,9 @@ int main(int argc, char** argv) {
             }
         }
         if (!switch_project(startup)) {
-            // Rueckfall: dorf, sonst erstes gefundenes Projekt.
+            // Rückfall: dorf, sonst erstes gefundenes Projekt.
             if (startup != "dorf" && switch_project("dorf")) {
-                core::log_warn("Projekt '" + startup + "' fehlt, zurueck auf 'dorf'");
+                core::log_warn("Projekt '" + startup + "' fehlt, zurück auf 'dorf'");
             } else if (g.project_dir.empty()) {
                 const std::vector<std::string> all = scan_projects();
                 if (!all.empty()) switch_project(all.front());
@@ -7129,7 +7139,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    // Prefab-Liste fuellen
+    // Prefab-Liste füllen
     for (const Prefab& p : g.prefabs) {
         const std::wstring label = utf8_to_wide(p.name);
         SendMessageW(g.list_prefab, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label.c_str()));
@@ -7171,7 +7181,7 @@ int main(int argc, char** argv) {
         handle_shortcuts();
         update_hover();
         render_frame();
-        core::sound::update();   // Etappe 17h: Puffer des Sound-Tests fuellen
+        core::sound::update();   // Etappe 17h: Puffer des Sound-Tests füllen
 
         fps_accum += dt;
         ++fps_frames;

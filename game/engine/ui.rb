@@ -1,10 +1,10 @@
 #encoding: utf-8
 # Einfache 2D-Oberflaeche: Panels, Texte, Nachrichtenfenster — plus ein
-# kleines Button-Framework fuer den Editor (Etappe 16a).
+# kleines Button-Framework für den Editor (Etappe 16a).
 #
-# Klick-Erkennung: Jede gezeichnete Flaeche registriert sich fuer den
-# NAECHSTEN Frame (draw laeuft nach update). UI.clicked prueft den Klick
-# gegen die Flaeche des Vorframes — bei 60 FPS kein spuerbarer Versatz.
+# Klick-Erkennung: Jede gezeichnete Fläche registriert sich für den
+# NÄCHSTEN Frame (draw läuft nach update). UI.clicked prüft den Klick
+# gegen die Fläche des Vorframes — bei 60 FPS kein spürbarer Versatz.
 # Alles hier landet in der UI-Schicht der Engine (Rechtecke + GDI-Text).
 module UI
   TEXT      = 0xE8E8E8
@@ -37,13 +37,13 @@ module UI
 
   # --- Button-Framework (Etappe 16a) ----------------------------------------
 
-  # Frame starten: registrierte Flaechen des letzten Frames einfrieren.
+  # Frame starten: registrierte Flächen des letzten Frames einfrieren.
   def self.begin_frame
     @prev = @rects
     @rects = []
   end
 
-  # Zeichnet einen Button und registriert seine Flaeche. Rueckgabe: Hover?
+  # Zeichnet einen Button und registriert seine Fläche. Rückgabe: Hover?
   # id: Klick-Kennung (default: das Label selbst).
   def self.button(x, y, w, h, label, active: false, danger: false, ok: false, size: 15, id: nil)
     mx, my = Rune::Input.mouse_position
@@ -80,7 +80,7 @@ module UI
     nil
   end
 
-  # Maus ueber einer registrierten Flaeche (Vorframe)? Dann keine Welt-Aktion.
+  # Maus über einer registrierten Fläche (Vorframe)? Dann keine Welt-Aktion.
   def self.over_ui?
     mx, my = Rune::Input.mouse_position
     (@prev || []).any? { |(x, y, w, h, _)| mx >= x && mx < x + w && my >= y && my < y + h }
@@ -108,13 +108,13 @@ module UI
   end
 
   # Wahlmöglichkeiten (Etappe 18f, RPG-Maker-Show-Choices): Fenster mit
-  # Optionen, der gewaehlte Eintrag ist markiert (Pfeil + Hinterlegung).
+  # Optionen, der gewählte Eintrag ist markiert (Pfeil + Hinterlegung).
   def self.choices(options, sel, x: 40, y: 496, w: 420)
     line_h = 28
     h = 34 + options.size * line_h
     panel(x, y, w, h, PANEL, 0.86)
     panel(x, y, w, 2, ACCENT, 0.85)
-    text(x + 22, y + 8, 'Bitte waehlen:', TEXT_DIM, 14)
+    text(x + 22, y + 8, 'Bitte wählen:', TEXT_DIM, 14)
     options.each_with_index do |opt, i|
       oy = y + 30 + i * line_h
       if i == sel
@@ -137,7 +137,7 @@ module UI
     text(x + 12, y + 6, line, TEXT_DIM, 16)
   end
 
-  # "-0.0" ist haesslich, im HUD soll dort "0.0" stehen.
+  # "-0.0" ist hässlich, im HUD soll dort "0.0" stehen.
   def self.num(s)
     s.gsub('-0.0', ' 0.0')
   end

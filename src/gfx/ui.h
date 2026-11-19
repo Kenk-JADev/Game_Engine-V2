@@ -10,8 +10,8 @@
 
 namespace rune::gfx {
 
-// 2D-Overlay ueber der 3D-Szene: farbige Rechtecke und Text.
-// Text wird mit GDI in eine Bildflaeche gerastert (weisse Glyphen auf Schwarz)
+// 2D-Overlay über der 3D-Szene: farbige Rechtecke und Text.
+// Text wird mit GDI in eine Bildfläche gerastert (weisse Glyphen auf Schwarz)
 // und als Textur gezeichnet - die Farbe kommt beim Zeichnen als Tint dazu.
 // Hinweis: es wird erst *alle* Rechtecke gezeichnet, dann *aller* Text.
 class Ui {
@@ -38,7 +38,7 @@ private:
         float x, y, size;
         uint32_t rgb;
         std::string s;
-        float w = 0.0f; // gemessene Breite/Hoehe (nach dem Rastern)
+        float w = 0.0f; // gemessene Breite/Höhe (nach dem Rastern)
         float h = 0.0f;
     };
     struct Vertex {
@@ -77,7 +77,7 @@ private:
     ID3D11Texture2D*          m_white_tex = nullptr;
     ID3D11ShaderResourceView* m_white_srv = nullptr;
 
-    // Textflaeche (GDI + D3D11-Textur)
+    // Textfläche (GDI + D3D11-Textur)
     HDC                       m_dc = nullptr;
     HBITMAP                   m_dib = nullptr;
     void*                     m_bits = nullptr;

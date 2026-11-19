@@ -1,12 +1,12 @@
 #encoding: utf-8
 # ============================================================================
-#  Kopfloser Test fuer MapCheck (Etappe 19a):
+#  Kopfloser Test für MapCheck (Etappe 19a):
 #     ruby -I game/engine tools/mapcheck_test.rb
-#  Exit-Code 0 = alles gruen.
+#  Exit-Code 0 = alles grün.
 #
 #  MapCheck ist die Ruby-Variante des Editor-Karten-Scans (issues_scan_map in
-#  src/editor/editor_main.cpp). Beide muessen dieselben Regeln haben, deshalb
-#  prueft dieser Test auch die mitgelieferten Karten (game/data, projekte/).
+#  src/editor/editor_main.cpp). Beide müssen dieselben Regeln haben, deshalb
+#  prüft dieser Test auch die mitgelieferten Karten (game/data, projekte/).
 # ============================================================================
 
 ROOT = File.expand_path('..', __dir__)
@@ -15,7 +15,7 @@ require 'json'
 require 'fileutils'
 require 'tmpdir'
 require 'mapcheck'
-require 'prefabs'   # echte Prefab-Ids fuer die Daten-Pruefung
+require 'prefabs'   # echte Prefab-Ids für die Daten-Prüfung
 
 $fail = 0
 def check(name)
@@ -117,12 +117,12 @@ check('Breite 0 -> Warnung') do
   k['terrain']['width'] = 0.0
   hat?(MapCheck.scan(k, **OPTS), "'width'/'size' fehlt oder <= 0", MapCheck::WARNUNG)
 end
-check('Hoehen-Buerste ohne r -> Fehler') do
+check('Höhen-Bürste ohne r -> Fehler') do
   k = saubere_karte
   k['terrain']['heights'] = [{ 'x' => 1.0, 'z' => 1.0, 'h' => 2.0 }]
   hat?(MapCheck.scan(k, **OPTS), "'r' fehlt oder ist keine Zahl", MapCheck::FEHLER)
 end
-check('Hoehen-Buerste mit Radius 0 -> Warnung') do
+check('Höhen-Bürste mit Radius 0 -> Warnung') do
   k = saubere_karte
   k['terrain']['heights'] = [{ 'x' => 1.0, 'z' => 1.0, 'r' => 0.0, 'h' => 2.0 }]
   hat?(MapCheck.scan(k, **OPTS), "'r' (Radius) muss > 0 sein", MapCheck::WARNUNG)
@@ -332,13 +332,13 @@ check('nur ein Wegpunkt -> Warnung') do
   k['npcs'][0]['path'] = [[1.0, 2.0]]
   hat?(MapCheck.scan(k, **OPTS), 'nur ein Wegpunkt', MapCheck::WARNUNG)
 end
-check('NPC-Befehle werden geprueft') do
+check('NPC-Befehle werden geprüft') do
   k = saubere_karte
   k['npcs'][0]['commands'] = [{ 'cmd' => 'unbekannt' }]
   hat?(MapCheck.scan(k, **OPTS), "unbekannter Befehlstyp 'unbekannt'", MapCheck::FEHLER)
 end
 
-puts '== MapCheck: Atmosphaere =='
+puts '== MapCheck: Atmosphäre =='
 check('Nebel-Farbe zu gross -> Warnung') do
   k = saubere_karte
   k['fog']['color'] = 0x1FFFFFF
@@ -376,10 +376,10 @@ begin
   check('scan_tree findet beide Karten') do
     MapCheck.scan_tree(tmp, **OPTS).keys.sort.map { |p| File.basename(p) } == %w[gut.json kaputt.json]
   end
-  check('scan_tree: nur_funde laesst saubere Karte weg') do
+  check('scan_tree: nur_funde lässt saubere Karte weg') do
     MapCheck.scan_tree(tmp, nur_funde: true, **OPTS).keys.size == 1
   end
-  check('map_ids ignoriert Datenbank/Scripte/Spielstaende') do
+  check('map_ids ignoriert Datenbank/Scripte/Spielstände') do
     File.write(File.join(tmp, 'database.json'), '{}', encoding: 'utf-8')
     FileUtils.mkdir_p(File.join(tmp, 'saves'))
     File.write(File.join(tmp, 'saves', 'slot1.json'), '{}', encoding: 'utf-8')
@@ -390,7 +390,7 @@ ensure
 end
 
 puts '== MapCheck: Ausgabe und Backlog =='
-check('summary zaehlt Fehler und Warnungen') do
+check('summary zählt Fehler und Warnungen') do
   f = [MapCheck::Finding.new(MapCheck::FEHLER, 'a', 'x'),
        MapCheck::Finding.new(MapCheck::WARNUNG, 'b', 'y')]
   MapCheck.summary(f) == '1 Fehler, 1 Warnung'

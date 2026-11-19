@@ -1,7 +1,7 @@
 #encoding: utf-8
 # ============================================================================
-#  Kopfloser Test fuer Speichern/Laden (Etappe 10): GameState-Snapshot,
-#  Projekt-Spielstaende, fired-Flags ueber JSON-Roundtrip.
+#  Kopfloser Test für Speichern/Laden (Etappe 10): GameState-Snapshot,
+#  Projekt-Spielstände, fired-Flags über JSON-Roundtrip.
 #     ruby -I game/engine tools/save_test.rb
 # ============================================================================
 
@@ -35,8 +35,8 @@ GameState.set_switch('b', true)
 GameState.add_variable('kristalle', 1)
 
 snap = GameState.snapshot
-check('Snapshot enthaelt Schalter') { snap['switches'] == { 'a' => true, 'b' => true } }
-check('Snapshot enthaelt Variablen') { snap['variables'] == { 'kristalle' => 3.0 } }
+check('Snapshot enthält Schalter') { snap['switches'] == { 'a' => true, 'b' => true } }
+check('Snapshot enthält Variablen') { snap['variables'] == { 'kristalle' => 3.0 } }
 
 # JSON-Roundtrip (wie beim echten Speichern/Laden)
 snap2 = JSON.parse(JSON.generate(snap))
@@ -45,15 +45,15 @@ GameState.restore!(snap2)
 check('Restore nach Reset: Schalter') { GameState.switch('a') && GameState.switch('b') }
 check('Restore nach Reset: Variable') { GameState.variable('kristalle') == 3.0 }
 
-# Leerer Snapshot ist unschaedlich
+# Leerer Snapshot ist unschädlich
 GameState.restore!({})
 check('Leerer Snapshot: keine Schalter') { GameState.switch('a') == false }
 check('Leerer Snapshot: Variable 0') { GameState.variable('kristalle') == 0.0 }
 
-# --- Projekt-Spielstaende ----------------------------------------------------
+# --- Projekt-Spielstände ----------------------------------------------------
 name = Project.create('SaveTest')
 begin
-  check('Neues Projekt ohne Spielstaende') { Project.has_saves?(name) == false }
+  check('Neues Projekt ohne Spielstände') { Project.has_saves?(name) == false }
   check('latest_save nil') { Project.latest_save(name).nil? }
   check('load_save leerer Slot nil') { Project.load_save(name, 2).nil? }
 
@@ -80,11 +80,11 @@ begin
   check('latest_save bleibt 3') { Project.latest_save(name) == 3 }
 
   info = Project.info(name)
-  check('info zaehlt Spielstaende') { info['saves'] == 3 }
+  check('info zählt Spielstände') { info['saves'] == 3 }
 ensure
   Project.delete(name)
 end
-check('Testprojekt aufgeraeumt') { !Project.valid?(name) }
+check('Testprojekt aufgeräumt') { !Project.valid?(name) }
 
 puts($fail.zero? ? 'SAVE-TEST OK (0 Fehler)' : "SAVE-TEST FEHLGESCHLAGEN (#{$fail} Fehler)")
 exit($fail.zero? ? 0 : 1)

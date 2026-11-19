@@ -1,6 +1,6 @@
 #encoding: utf-8
 # ============================================================================
-#  Editor (Etappe 16a/16b/18m): klickbare Oberflaeche mit Tab-Leiste.
+#  Editor (Etappe 16a/16b/18m): klickbare Oberfläche mit Tab-Leiste.
 #
 #  ARCHITEKTUR — zwei getrennte Engines:
 #
@@ -10,27 +10,27 @@
 #    (@objects = JSON-Modell)          (@events, @npcs, @interpreter,
 #    Preview-Nodes (ed_*) sind nur     GameState, Physik, Sound)
 #    Anzeige, kein Spielzustand
-#    Simulation eingefroren            Simulation laeuft (Playtest)
+#    Simulation eingefroren            Simulation läuft (Playtest)
 #
-#  Der Editor kennt keine Spiellogik: Er veraendert Daten und baut die
-#  Preview neu. Der Playtest (▶ Testen) sichert erst die Daten, laesst
-#  dann die Game-Engine laufen und beim Zurueckschalten (F4) wird die
+#  Der Editor kennt keine Spiellogik: Er verändert Daten und baut die
+#  Preview neu. Der Playtest (▶ Testen) sichert erst die Daten, lässt
+#  dann die Game-Engine laufen und beim Zurückschalten (F4) wird die
 #  Karte frisch geladen — der Editierstand bleibt heilig.
 #
-#  Tabs (Etappe 18m erweitert): OBJEKTE (setzen/verschieben/loeschen/
-#  drehen), BODEN (Flaechen malen), HÖHE (Berge/Senken), EVENTS + NPCs
+#  Tabs (Etappe 18m erweitert): OBJEKTE (setzen/verschieben/löschen/
+#  drehen), BODEN (Flächen malen), HÖHE (Berge/Senken), EVENTS + NPCs
 #  (Listenansicht), KARTE (Wechseln/Neu/Speichern).
 #
 #  Bedienung:
-#    F4          Editor an/aus (im Playtest: zurueck zum Editor)
-#    Linksklick  Aktion des gewaehlten Werkzeugs
-#    Rechtsklick Objekt unter dem Zeiger loeschen
+#    F4          Editor an/aus (im Playtest: zurück zum Editor)
+#    Linksklick  Aktion des gewählten Werkzeugs
+#    Rechtsklick Objekt unter dem Zeiger löschen
 #    Shift+Klick Radierer (Boden) / Senke (Höhe) / negativ drehen
-#    1..9        Prefab-Typ waehlen (Tastatur-Shortcut)
+#    1..9        Prefab-Typ wählen (Tastatur-Shortcut)
 #    R / G       Drehung +30 Grad / Raster umschalten
-#    +/-         Pinselgroesse (im BODEN/HÖHE-Tab)
+#    +/-         Pinselgrösse (im BODEN/HÖHE-Tab)
 #    Strg+S      Karte speichern
-#    N / V / B   neue Karte / zurueck / vor
+#    N / V / B   neue Karte / zurück / vor
 #
 #  Gespeichert werden objects plus die Mal-Ebenen terrain.splats und
 #  terrain.heights; die Geometrie kommt aus den Prefabs. Beim Verlassen
@@ -43,7 +43,7 @@ class Editor
   TABS = [%w[objekte OBJEKTE], %w[boden BODEN], %w[hoehe HÖHE],
           %w[events EVENTS], %w[npcs NPCS], %w[karte KARTE]].freeze
 
-  # Bodentaugliche Texturen fuer den Mal-Pinsel (aus Textures::LIST).
+  # Bodentaugliche Texturen für den Mal-Pinsel (aus Textures::LIST).
   BRUSH_TEX = %w[gras weg fels holz].freeze
 
   attr_reader :rotation, :tab, :tool, :selected
@@ -64,21 +64,21 @@ class Editor
 
     @tab      = :objekte
     @tool     = :place        # :place, :move, :paint, :height
-    @selected = nil           # Index des ausgewaehlten Objekts
+    @selected = nil           # Index des ausgewählten Objekts
     @grab     = nil           # Index des verschobenen Objekts
     @map_ref  = nil
     @scene_ref = nil
 
-    # Etappe 18m: Mal-Werkzeuge (Boden/Hoehe) wie im Standalone-Editor.
+    # Etappe 18m: Mal-Werkzeuge (Boden/Höhe) wie im Standalone-Editor.
     @paint_tex = 'weg'        # Textur des Boden-Pinsels
-    @paint_size = 8.0         # Pinselkante in Metern (Boden + Hoehe)
+    @paint_size = 8.0         # Pinselkante in Metern (Boden + Höhe)
     @height_step = 2.0        # Berg/Senke pro Klick in Metern
   end
 
   def active? = @active
   def objects = @objects
   def dirty? = @dirty
-  def hit = @hit          # letzter Bodenpunkt unter dem Zeiger (fuer Loesch-Fallback)
+  def hit = @hit          # letzter Bodenpunkt unter dem Zeiger (für Lösch-Fallback)
 
   # Prefab-Objektindex aus einem Knotennamen ("ed_7_2" -> 7)
   def self.object_index(node_name)
@@ -117,7 +117,7 @@ class Editor
 
   # ------------------------------------------------------------- Strahl -> Boden
 
-  # Marschiert den Strahl entlang, bis er das Gelaende durchstoesst.
+  # Marschiert den Strahl entlang, bis er das Gelände durchstösst.
   def self.terrain_hit(origin, dir, max_t: 160.0, step: 0.4)
     return nil unless Rune::World.ready?
     t = 0.5
@@ -144,9 +144,9 @@ class Editor
     map['terrain']
   end
 
-  # Boden-Flaeche an (x,z) malen (erase=false) oder die zuletzt
-  # ueberdeckende Flaeche radiert (erase=true). Snap aufs Raster, danach
-  # Live-Anwendung ueber terrain_splats/terrain_texture.
+  # Boden-Fläche an (x,z) malen (erase=false) oder die zuletzt
+  # überdeckende Fläche radiert (erase=true). Snap aufs Raster, danach
+  # Live-Anwendung über terrain_splats/terrain_texture.
   def paint_ground(x, z, erase)
     t = map_terrain
     size = @paint_size
@@ -174,7 +174,7 @@ class Editor
     true
   end
 
-  # Hoehen-Pinsel {x,z,r,h} in terrain.heights: Klick = Berg (+@height_step),
+  # Höhen-Pinsel {x,z,r,h} in terrain.heights: Klick = Berg (+@height_step),
   # Shift+Klick = Senke. Klicks in dieselbe Rasterzelle (gleicher Radius)
   # stapeln zu einem Eintrag, damit die JSON-Liste klein bleibt.
   def paint_height(x, z, sink)
@@ -215,7 +215,7 @@ class Editor
     Rune::Log.error("Editor: Boden-Neubau fehlgeschlagen: #{e.message}")
   end
 
-  # Hoehen live anwenden: Pinsel setzen und Terrain mit den Karten-
+  # Höhen live anwenden: Pinsel setzen und Terrain mit den Karten-
   # Parametern neu generieren (build_terraform der Karte).
   def apply_heights!
     tt = (@map_ref || {})['terrain'] || {}
@@ -251,7 +251,7 @@ class Editor
     @selected = nil if @selected == index
     @grab = nil if @grab == index
     @dirty = true
-    set_status("geloescht: #{Prefabs.name_of(obj['type'])}")
+    set_status("gelöscht: #{Prefabs.name_of(obj['type'])}")
     obj
   end
 
@@ -267,7 +267,7 @@ class Editor
     obj
   end
 
-  # Ausgewaehltes Objekt um ±30 Grad drehen.
+  # Ausgewähltes Objekt um ±30 Grad drehen.
   def rotate_selected(delta, scene)
     obj = @objects[@selected]
     return unless obj
@@ -277,7 +277,7 @@ class Editor
     Editor.rebuild(@objects, scene)
   end
 
-  # Baut alle Editor-Objekte neu in die Szene (einfachster Weg nach Aenderungen).
+  # Baut alle Editor-Objekte neu in die Szene (einfachster Weg nach Änderungen).
   def self.rebuild(objects, scene)
     scene.root.children.reject! { |n| n.name.start_with?('ed_') }
     objects.each_with_index do |obj, i|
@@ -288,7 +288,7 @@ class Editor
 
   # Speichert die Karte komplett: Objekte UND die Mal-Ebenen (terrain.splats,
   # terrain.heights), weil terrain Teil des Karten-JSON ist und im Speicher
-  # von uns veraendert wurde (Etappe 18m - "Speichern fehlt").
+  # von uns verändert wurde (Etappe 18m - "Speichern fehlt").
   def save(objects, map)
     path = File.join(Database.root, 'maps', "#{@map_id}.json")
     map['objects'] = @objects
@@ -303,15 +303,15 @@ class Editor
 
   # ---------------------------------------------------------------- Klicks
 
-  # Ein Button-Klick aus der UI (Kennung) aufschluesseln und ausfuehren.
-  # Rueckgabe: true, wenn die Karte gewechselt wurde (Update abbrechen).
+  # Ein Button-Klick aus der UI (Kennung) aufschlüsseln und ausführen.
+  # Rückgabe: true, wenn die Karte gewechselt wurde (Update abbrechen).
   def handle_click(label, scene, map)
     case label
     when /\Atab:(\w+)\z/
       @tab = Regexp.last_match(1).to_sym
       @grab = nil
       # Tab direkt mit Werkzeug verdrahten (Etappe 18m): BODEN = malen,
-      # HOEHE = Berge, OBJEKTE = Setzen statt Mal-Werkzeug.
+      # HÖHE = Berge, OBJEKTE = Setzen statt Mal-Werkzeug.
       @tool = :paint  if @tab == :boden
       @tool = :height if @tab == :hoehe
       if @tab == :objekte && (@tool == :paint || @tool == :height)
@@ -404,7 +404,7 @@ class Editor
       @grid = (@grid == 1.0 ? 0.25 : 1.0)
       set_status("Raster: #{@grid} m")
     end
-    # Pinselgroesse mit +/- (Etappe 18m, BODEN/HOEHE-Tab)
+    # Pinselgrösse mit +/- (Etappe 18m, BODEN/HÖHE-Tab)
     if @tab == :boden || @tab == :hoehe
       if Rune::Input.pressed?(:add) || Rune::Input.pressed?(:equals) ||
          Rune::Input.pressed?(:plus)
@@ -479,7 +479,7 @@ class Editor
     end
   end
 
-  # Rechtsklick-Loeschung kommt aus main.rb (dort ist der getroffene Knoten bekannt).
+  # Rechtsklick-Löschung kommt aus main.rb (dort ist der getroffene Knoten bekannt).
   def delete_node(node, scene)
     idx = Editor.object_index(node&.name)
     if idx && @objects[idx]
@@ -488,9 +488,9 @@ class Editor
     end
   end
 
-  # Notloesung fuer duenne Prefabs (Zaunlatten, Pfaehle): Der Strahl verfehlt
-  # die duennen Einzelteile leicht. Deshalb das Objekt loeschen, dessen Mitte
-  # der Bodenpunkt am naechsten liegt (innerhalb seines groben Radius).
+  # Notlösung für dünne Prefabs (Zaunlatten, Pfähle): Der Strahl verfehlt
+  # die dünnen Einzelteile leicht. Deshalb das Objekt löschen, dessen Mitte
+  # der Bodenpunkt am nächsten liegt (innerhalb seines groben Radius).
   def delete_near(x, z, scene)
     best = nil
     best_d = nil
@@ -513,7 +513,7 @@ class Editor
   def draw_hit_marker
     return unless @hit && (@tool == :place || @grab)
     p = current_prefab
-    # Grobe Huellbox des Prefabs
+    # Grobe Hüllbox des Prefabs
     w = 0.0; h = 0.0; d = 0.0
     p[:parts].each do |part|
       w = [w, part[:s][0]].max
@@ -523,7 +523,7 @@ class Editor
     Game.draw_wire_box(@hit[0], @hit[1] + h * 0.5, @hit[2], w * 1.05, h * 1.05, d * 1.05, 0xFFD166)
   end
 
-  # Auswahl-Markierung um das ausgewaehlte Objekt.
+  # Auswahl-Markierung um das ausgewählte Objekt.
   def draw_selection
     return unless @selected && @objects[@selected]
     obj = @objects[@selected]
@@ -532,8 +532,8 @@ class Editor
                        obj['z'].to_f, r * 2.0, 2.4, r * 2.0, UI::ACCENT)
   end
 
-  # Pinsel-Vorschau am Cursor (Etappe 18m): flaches Quadrat in Pinselgroesse
-  # auf dem Boden - blau beim Boden-Malen, orange beim Hoehen-Malen.
+  # Pinsel-Vorschau am Cursor (Etappe 18m): flaches Quadrat in Pinselgrösse
+  # auf dem Boden - blau beim Boden-Malen, orange beim Höhen-Malen.
   def draw_brush_marker
     return unless @hit && (@tool == :paint || @tool == :height)
     col = @tool == :paint ? 0x66CCFF : 0xFF8830
@@ -578,7 +578,7 @@ class Editor
     UI.button(136, y, 104, 26, 'Speichern', active: @dirty, id: 'save')
   end
 
-  # Etappe 18m: BODEN-Tab - Textur-Palette + Pinselgroesse + Radierer-Hinweis.
+  # Etappe 18m: BODEN-Tab - Textur-Palette + Pinselgrösse + Radierer-Hinweis.
   def draw_boden_tab
     UI.window(16, 82, 244, 344, 'BODEN MALEN')
     UI.text(24, 112, 'Textur:', UI::TEXT, 15)
@@ -598,7 +598,7 @@ class Editor
     UI.button(24, y + 40, 104, 26, 'Speichern', active: @dirty, id: 'save')
   end
 
-  # Etappe 18m: HOEHE-Tab - Berg/Senke malen wie im Standalone-Editor.
+  # Etappe 18m: HÖHE-Tab - Berg/Senke malen wie im Standalone-Editor.
   def draw_hoehe_tab
     UI.window(16, 82, 244, 344, 'HÖHE MALEN')
     UI.button(24, 114, 104, 26, '-', id: 'brush-')
@@ -677,7 +677,7 @@ class Editor
            when :move   then (@grab ? 'Klick = ablegen' : 'Klick = Objekt greifen')
            when :paint  then 'Klick = Boden malen, Shift+Klick = radieren'
            when :height then 'Klick = Berg, Shift+Klick = Senke, +/- Pinsel'
-           else 'Klick = setzen, Rechtsklick = loeschen'
+           else 'Klick = setzen, Rechtsklick = löschen'
            end
     UI.text(16, 697, @status && @status_t > 0.0 ? @status : hint, UI::ACCENT, 15)
     UI.text(620, 697, "Objekte: #{@objects.size}   Raster: #{@grid} m   " \

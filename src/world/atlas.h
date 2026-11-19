@@ -1,8 +1,8 @@
 #pragma once
 // ============================================================================
-//  Etappe 18d: Atlas-Layout fuer Splat-Boeden.
-//  Basistyp ohne Abhaengigkeiten, damit gfx/renderer.h und world/terrain.h
-//  ihn beide nutzen koennen (terrain.h inkludiert renderer.h).
+//  Etappe 18d: Atlas-Layout für Splat-Böden.
+//  Basistyp ohne Abhängigkeiten, damit gfx/renderer.h und world/terrain.h
+//  ihn beide nutzen können (terrain.h inkludiert renderer.h).
 // ============================================================================
 
 #include <map>
@@ -10,9 +10,9 @@
 
 namespace rune::world {
 
-// Rechteckige Boden-Flaeche ("Splat") mit eigener Textur.
+// Rechteckige Boden-Fläche ("Splat") mit eigener Textur.
 // x/z = Ecke (Weltmeter, Karte auf 0 zentriert), w/h = Ausdehnung.
-// Der spaetere Eintrag in der Liste gewinnt (Flaechen stapeln).
+// Der spätere Eintrag in der Liste gewinnt (Flächen stapeln).
 struct SplatRect {
     float x = 0.0f, z = 0.0f, w = 0.0f, h = 0.0f;
     std::string tex;

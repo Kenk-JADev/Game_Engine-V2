@@ -1,12 +1,12 @@
 #encoding: utf-8
 # ============================================================================
 #  Titelbildschirm (Etappe 8): das Demodorf dreht sich als 3D-Hintergrund,
-#  davor das Menue - Projektauswahl mit Tastatur UND Maus, Infos pro Projekt,
-#  neues Projekt anlegen, Projekt loeschen (mit Rueckfrage).
+#  davor das Menü - Projektauswahl mit Tastatur UND Maus, Infos pro Projekt,
+#  neues Projekt anlegen, Projekt löschen (mit Rückfrage).
 #
-#  Tasten:  Hoch/Runter oder Maus = waehlen · Enter/Klick = spielen ·
+#  Tasten:  Hoch/Runter oder Maus = wählen · Enter/Klick = spielen ·
 #           1..9 Projekt direkt laden · N neues Projekt (Namen tippen) ·
-#           D/Entf Projekt loeschen (J = ja) · Esc abbrechen/beenden
+#           D/Entf Projekt löschen (J = ja) · Esc abbrechen/beenden
 # ============================================================================
 
 module Launcher
@@ -18,14 +18,14 @@ module Launcher
   @t = 0.0
   @scene = nil
 
-  ENTRY_H = 48        # Hoehe eines Listeneintrags
-  MAX_SHOWN = 8       # sichtbare Eintraege (Rest laeuft ueber Hoch/Runter)
+  ENTRY_H = 48        # Höhe eines Listeneintrags
+  MAX_SHOWN = 8       # sichtbare Einträge (Rest läuft über Hoch/Runter)
 
   module_function
 
   def activate
     Project.ensure_demo
-    # Rueckkehr aus dem Spiel: Projektbindung loesen, damit die Kulisse
+    # Rückkehr aus dem Spiel: Projektbindung lösen, damit die Kulisse
     # wieder die Demo-Welt aus game/data zeigt.
     $project_root = nil
     Database.reset!
@@ -36,7 +36,7 @@ module Launcher
     @name = ''
     @t = 0.0
     build_backdrop
-    Rune::Input.capture = false   # Menue: freier Zeiger (Engine startet gefangen)
+    Rune::Input.capture = false   # Menü: freier Zeiger (Engine startet gefangen)
     Rune::Window.title = 'Rune3D'
     Rune::Sound.loop('musik', 0.15)   # ruhige Titel-Melodie (ersetzt alte Loops)
   end
@@ -83,7 +83,7 @@ module Launcher
   def update(dt)
     @t += dt
     # Kamera-Orbit: Spieler ist unsichtbarer Drehpunkt, die Kamera schaut
-    # immer auf ihn - so wandert der Blick langsam uebers Dorf.
+    # immer auf ihn - so wandert der Blick langsam übers Dorf.
     a = @t * 0.10
     r = 10.0
     px = Math.sin(a) * r
@@ -103,7 +103,7 @@ module Launcher
     n = @projects.size
     shown = [n, MAX_SHOWN].min
 
-    # Maus: Eintrag unter dem Zeiger waehlen, Klick startet.
+    # Maus: Eintrag unter dem Zeiger wählen, Klick startet.
     mx, my = Rune::Input.mouse_position
     y0 = 168
     if mx >= 48 && mx <= 448 && my >= y0 && my < y0 + shown * ENTRY_H
@@ -127,7 +127,7 @@ module Launcher
     end
 
     start(@projects[@sel]) if Rune::Input.pressed?(:enter) && n > 0
-    # L = Fortsetzen: zuletzt gesicherten Spielstand des gewaehlten Projekts.
+    # L = Fortsetzen: zuletzt gesicherten Spielstand des gewählten Projekts.
     if Rune::Input.pressed?(:l) && n > 0
       name = @projects[@sel]
       slot = Project.latest_save(name)
@@ -148,8 +148,8 @@ module Launcher
   end
 
   def update_name
-    # Frame-basierte Eingabe: jede Taste ist genau einen Frame "gedrueckt",
-    # WM_CHAR ist bei PostMessage unzuverlaessig (kommt Frames spaeter).
+    # Frame-basierte Eingabe: jede Taste ist genau einen Frame "gedrückt",
+    # WM_CHAR ist bei PostMessage unzuverlässig (kommt Frames später).
     if Rune::Input.pressed?(:backspace)
       @name = @name[0...-1].to_s
     end
@@ -171,7 +171,7 @@ module Launcher
   def update_del
     if Rune::Input.pressed?(:j) || Rune::Input.pressed?(:enter)
       victim = @projects[@sel]
-      Rune::Log.info("Projekt geloescht: #{victim}")
+      Rune::Log.info("Projekt gelöscht: #{victim}")
       Project.delete(victim)
       @projects = Project.list
       @infos = @projects.to_h { |x| [x, Project.info(x)] }
@@ -185,7 +185,7 @@ module Launcher
   # ---------------------------------------------------------------- Zeichnen
 
   def draw
-    @scene.draw if @scene   # 3D-Kulisse zuerst, dann das Menue darueber
+    @scene.draw if @scene   # 3D-Kulisse zürst, dann das Menü darüber
     w = Rune::Window.width
     h = Rune::Window.height
 
@@ -208,7 +208,7 @@ module Launcher
     UI.text(50, 78, 'Rollenspiel-Engine mit Ruby-Modding', UI::TEXT_DIM, 15)
     Rune::Gfx.rect(48, 106, 400, 3, UI::ACCENT, 0.8)
 
-    # Menue-Panel links
+    # Menü-Panel links
     n = @projects.size
     shown = [n, MAX_SHOWN].min
     panel_h = 52 + shown * ENTRY_H + 10
@@ -219,7 +219,7 @@ module Launcher
     y0 = 168
     if n.zero?
       UI.text(56, y0 + 8, 'Keine Projekte mehr.', UI::TEXT_DIM, 16)
-      UI.text(56, y0 + 34, 'N druecken fuer ein neues.', UI::TEXT_DIM, 16)
+      UI.text(56, y0 + 34, 'N drücken für ein neues.', UI::TEXT_DIM, 16)
     end
     shown.times do |i|
       name = @projects[i]
@@ -232,7 +232,7 @@ module Launcher
       letzte = info['last'] ? "zuletzt #{info['last']}" : 'nie gespielt'
       karten = info['maps'] == 1 ? 'Karte' : 'Karten'
       st = info['saves'].to_i
-      st = st.zero? ? nil : (st == 1 ? '1 Spielstand' : "#{st} Spielstaende")
+      st = st.zero? ? nil : (st == 1 ? '1 Spielstand' : "#{st} Spielstände")
       zeile = ["#{info['maps']} #{karten}", st, letzte].compact.join(' · ')
       UI.text(82, y + 22, zeile, UI::TEXT_DIM, 13)
     end
@@ -244,7 +244,7 @@ module Launcher
     # Fussleiste
     UI.panel(0, h - 44, w, 44, 0x0D1420, 0.85)
     UI.text(w / 2 - 300, h - 32,
-            '[Hoch/Runter] Waehlen   [Enter] Spielen   [L] Fortsetzen   [N] Neu   [D] Loeschen   [Esc] Beenden',
+            '[Hoch/Runter] Wählen   [Enter] Spielen   [L] Fortsetzen   [N] Neu   [D] Löschen   [Esc] Beenden',
             UI::TEXT_DIM, 15)
     UI.text(w - 150, 12, 'Rune3D v0.8', UI::TEXT_DIM, 13)
   end
@@ -255,7 +255,7 @@ module Launcher
     rahmen(w / 2 - 170, 196, 340, 34, UI::ACCENT, 0.7)
     cursor = (Rune::Time.fps.to_i % 2 == 0) ? '_' : ' '
     UI.text(w / 2 - 158, 204, "#{@name}#{cursor}", UI::TEXT, 17)
-    UI.text(w / 2 - 220, 250, 'Enter = anlegen und spielen   Esc = zurueck', UI::TEXT_DIM, 15)
+    UI.text(w / 2 - 220, 250, 'Enter = anlegen und spielen   Esc = zurück', UI::TEXT_DIM, 15)
     UI.text(w / 2 - 220, 274, 'Erlaubt: Buchstaben, Ziffern, Leerzeichen, - _ .',
             UI::TEXT_DIM, 13)
   end
@@ -267,14 +267,14 @@ module Launcher
     by = h / 2 - 70
     UI.panel(bx, by, bw, 130, 0x101826, 0.96)
     rahmen(bx, by, bw, 130, 0xE06C5A, 0.9)
-    UI.text(bx + 20, by + 18, 'Projekt loeschen?', 0xE06C5A, 20)
-    UI.text(bx + 20, by + 52, "'#{name}' mit allen Karten endgueltig entfernen?",
+    UI.text(bx + 20, by + 18, 'Projekt löschen?', 0xE06C5A, 20)
+    UI.text(bx + 20, by + 52, "'#{name}' mit allen Karten endgültig entfernen?",
             UI::TEXT, 15)
-    UI.text(bx + 20, by + 92, '[J] Ja, loeschen      [N / Esc] Abbrechen',
+    UI.text(bx + 20, by + 92, '[J] Ja, löschen      [N / Esc] Abbrechen',
             UI::TEXT_DIM, 15)
   end
 
-  # Duenner Rahmen (UI.frame fuellt die Flaeche!)
+  # Dünner Rahmen (UI.frame füllt die Fläche!)
   def rahmen(x, y, w, h, color, alpha)
     b = 2
     Rune::Gfx.rect(x, y, w, b, color, alpha)

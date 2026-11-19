@@ -1,11 +1,11 @@
 # Aktualisiert docs/architecture.md um Etappe 18e
-# (Mal-Werkzeug: Boden-Flaechen per Maus im Viewport).
+# (Mal-Werkzeug: Boden-Flächen per Maus im Viewport).
 # Aufruf: ruby tools/update_docs18e.rb
 path = File.join(__dir__, '..', 'docs', 'architecture.md')
 text = File.read(path, encoding: 'UTF-8')
 
 anchor = '## Splat-Böden (Etappe 18d)'
-raise 'Anker fuer 18e fehlt' unless text.include?(anchor)
+raise 'Anker für 18e fehlt' unless text.include?(anchor)
 
 section = <<~MD
   ## Mal-Werkzeug für den Boden (Etappe 18e)
@@ -45,4 +45,4 @@ MD
 
 text = text.sub(anchor, section + anchor)
 File.write(path, text, mode: 'wb')
-puts 'architecture.md: 18e ergaenzt'
+puts 'architecture.md: 18e ergänzt'

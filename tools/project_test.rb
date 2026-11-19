@@ -1,8 +1,8 @@
 #encoding: utf-8
 # ============================================================================
-#  Kopfloser Test fuer das Projekt-System: Liste, Slug, Anlegen, neue Karten.
+#  Kopfloser Test für das Projekt-System: Liste, Slug, Anlegen, neue Karten.
 #     ruby -I game/engine tools/project_test.rb
-#  Legt echte Ordner unter projekte/ an - Testprojekte werden wieder geloescht.
+#  Legt echte Ordner unter projekte/ an - Testprojekte werden wieder gelöscht.
 # ============================================================================
 
 $LOAD_PATH.unshift(File.join(File.expand_path('..', __dir__), 'game', 'engine'))
@@ -76,19 +76,19 @@ check('Karte welt02 ist leer') {
   m = Database.map('welt02')
   m['objects'].empty? && m['events'].empty? && m['start']['x'] == 0.0
 }
-check('naechste freie ID ist welt03') { Project.next_map_id == 'welt03' }
+check('nächste freie ID ist welt03') { Project.next_map_id == 'welt03' }
 
-# --- Infos / zuletzt gespielt / loeschen ----------------------------------
+# --- Infos / zuletzt gespielt / löschen ----------------------------------
 Project.touch(name)
 info = Project.info(name)
 check('info liefert Titel') { info['title'] == 'Test Welt' }
-check('info zaehlt 2 Karten') { info['maps'] == 2 }
+check('info zählt 2 Karten') { info['maps'] == 2 }
 check('touch vermerkt zuletzt gespielt') { info['last'].is_a?(String) && !info['last'].empty? }
 check('title liefert Anzeigename') { Project.title(name) == 'Test Welt' }
 Project.delete(name)
 check('delete entfernt das Projekt') { !Project.valid?(name) }
 
-# --- Aufraeumen -----------------------------------------------------------
+# --- Aufräumen -----------------------------------------------------------
 FileUtils.rm_rf(Project.path('test_welt'))
 FileUtils.rm_rf(Project.path('test_welt_2'))
 check('Testprojekte wieder entfernt') { !Project.valid?('test_welt') && !Project.valid?('test_welt_2') }

@@ -1,13 +1,13 @@
 #encoding: utf-8
 # ============================================================================
 #  Prozedurale Texturen: werden hier in Ruby gerechnet und als RGBA-Bytestring
-#  an die Engine gereicht (Rune::Gfx.texture). Kein Bilddatei-Loader noetig,
-#  und Mods koennen eigene Texturen genauso anmelden.
+#  an die Engine gereicht (Rune::Gfx.texture). Kein Bilddatei-Loader nötig,
+#  und Mods können eigene Texturen genauso anmelden.
 #
 #  Alle Texturen 64x64, deterministisch (fester Seed pro Textur), Kachelgrsse
 #  in Metern steht beim Prefab-Teil (tex:/tile:).
 #
-#  Etappe 17f: Zusaetzlich duerfen Projekte eigene Grafiken mitbringen. Der
+#  Etappe 17f: Zusätzlich dürfen Projekte eigene Grafiken mitbringen. Der
 #  Editor importiert PNG/BMP und legt sie als rohe RGBA-Datei plus
 #  data/textures.json ab; register_project reicht sie beim Start an die
 #  Engine weiter (Ruby hat keinen PNG-Decoder, die Engine braucht nur Bytes).
@@ -32,7 +32,7 @@ module Textures
     v < 0 ? 0 : (v > 255 ? 255 : v)
   end
 
-  # Buffer als Binaerstring, Pixel fuer Pixel RGBA.
+  # Buffer als Binärstring, Pixel für Pixel RGBA.
   def self.make(seed)
     buf = String.new(capacity: SIZE * SIZE * 4, encoding: 'ASCII-8BIT')
     r = rng(seed)
@@ -49,7 +49,7 @@ module Textures
 
   # ------------------------------------------------------- einzelne Texturen
 
-  # Gras: gruene Grundflaeche mit Rauschen und vereinzelt helleren Halmen.
+  # Gras: grüne Grundfläche mit Rauschen und vereinzelt helleren Halmen.
   def self.gras
     buf, r = make(11)
     SIZE.times do |y|
@@ -122,7 +122,7 @@ module Textures
     buf
   end
 
-  # Laub: dunkles Blattgruen mit fleckigen hellen Stellen.
+  # Laub: dunkles Blattgrün mit fleckigen hellen Stellen.
   def self.laub
     buf, r = make(66)
     SIZE.times do |y|
@@ -185,7 +185,7 @@ module Textures
 
   # -------------------------------------------------- Importierte Grafiken
 
-  # Eintraege aus data/textures.json (nur vollstaendige, benannte Materialien).
+  # Einträge aus data/textures.json (nur vollständige, benannte Materialien).
   def self.project_meta
     @project_meta ||= begin
       path = File.join(Database.root, 'textures.json')
@@ -204,7 +204,7 @@ module Textures
     end
   end
 
-  # Kachelgroesse eines Materials in Metern (Standard 2.0).
+  # Kachelgrösse eines Materials in Metern (Standard 2.0).
   def self.tile_of(name)
     h = project_meta.find { |x| x['name'].to_s == name.to_s }
     h && h['tile'] ? h['tile'].to_f : 2.0

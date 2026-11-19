@@ -1,10 +1,10 @@
 #encoding: utf-8
 # ============================================================================
-#  NPC: ein bewegter Charakter, der einen Wegpunkt-Kurs ablaeuft (Patrouille).
+#  NPC: ein bewegter Charakter, der einen Wegpunkt-Kurs abläuft (Patrouille).
 #
 #  Der NPC besitzt ein eigenes Event (action-Trigger) — seine Position folgt
 #  der Bewegung, sodass Reden/Benutzen wie bei statischen Events funktioniert.
-#  Das Rendern uebernimmt ein Node in der Szene (braune Figur, wie der
+#  Das Rendern übernimmt ein Node in der Szene (braune Figur, wie der
 #  Spieler im Third-Person-Modus).
 #
 #  Kopflos testbar: ruby -I game/engine tools/npc_test.rb
@@ -48,8 +48,8 @@ class Npc
     0.8
   end
 
-  # Ein Frame Bewegung: Richtung naechsten Wegpunkt laufen, dort Umschalten
-  # zum uebernächsten. Ohne Wegpunkte bleibt der NPC stehen. Steht der
+  # Ein Frame Bewegung: Richtung nächsten Wegpunkt laufen, dort Umschalten
+  # zum übernächsten. Ohne Wegpunkte bleibt der NPC stehen. Steht der
   # Spieler im Weg (Etappe 15), wartet der NPC statt durch ihn zu laufen.
   def update(dt)
     return if @path.empty?
@@ -61,7 +61,7 @@ class Npc
     dist = Math.sqrt(dx * dx + dz * dz)
 
     if dist <= @speed * dt
-      # Wegpunkt erreicht: exakt draufstellen, naechsten anvisieren.
+      # Wegpunkt erreicht: exakt draufstellen, nächsten anvisieren.
       @event.x = tx
       @event.z = tz
       @target = (@target + 1) % @path.size
@@ -85,7 +85,7 @@ class Npc
 
   # --- Speichern/Laden (Etappe 15) ------------------------------------------
 
-  # Zustand fuer das Savegame: Position und Wegpunkt-Index.
+  # Zustand für das Savegame: Position und Wegpunkt-Index.
   def snapshot
     { 'name' => @name, 'x' => @event.x, 'z' => @event.z, 'wp' => @target }
   end

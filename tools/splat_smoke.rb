@@ -1,5 +1,5 @@
 # Vorbereitung des Spiel-Smoke-Tests: dorf.json sichern, Test-Splats
-# einsetzen, Spiel 8 s laufen lassen (engine.log pruefen), zuruecksetzen.
+# einsetzen, Spiel 8 s laufen lassen (engine.log prüfen), zurücksetzen.
 # Aufruf: ruby tools/splat_smoke.rb
 require 'json'
 

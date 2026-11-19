@@ -7,7 +7,7 @@ using namespace rune::math;
 
 namespace rune::world {
 namespace {
-constexpr float kMaxStep = 0.35f; // Stufen bis zu dieser Hoehe werden erklommen
+constexpr float kMaxStep = 0.35f; // Stufen bis zu dieser Höhe werden erklommen
 }
 
 void Physics::clear_solids() { m_solids.clear(); }
@@ -35,7 +35,7 @@ void Physics::push_out(float cx, float cz, float radius) {
     const float f = radius / d;
     m_pos.x = cx + dx * f;
     m_pos.z = cz + dz * f;
-    if (overlaps_any(m_pos)) m_pos = old;   // nicht in Waende druecken
+    if (overlaps_any(m_pos)) m_pos = old;   // nicht in Wände drücken
 }
 
 bool Physics::overlaps_any(Vec3 pos) const {
@@ -60,7 +60,7 @@ float Physics::terrain_floor(Vec3 pos, const Terrain& terrain) const {
         const bool inside_xz = pos.x + radius > b.min.x && pos.x - radius < b.max.x &&
                                pos.z + radius > b.min.z && pos.z - radius < b.max.z;
         if (!inside_xz) continue;
-        // Nur Deckel, die knapp ueber den Fuessen liegen, zaehlen als Boden.
+        // Nur Deckel, die knapp über den Füssen liegen, zählen als Boden.
         if (b.max.y <= pos.y + kMaxStep && b.max.y > floor_h) floor_h = b.max.y;
     }
     return floor_h;
@@ -103,7 +103,7 @@ void Physics::update(float dt, const core::InputState& in, float yaw, const Terr
     m_vel.y -= gravity * dt;
     if (m_vel.y < -60.0f) m_vel.y = -60.0f;
 
-    // --- Bewegung achsenweise, damit man an Waenden entlangrutscht
+    // --- Bewegung achsenweise, damit man an Wänden entlangrutscht
     m_pos.x += m_vel.x * dt;
     if (overlaps_any(m_pos)) {
         m_pos.x -= m_vel.x * dt;

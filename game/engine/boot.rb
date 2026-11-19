@@ -2,7 +2,7 @@
 # Rune3D - Bootstrap. Wird einmal beim Start geladen, danach nur noch main.rb (F5).
 
 module Rune
-  # Winkel-Helfer: die Engine rechnet in Radiant, Skripte duerfen Grad benutzen.
+  # Winkel-Helfer: die Engine rechnet in Radiant, Skripte dürfen Grad benutzen.
   DEG2RAD = Math::PI / 180.0
 
   def self.rad(degrees)
@@ -16,12 +16,12 @@ module Rune
   end
 
   module World
-    # Gelaende erzeugen - mit benannten Argumenten, damit Skripte lesbar bleiben.
+    # Gelände erzeugen - mit benannten Argumenten, damit Skripte lesbar bleiben.
     # Rune::World.generate(width: 240, height: 180, resolution: 192, seed: 7,
     #                      amplitude: 0.0)   # amplitude 0 = ganz flach
-    # size: wird als Quadrat weiter unterstuetzt (alte Karten).
+    # size: wird als Quadrat weiter unterstützt (alte Karten).
     # height_brushes: gemalte Berge/Senken aus dem Editor (Etappe 18l) -
-    # Liste von [x, z, radius, hoehe] (hoehe < 0 = Senke). Muss vor dem
+    # Liste von [x, z, radius, höhe] (höhe < 0 = Senke). Muss vor dem
     # generate_raw-Aufruf gesetzt werden.
     def self.generate(width: nil, height: nil, size: nil, resolution: 176,
                       seed: 7, amplitude: 5.0, height_brushes: nil)
@@ -41,7 +41,7 @@ require 'ui'
 require 'data'
 require 'state'
 require 'issues'
-require 'mapcheck'   # Etappe 19a: Karten-Daten pruefen (Regeln wie im Editor)
+require 'mapcheck'   # Etappe 19a: Karten-Daten prüfen (Regeln wie im Editor)
 require 'party'
 require 'event'
 require 'npc'

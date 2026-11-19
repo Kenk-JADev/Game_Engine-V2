@@ -1,6 +1,6 @@
 #pragma once
 //
-// Minimale lineare Algebra fuer Rune3D.
+// Minimale lineare Algebra für Rune3D.
 // Konvention: Matrizen sind row-major im Speicher und werden mit Zeilenvektoren
 // multipliziert (v' = v * M). Die HLSL-Seite sieht durch das Standard-Packing
 // (column_major) die Transponierte, deshalb steht dort mul(M, v).
@@ -113,7 +113,7 @@ inline Mat4 rotation_roll_pitch_yaw(float rx, float ry, float rz) {
     return mul(mul(rotation_x(rx), rotation_y(ry)), rotation_z(rz));
 }
 
-// Linkshaendiges Projektions- und Sichtsystem (Direct3D-Konvention).
+// Linkshändiges Projektions- und Sichtsystem (Direct3D-Konvention).
 inline Mat4 perspective_fov_lh(float fov_y, float aspect, float z_near, float z_far) {
     const float h = 1.0f / std::tan(fov_y * 0.5f);
     const float w = h / (aspect > 1e-6f ? aspect : 1.0f);

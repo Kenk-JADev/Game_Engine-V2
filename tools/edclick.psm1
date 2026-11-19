@@ -1,4 +1,4 @@
-﻿# Test-Hilfsmittel: Klicks/Tasten an RuneEditor-Fenster (nur fuer Live-Tests).
+﻿# Test-Hilfsmittel: Klicks/Tasten an RuneEditor-Fenster (nur für Live-Tests).
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
@@ -92,7 +92,7 @@ function Get-PropField([int]$id) {
     return $sb.ToString()
 }
 
-# Fenster in den Vordergrund holen und Klick in Client-Koordinaten ausloesen
+# Fenster in den Vordergrund holen und Klick in Client-Koordinaten auslösen
 function Focus-Ed {
     $h = (Get-Process RuneEditor).MainWindowHandle
     [EdClick]::SetForegroundWindow($h) | Out-Null
@@ -110,7 +110,7 @@ function Click-Client([int]$cx, [int]$cy) {
     [EdClick]::Click($p.X, $p.Y)
 }
 
-# Direkte Mausnachrichten an das Viewport-Child (unabhaengig vom Fokus)
+# Direkte Mausnachrichten an das Viewport-Child (unabhängig vom Fokus)
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
@@ -152,6 +152,6 @@ function Get-StatusText([int]$part) {
     $h = (Get-Process RuneEditor).MainWindowHandle
     $sb = [EdClick]::GetDlgItem($h, 3016)
     $buf = New-Object System.Text.StringBuilder 256
-    [EdClick]::SendMessageStr($sb, 0x040D, [IntPtr]$part, $buf) | Out-Null   # SB_GETTEXTW = WM_USER+13 (A-Variante waere WM_USER+2)
+    [EdClick]::SendMessageStr($sb, 0x040D, [IntPtr]$part, $buf) | Out-Null   # SB_GETTEXTW = WM_USER+13 (A-Variante wäre WM_USER+2)
     return $buf.ToString()
 }

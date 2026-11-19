@@ -1,7 +1,7 @@
 #encoding: utf-8
 # ============================================================================
 #  Rune3D - Beispielszene ("Dorf") mit Event-Interpreter.
-#  F5 laedt diese Datei neu, ohne die Engine zu beenden.
+#  F5 lädt diese Datei neu, ohne die Engine zu beenden.
 # ============================================================================
 
 Sounds.register_all   # prozedurale Sounds an die Engine melden (idempotent)
@@ -9,7 +9,7 @@ Sounds.register_all   # prozedurale Sounds an die Engine melden (idempotent)
 module Game
   # ---------------------------------------------------------------- Aufbau
 
-  # Hilfsfunktion: Gelaendehoehe an einer Stelle (0.0, solange kein Terrain da ist).
+  # Hilfsfunktion: Geländehöhe an einer Stelle (0.0, solange kein Terrain da ist).
   def self.gy(x, z)
     Rune::World.ready? ? Rune::World.height_at(x, z) : 0.0
   end
@@ -29,7 +29,7 @@ end
 
   # Karte laden: ID, Events, Objekte, Editor - und Spieler an den Startpunkt.
   # Wird vom ersten Setup und vom Kartenwechsel im Editor benutzt.
-  # Himmel/Nebel/Panorama aus der Karte uebernehmen (Etappe 17b).
+  # Himmel/Nebel/Panorama aus der Karte übernehmen (Etappe 17b).
   # Panorama-Farbe ersetzt den Himmelverlauf (Vollfarbe), Nebel blendet
   # die Ferne zur Nebelfarbe. Ohne Angaben: Standard-Himmel, kein Nebel.
   def self.apply_map_atmosphere(map)
@@ -45,10 +45,10 @@ end
                   fog['far'] || 180.0)
   end
 
-  # Etappe 18l: Terrain einer Karte aufbauen (Groesse/Seed/Amplitude plus
+  # Etappe 18l: Terrain einer Karte aufbauen (Grösse/Seed/Amplitude plus
   # gemalte Berge/Senken aus terrain.heights) und den Boden texteiren.
   # Wird vom Setup und von jedem Kartenwechsel (enter_map) gerufen - damit
-  # Kartengrenze und gemalte Huegel auch nach dem Wechsel stimmen.
+  # Kartengrenze und gemalte Hügel auch nach dem Wechsel stimmen.
   def self.build_terrain(map)
     t = map['terrain'] || {}
     hb = t['heights']
@@ -58,8 +58,8 @@ end
                          resolution: t['resolution'] || 192,
                          seed: t['seed'] || 7, amplitude: t['amplitude'] || 0.0,
                          height_brushes: hb)
-    # Etappe 18c/18d: Boden. Mit Boden-Flaechen (splats) Atlas pro Quad,
-    # sonst Einzeltextur + Kachelgroesse.
+    # Etappe 18c/18d: Boden. Mit Boden-Flächen (splats) Atlas pro Quad,
+    # sonst Einzeltextur + Kachelgrösse.
     t_splats = t['splats']
     if t_splats.is_a?(Array) && !t_splats.empty?
       Rune::Gfx.terrain_splats(t['texture'] || 'gras', t_splats)
@@ -73,8 +73,8 @@ end
     @map = Database.map(id)
     @events = (@map['events'] || []).map { |h| Event.new(h) }
     @map['objects'] ||= []
-    # Etappe 18l: Terrain gehoert zur Karte - beim Wechsel neu aufbauen,
-    # damit Groesse (Kartengrenze!) und gemalte Berge zur Karte passen.
+    # Etappe 18l: Terrain gehört zur Karte - beim Wechsel neu aufbauen,
+    # damit Grösse (Kartengrenze!) und gemalte Berge zur Karte passen.
     build_terrain(@map)
     apply_map_atmosphere(@map)
 
@@ -85,10 +85,10 @@ end
     Effects.clear
     Weather.load_map(@map)   # Etappe 17h: Wetter der Karte aktivieren
 
-    # Etappe 19a: Kartendaten pruefen. Der Editor scannt dieselben Regeln in
+    # Etappe 19a: Kartendaten prüfen. Der Editor scannt dieselben Regeln in
     # C++ (issues_scan_map in editor_main.cpp), hier landen nur harte Fehler im
     # Laufzeit-Backlog (log/issues.json) - Warnungen bleiben Editor und CI.
-    # Der defined?-Schutz haelt main.rb lauffaehig, falls das Modul fehlt.
+    # Der defined?-Schutz hält main.rb lauffähig, falls das Modul fehlt.
     if defined?(MapCheck) && defined?(Issues)
       funde = MapCheck.scan(@map, name: id.to_s).select(&:fehler?)
       MapCheck.report!(funde) unless funde.empty?
@@ -118,7 +118,7 @@ end
   # ---------------------------------------------------- Speichern / Laden
 
   # Spielstand in Slot 1..3 ablegen: Karte, Position, Blick, Kamera,
-  # Schalter/Variablen, ausgeloeste Events, Spielzeit.
+  # Schalter/Variablen, ausgelöste Events, Spielzeit.
   def self.save_game(slot)
     px, py, pz = Rune::Player.position
     data = {
@@ -134,14 +134,14 @@ end
     }
     Project.save($project_name, slot, data)
     Rune::Log.info("Gespeichert: Slot #{slot} (Karte '#{@map['name']}', " \
-                   "#{data['fired'].size} Events ausgeloest)")
+                   "#{data['fired'].size} Events ausgelöst)")
     true
   rescue StandardError => e
     Rune::Log.error("Speichern fehlgeschlagen: #{e.message}")
     false
   end
 
-  # Spielstand laden: Karte neu aufbauen, Zustand und Position uebernehmen.
+  # Spielstand laden: Karte neu aufbauen, Zustand und Position übernehmen.
   def self.load_game(slot)
     data = Project.load_save($project_name, slot)
     unless data
@@ -157,7 +157,7 @@ end
     map_id = Database.map_ids.first unless Database.map(map_id)
     enter_map(map_id)
 
-    # Ausgeloeste Touch-/Auto-Events wiederherstellen.
+    # Ausgelöste Touch-/Auto-Events wiederherstellen.
     (data['fired'] || []).each do |n|
       ev = @events.find { |e| e.name == n }
       ev.fired = true if ev
@@ -187,10 +187,10 @@ end
     false
   end
 
-  # ------------------------------------------------------------- Menue (Esc)
+  # ------------------------------------------------------------- Menü (Esc)
 
   def self.menu_items
-    items = [{ 'label' => 'Zurueck zum Spiel', 'act' => [:resume] }]
+    items = [{ 'label' => 'Zurück zum Spiel', 'act' => [:resume] }]
     1.upto(3) do |s|
       info = Project.save_info($project_name, s)
       label = "Speichern Slot #{s}" + (info ? "   (belegt: #{info['saved']})" : '   (leer)')
@@ -208,16 +208,16 @@ end
   def self.open_menu
     @menu_sel = 0
     @menu = true
-    Rune::Input.capture = false   # Menue mit freiem Zeiger
+    Rune::Input.capture = false   # Menü mit freiem Zeiger
     Rune::Sound.play('klick', 0.6)
-    Rune::Log.info('Menue geoeffnet')
+    Rune::Log.info('Menü geöffnet')
   end
 
   def self.close_menu
     @menu = nil
     Rune::Input.capture = true
     Rune::Sound.play('klick', 0.5)
-    Rune::Log.info('Menue geschlossen')
+    Rune::Log.info('Menü geschlossen')
   end
 
   def self.update_menu
@@ -232,7 +232,7 @@ end
   end
 
   def self.menu_action(it)
-    Rune::Log.info("Menue: #{it['label']}")
+    Rune::Log.info("Menü: #{it['label']}")
     case it['act'][0]
     when :resume then close_menu
     when :save
@@ -266,7 +266,7 @@ end
     my = h / 2 - mh / 2
     UI.panel(mx, my, mw, mh, UI::PANEL, 0.95)
     Launcher.rahmen(mx, my, mw, mh, UI::ACCENT, 0.6)
-    UI.text(mx + 20, my + 16, 'Menue', UI::TEXT, 20)
+    UI.text(mx + 20, my + 16, 'Menü', UI::TEXT, 20)
     items.each_with_index do |it, i|
       y = my + 52 + i * 34
       sel = (i == @menu_sel)
@@ -275,16 +275,16 @@ end
               it['off'] ? UI::TEXT_DIM : UI::TEXT, 15)
     end
     UI.text(mx + 20, my + mh - 26,
-            '[Hoch/Runter] Waehlen   [Enter] OK   [1..8] direkt   [Esc] Zurueck',
+            '[Hoch/Runter] Wählen   [Enter] OK   [1..8] direkt   [Esc] Zurück',
             UI::TEXT_DIM, 13)
 
-    # Etappe 17g: Party-Status (Helden, Gold, Inventar) neben dem Menue.
+    # Etappe 17g: Party-Status (Helden, Gold, Inventar) neben dem Menü.
     lines = Party.status_lines
     pw = 380
     ph = 60 + lines.size * 28
     px = mx - pw - 24
     py = my
-    if px < 12   # bei schmalen Fenstern unter das Menue
+    if px < 12   # bei schmalen Fenstern unter das Menü
       px = mx
       py = my + mh + 16
       return if py + ph > h   # kein Platz: ganz weglassen
@@ -333,7 +333,7 @@ end
     end
     @mode = :game
 
-    # Spielzustand aus system.json zuruecksetzen (bei F5 ebenfalls).
+    # Spielzustand aus system.json zurücksetzen (bei F5 ebenfalls).
     GameState.reset!(Database.system)
     Party.setup(Database.database)
     Scripts.load_project
@@ -347,7 +347,7 @@ end
     # baut es ebenfalls auf, damit Kartengrenze und gemalte Berge stimmen).
     enter_map(map_id)
     Rune::Camera.mode = :third
-    Rune::Camera.distance = 7   # Launcher-Ueberblick (28) -> normaler Follow-Cam
+    Rune::Camera.distance = 7   # Launcher-Überblick (28) -> normaler Follow-Cam
     Rune::Sound.loop('musik', 0.22)   # im Spiel etwas lauter als im Titel
 
     # Intro-Text als Event am Kartenstart (auto-Trigger desselben Effekts).
@@ -356,7 +356,7 @@ end
   end
 
   def self.update(dt)
-    # Titelbildschirm: hier endet der Frame, bis ein Projekt gewaehlt ist.
+    # Titelbildschirm: hier endet der Frame, bis ein Projekt gewählt ist.
     if @mode == :launcher
       Launcher.update(dt)
       return
@@ -370,7 +370,7 @@ end
       Rune::Log.info("Debug-Anzeige: #{@debug ? 'an' : 'aus'}")
     end
 
-    # Menue (Esc): friert Spiellogik, Interpreter und Events ein.
+    # Menü (Esc): friert Spiellogik, Interpreter und Events ein.
     if Rune::Input.pressed?(:escape)
       @menu ? close_menu : open_menu
     end
@@ -389,11 +389,11 @@ end
       end
     end
 
-    # Interpreter zuerst: blockiert er (Textfenster offen), wird nichts Neues
-    # ausgeloest und auch kein Prompt gesetzt.
+    # Interpreter zürst: blockiert er (Textfenster offen), wird nichts Neues
+    # ausgelöst und auch kein Prompt gesetzt.
     @interpreter.update(dt)
 
-    # Sound: Schritte, Sprung, Landung (nur im Spiel, nicht im Menue).
+    # Sound: Schritte, Sprung, Landung (nur im Spiel, nicht im Menü).
     unless @mode == :launcher
       px, py, pz = Rune::Player.position
       on_ground = Rune::Player.on_ground?
@@ -424,14 +424,14 @@ end
     unless @interpreter.running?
       px, py, pz = Rune::Player.position
 
-      # Aktive Event-Seite bestimmen (Etappe 18g): hoechste Seite mit
-      # erfuellten Bedingungen gewinnt; Wechsel setzt 'fired' zurueck.
+      # Aktive Event-Seite bestimmen (Etappe 18g): höchste Seite mit
+      # erfüllten Bedingungen gewinnt; Wechsel setzt 'fired' zurück.
       @events.each(&:refresh_page!)
 
-      # NPCs bewegen (Position des zugehoerigen Events folgt).
+      # NPCs bewegen (Position des zugehörigen Events folgt).
       @npcs.each { |n| n.update(dt) }
 
-      # NPC-Kollision (Etappe 15): Spieler aus NPCs herausdruecken.
+      # NPC-Kollision (Etappe 15): Spieler aus NPCs herausdrücken.
       @npcs.each do |n|
         nx, nz = n.position
         Rune::Player.push_out(nx, nz, n.block_radius)
@@ -443,7 +443,7 @@ end
         next if e.fired
         if (e.trigger == 'auto') || e.near?(px, pz)
           e.fired = true
-          Rune::Log.info("Event '#{e.name}' ausgeloest (#{e.trigger})")
+          Rune::Log.info("Event '#{e.name}' ausgelöst (#{e.trigger})")
           e.manual_fire(@interpreter)
           break
         end
@@ -452,21 +452,21 @@ end
       # Parallel-Events (Etappe 18f, RPG-Maker-Parallel-Process): laufen im
       # Hintergrund und starten sich neu, sobald sie fertig sind. Damit sie
       # nicht die Engine fluten, nur wenn der Interpreter gerade frei ist —
-      # ein 'wait' im Event steuert das Tempo (wie bei RPG Maker ueblich).
+      # ein 'wait' im Event steuert das Tempo (wie bei RPG Maker üblich).
       @events.each do |e|
         next unless e.trigger == 'parallel'
         next if @interpreter.running?
         e.manual_fire(@interpreter)
       end
 
-      # Action-Events: naechstes in Reichweite anbieten (E drucken)
+      # Action-Events: nächstes in Reichweite anbieten (E drucken)
       @prompt = nil
       @events.each do |e|
         next unless e.trigger == 'action'
         if e.near?(px, pz)
           @prompt = e.name
           if Rune::Input.pressed?(:e)
-            Rune::Log.info("Event '#{e.name}' ausgeloest (E)")
+            Rune::Log.info("Event '#{e.name}' ausgelöst (E)")
             e.manual_fire(@interpreter)
             @prompt = nil
           end
@@ -483,7 +483,7 @@ end
     end
 
     # Editor-/Playtest-Modus (F4): Editor = alles eingefroren, Playtest =
-    # Spiel laeuft; F4 im Playtest springt zurueck in den Editor (Etappe 16b).
+    # Spiel läuft; F4 im Playtest springt zurück in den Editor (Etappe 16b).
     if Rune::Input.pressed?(:f4)
       if @playtest
         playtest_stop
@@ -496,7 +496,7 @@ end
       # Scene-Editor-Prinzip (Etappe 16b): Der Editor arbeitet auf den
       # Kartendaten, die Game-Engine-Simulation steht. Ist der Spieler noch
       # in der Luft (z.B. nach dem Playtest), darf er erst landen, dann
-      # friert die Physik endgueltig ein — nie schwebt er eingefroren.
+      # friert die Physik endgültig ein — nie schwebt er eingefroren.
       if Rune::Player.on_ground?
         Rune::Simulation.paused = true
       else
@@ -515,26 +515,26 @@ end
 
   # ---------------------------------------------------- Playtest (Etappe 16b)
 
-  # Aus dem Editor heraus testen: ungespeicherte Aenderungen zuerst sichern
+  # Aus dem Editor heraus testen: ungespeicherte Änderungen zürst sichern
   # (der Editierstand bleibt heilig), dann normal spielen.
   def self.playtest_start
     @editor.save(@editor.objects, @map) if @editor.dirty?
     @editor.toggle(@scene) if @editor.active?
-    @playtest_state = GameState.snapshot   # Testzustand spaeter verwerfen
+    @playtest_state = GameState.snapshot   # Testzustand später verwerfen
     @playtest = true
     Rune::Simulation.paused = false
-    Rune::Log.info('Playtest gestartet (F4 zurueck zum Editor)')
+    Rune::Log.info('Playtest gestartet (F4 zurück zum Editor)')
   end
 
-  # Zurueck in den Editor: Karte frisch laden = unveraenderter Editierstand;
-  # alles, was der Test am Spielzustand veraendert hat, wird verworfen.
+  # Zurück in den Editor: Karte frisch laden = unveränderter Editierstand;
+  # alles, was der Test am Spielzustand verändert hat, wird verworfen.
   def self.playtest_stop
     @playtest = nil
     GameState.restore!(@playtest_state) if @playtest_state
     @playtest_state = nil
     enter_map(@map_id)
     @editor.toggle(@scene)
-    Rune::Log.info('Zurueck im Editor (Karte neu geladen, Testzustand verworfen)')
+    Rune::Log.info('Zurück im Editor (Karte neu geladen, Testzustand verworfen)')
   end
 
   def self.playtest?
@@ -552,7 +552,7 @@ end
     list
   end
 
-  # Zuletzt unter dem Zeiger getroffener Knoten (fuer den Editor, 1 Frame alt).
+  # Zuletzt unter dem Zeiger getroffener Knoten (für den Editor, 1 Frame alt).
   def self.hover
     @hover
   end
@@ -573,8 +573,8 @@ end
     end
   end
 
-  # Im Editor: Rechtsklick loescht. Zuerst das genau getroffene Objekt; wenn
-  # der Strahl nur Boden getroffen hat (duenne Teile!), das naechstliegende
+  # Im Editor: Rechtsklick löscht. Zürst das genau getroffene Objekt; wenn
+  # der Strahl nur Boden getroffen hat (dünne Teile!), das nächstliegende
   # Editor-Objekt zum Bodenpunkt.
   def self.update_hover_only
     compute_hover
@@ -598,12 +598,12 @@ end
       @hover.manual_fire(@interpreter) unless @interpreter.running?
     else
       sz = @hover.scale
-      Rune::Log.info(format("Klick: Objekt '%s' (%.1f m) Groesse %.1f x %.1f x %.1f",
+      Rune::Log.info(format("Klick: Objekt '%s' (%.1f m) Grösse %.1f x %.1f x %.1f",
                             @hover.name, @hover_dist, sz[0], sz[1], sz[2]))
     end
   end
 
-  # Kanten einer Box als 12 duenne Kaesten (es gibt noch keine Linien-Pipeline).
+  # Kanten einer Box als 12 dünne Kästen (es gibt noch keine Linien-Pipeline).
   def self.draw_wire_box(cx, cy, cz, sx, sy, sz, color, t = 0.045)
     hx = sx * 0.5; hy = sy * 0.5; hz = sz * 0.5
     xs = [-hx, hx]; ys = [-hy, hy]; zs = [-hz, hz]
@@ -663,7 +663,7 @@ end
 
     Rune::Gfx.clear_color = 0x131A24
 
-    # Der Spieler existiert nur als Punkt; im Third-Person-Modus bekommt er einen Koerper.
+    # Der Spieler existiert nur als Punkt; im Third-Person-Modus bekommt er einen Körper.
     if Rune::Camera.mode == :third
       px, py, pz = Rune::Player.position
       Rune::Gfx.box(px, py + 0.9, pz, 0.7, 1.8, 0.7, 0xE8E2D0,
@@ -671,10 +671,10 @@ end
     end
 
     @scene.draw
-    Effects.draw   # Partikel ueber der Szene, unter dem UI
-    Weather.draw   # Etappe 17h: Wetter ueber den Partikeln
+    Effects.draw   # Partikel über der Szene, unter dem UI
+    Weather.draw   # Etappe 17h: Wetter über den Partikeln
     # Hervorhebung des Objekts unter der Maus / dem Fadenkreuz.
-    # Im Fang-Modus (Egoperspektive) nur Events, sonst waere alles markiert.
+    # Im Fang-Modus (Egoperspektive) nur Events, sonst wäre alles markiert.
     zeige = @hover && (@hover.is_a?(Event) || !Rune::Input.captured?)
     if zeige
       if @hover.is_a?(Event)
@@ -692,7 +692,7 @@ end
     UI.hud
     if @playtest
       UI.panel(1000, 12, 264, 30, UI::PANEL, 0.6)
-      UI.text(1012, 18, 'PLAYTEST — F4 = zurueck zum Editor', UI::WARN, 15)
+      UI.text(1012, 18, 'PLAYTEST — F4 = zurück zum Editor', UI::WARN, 15)
     end
     UI.message(@interpreter.message) if @interpreter.busy_text?
     if @interpreter.busy_choices?
@@ -709,7 +709,7 @@ end
       @editor.draw_ui
     end
 
-    # Menue-Overlay ganz zum Schluss.
+    # Menü-Overlay ganz zum Schluss.
     if @menu
       Launcher.abdunkeln(Rune::Window.width)
       draw_menu

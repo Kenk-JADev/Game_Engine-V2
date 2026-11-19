@@ -1,5 +1,5 @@
-# Prueft, wie die Umlaute in der gebauten RuneEditor.exe landen:
-#  - korrekt als UTF-16LE (Anzeige im UI waere richtig), oder
+# Prüft, wie die Umlaute in der gebauten RuneEditor.exe landen:
+#  - korrekt als UTF-16LE (Anzeige im UI wäre richtig), oder
 #  - byteweit verbreitert (UTF-8-Bytes einzeln zu UTF-16 -> kaputte Anzeige).
 # Aufruf: ruby tools/check_binary_umlaute.rb
 bin = File.binread('build/RuneEditor.exe')

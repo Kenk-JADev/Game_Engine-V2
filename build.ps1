@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <#
     Rune3D - Build-Skript
     Baut src/**.cpp mit dem MSYS2-GCC (ucrt64) zu build/Rune3D.exe und
@@ -7,7 +7,7 @@
     .\build.ps1                     nur bauen
     .\build.ps1 -Run                bauen und Rune3D starten
     .\build.ps1 -Clean              alles neu bauen
-    .\build.ps1 -Test               Testsuite (C++-JSON-Test, Ruby-Tests, JSON-Bruecke)
+    .\build.ps1 -Test               Testsuite (C++-JSON-Test, Ruby-Tests, JSON-Brücke)
     .\build.ps1 -RubyRoot C:\Ruby34-x64   andere Ruby-Installation benutzen
 
     Werkzeug-Suche (seit Etappe 19a):
@@ -84,7 +84,7 @@ function Get-RubyInfo {
         }
     }
 
-    # Fallback: RubyInstaller-Standardlayout fuer Ruby 3.4 (ucrt).
+    # Fallback: RubyInstaller-Standardlayout für Ruby 3.4 (ucrt).
     Write-Warning 'RbConfig-Abfrage leer — Standardpfade (Ruby 3.4, ucrt) werden benutzt.'
     $hdr = Join-Path $Root 'include\ruby-3.4.0'
     return [pscustomobject]@{
@@ -143,7 +143,7 @@ Write-Step "Toolchain: $Toolchain"
 # ------------------------------------------------------------ Tests (-Test)
 # Bewusst VOR dem EXE-Bau: die Tests brauchen keine Grafik und laufen auch,
 # wenn der Build gerade kaputt ist. tex_import_test.rb braucht allerdings
-# build\RuneEditor.exe und wird sonst uebersprungen (tools/test_all.rb).
+# build\RuneEditor.exe und wird sonst übersprungen (tools/test_all.rb).
 if ($Test) {
     New-Item -ItemType Directory -Force -Path $BuildDir | Out-Null
     $JsonTestExe = Join-Path $BuildDir 'json_test.exe'
@@ -172,12 +172,12 @@ if ($Test) {
     & $Ruby.Exe @SuiteArgs
     if ($LASTEXITCODE -ne 0) { throw 'Ruby-Testsuite fehlgeschlagen' }
 
-    Write-Step 'JSON-Bruecke (C++-Schreiber gegen Ruby JSON.pretty_generate) ...'
+    Write-Step 'JSON-Brücke (C++-Schreiber gegen Ruby JSON.pretty_generate) ...'
     $BrueckeArgs = @((Join-Path $ProjectRoot 'tools\json_bridge_check.rb'), $JsonTestExe, '--strict-format')
     & $Ruby.Exe @BrueckeArgs
-    if ($LASTEXITCODE -ne 0) { throw 'JSON-Brueckenpruefung fehlgeschlagen' }
+    if ($LASTEXITCODE -ne 0) { throw 'JSON-Brückenprüfung fehlgeschlagen' }
 
-    Write-Host 'ALLE TESTS GRUEN' -ForegroundColor Green
+    Write-Host 'ALLE TESTS GRÜN' -ForegroundColor Green
     return
 }
 
@@ -189,7 +189,7 @@ $EditorExcludes  = @('main.cpp')
 
 if ($Clean -and (Test-Path $BuildDir)) {
     Remove-Item $BuildDir -Recurse -Force
-    Write-Host 'build/ geloescht' -ForegroundColor DarkGray
+    Write-Host 'build/ gelöscht' -ForegroundColor DarkGray
 }
 New-Item -ItemType Directory -Force -Path $ObjDir | Out-Null
 
@@ -203,19 +203,19 @@ $CxxFlags = @(
 
 $Libs = @(
     # Wichtig: UCRT VOR der Ruby-Importbibliothek. Die Ruby-DLL exportiert
-    # eigene CRT-Symbole (fclose, fwrite, ...); ohne -lucrtbase wuerden unsere
+    # eigene CRT-Symbole (fclose, fwrite, ...); ohne -lucrtbase würden unsere
     # stdio-Aufrufe auf die Ruby-Exporte umgebogen und beim Schliessen von
-    # Dateien mit Access Violation abstuerzen.
+    # Dateien mit Access Violation abstürzen.
     '-lucrtbase',
     "-L$($Ruby.LibDir)", $Ruby.LibArg,
     '-ld3d11', '-ldxgi', '-ld3dcompiler', '-ldxguid',
     '-luuid', '-lole32', '-loleaut32', '-luxtheme', '-lcomctl32',
     '-luser32', '-lgdi32', '-ladvapi32', '-lshell32', '-lshlwapi',
     '-lwinmm', '-lws2_32', '-liphlpapi', '-lwindowscodecs', '-lcomdlg32',
-    # libwinpthread statisch einlinken: Der g++-Driver haengt HINTER den
+    # libwinpthread statisch einlinken: Der g++-Driver hängt HINTER den
     # Nutzer-Flags noch -lpthread (dynamisch) an. --whole-archive erzwingt
-    # die statische libwinpthread.a komplett, damit die spaeteren Treffer
-    # nicht mehr an die DLL gehen. Dynamisch wuerde jede EXE
+    # die statische libwinpthread.a komplett, damit die späteren Treffer
+    # nicht mehr an die DLL gehen. Dynamisch würde jede EXE
     # libwinpthread-1.dll aus der MSYS2-Toolchain im PATH verlangen
     # (Doppelklick ohne Ruby-PATH -> "Systemfehler").
     '-static-libgcc', '-static-libstdc++',
@@ -259,7 +259,7 @@ function Build-Target($name, $excludes, $outExe) {
         }
     }
 
-    Write-Host "  [$name] $Built kompiliert, $Skipped uebersprungen" -ForegroundColor DarkGray
+    Write-Host "  [$name] $Built kompiliert, $Skipped übersprungen" -ForegroundColor DarkGray
     Write-Host "  linke $(Split-Path $outExe -Leaf)" -ForegroundColor DarkGray
     & $Gcc @Objects @Libs -o $outExe
     if ($LASTEXITCODE -ne 0) { throw 'Linken fehlgeschlagen' }
@@ -271,7 +271,7 @@ function Build-Target($name, $excludes, $outExe) {
 Build-Target 'game'   $GameExcludes   $Exe
 Build-Target 'editor' $EditorExcludes $EdExe
 
-# Manifest fuer moderne Windows-Steuerelemente neben den Editor legen.
+# Manifest für moderne Windows-Steuerelemente neben den Editor legen.
 Copy-Item (Join-Path $ProjectRoot 'src\editor\RuneEditor.exe.manifest') $BuildDir -Force
 
 # Laufzeit-DLLs neben die EXEs kopieren (XCopy-Deployment): Die Ruby-DLL
@@ -287,7 +287,7 @@ $laufzeitDlls = @(
 )
 foreach ($dll in $laufzeitDlls) {
     if (-not (Test-Path $dll)) {
-        Write-Warning "Laufzeit-DLL fehlt: $dll (Doppelklick-Start koennte scheitern)"
+        Write-Warning "Laufzeit-DLL fehlt: $dll (Doppelklick-Start könnte scheitern)"
         continue
     }
     Copy-Item $dll $BuildDir -Force

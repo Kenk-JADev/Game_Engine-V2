@@ -1,10 +1,10 @@
 #encoding: utf-8
 # ============================================================================
-#  Test fuer den kopflosen Grafik-Import (Etappe 17f):
+#  Test für den kopflosen Grafik-Import (Etappe 17f):
 #     ruby tools/tex_import_test.rb
 #
-#  Erzeugt ein kleines BMP, ruft RuneEditor.exe --import-tex auf und prueft
-#  textures.json + die rohe RGBA-Datei (Groesse, Zeilenreihenfolge, Farben).
+#  Erzeugt ein kleines BMP, ruft RuneEditor.exe --import-tex auf und prüft
+#  textures.json + die rohe RGBA-Datei (Grösse, Zeilenreihenfolge, Farben).
 #  Der Projektzustand wird am Ende wiederhergestellt.
 # ============================================================================
 
@@ -19,7 +19,7 @@ DATA = File.join(ROOT, 'projekte', 'dorf', 'data')
 JSON_PATH = File.join(DATA, 'textures.json')
 TEX_DIR   = File.join(DATA, 'textures')
 
-raise 'build/RuneEditor.exe fehlt - erst .\\build.ps1 ausfuehren' unless File.exist?(EXE)
+raise 'build/RuneEditor.exe fehlt - erst .\\build.ps1 ausführen' unless File.exist?(EXE)
 
 $fail = 0
 def check(name)
@@ -31,7 +31,7 @@ end
 tmp = Dir.mktmpdir('rune_tex')
 bmp = File.join(tmp, 'testbild.bmp')
 
-# 8x8-BMP (24 Bit): obere Haelfte rot, untere Haelfte blau.
+# 8x8-BMP (24 Bit): obere Hälfte rot, untere Hälfte blau.
 # BMP-Zeilen stehen von unten nach oben; WIC liefert sie danach oben->unten.
 w = 8
 h = 8
@@ -60,7 +60,7 @@ begin
   entries = meta.is_a?(Hash) ? (meta['textures'] || []) : meta
   entry = entries.find { |t| t.is_a?(Hash) && t['name'] == 'testbild' }
   check('Eintrag testbild vorhanden') { !entry.nil? }
-  check('Groesse 8 x 8') { entry && entry['w'] == 8 && entry['h'] == 8 }
+  check('Grösse 8 x 8') { entry && entry['w'] == 8 && entry['h'] == 8 }
   check('Kachel gesetzt') { entry && entry['tile'].to_f.positive? }
 
   rgba_path = File.join(TEX_DIR, entry ? entry['file'].to_s : 'testbild.rgba')

@@ -103,7 +103,7 @@ Drei Ebenen, alle headless:
 ```powershell
 .\build.ps1 -Test                              # alles zusammen
 ruby tools\test_all.rb                         # 17 Ruby-Modultests
-ruby -I game\engine game\engine\mapcheck.rb    # Karten-Daten pruefen
+ruby -I game\engine game\engine\mapcheck.rb    # Karten-Daten prüfen
 ruby tools\lint_repo.rb                        # Repo-Hygiene
 ```
 
@@ -114,7 +114,7 @@ ruby tools\lint_repo.rb                        # Repo-Hygiene
 | JSON-Brücke | Schreibt C++ bytegleich zu Ruby `JSON.pretty_generate`? | `tools/json_bridge_check.rb` |
 | Karten-Scan | Daten-Validierung (Befehle, Trigger, Bedingungen, Wegpunkte, Terrain) | `game/engine/mapcheck.rb` |
 | Repo-Hygiene | UTF-8, BOM, Doppelkodierung, Zeilenenden, Requires, Index | `tools/lint_repo.rb` |
-| Live-Tests | Fenster-Injektion am echten Editor (nur Windows, manuell) | `tools/edclick.psm1` |
+| Live-Tests | Fenster-Injektion am echten Editor (nur Windows, manüll) | `tools/edclick.psm1` |
 
 `tools/tex_import_test.rb` braucht eine gebaute `RuneEditor.exe` und wird ohne
 sie übersprungen (der Runner meldet das).

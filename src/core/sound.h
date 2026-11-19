@@ -29,7 +29,7 @@ void loop(const std::string& name, float volume);
 // Alle Stimmen eines Namens stoppen (auch Loops).
 void stop(const std::string& name);
 
-// Einmal pro Frame aufrufen: fuellt freigewordene Puffer neu.
+// Einmal pro Frame aufrufen: füllt freigewordene Puffer neu.
 void update();
 
 bool ready();

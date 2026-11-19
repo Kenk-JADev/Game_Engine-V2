@@ -12,10 +12,10 @@ namespace {
 constexpr int kRate = 44100;
 constexpr int kBuffers = 3;
 constexpr int kSamplesPerBuffer = 1024;   // ~23 ms pro Puffer
-// WICHTIG: Die Startverzoegerung eines neuen Sounds entspricht der Menge
+// WICHTIG: Die Startverzögerung eines neuen Sounds entspricht der Menge
 // vorgequeueter Stille (kBuffers * Pufferdauer). 3 x 23 ms = max ~70 ms,
-// im Schnitt ~35 ms — hoert sich sofort an. Groessere Puffer fuehlen
-// sich traeg an (4 x 8192 waren ~740 ms Vorlauf!).
+// im Schnitt ~35 ms — hört sich sofort an. Grössere Puffer fühlen
+// sich träg an (4 x 8192 waren ~740 ms Vorlauf!).
 constexpr int kMaxVoices = 12;
 
 struct Voice {
@@ -84,7 +84,7 @@ void register_sound(const std::string& name, int rate, const int16_t* samples, s
         g_sounds[name].assign(samples, samples + count);
         return;
     }
-    // Linear hoch/runter sampeln auf die Geraeterate.
+    // Linear hoch/runter sampeln auf die Geräterate.
     const double step = static_cast<double>(rate) / kRate;
     const size_t out_count = static_cast<size_t>(static_cast<double>(count) / step);
     std::vector<int16_t>& out = g_sounds[name];
@@ -151,7 +151,7 @@ void update() {
     }
     g_voice_count = w;
 
-    // Freie Puffer neu fuellen und an waveOut uebergeben.
+    // Freie Puffer neu füllen und an waveOut übergeben.
     for (int b = 0; b < kBuffers; ++b) {
         bool free_now = !g_started[b] || g_done[b].exchange(false);
         if (!free_now) continue;

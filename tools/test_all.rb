@@ -2,11 +2,11 @@
 # ============================================================================
 #  Zentrale Test-Suite (Etappe 19a).
 #
-#     ruby tools/test_all.rb                 alle Tests, die hier laufen koennen
+#     ruby tools/test_all.rb                 alle Tests, die hier laufen können
 #     ruby tools/test_all.rb -v              Ausgaben der Tests immer anzeigen
-#     ruby tools/test_all.rb --strict        Uebersprungene Tests = Fehlschlag
+#     ruby tools/test_all.rb --strict        Übersprungene Tests = Fehlschlag
 #     ruby tools/test_all.rb --only party    nur Tests, deren Name passt
-#     ruby tools/test_all.rb --list          nur auflisten, nichts ausfuehren
+#     ruby tools/test_all.rb --list          nur auflisten, nichts ausführen
 #
 #  Warum das Skript? Bisher stand die Liste der 16 Tests als einzeiliger Befehl
 #  im Handoff — jeder neue Test musste dort von Hand eingetragen werden, und
@@ -15,7 +15,7 @@
 #  gefunden wird per Glob, Voraussetzungen stehen in VORAUSSETZUNGEN, und der
 #  Exit-Code ist 0 genau dann, wenn kein Test fehlschlug.
 #
-#  Laeuft unter Windows (build.ps1 -Test) und in CI auf Linux/macOS.
+#  Läuft unter Windows (build.ps1 -Test) und in CI auf Linux/macOS.
 # ============================================================================
 require 'rbconfig'
 
@@ -52,7 +52,7 @@ def ci_auszug(ausgabe, maximal = 1200)
 end
 
 # Tests, die mehr brauchen als Ruby: Pfad relativ zu ROOT. Fehlt eine
-# Voraussetzung, wird der Test uebersprungen (mit Grund) statt rot zu werden —
+# Voraussetzung, wird der Test übersprungen (mit Grund) statt rot zu werden —
 # auf dem Build-Rechner bzw. im Windows-Job der CI ist er dann dabei.
 VORAUSSETZUNGEN = {
   'tex_import_test.rb' => [File.join('build', 'RuneEditor.exe')]
@@ -93,7 +93,7 @@ if optionen[:list]
   exit 0
 end
 
-# Ein Test laeuft als eigener Prozess: ein Absturz (exit!/Speicherfehler) faellt
+# Ein Test läuft als eigener Prozess: ein Absturz (exit!/Speicherfehler) fällt
 # dann nicht die ganze Suite, und die Stubs der Tests bleiben getrennt.
 def test_laeuft?(datei)
   fehlend = (VORAUSSETZUNGEN[datei] || []).reject { |p| File.exist?(File.join(ROOT, p)) }
@@ -109,8 +109,8 @@ tests.each do |t|
   fehlend = test_laeuft?(t)
 
   if fehlend
-    puts format('%-24s UEBERSPRUNGEN  (fehlt: %s)', t, fehlend.join(', '))
-    ci_meldung('warning', "Test uebersprungen: #{t}",
+    puts format('%-24s ÜBERSPRUNGEN  (fehlt: %s)', t, fehlend.join(', '))
+    ci_meldung('warning', "Test übersprungen: #{t}",
                "Voraussetzung fehlt: #{fehlend.join(', ')}. Build mit .\\build.ps1, dann erneut laufen lassen.")
     ergebnis << [:skip, t, 0.0, "fehlt: #{fehlend.join(', ')}"]
     next
@@ -141,13 +141,13 @@ ueber = ergebnis.count { |e| e[0] == :skip }
 zeit  = ergebnis.sum { |e| e[2] }
 
 puts '-' * 68
-puts format('Ergebnis: %d OK, %d fehlgeschlagen, %d uebersprungen (%.1f s)',
+puts format('Ergebnis: %d OK, %d fehlgeschlagen, %d übersprungen (%.1f s)',
             ok, kaputt, ueber, zeit)
 ci_meldung(kaputt.positive? ? 'error' : 'notice', 'Rune3D-Testsuite',
-           format('%d OK, %d fehlgeschlagen, %d uebersprungen (%.1f s, Ruby %s)',
+           format('%d OK, %d fehlgeschlagen, %d übersprungen (%.1f s, Ruby %s)',
                   ok, kaputt, ueber, zeit, RUBY_VERSION))
 if ueber.positive? && !optionen[:strict]
-  puts 'Hinweis: uebersprungene Tests brauchen eine gebaute EXE (build.ps1).'
+  puts 'Hinweis: übersprungene Tests brauchen eine gebaute EXE (build.ps1).'
 end
 
 exit(kaputt.positive? || (optionen[:strict] && ueber.positive?) ? 1 : 0)

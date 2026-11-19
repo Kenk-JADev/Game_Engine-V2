@@ -1,8 +1,8 @@
 #encoding: utf-8
 # ============================================================================
-#  Kopfloser Test fuer den Editor: Prefabs, Setzen/Loeschen, Speichern/Laden.
+#  Kopfloser Test für den Editor: Prefabs, Setzen/Löschen, Speichern/Laden.
 #     ruby -I game/engine tools/editor_test.rb
-#  Exit-Code 0 = alles gruen.
+#  Exit-Code 0 = alles grün.
 # ============================================================================
 
 module Rune
@@ -70,24 +70,24 @@ scene = Scene.new
 nodes = Prefabs.instantiate(scene, { 'type' => 'haus', 'x' => 3.0, 'z' => -2.0, 'rot' => 0.0 }, 1.5, 'ed_0')
 
 check('Haus erzeugt 3 Knoten') { nodes.size == 3 }
-check('Knoten tragen Praefix ed_0') { nodes.all? { |n| n.name.start_with?('ed_0_') } }
+check('Knoten tragen Präfix ed_0') { nodes.all? { |n| n.name.start_with?('ed_0_') } }
 check('Wand ist solid') { nodes[0].solid == true }
-check('Basis-Hoehe angewendet') { near(nodes[0].position[1], 1.5 + 2.0) }
+check('Basis-Höhe angewendet') { near(nodes[0].position[1], 1.5 + 2.0) }
 
 nodes = Prefabs.instantiate(scene, { 'type' => 'haus', 'x' => 0.0, 'z' => 0.0, 'rot' => Math::PI / 2.0 }, 0.0, 'ed_1')
-check('Gedreht (90 Grad): Tuer geht nach +X statt +Z') { nodes[2].position[2].abs < 0.01 && nodes[2].position[0].abs > 2.5 }
+check('Gedreht (90 Grad): Tür geht nach +X statt +Z') { nodes[2].position[2].abs < 0.01 && nodes[2].position[0].abs > 2.5 }
 
-# Kristall-Animation (frueher in main.rb fest verdrahtet, jetzt im Prefab)
+# Kristall-Animation (früher in main.rb fest verdrahtet, jetzt im Prefab)
 cr = Prefabs.instantiate(scene, { 'type' => 'kristall', 'x' => 0.0, 'z' => 0.0, 'rot' => 0.6 }, 2.0, 'ed_9')
 check('Kristall bekommt Animation') { !cr[0].update_block.nil? }
 cr[0].update_block.call(cr[0], 0.5)
 check('Kristall dreht sich (0.6 + 0.7)') { near(cr[0].rotation[1], 0.6 + 0.7) }
-check('Kristall schwebt um die Ruhehoehe') { cr[0].position[1] > 2.0 + 1.6 }
+check('Kristall schwebt um die Ruhehöhe') { cr[0].position[1] > 2.0 + 1.6 }
 check('radius_of: Haus ~3.4 m, Weg ~1.5 m') {
   near(Prefabs.radius_of('haus'), 3.4, 0.05) && near(Prefabs.radius_of('weg'), 1.5, 0.05)
 }
 
-# --- Editor: setzen, loeschen, speichern ---------------------------------
+# --- Editor: setzen, löschen, speichern ---------------------------------
 module RuneInputStub
   def self.pressed?(k) = false
   def self.down?(k) = false
@@ -124,25 +124,25 @@ ed.instance_variable_set(:@grid, 0.25)
 obj = ed.place(objects, scene, 10.4, -3.7, 0.0)
 check('Feines Raster (0.25) ') { obj['x'] == 10.5 && obj['z'] == -3.75 }
 
-check('objects-Liste waechst') { objects.size == 2 }
+check('objects-Liste wächst') { objects.size == 2 }
 
-# Loeschen
+# Löschen
 ged = ed.delete_at(1, scene)
-check('Letztes Objekt geloescht') { objects.size == 1 && ged['type'] == 'haus' }
+check('Letztes Objekt gelöscht') { objects.size == 1 && ged['type'] == 'haus' }
 
-# Nahe-Loeschung: duennes Objekt, Strahl verfehlt die Teile -> Bodenpunkt nahe der Mitte
+# Nahe-Löschung: dünnes Objekt, Strahl verfehlt die Teile -> Bodenpunkt nahe der Mitte
 objects << { 'type' => 'zaun', 'x' => 2.0, 'z' => 5.0, 'rot' => 0.0 }
 ed.instance_variable_set(:@objects, objects)
 ed.delete_near(2.6, 5.3, scene)
-check('Nahe-Loeschung erwischt den Zaun (0.67 m neben der Mitte)') { objects.size == 1 }
+check('Nahe-Löschung erwischt den Zaun (0.67 m neben der Mitte)') { objects.size == 1 }
 ed.delete_near(50.0, 50.0, scene)
-check('Nahe-Loeschung greift nicht ins Leere ueber weit entfernte Punkte') { objects.size == 1 }
+check('Nahe-Löschung greift nicht ins Leere über weit entfernte Punkte') { objects.size == 1 }
 
 # Runde Drehung: Prefab-Objekt mit 60 Grad
 objects << { 'type' => 'zaun', 'x' => 0.0, 'z' => 0.0, 'rot' => Math::PI / 3.0 }
 check('Drehung wird gespeichert') { objects.last['rot'] > 1.0 }
 
-# Speichern in eine temporaere Datei
+# Speichern in eine temporäre Datei
 path = File.join(Database.root, 'maps', 'test.json')
 require 'fileutils'
 FileUtils.mkdir_p(File.dirname(path))
@@ -151,18 +151,18 @@ check('Datei geschrieben') { File.exist?(path) }
 
 back = JSON.parse(File.read(path, encoding: 'UTF-8'))
 check('Roundtrip: Objekte wieder da') { back['objects'].size == objects.size }
-check('Roundtrip: Typ/Ueberleben der Startposition') { objects.any? { |o| o['type'] == 'haus' } }
+check('Roundtrip: Typ/Überleben der Startposition') { objects.any? { |o| o['type'] == 'haus' } }
 
 File.delete(path) if File.exist?(path)
 
 # Das Dorf ist jetzt Datenmaterial: alle Objekte liegen in der Karten-JSON.
 dorf_path = File.join(Database.root, 'maps', 'dorf.json')
 dorf = JSON.parse(File.read(dorf_path, encoding: 'UTF-8'))
-check('Dorf-Karte enthaelt Objekte (>= 30)') { dorf['objects'].size >= 30 }
+check('Dorf-Karte enthält Objekte (>= 30)') { dorf['objects'].size >= 30 }
 check('Dorf-Objekttypen sind alle Prefabs') { dorf['objects'].all? { |o| Prefabs.by_id(o['type']) } }
 check('Dorf hat weiterhin 6 Events') { dorf['events'].size == 6 }
 
-# Texturen: prozedural erzeugte RGBA-Bytestrings muessen die richtige Groesse
+# Texturen: prozedural erzeugte RGBA-Bytestrings müssen die richtige Grösse
 # haben, nicht leer und bei zweitem Aufruf identisch sein.
 module RuneGfxStub
   REG = {}
@@ -189,7 +189,7 @@ check('Texturen sind nicht leer (Helligkeit > 0)') {
 }
 check('Texturen sind deterministisch') { Textures.gras == RuneGfxStub::REG['gras'][2] }
 RuneGfxStub.terrain_texture('gras')
-check('Gelaende-Textur gesetzt') { RuneGfxStub.ter == 'gras' }
+check('Gelände-Textur gesetzt') { RuneGfxStub.ter == 'gras' }
 check('Prefabs verweisen auf existierende Texturen') {
   Prefabs::LIST.flat_map { |p| p[:parts] }.all? { |part| !part[:tex] || RuneGfxStub::REG.key?(part[:tex]) }
 }

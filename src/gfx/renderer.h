@@ -20,10 +20,10 @@ struct DrawCmd {
     math::Vec3 rot;
     math::Vec4 color;
     int        tex;   // Index in die Texturliste, -1 = untexturiert
-    float      tile;  // Kachelgroesse in Metern (<=0: UV wie geliefert)
+    float      tile;  // Kachelgrösse in Metern (<=0: UV wie geliefert)
 };
 
-// Vertexformat fuer alle Meshes: Position, Normale, Vertexfarbe (0..1), UV.
+// Vertexformat für alle Meshes: Position, Normale, Vertexfarbe (0..1), UV.
 struct MeshVertex {
     math::Vec3 pos;
     math::Vec3 nrm;
@@ -31,8 +31,8 @@ struct MeshVertex {
     float      uv[2];
 };
 
-// Direct3D-11-Renderer: sammelt Box-Draws waehrend eines Frames und zeichnet sie
-// danach in einem Rutsch (Ruby fuellt die Draw-List).
+// Direct3D-11-Renderer: sammelt Box-Draws während eines Frames und zeichnet sie
+// danach in einem Rutsch (Ruby füllt die Draw-List).
 class Renderer {
 public:
     bool init(HWND hwnd, int width, int height);
@@ -45,7 +45,7 @@ public:
                   int tex = -1, float tile = 0.0f);
 
     // RGBA-Pixel (4 Bytes pro Pixel, zeilenweise, oben links) als Textur anmelden.
-    // Rueckgabe: Index fuer push_box, -1 bei Fehler.
+    // Rückgabe: Index für push_box, -1 bei Fehler.
     int  add_texture(const std::string& name, int w, int h, const uint8_t* rgba);
     int  texture_index(const std::string& name) const;
 
@@ -55,15 +55,15 @@ public:
     void set_fog(bool on, uint32_t rgb, float far_dist) { m_fog_on = on; m_fog_rgb = rgb; m_fog_far = far_dist; }
     void set_terrain_tex(int index) { m_terrain_tex = index; }
     // Etappe 18c: UV-Vielfaches des Gelandes (Standard 2.0 m pro Kachel).
-    // Kleinerer Wert = groessere Kacheln; <= 0 ignoriert (bleibt 2.0).
+    // Kleinerer Wert = grössere Kacheln; <= 0 ignoriert (bleibt 2.0).
     void set_terrain_tile(float meters) { m_terrain_tile = meters > 0.0f ? meters : 2.0f; }
-    // Pixel einer angemeldeten Textur (RGBA) fuer Dialog-Vorschauen; false
+    // Pixel einer angemeldeten Textur (RGBA) für Dialog-Vorschauen; false
     // wenn Name unbekannt.
     bool texture_rgba(const std::string& name, std::vector<uint8_t>& out,
                       int& w, int& h) const;
     void set_shadows(bool on) { m_shadows_on = on; }
 
-    // Ersetzt das Gelaende-Mesh (wird beim Start und bei jedem F5 neu gebaut).
+    // Ersetzt das Gelände-Mesh (wird beim Start und bei jedem F5 neu gebaut).
     bool set_terrain(const std::vector<MeshVertex>& verts, const std::vector<uint32_t>& indices);
     void clear_terrain();
 
@@ -135,7 +135,7 @@ private:
     // Texturen: RGBA8, von Ruby aus angemeldet (Name -> Slot).
     std::vector<ID3D11ShaderResourceView*> m_tex_srvs;
     std::map<std::string, int>             m_tex_ids;
-    // Etappe 18c: Pixel + Groessen fuer Vorschauen/G_tileset-Zugriff.
+    // Etappe 18c: Pixel + Grössen für Vorschauen/G_tileset-Zugriff.
     std::vector<std::vector<uint8_t>>       m_tex_pixels;
     std::vector<std::pair<int, int>>         m_tex_sizes;
 

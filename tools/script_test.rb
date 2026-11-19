@@ -1,8 +1,8 @@
 #encoding: utf-8
 # ============================================================================
-#  Kopfloser Test fuer Projekt-Scripts (Etappe 17e).
+#  Kopfloser Test für Projekt-Scripts (Etappe 17e).
 #     ruby -I game/engine tools/script_test.rb
-#  Exit-Code 0 = alles gruen.
+#  Exit-Code 0 = alles grün.
 # ============================================================================
 
 require 'tmpdir'
@@ -99,7 +99,7 @@ begin
              encoding: 'UTF-8')
   File.write(File.join(tmp, 'scripts.json'), <<~JSON, encoding: 'UTF-8')
     {"scripts":[
-      {"name":"zaehlen","code":"set_switch 'script_an'\\nadd_variable 'zaehler', 2\\nlog 'gezaehlt'"},
+      {"name":"zählen","code":"set_switch 'script_an'\\nadd_variable 'zähler', 2\\nlog 'gezählt'"},
       {"name":"gruss","code":"say ['Hallo aus dem Script.','Zweite Zeile.']"},
       {"name":"kaputt","code":"das_ist_kein_ruby("}
     ]}
@@ -116,12 +116,12 @@ begin
   # 1) Script setzt Schalter/Variable
   interp = Interpreter.new
   check('script-Kommando startet') do
-    interp.start([{ 'cmd' => 'script', 'name' => 'zaehlen' },
+    interp.start([{ 'cmd' => 'script', 'name' => 'zählen' },
                   { 'cmd' => 'text', 'lines' => ['weiter'] }])
   end
   drain(interp)
   check('Schalter aus Script gesetzt') { GameState.switch('script_an') == true }
-  check('Variable aus Script erhoeht') { GameState.variable('zaehler') == 2.0 }
+  check('Variable aus Script erhöht') { GameState.variable('zähler') == 2.0 }
   check('danach normaler Text') { interp.message == ['weiter'] }
   press(interp)
   drain(interp)
@@ -143,7 +143,7 @@ begin
   interp.start([{ 'cmd' => 'script', 'name' => 'kaputt' },
                 { 'cmd' => 'text', 'lines' => ['trotzdem da'] }])
   drain(interp)
-  check('kaputtes Script uebersprungen') { interp.message == ['trotzdem da'] }
+  check('kaputtes Script übersprungen') { interp.message == ['trotzdem da'] }
   press(interp)
   drain(interp)
   check('danach fertig') { !interp.running? }

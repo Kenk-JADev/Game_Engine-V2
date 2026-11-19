@@ -1,12 +1,12 @@
 // ============================================================================
-//  Ruby-Smoke-Test: prueft, dass die eingebettete CRuby-VM vollstaendig
+//  Ruby-Smoke-Test: prüft, dass die eingebettete CRuby-VM vollständig
 //  initialisiert ist.
 //
-//  Hintergrund: ruby_init() allein fuehrt in Ruby 3.4 die eingebauten
+//  Hintergrund: ruby_init() allein führt in Ruby 3.4 die eingebauten
 //  Ruby-Skripte NICHT aus. Dann fehlen Kernmethoden wie Integer#times,
 //  Integer#to_i oder Array#last - und jede Skriptzeile scheitert mit einem
-//  unverstaendlichen "undefined method '#<Symbol:0x...>'".
-//  Genau dafuer muss rb_call_builtin_inits() aufgerufen werden.
+//  unverständlichen "undefined method '#<Symbol:0x...>'".
+//  Genau dafür muss rb_call_builtin_inits() aufgerufen werden.
 //
 //  Bauen:
 //    gcc tools/ruby_smoke.cpp -I<ruby-include> -L<ruby-lib> -lx64-ucrt-ruby340

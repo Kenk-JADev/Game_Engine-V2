@@ -1,10 +1,10 @@
 #encoding: utf-8
 # ============================================================================
-#  Test fuer das Wetter (Etappe 17h):
+#  Test für das Wetter (Etappe 17h):
 #     ruby -I game/engine tools/weather_test.rb
 #
-#  Prueft ohne Engine: Weather.set/load_map, Partikel-Menge je Intensitaet,
-#  Fallen/Respawn, draw (Rune::Gfx.box-Zaehler) und den Interpreter-Befehl
+#  Prüft ohne Engine: Weather.set/load_map, Partikel-Menge je Intensität,
+#  Fallen/Respawn, draw (Rune::Gfx.box-Zähler) und den Interpreter-Befehl
 #  {"cmd":"weather",...} samt Script-Sandbox-Helfer weather(...).
 # ============================================================================
 
@@ -18,7 +18,7 @@ def check(name)
   $fail += 1 unless ok
 end
 
-# --- Attrappen fuer die Engine-Bindings -------------------------------------
+# --- Attrappen für die Engine-Bindings -------------------------------------
 module Rune
   ROOT = ROOT
   module Log
@@ -77,17 +77,17 @@ require 'scripts'
 check('Start: kein Wetter, inaktiv') { !Weather.active? && Weather.type == 'kein' }
 Weather.set('regen')
 check('set regen') { Weather.active? && Weather.type == 'regen' }
-check('Standard-Intensitaet 1.0') { Weather.intensity == 1.0 }
+check('Standard-Intensität 1.0') { Weather.intensity == 1.0 }
 Weather.set('schnee', 2.0)
-check('set schnee Intensitaet 2.0') { Weather.type == 'schnee' && Weather.intensity == 2.0 }
+check('set schnee Intensität 2.0') { Weather.type == 'schnee' && Weather.intensity == 2.0 }
 Weather.set('blubb')
 check('unbekannter Typ = aus') { !Weather.active? && Weather.type == 'kein' }
 Weather.set('regen', -5)
-check('negative Intensitaet fiel auf 1.0 zurueck') { Weather.intensity == 1.0 }
+check('negative Intensität fiel auf 1.0 zurück') { Weather.intensity == 1.0 }
 
 # --- 2) load_map aus Karten-JSON ----------------------------------------------
 Weather.load_map('weather' => { 'type' => 'schnee', 'intensity' => 1.5 })
-check('load_map uebernimmt schnee 1.5') do
+check('load_map übernimmt schnee 1.5') do
   Weather.type == 'schnee' && Weather.intensity == 1.5
 end
 Weather.load_map({})
@@ -99,26 +99,26 @@ check('load_map(nil) = aus') { !Weather.active? }
 Weather.set('regen', 1.0)
 Rune::Player.pos = [0.0, 5.0, 0.0]
 Weather.update(0.016, 0.0, 5.0, 0.0)
-check('Intensitaet 1.0 => 40 Partikel') { Weather.count == 40 }
+check('Intensität 1.0 => 40 Partikel') { Weather.count == 40 }
 Weather.set('regen', 2.0)
 Weather.update(0.016, 0.0, 5.0, 0.0)
-check('Intensitaet 2.0 => 80 Partikel') { Weather.count == 80 }
+check('Intensität 2.0 => 80 Partikel') { Weather.count == 80 }
 count_before = Weather.count
 Weather.update(0.016, 0.0, 5.0, 0.0)
 check('Menge bleibt konstant') { Weather.count == count_before }
 
 # Partikel fallen (Regen 22 m/s * dt): hoch starten, damit sie nach
-# dem Fall noch ueber dem Boden liegen und nicht sofort respawnen.
+# dem Fall noch über dem Boden liegen und nicht sofort respawnen.
 Weather.instance_variable_get(:@drops)[0..4].each_with_index do |p, i|
   p[:y] = 20.0 + i
 end
 ys_before = Weather.instance_variable_get(:@drops)[0..4].map { |p| p[:y] }
 Weather.update(0.5, 0.0, 5.0, 0.0)
 ys_after = Weather.instance_variable_get(:@drops)[0..4].map { |p| p[:y] }
-check('Regen faellt 22 m/s') do
+check('Regen fällt 22 m/s') do
   (ys_before[0] - ys_after[0] - 11.0).abs < 2.0
 end
-check('Respawns landen wieder ueber dem Boden') do
+check('Respawns landen wieder über dem Boden') do
   Weather.instance_variable_get(:@drops).all? { |p| p[:y] > 3.0 }
 end
 

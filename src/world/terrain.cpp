@@ -9,7 +9,7 @@ using namespace rune::math;
 namespace rune::world {
 namespace {
 
-// Deterministischer Wert-Noise: gleicher Seed -> gleiches Gelaende auf jedem Rechner.
+// Deterministischer Wert-Noise: gleicher Seed -> gleiches Gelände auf jedem Rechner.
 uint32_t hash2(int x, int z, uint32_t seed) {
     uint32_t h = seed;
     h ^= static_cast<uint32_t>(x) * 0x9E3779B1u;
@@ -65,7 +65,7 @@ Vec3 lerp(Vec3 a, Vec3 b, float t) {
 
 } // namespace
 
-// Gemeinsamer Hoehen-Teil: Raster + fbm + flaechige Mitte (Dorf-Platz).
+// Gemeinsamer Höhen-Teil: Raster + fbm + flächige Mitte (Dorf-Platz).
 void Terrain::compute_heights(uint32_t seed, float amplitude) {
     const float step_x = m_width / static_cast<float>(m_res_x);
     const float step_z = m_height / static_cast<float>(m_res_z);
@@ -80,9 +80,9 @@ void Terrain::compute_heights(uint32_t seed, float amplitude) {
             // Mehrere Rausch-Oktaven, um -0.5..0.5 zentriert.
             float h = (fbm(x * 0.020f, z * 0.020f, seed, 4) - 0.5f) * 2.0f * amplitude;
 
-            // Rund um das Dorf (x,z nahe 0) flach halten - die Haeuser stehen auf 0.
+            // Rund um das Dorf (x,z nahe 0) flach halten - die Häuser stehen auf 0.
             // Etappe 18l: Nur das Rauschen wird abgeflacht - gemalte Pinsel
-            // wirken auch im Dorfkern (dort will man ebenfalls Huegel/Senken).
+            // wirken auch im Dorfkern (dort will man ebenfalls Hügel/Senken).
             const float d = std::sqrt(x * x + z * z);
             float flat = (d - 16.0f) / 26.0f;
             flat = std::clamp(flat, 0.0f, 1.0f);
@@ -93,10 +93,10 @@ void Terrain::compute_heights(uint32_t seed, float amplitude) {
         }
     }
 
-    // Etappe 18l: gemalte Hoehen-Pinsel nachtragen. Konvention: x/z = Welt-
-    // position, w = Radius (m), y = Hoehen-Aenderung (negativ = Senke).
-    // Weicher Kegel mit cos-Falloff: Mitte volle Hoehe, Rand 0 - dadurch
-    // keine harte Kante im Gelaende. Wirkt auch im Dorfkern.
+    // Etappe 18l: gemalte Höhen-Pinsel nachtragen. Konvention: x/z = Welt-
+    // position, w = Radius (m), y = Höhen-Änderung (negativ = Senke).
+    // Weicher Kegel mit cos-Falloff: Mitte volle Höhe, Rand 0 - dadurch
+    // keine harte Kante im Gelände. Wirkt auch im Dorfkern.
     for (const Vec4& b : m_brushes) {
         const float r = b.w;
         const float h_add = b.y;
@@ -127,7 +127,7 @@ void Terrain::compute_heights(uint32_t seed, float amplitude) {
 }
 
 // Vertexdaten (Position/Normale/Farbe) an einem Gitterpunkt; der UV-Part
-// unterscheidet sich je nach Mesh-Typ und wird vom Aufrufer gefuellt.
+// unterscheidet sich je nach Mesh-Typ und wird vom Aufrufer gefüllt.
 gfx::MeshVertex Terrain::make_vertex(int ix, int iz, uint32_t seed) {
     const float step_x = m_width / static_cast<float>(m_res_x);
     const float step_z = m_height / static_cast<float>(m_res_z);
@@ -149,8 +149,8 @@ gfx::MeshVertex Terrain::make_vertex(int ix, int iz, uint32_t seed) {
                       (2.0f * step_z);
     Vec3 nrm = normalize(Vec3{-dhx, 1.0f, -dhz});
 
-    // Farbe nach Hoehe und Steigung - nur noch als leichte Toenung,
-    // die Grass-Textur traegt die Grundfarbe.
+    // Farbe nach Höhe und Steigung - nur noch als leichte Tönung,
+    // die Grass-Textur trägt die Grundfarbe.
     const uint32_t grass_a = 0x39512B;
     const uint32_t grass_b = 0x4C6A38;
     const uint32_t rock    = 0x6E6455;
@@ -172,14 +172,14 @@ void Terrain::generate(float width, float height, int resolution, uint32_t seed,
     m_seed = seed;
     m_amplitude = amplitude;
     m_res_x = std::max(8, resolution);
-    // Quadratische Zellen anstreben: Z-Zellen proportional zur Hoehe.
+    // Quadratische Zellen anstreben: Z-Zellen proportional zur Höhe.
     m_res_z = std::max(8, static_cast<int>(std::lround(
         static_cast<float>(m_res_x) * height / std::max(1.0f, width))));
 
     compute_heights(seed, amplitude);
 
     // Vertices + Indices. UV in Weltmetern (2 m pro Kachel), damit das Gras
-    // ueberall gleich gross kachelt.
+    // überall gleich gross kachelt.
     m_verts.clear();
     m_idx.clear();
     m_verts.reserve(static_cast<size_t>((m_res_z + 1) * (m_res_x + 1)));
@@ -234,8 +234,8 @@ void Terrain::generate_splat(float width, float height, int resolution, uint32_t
     const float inset = 0.5f / 64.0f;         // im Zell-UV-Raum 0..1
     const int cell_cols = std::max(1, atlas.cols);
 
-    // Textur eines Punkts: letzter (spaetester) Splat, der ihn ueberdeckt,
-    // sonst Basis. Unbekannte Namen fallen auf die Basis zurueck.
+    // Textur eines Punkts: letzter (spätester) Splat, der ihn überdeckt,
+    // sonst Basis. Unbekannte Namen fallen auf die Basis zurück.
     auto tex_at = [&](float px, float pz) -> int {
         int cell = -1;
         auto it = atlas.cell_of.find(base);
@@ -254,7 +254,7 @@ void Terrain::generate_splat(float width, float height, int resolution, uint32_t
 
     for (int iz = 0; iz < m_res_z; ++iz) {
         for (int ix = 0; ix < m_res_x; ++ix) {
-            // Quad-Mitte entscheidet ueber die Zelle (kein Misch-Quad).
+            // Quad-Mitte entscheidet über die Zelle (kein Misch-Quad).
             const float cx = -m_width * 0.5f + (static_cast<float>(ix) + 0.5f) * step_x;
             const float cz = -m_height * 0.5f + (static_cast<float>(iz) + 0.5f) * step_z;
             const int cell = tex_at(cx, cz);
@@ -322,8 +322,8 @@ Vec3 Terrain::normal_at(float x, float z) const {
     return normalize(cross(sub(dz, p), sub(dx, p)));
 }
 
-// Etappe 18l: gemalte Hoehen-Pinsel setzen (vor dem naechsten generate()).
-// Konvention: x/z = Weltposition, w = Radius in Metern, y = Hoehen-Aenderung
+// Etappe 18l: gemalte Höhen-Pinsel setzen (vor dem nächsten generate()).
+// Konvention: x/z = Weltposition, w = Radius in Metern, y = Höhen-Änderung
 // (negativ = Senke). Die Pinsel werden in compute_heights() nach dem FBM
 // addiert - ein erneutes generate() baut sie also reproduzierbar ein.
 void Terrain::set_height_brushes(const std::vector<Vec4>& brushes) {

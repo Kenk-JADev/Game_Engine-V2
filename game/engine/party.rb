@@ -12,8 +12,8 @@
 #                    "power":40, "price":25, "desc":"Heilt 40 HP." } ]
 #    }
 #
-#  Party haelt den veraenderlichen Spielzustand (HP/MP, Gold, Inventar) und
-#  wandert als Snapshot in die Spielstaende. Die Item-Definitionen bleiben in
+#  Party hält den veränderlichen Spielzustand (HP/MP, Gold, Inventar) und
+#  wandert als Snapshot in die Spielstände. Die Item-Definitionen bleiben in
 #  der Datenbank; das Inventar speichert nur Mengen.
 # ============================================================================
 
@@ -87,7 +87,7 @@ class Party
     @items[id.to_s].to_i
   end
 
-  # Menge aendern (negative Werte nehmen weg, nie unter 0).
+  # Menge ändern (negative Werte nehmen weg, nie unter 0).
   def self.add_item(id, count = 1)
     key = id.to_s
     return 0 if key.empty?
@@ -147,7 +147,7 @@ class Party
     @gold
   end
 
-  # amount <= 0 heilt vollstaendig, sonst um amount.
+  # amount <= 0 heilt vollständig, sonst um amount.
   def self.heal_all(amount = 0)
     @actors.each do |a|
       a.hp = amount.to_i.positive? ? [a.hp + amount.to_i, a.max_hp].min : a.max_hp
@@ -185,7 +185,7 @@ class Party
     true
   end
 
-  # Zeilen fuer das Menue-Panel.
+  # Zeilen für das Menü-Panel.
   def self.status_lines
     lines = @actors.map(&:hp_line)
     lines << "Gold: #{@gold}"

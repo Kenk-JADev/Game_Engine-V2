@@ -2,14 +2,14 @@
 # ============================================================================
 #  Spielzustand: Schalter (bool) und Variablen (Zahlen), initiiert aus
 #  game/data/system.json. Lebt nur im Speicher; gespeichert werden die Daten
-#  erst mit einer Save-Funktion (kommt spaeter mit dem Editor).
+#  erst mit einer Save-Funktion (kommt später mit dem Editor).
 # ============================================================================
 
 class GameState
   @switches = {}
   @variables = {}
 
-  # Setzt Anfangs-/Standardwerte aus der Systemdatei zurueck.
+  # Setzt Anfangs-/Standardwerte aus der Systemdatei zurück.
   def self.reset!(initial)
     @switches = {}
     @variables = {}
@@ -42,14 +42,14 @@ class GameState
     @variables[name.to_s] = variable(name) + amount.to_f
   end
 
-  # Kurzbeschreibung fuer Debug-Logs.
+  # Kurzbeschreibung für Debug-Logs.
   def self.inspect_short
     "sw=#{@switches.select { |_, v| v }.keys.join(',')} var=#{@variables.inspect}"
   end
 
   # ---------------------------------------------------- Speichern / Laden
 
-  # Zustand als JSON-faehigen Hash (Schalter + Variablen).
+  # Zustand als JSON-fähigen Hash (Schalter + Variablen).
   def self.snapshot
     { 'switches' => @switches.dup, 'variables' => @variables.dup }
   end

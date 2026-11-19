@@ -1,6 +1,6 @@
 #encoding: utf-8
 # ============================================================================
-#  Kopfloser Test fuer NPCs (Etappe 13): Wegpunkt-Bewegung, Loop, Event-
+#  Kopfloser Test für NPCs (Etappe 13): Wegpunkt-Bewegung, Loop, Event-
 #  Kopplung, Picking-Schnittstelle.
 #     ruby -I game/engine tools/npc_test.rb
 # ============================================================================
@@ -25,7 +25,7 @@ module Rune
   end
 end
 
-# Game.gy-Attrappe (Hoehe 0), bevor npc.rb geladen wird.
+# Game.gy-Attrappe (Höhe 0), bevor npc.rb geladen wird.
 module Game
   def self.gy(_x, _z) = 0.0
 end
@@ -47,7 +47,7 @@ end
 scene = Scene.new('Test')
 
 npc = Npc.new(
-  { 'name' => 'Waechter', 'x' => 0.0, 'z' => 0.0, 'speed' => 2.0,
+  { 'name' => 'Wächter', 'x' => 0.0, 'z' => 0.0, 'speed' => 2.0,
     'path' => [[4.0, 0.0], [4.0, 4.0]],
     'commands' => [{ 'cmd' => 'text', 'lines' => ['Hallo'] }] },
   scene
@@ -70,10 +70,10 @@ npc.update(2.0)
 check('Zweiter Wegpunkt erreicht') { npc.position == [4.0, 4.0] }
 
 npc.update(2.0)
-check('Loop: laeuft wieder zum ersten Wegpunkt') { npc.position[0] == 4.0 && npc.position[1] < 4.0 }
+check('Loop: läuft wieder zum ersten Wegpunkt') { npc.position[0] == 4.0 && npc.position[1] < 4.0 }
 
 # --- Event-Kopplung ----------------------------------------------------------
-check('Event heisst wie der NPC') { npc.event.name == 'Waechter' }
+check('Event heisst wie der NPC') { npc.event.name == 'Wächter' }
 check('Event-Position folgt Bewegung') { npc.event.x == npc.position[0] && npc.event.z == npc.position[1] }
 
 px, pz = npc.position
@@ -100,17 +100,17 @@ check('Geschwindigkeit skaliert') { schnell.position[0] == 10.0 }
 blocker = Npc.new({ 'name' => 'Block', 'x' => 0.0, 'z' => 0.0, 'speed' => 2.0,
                     'path' => [[10.0, 0.0]] }, scene)
 Rune.ppos = [1.5, 0.0, 0.0]   # Spieler direkt auf der Laufstrecke
-blocker.update(0.5)           # naechste Position (1,0) laege 0.5 m vom Spieler
+blocker.update(0.5)           # nächste Position (1,0) läge 0.5 m vom Spieler
 check('NPC wartet, wenn Spieler im Weg') { blocker.position[0] == 0.0 }
 
 Rune.ppos = [1.5, 0.0, 5.0]   # Spieler zur Seite
 blocker.update(0.5)
-check('NPC laeuft weiter, wenn Weg frei') { blocker.position[0] > 0.9 }
+check('NPC läuft weiter, wenn Weg frei') { blocker.position[0] > 0.9 }
 
 # --- Snapshot / Restore (Etappe 15) ------------------------------------------
 blocker.update(1.0)           # weiterlaufen lassen
 snap = blocker.snapshot
-check('Snapshot enthaelt Name/Position/Wegpunkt') do
+check('Snapshot enthält Name/Position/Wegpunkt') do
   snap['name'] == 'Block' && snap['x'] == blocker.position[0] &&
     snap['z'] == blocker.position[1] && snap['wp'].is_a?(Integer)
 end

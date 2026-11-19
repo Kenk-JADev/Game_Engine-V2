@@ -51,7 +51,7 @@ bool Ui::init(ID3D11Device* dev, ID3D11DeviceContext* ctx, int width, int height
     if (!create_pipeline()) return false;
     if (!create_text_surface(width, height)) return false;
 
-    // 1x1 weisse Textur fuer Rechtecke
+    // 1x1 weisse Textur für Rechtecke
     {
         const uint32_t px = 0xFFFFFFFF;
         D3D11_TEXTURE2D_DESC td{};
@@ -192,7 +192,7 @@ bool Ui::create_text_surface(int width, int height) {
     m_dib = CreateDIBSection(screen, &bi, DIB_RGB_COLORS, &m_bits, nullptr, 0);
     ReleaseDC(nullptr, screen);
     if (!m_dib || !m_bits) {
-        core::log_error("Ui: GDI-Flaeche fehlgeschlagen");
+        core::log_error("Ui: GDI-Fläche fehlgeschlagen");
         return false;
     }
     SelectObject(m_dc, m_dib);
@@ -208,7 +208,7 @@ bool Ui::create_text_surface(int width, int height) {
     m_dev->CreateShaderResourceView(m_text_tex, nullptr, &m_text_srv);
     if (!m_text_srv) core::log_error("Ui: Text-SRV fehlgeschlagen");
 
-    // Vorbereiten: schwarz fuellen
+    // Vorbereiten: schwarz füllen
     std::memset(m_bits, 0, static_cast<size_t>(width) * height * 4);
     return true;
 }
@@ -289,7 +289,7 @@ bool Ui::rebuild_text_texture() {
     }
     if (key == m_text_cache) return true;
 
-    // 2) Textur nur neu rastern, wenn sich Inhalt/Position geaendert hat.
+    // 2) Textur nur neu rastern, wenn sich Inhalt/Position geändert hat.
     for (TextCmd& t : m_texts) {
         const std::wstring ws = to_wide(t.s);
         if (ws.empty()) continue;
@@ -373,7 +373,7 @@ void Ui::render() {
         m_ctx->PSSetShaderResources(0, 1, &srv);
         if (rect_vcount > 0) m_ctx->Draw(static_cast<UINT>(rect_vcount), 0);
     }
-    // Pass 2: Text (Textflaeche, use_tex=1)
+    // Pass 2: Text (Textfläche, use_tex=1)
     {
         cb.use_tex = 1.0f;
         m_ctx->UpdateSubresource(m_cb, 0, nullptr, &cb, 0, 0);
@@ -393,7 +393,7 @@ void Ui::resize(int width, int height) {
     m_w = width;
     m_h = height;
 
-    // GDI-Flaeche neu erzeugen
+    // GDI-Fläche neu erzeugen
     if (m_text_tex) { m_text_srv->Release(); m_text_tex->Release(); m_text_tex = nullptr; m_text_srv = nullptr; }
     if (m_dib) { DeleteObject(m_dib); m_dib = nullptr; }
     m_bits = nullptr;

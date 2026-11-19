@@ -1,10 +1,10 @@
 #pragma once
 // ============================================================================
-//  Minimaler JSON-Parser/-Schreiber fuer den RuneEditor (Etappe 17).
-//  Bewusst eigenstaendig statt Fremd-Bibliothek: Der Editor liest und
+//  Minimaler JSON-Parser/-Schreiber für den RuneEditor (Etappe 17).
+//  Bewusst eigenständig statt Fremd-Bibliothek: Der Editor liest und
 //  schreibt nur die wohlgeformten Dateien, die das Spiel (Ruby) erzeugt.
 //  Werte bleiben typgetreu (Ganzzahl vs. Kommazahl), Objekte behalten ihre
-//  Reihenfolge und unbekannte Schluessel — events/npcs ueberleben das
+//  Reihenfolge und unbekannte Schlüssel — events/npcs überleben das
 //  Speichern also unangetastet.
 // ============================================================================
 
@@ -26,9 +26,9 @@ public:
     bool     is_int = false;          // Ganzzahl ohne '.'/'e' erkannt?
     std::string str;                 // UTF-8
     std::vector<JsonValue> arr;
-    // Objekt als Paarliste: Reihenfolge und Doppelte Schluessel bleiben
-    // erhalten (wichtig, damit gespeicherte Karten bis auf die geaenderten
-    // Stellen byteaehnlich gleich bleiben).
+    // Objekt als Paarliste: Reihenfolge und Doppelte Schlüssel bleiben
+    // erhalten (wichtig, damit gespeicherte Karten bis auf die geänderten
+    // Stellen byteähnlich gleich bleiben).
     std::vector<std::pair<std::string, JsonValue>> obj;
 
     Type  type_of() const { return type; }
@@ -41,7 +41,7 @@ public:
     double number(double fallback = 0.0) const { return is_num() ? num : fallback; }
     const std::string& text() const { return str; }
 
-    // Erster Treffer (Doppelte Schluessel sind in unseren Dateien verboten).
+    // Erster Treffer (Doppelte Schlüssel sind in unseren Dateien verboten).
     JsonValue* find(const std::string& key) {
         for (auto& kv : obj) {
             if (kv.first == key) return &kv.second;
@@ -55,7 +55,7 @@ public:
         return nullptr;
     }
 
-    // Schluessel setzen: vorhandenen ersetzen, sonst anhaengen.
+    // Schlüssel setzen: vorhandenen ersetzen, sonst anhängen.
     JsonValue& set(const std::string& key, JsonValue v) {
         for (auto& kv : obj) {
             if (kv.first == key) { kv.second = std::move(v); return kv.second; }
@@ -84,8 +84,8 @@ public:
 // Parst JSON-Text (UTF-8). Wirft std::runtime_error mit Position bei Fehlern.
 JsonValue json_parse(const std::string& text);
 
-// Schreibt pretty-printed JSON: 2 Leerzeichen Einrueckung, ein Element pro
-// Zeile und Zahlen in der kuerzesten exakt runden Form — dasselbe Layout wie
+// Schreibt pretty-printed JSON: 2 Leerzeichen Einrückung, ein Element pro
+// Zeile und Zahlen in der kürzesten exakt runden Form — dasselbe Layout wie
 // Ruby JSON.pretty_generate, damit Editor und Spiel beim Speichern nicht
 // gegenseitig das Format umwerfen (siehe write_number in json.cpp).
 std::string json_write(const JsonValue& v);

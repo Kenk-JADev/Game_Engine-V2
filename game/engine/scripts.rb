@@ -6,11 +6,11 @@
 #
 #    {"scripts":[{"name":"gruss","code":"say ['Hallo!']"}]}
 #
-#  Events rufen sie mit {"cmd":"script","name":"gruss"} auf; alternativ traegt
-#  ein Befehl den Code direkt in "code". Der Code laeuft in einem Context, der
+#  Events rufen sie mit {"cmd":"script","name":"gruss"} auf; alternativ trägt
+#  ein Befehl den Code direkt in "code". Der Code läuft in einem Context, der
 #  die RPG-Maker-typischen Helfer anbietet (say, switch, variable, teleport,
 #  sound, effect, log) - kein Zugriff auf den Interpreter-Stack, damit
-#  Scripts nicht mitten in der Abarbeitung Listen veraendern.
+#  Scripts nicht mitten in der Abarbeitung Listen verändern.
 #
 #  Kopflos testbar: ruby -I game/engine tools/script_test.rb
 # ============================================================================
@@ -47,7 +47,7 @@ module Scripts
   def names = @defs.keys.sort
   def defined?(name) = @defs.key?(name.to_s)
 
-  # Benanntes Script ausfuehren. interpreter/event duerfen nil sein (Tests).
+  # Benanntes Script ausführen. interpreter/event dürfen nil sein (Tests).
   def run(name, interpreter = nil, event = nil)
     key = name.to_s
     code = @defs[key]
@@ -64,7 +64,7 @@ module Scripts
     false
   end
 
-  # Code direkt aus einem Event-Befehl ausfuehren.
+  # Code direkt aus einem Event-Befehl ausführen.
   def run_code(name, code, interpreter = nil, event = nil)
     Context.new(interpreter, event).instance_eval(code.to_s, "event:#{name}", 1)
     true
@@ -74,7 +74,7 @@ module Scripts
     false
   end
 
-  # Sandkasten fuer Script-Code: nur diese Helfer, kein Interpreter-Interna.
+  # Sandkasten für Script-Code: nur diese Helfer, kein Interpreter-Interna.
   class Context
     attr_reader :event, :interpreter
 
@@ -85,7 +85,7 @@ module Scripts
 
     def game = Game
 
-    # Textfenster oeffnen (blockiert wie ein text-Kommando).
+    # Textfenster öffnen (blockiert wie ein text-Kommando).
     def say(*lines)
       return unless @interpreter
       @interpreter.say(lines.flatten.map(&:to_s))
@@ -107,7 +107,7 @@ module Scripts
     def log(msg) = Rune::Log.info("[Script] #{msg}")
     def sound(name, volume = 1.0) = Rune::Sound.play(name.to_s, volume.to_f)
 
-    # Etappe 17g: Party-/Inventar-Helfer fuer Projekt-Scripts.
+    # Etappe 17g: Party-/Inventar-Helfer für Projekt-Scripts.
     def party = Party
     def gold(amount = nil)
       return Party.gold if amount.nil?

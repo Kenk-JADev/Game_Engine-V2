@@ -1,11 +1,11 @@
 #encoding: utf-8
 # ============================================================================
-#  MapCheck — Karten-Daten pruefen (Etappe 19a).
+#  MapCheck — Karten-Daten prüfen (Etappe 19a).
 #
 #  Der RuneEditor scannt die geladene Karte seit Etappe 18h in C++
-#  (issues_scan_map). Dieselben Regeln muessen auch ohne Editor verfuegbar
-#  sein: fuer das Spiel (Datenfehler melden statt sie still zu schlucken),
-#  fuer die kopflosen Tests und fuer CI. Deshalb liegt die Pruefung hier als
+#  (issues_scan_map). Dieselben Regeln müssen auch ohne Editor verfügbar
+#  sein: für das Spiel (Datenfehler melden statt sie still zu schlucken),
+#  für die kopflosen Tests und für CI. Deshalb liegt die Prüfung hier als
 #  reines Ruby-Modul — ohne Rune::*, ohne Fenster, ohne Grafik.
 #
 #  Aufrufe:
@@ -15,7 +15,7 @@
 #    MapCheck.report!(fundliste)                # -> Issues.report, falls geladen
 #    MapCheck.summary(fundliste)                # -> "2 Fehler, 1 Warnung"
 #
-#  Kommandozeile (Prueft alle Karten des Repos, Exit 1 bei Fehlern):
+#  Kommandozeile (Prüft alle Karten des Repos, Exit 1 bei Fehlern):
 #    ruby -I game/engine game/engine/mapcheck.rb
 #    ruby -I game/engine game/engine/mapcheck.rb projekte/dorf/data/maps
 #
@@ -59,12 +59,12 @@ module MapCheck
   module_function
 
   # ------------------------------------------------------------------ Einstieg
-  # Karte (Hash aus JSON.parse) pruefen.
-  #   name:      Anzeigename fuer die Fundstelle ("dorf.json")
+  # Karte (Hash aus JSON.parse) prüfen.
+  #   name:      Anzeigename für die Fundstelle ("dorf.json")
   #   prefabs:   bekannte Objekttypen (Standard: Prefabs.ids, falls geladen)
-  #   materials: bekannte Materialnamen (optional, sonst keine Tex-Pruefung)
+  #   materials: bekannte Materialnamen (optional, sonst keine Tex-Prüfung)
   #   scripts:   bekannte Script-Namen (optional)
-  #   maps:      bekannte Karten-Ids fuer Teleport-Ziele (optional)
+  #   maps:      bekannte Karten-Ids für Teleport-Ziele (optional)
   def scan(map, name: 'karte', prefabs: default_prefabs, materials: nil,
            scripts: nil, maps: nil)
     f = Sammler.new(name, prefabs: prefabs, materials: materials,
@@ -73,8 +73,8 @@ module MapCheck
     f.liste
   end
 
-  # Eine Karten-Datei laden und pruefen. Parse-Fehler werden als EIN Fehler
-  # gemeldet (die Datei ist dann nicht weiter pruefbar).
+  # Eine Karten-Datei laden und prüfen. Parse-Fehler werden als EIN Fehler
+  # gemeldet (die Datei ist dann nicht weiter prüfbar).
   def scan_file(path, **opts)
     text = File.read(path, encoding: 'utf-8')
     scan(JSON.parse(text), **opts.merge(name: opts[:name] || File.basename(path)))
@@ -84,8 +84,8 @@ module MapCheck
     [Finding.new(FEHLER, File.basename(path.to_s), "nicht lesbar: #{e.message}")]
   end
 
-  # Alle Karten unter einem oder mehreren Verzeichnissen pruefen.
-  # Rueckgabe: { pfad => fundliste } (nur Pfade mit Funden, wenn nur_funde).
+  # Alle Karten unter einem oder mehreren Verzeichnissen prüfen.
+  # Rückgabe: { pfad => fundliste } (nur Pfade mit Funden, wenn nur_funde).
   def scan_tree(*roots, nur_funde: false, **opts)
     ids = map_ids(*roots)
     out = {}
@@ -96,15 +96,15 @@ module MapCheck
     out
   end
 
-  # Karten-Ids (Dateinamen ohne .json) aus den Verzeichnissen — fuer die
-  # Teleport-Zielpruefung.
+  # Karten-Ids (Dateinamen ohne .json) aus den Verzeichnissen — für die
+  # Teleport-Zielprüfung.
   def map_ids(*roots)
     map_files(*roots).map { |p| File.basename(p, '.json') }.sort
   end
 
-  # Nur JSON-Dateien aus einem "maps"-Ordner zaehlen als Karten (database.json,
-  # system.json, scripts.json und Spielstaende gehoeren nicht dazu). Einzelne
-  # Dateien, die man direkt uebergibt, werden immer geprueft.
+  # Nur JSON-Dateien aus einem "maps"-Ordner zählen als Karten (database.json,
+  # system.json, scripts.json und Spielstände gehören nicht dazu). Einzelne
+  # Dateien, die man direkt übergibt, werden immer geprüft.
   def map_files(*roots)
     roots.flatten.flat_map do |root|
       next [root] if File.file?(root)
@@ -118,7 +118,7 @@ module MapCheck
   end
 
   # Funde in das Laufzeit-Backlog schreiben (Issues, Etappe 18h). Ohne Issues
-  # passiert nichts — das Modul bleibt damit frei von Engine-Abhaengigkeiten.
+  # passiert nichts — das Modul bleibt damit frei von Engine-Abhängigkeiten.
   def report!(funde, area: 'Karte')
     return 0 unless defined?(Issues) && Issues.respond_to?(:report)
 
@@ -147,7 +147,7 @@ module MapCheck
   end
 
   # ------------------------------------------------------------- Sammler-Klasse
-  # Haelt die Optionen und die Fundliste und kapselt die Typ-Pruefungen, damit
+  # Hält die Optionen und die Fundliste und kapselt die Typ-Prüfungen, damit
   # scan() oben klein bleibt.
   class Sammler
     attr_reader :liste
@@ -246,11 +246,11 @@ module MapCheck
           melde(FEHLER, w, "'#{k}' fehlt oder ist keine Zahl") unless zahl?(b[k])
         end
         melde(WARNUNG, w, "'r' (Radius) muss > 0 sein") if zahl?(b['r']) && b['r'] <= 0
-        melde(WARNUNG, w, "'h' ist 0 (Buerste ohne Wirkung)") if zahl?(b['h']) && b['h'].zero?
+        melde(WARNUNG, w, "'h' ist 0 (Bürste ohne Wirkung)") if zahl?(b['h']) && b['h'].zero?
       end
     end
 
-    # Splat-Flaechen (Etappe 18d): [{tex,x,z,w,h}]
+    # Splat-Flächen (Etappe 18d): [{tex,x,z,w,h}]
     def pruefe_splats(liste)
       return if liste.nil?
 
@@ -341,7 +341,7 @@ module MapCheck
           ids[e['id']] += 1
           melde(WARNUNG, w, "'id' ist keine Zahl") unless zahl?(e['id'])
         end
-        # Altes Format: Trigger/commands direkt am Event (weiter unterstuetzt).
+        # Altes Format: Trigger/commands direkt am Event (weiter unterstützt).
         if e.key?('trigger') && !TRIGGER.include?(e['trigger'].to_s)
           melde(WARNUNG, w, "unbekannter Trigger '#{e['trigger']}'")
         end
@@ -572,7 +572,7 @@ module MapCheck
           melde(FEHLER, pw, 'muss ein Paar [x, z] aus Zahlen sein')
         end
       end
-      melde(WARNUNG, w, 'nur ein Wegpunkt (NPC laeuft nirgends hin)') if path.size == 1
+      melde(WARNUNG, w, 'nur ein Wegpunkt (NPC läuft nirgends hin)') if path.size == 1
     end
 
     def pruefe_atmosphaere(map)

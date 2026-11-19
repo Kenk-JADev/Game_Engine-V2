@@ -72,7 +72,7 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 
 ### [Editor] Drag&Drop-Import per Skript nicht injizierbar — offen (Test-Wissen)
 - Symptom: WM_DROPFILES ist eine Shell-Operation und lässt sich nicht per SendMessage simulieren.
-- Vermutung/Analyse: Nur manueller Test oder editor.log-Vermerk ("Drag&Drop: N Textur(en) importiert").
+- Vermutung/Analyse: Nur manüller Test oder editor.log-Vermerk ("Drag&Drop: N Textur(en) importiert").
 - Betroffene Stellen: `log/live18a.ps1`-Ansatz.
 - Gefunden in: Etappe 18a.
 
@@ -173,6 +173,17 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Etappe 19a.
 
 ## Erledigt
+### [Editor/Daten] Ersatzschreibung (ue/ae/oe) in Prosa + ANSI-Textaufrufe — erledigt (19b)
+- Symptom: Prefab-Liste „Huette"/„Wegstueck", NPC „Waechter Mara", Dialogzeilen
+  („… traegt der Weg …"), Launcher-Hilfe „Waehlen/Loeschen"; zugleich hätten
+  echte Umlaute in Daten über die ANSI-Aufrufe (`SendMessageA` u. a.) als
+  „HÃ¼tte" enden können.
+- Fix: Prosa repo-weit auf echte Umlaute (maskiert: nur Kommentare/Strings/
+  Doku-Fließtext, Identifier bleiben ASCII), JSON-Displaywerte surgical,
+  24 Win32-Textaufrufe auf W-Varianten umgestellt, `build.ps1` mit UTF-8-BOM.
+- Betroffene Stellen: 113 Dateien; Textpfad jetzt durchgängig UTF-8 → Wide.
+- Gefunden in: User-Rückmeldung mit Editor-Screenshot (nach Etappe 19a).
+
 ### [Engine] `json_write` beschnitt Kommazahlen (`%.12g`) — erledigt (19a)
 - Symptom: Beim Speichern im Editor wurden Zahlen still verkürzt:
   `yaw 3.141592653589793` → `3.14159265359`, Spielstandskoordinaten

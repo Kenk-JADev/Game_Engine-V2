@@ -1,17 +1,17 @@
 #encoding: utf-8
 # ============================================================================
-#  JSON-Brueckenpruefung (Etappe 19a): C++-Schreiber gegen Ruby-Parser.
+#  JSON-Brückenprüfung (Etappe 19a): C++-Schreiber gegen Ruby-Parser.
 #
 #     ruby tools/json_bridge_check.rb [pfad-zu-json_test] [--strict-format]
 #
-#  Editor (C++, src/editor/json.cpp) und Spiel (Ruby, JSON.parse) muessen sich
-#  ueber dieselben Dateien einig sein. Der Editor schreibt seine Karten mit
+#  Editor (C++, src/editor/json.cpp) und Spiel (Ruby, JSON.parse) müssen sich
+#  über dieselben Dateien einig sein. Der Editor schreibt seine Karten mit
 #  json_write bewusst im Format von Ruby JSON.pretty_generate — sonst erzeugt
 #  jedes Speichern eine Diff-Flut in der Versionsverwaltung, und im schlimmen
 #  Fall gehen Werte beim Hin- und Herwechseln verloren (int wird float,
 #  Reihenfolge kippt, Umlaute werden zu Escapes).
 #
-#  Prueft fuer jede JSON-Datei des Repos:
+#  Prüft für jede JSON-Datei des Repos:
 #    1. SEMANTIK (hart): JSON.parse(original) == JSON.parse(vom C++ geschrieben)
 #    2. FORMAT   (Info): bytegleich zu JSON.pretty_generate + Zeilenumbruch?
 #                        Mit --strict-format wird auch das zum Fehlschlag.
@@ -33,14 +33,14 @@ def erste_abweichung(a, b, pfad = '$')
   case a
   when Hash
     (a.keys | b.keys).each do |k|
-      return "#{pfad}.#{k}: Schluessel fehlt auf einer Seite" unless a.key?(k) && b.key?(k)
+      return "#{pfad}.#{k}: Schlüssel fehlt auf einer Seite" unless a.key?(k) && b.key?(k)
 
       fund = erste_abweichung(a[k], b[k], "#{pfad}.#{k}")
       return fund if fund
     end
-    "#{pfad}: Schluessel-Reihenfolge #{a.keys.first(4)} != #{b.keys.first(4)}" if a.keys != b.keys
+    "#{pfad}: Schlüssel-Reihenfolge #{a.keys.first(4)} != #{b.keys.first(4)}" if a.keys != b.keys
   when Array
-    return "#{pfad}: Laenge #{a.size} != #{b.size}" if a.size != b.size
+    return "#{pfad}: Länge #{a.size} != #{b.size}" if a.size != b.size
 
     a.each_index do |i|
       fund = erste_abweichung(a[i], b[i], "#{pfad}[#{i}]")
@@ -74,22 +74,22 @@ binary = ARGV.find { |a| File.exist?(a) } ||
           File.join(ROOT, 'build-tests', 'json_test')].find { |p| File.exist?(p) }
 
 unless binary
-  puts 'UEBERSPRUNGEN: json_test nicht gefunden.'
+  puts 'ÜBERSPRUNGEN: json_test nicht gefunden.'
   puts '  Bau: g++ -std=c++20 -O1 -Isrc src/editor/json.cpp tools/json_test.cpp -o build/json_test'
   exit(strict_format ? 1 : 0)
 end
 
 # Alle JSON-Dateien, die der Editor anfasst: Karten, Datenbank, System,
-# Scripte, Prefabs, Material-Metadaten und Spielstaende.
+# Scripte, Prefabs, Material-Metadaten und Spielstände.
 dateien = (Dir.glob(File.join(ROOT, 'game', 'data', '**', '*.json')) +
            Dir.glob(File.join(ROOT, 'projekte', '**', '*.json'))).sort.uniq
 
 if dateien.empty?
-  puts 'Keine JSON-Dateien gefunden — nichts zu pruefen.'
+  puts 'Keine JSON-Dateien gefunden — nichts zu prüfen.'
   exit 1
 end
 
-puts "JSON-Bruecke: #{dateien.size} Datei(en), C++-Schreiber = #{binary}"
+puts "JSON-Brücke: #{dateien.size} Datei(en), C++-Schreiber = #{binary}"
 puts '-' * 68
 
 semantik_fehler   = 0

@@ -10,17 +10,17 @@
 #      { "conditions": {}, "trigger": "action", "commands": [...] }
 #    ]
 #
-#  Es gewinnt immer die Seite mit dem HOECHSTEN Index, deren Bedingungen
-#  erfuellt sind (Seite 0 = Standard, leere Bedingungen = immer erfuellt).
-#  Wechselt die aktive Seite, wird das Event als "noch nicht ausgeloest"
+#  Es gewinnt immer die Seite mit dem HÖCHSTEN Index, deren Bedingungen
+#  erfüllt sind (Seite 0 = Standard, leere Bedingungen = immer erfüllt).
+#  Wechselt die aktive Seite, wird das Event als "noch nicht ausgelöst"
 #  behandelt - touch/auto-Events feuern auf der neuen Seite erneut.
 #
-#  Ausloeser (trigger, pro Seite):
+#  Auslöser (trigger, pro Seite):
 #    "action"   - Spieler muss in Reichweite sein und E drucken
 #    "touch"    - feuert einmalig, sobald der Spieler in Reichweite kommt
 #    "auto"     - feuert einmalig beim Kartenstart
 #    "parallel" - startet immer wieder, wenn der Interpreter frei ist (18f)
-#  Kommandos laufen durch den Interpreter. Die Ausloese-Logik steht in der
+#  Kommandos laufen durch den Interpreter. Die Auslöse-Logik steht in der
 #  Spiellogik (main.rb), nicht hier - das Event bleibt reine Daten.
 #  Alte Karten ohne "pages" laufen weiter (eine implizite Seite ohne
 #  Bedingungen aus den Top-Level-Feldern trigger/commands).
@@ -61,7 +61,7 @@ class Event
     end
   end
 
-  # Sind die Bedingungen einer Seite erfuellt? (leer = immer ja)
+  # Sind die Bedingungen einer Seite erfüllt? (leer = immer ja)
   def self.conditions_met?(c)
     return true unless c.is_a?(Hash)
 
@@ -86,8 +86,8 @@ class Event
     true
   end
 
-  # Aktive Seite neu bestimmen (hoechster Index mit erfuellten Bedingungen).
-  # Seitenwechsel setzt 'fired' zurueck, damit touch/auto erneut feuern.
+  # Aktive Seite neu bestimmen (höchster Index mit erfüllten Bedingungen).
+  # Seitenwechsel setzt 'fired' zurück, damit touch/auto erneut feuern.
   def refresh_page!
     idx = @pages.rindex { |p| Event.conditions_met?(p.conditions) } || 0
     @fired = false if idx != @page_idx
@@ -110,7 +110,7 @@ class Event
     active_page.commands
   end
 
-  # Liegt der Spieler in Reichweite (nur XZ, Hoehe egal)?
+  # Liegt der Spieler in Reichweite (nur XZ, Höhe egal)?
   def near?(px, pz)
     (px - @x) * (px - @x) + (pz - @z) * (pz - @z) <= @radius * @radius
   end

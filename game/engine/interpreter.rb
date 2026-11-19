@@ -2,12 +2,12 @@
 # ============================================================================
 #  Event-Interpreter (angelehnt an RPG-Maker, aber schlank).
 #
-#  Fuehrt eine Kommandoliste aus. Einige Kommandos sind "blockierend":
-#  text (wartet auf Bestaetigung) und warte (wartet auf Zeit). Solange der
-#  Interpreter laeuft, zeigt die Engine das Textfenster und sperrt das
+#  Führt eine Kommandoliste aus. Einige Kommandos sind "blockierend":
+#  text (wartet auf Bestätigung) und warte (wartet auf Zeit). Solange der
+#  Interpreter läuft, zeigt die Engine das Textfenster und sperrt das
 #  Aktivieren weiterer Events (nur ein Interpreter zur Zeit).
 #
-#  Unterstuetzte Kommandos (game/data/maps/*.json):
+#  Unterstützte Kommandos (game/data/maps/*.json):
 #    {"cmd":"text","lines":["...", "..."]}
 #    {"cmd":"choices","options":["Ja","Nein"],"branches":[[...],[...]]}   (18f)
 #    {"cmd":"switch","name":"a","value":true|false}
@@ -49,13 +49,13 @@ class Interpreter
     !@choices.nil?
   end
 
-  # Aus einem Projekt-Script: Textfenster oeffnen (blockiert wie 'text').
+  # Aus einem Projekt-Script: Textfenster öffnen (blockiert wie 'text').
   def say(lines)
     @message = Array(lines)
   end
 
   # Startet eine Kommandoliste. Wird bereits gesprochen, wird ignoriert.
-  # owner: ausloesendes Objekt (z. B. Event/NPC) fuer Effekt-Ursprung etc.
+  # owner: auslösendes Objekt (z. B. Event/NPC) für Effekt-Ursprung etc.
   def start(commands, owner = nil)
     return false if running?
     @owner = owner
@@ -96,7 +96,7 @@ class Interpreter
       when 'text'      then @message = Array(cmd['lines']); return
       when 'choices'
         # Wahlmöglichkeiten (RPG-Maker-Show-Choices): blockiert, bis der
-        # Spieler waehlt; dann laeuft der passende Zweig weiter.
+        # Spieler wählt; dann läuft der passende Zweig weiter.
         opts = Array(cmd['options']).map(&:to_s)
         next if opts.empty?
         @choices = { options: opts, branches: Array(cmd['branches']), sel: 0 }
@@ -124,7 +124,7 @@ class Interpreter
       when 'save_game'
         Game.save_game((cmd['slot'] || 1).to_i)
       when 'load_game'
-        # Achtung: Laedt die Karte neu und ersetzt damit auch diesen
+        # Achtung: Lädt die Karte neu und ersetzt damit auch diesen
         # Interpreter (Game.enter_map baut @interpreter neu). Befehle
         # nach load_game in derselben Liste laufen nicht mehr weiter.
         Game.load_game((cmd['slot'] || 1).to_i)
@@ -174,7 +174,7 @@ class Interpreter
       when 'weather'   # {"cmd":"weather","name":"schnee","intensity":1.5} (Etappe 17h)
         Weather.set(cmd['name'] || 'kein', (cmd['intensity'] || 1.0).to_f)
       else
-        Rune::Log.warn("Interpreter: unbekanntes Kommando '#{cmd['cmd']}' uebersprungen")
+        Rune::Log.warn("Interpreter: unbekanntes Kommando '#{cmd['cmd']}' übersprungen")
         Issues.report('Interpreter', "unbekanntes Kommando '#{cmd['cmd']}'")
       end
     end
@@ -205,7 +205,7 @@ class Interpreter
     end
   end
 
-  # Naechste Zeile zeigen; die letzte schliesst das Fenster.
+  # Nächste Zeile zeigen; die letzte schliesst das Fenster.
   def advance_text
     if Rune::Input.pressed?(:e) || Rune::Input.pressed?(:space) ||
        Rune::Input.pressed?(:enter)
@@ -213,8 +213,8 @@ class Interpreter
     end
   end
 
-  # Wahl treffen: Pfeiltasten (oder Mausklick), E/Enter bestaetigt.
-  # Der gewaehlte Zweig wird auf den Stack gelegt und laeuft weiter.
+  # Wahl treffen: Pfeiltasten (oder Mausklick), E/Enter bestätigt.
+  # Der gewählte Zweig wird auf den Stack gelegt und läuft weiter.
   def advance_choices
     c = @choices
     n = c[:options].size

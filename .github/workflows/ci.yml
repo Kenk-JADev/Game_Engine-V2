@@ -8,12 +8,12 @@
 #               Zeilenenden-Konvention, boot.rb-Requires, keine Artefakte
 #    engine     Ruby-Engine: alle tools/*_test.rb + Karten-Scan (MapCheck)
 #    cpp-logik  C++ ohne Win32: JSON-Schicht des Editors mit -Werror, danach
-#               die Brueckenpruefung gegen Ruby JSON.pretty_generate
+#               die Brückenprüfung gegen Ruby JSON.pretty_generate
 #    windows    der echte Bau: Rune3D.exe + RuneEditor.exe mit MSYS2-ucrt64-g++
 #               und CRuby, danach dieselbe Testsuite wie build.ps1 -Test
 #
-#  Die EXEs koennen im Runner NICHT gestartet werden (keine GPU, kein D3D11) —
-#  der Windows-Job prueft Bau + Linken + headless Tests. Grafisches wird weiter
+#  Die EXEs können im Runner NICHT gestartet werden (keine GPU, kein D3D11) —
+#  der Windows-Job prüft Bau + Linken + headless Tests. Grafisches wird weiter
 #  mit tools/edclick.psm1 am echten Rechner verifiziert.
 # ============================================================================
 name: CI
@@ -44,7 +44,7 @@ jobs:
           ruby-version: '3.4'
           bundler: none
 
-      - name: Hygiene pruefen
+      - name: Hygiene prüfen
         run: ruby tools/lint_repo.rb
 
   engine:
@@ -61,7 +61,7 @@ jobs:
       - name: Testsuite
         run: ruby tools/test_all.rb
 
-      - name: Karten-Daten pruefen (MapCheck)
+      - name: Karten-Daten prüfen (MapCheck)
         run: ruby -I game/engine game/engine/mapcheck.rb
 
   cpp-logik:
@@ -84,12 +84,12 @@ jobs:
           ruby-version: '3.4'
           bundler: none
 
-      - name: JSON-Bruecke (C++-Schreiber gegen Ruby pretty_generate)
+      - name: JSON-Brücke (C++-Schreiber gegen Ruby pretty_generate)
         run: ruby tools/json_bridge_check.rb ./json_test --strict-format
 
   windows:
     name: Windows-Build (Rune3D + RuneEditor)
-    # windows-2022, weil setup-ruby dort die zum Bauen von Ruby noetigen
+    # windows-2022, weil setup-ruby dort die zum Bauen von Ruby nötigen
     # MSYS2-Pakete mitbringt (siehe README der Action).
     runs-on: windows-2022
     steps:
@@ -100,7 +100,7 @@ jobs:
           ruby-version: '3.4'
           bundler: none
 
-      - name: Werkzeug melden (fuer die Fehlersuche)
+      - name: Werkzeug melden (für die Fehlersuche)
         id: werkzeug
         shell: pwsh
         run: |
@@ -127,7 +127,7 @@ jobs:
           install: mingw-w64-ucrt-x86_64-toolchain mingw-w64-ucrt-x86_64-gmp
           path-type: minimal
 
-      - name: MSYS2-Pfad fuer build.ps1 setzen
+      - name: MSYS2-Pfad für build.ps1 setzen
         if: steps.werkzeug.outputs.gcc_vorhanden == 'false'
         shell: pwsh
         run: echo "RUNE_MSYS_ROOT=${{ steps.msys2.outputs.msys2-location }}" >> $env:GITHUB_ENV
@@ -136,7 +136,7 @@ jobs:
         shell: pwsh
         run: .\build.ps1 -Clean
 
-      - name: Tests (C++-JSON-Test, Ruby-Suite, JSON-Bruecke)
+      - name: Tests (C++-JSON-Test, Ruby-Suite, JSON-Brücke)
         shell: pwsh
         run: .\build.ps1 -Test
 

@@ -8,14 +8,14 @@
 
 namespace rune::world {
 
-// Achsenparallele Box als Hindernis (Haeuser, Zaeune, Pfosten ...).
+// Achsenparallele Box als Hindernis (Häuser, Zäune, Pfosten ...).
 struct Aabb {
     math::Vec3 min;
     math::Vec3 max;
 };
 
 // Spieler mit Gravitation, Sprung und Kollision. Bewusst einfach gehalten:
-// Zylinder-Ersatz als AABB, achsenweise Aufloesung - reicht fuer ein Dorf.
+// Zylinder-Ersatz als AABB, achsenweise Auflösung - reicht für ein Dorf.
 class Physics {
 public:
     void clear_solids();
@@ -28,7 +28,7 @@ public:
     math::Vec3 position() const { return m_pos; }
     void teleport(math::Vec3 p);
     // Spieler aus einem Kreis (XZ) um (cx,cz) herausschieben — NPC-Kollision.
-    // Ignoriert den Schub, wenn er den Spieler in ein Hindernis druecken wuerde.
+    // Ignoriert den Schub, wenn er den Spieler in ein Hindernis drücken würde.
     void push_out(float cx, float cz, float radius);
 
     bool  on_ground() const { return m_on_ground; }

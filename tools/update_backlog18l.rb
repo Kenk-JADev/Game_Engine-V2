@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Traegt in docs/BACKLOG.md ein:
+# Trägt in docs/BACKLOG.md ein:
 # 1. Erledigt: Kartengrenze (Physik-Clamp) - war User-Wunsch, in 18l behoben
 # 2. Offen: User-Wunsch Objektliste verbessern + Platzier-Vorschau (Geist)
 # 3. Offen: User-Wunsch Editor-Tool zum Platzieren von NPCs (x/y/z/Text)

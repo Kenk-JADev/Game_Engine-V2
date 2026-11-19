@@ -13,7 +13,7 @@
 #include "core/sound.h"
 
 // In der DLL exportiert, aber nicht in ruby.h deklariert.
-// Fuehrt die eingebauten Ruby-Skripte aus (Integer#times, Array#last, ...).
+// Führt die eingebauten Ruby-Skripte aus (Integer#times, Array#last, ...).
 extern "C" void rb_call_builtin_inits(void);
 
 using namespace rune;
@@ -51,7 +51,7 @@ int vk_from_name(const char* n) {
         {"f1", VK_F1}, {"f2", VK_F2}, {"f3", VK_F3},  {"f4", VK_F4},
         {"f5", VK_F5}, {"f6", VK_F6}, {"f7", VK_F7},  {"f8", VK_F8},
         {"f9", VK_F9}, {"f10", VK_F10}, {"f11", VK_F11}, {"f12", VK_F12},
-        // Etappe 18m: Pinselgroesse +/- (Zehnertastatur + normale Taste).
+        // Etappe 18m: Pinselgrösse +/- (Zehnertastatur + normale Taste).
         {"add", VK_ADD},       {"plus", VK_OEM_PLUS},
         {"equals", VK_OEM_PLUS},{"subtract", VK_SUBTRACT},
         {"minus", VK_OEM_MINUS},
@@ -114,7 +114,7 @@ VALUE rune_gfx_box(int argc, VALUE* argv, VALUE) {
     if (argc > 8 && !NIL_P(argv[8])) rot.y = static_cast<float>(NUM2DBL(argv[8]));
     if (argc > 9 && !NIL_P(argv[9])) rot.z = static_cast<float>(NUM2DBL(argv[9]));
 
-    // Optional: Texturname + Kachelgroesse in Metern.
+    // Optional: Texturname + Kachelgrösse in Metern.
     int tex = -1;
     float tile = 0.0f;
     if (argc > 10 && !NIL_P(argv[10])) tex = app().renderer->texture_index(to_std(argv[10]));
@@ -125,7 +125,7 @@ VALUE rune_gfx_box(int argc, VALUE* argv, VALUE) {
 }
 
 // Textur aus Ruby anmelden: Rune::Gfx.texture('gras', 64, 64, pixel_string)
-// Der String enthaelt w*h*4 Bytes RGBA (zeilenweise, oben links).
+// Der String enthält w*h*4 Bytes RGBA (zeilenweise, oben links).
 VALUE rune_gfx_texture(VALUE, VALUE name, VALUE w, VALUE h, VALUE pixels) {
     if (!app().renderer) return Qnil;
     const int width  = NUM2INT(w);
@@ -140,9 +140,9 @@ VALUE rune_gfx_texture(VALUE, VALUE name, VALUE w, VALUE h, VALUE pixels) {
     return INT2NUM(index);
 }
 
-// Textur fuer das Gelaende (dessen UV in den Vertices steckt).
-// Etappe 18c: optionales 2. Argument = Kachelgroesse in Metern
-// (Standard 2.0; kleinere Werte = groessere Kacheln).
+// Textur für das Gelände (dessen UV in den Vertices steckt).
+// Etappe 18c: optionales 2. Argument = Kachelgrösse in Metern
+// (Standard 2.0; kleinere Werte = grössere Kacheln).
 VALUE rune_gfx_terrain_texture(int argc, VALUE* argv, VALUE) {
     if (!app().renderer) return Qnil;
     const std::string name = to_std(argv[0]);
@@ -153,12 +153,12 @@ VALUE rune_gfx_terrain_texture(int argc, VALUE* argv, VALUE) {
     return Qnil;
 }
 
-// Etappe 18d: Boden-Flaechen (Splats) der aktuellen Karte anwenden.
+// Etappe 18d: Boden-Flächen (Splats) der aktuellen Karte anwenden.
 //   Rune::Gfx.terrain_splats('gras', [{ 'tex' => 'weg', 'x' => 10, 'z' => -5,
 //                                       'w' => 30, 'h' => 12 }, ...])
 // Baut den Atlas aus allen 64x64-Texturen und erzeugt das Terrain-Mesh mit
-// pro-Quad-Atlas-UV neu (Hoehenform bleibt: aktueller Terrain-Parameter).
-// Ohne Flaechen (leere Liste) wird Qfalse zurueckgegeben und nichts geaendert.
+// pro-Quad-Atlas-UV neu (Höhenform bleibt: aktueller Terrain-Parameter).
+// Ohne Flächen (leere Liste) wird Qfalse zurückgegeben und nichts geändert.
 VALUE rune_gfx_terrain_splats(VALUE, VALUE v_base, VALUE v_list) {
     if (!app().renderer || !app().terrain) return Qfalse;
     if (!RB_TYPE_P(v_list, T_ARRAY)) return Qfalse;
@@ -167,7 +167,7 @@ VALUE rune_gfx_terrain_splats(VALUE, VALUE v_base, VALUE v_list) {
 
     std::vector<world::SplatRect> splats;
     splats.reserve(static_cast<size_t>(n));
-    // Hash-Schluessel: JSON.parse liefert Strings, Editor-Skripte koennen
+    // Hash-Schlüssel: JSON.parse liefert Strings, Editor-Skripte können
     // auch Symbole nutzen - beides versuchen.
     auto hget = [&](VALUE h, const char* k) -> VALUE {
         VALUE v = rb_hash_aref(h, rb_str_new_cstr(k));
@@ -207,7 +207,7 @@ VALUE rune_gfx_terrain_splats(VALUE, VALUE v_base, VALUE v_list) {
         app().renderer->set_terrain_tex(atlas.tex_index);
         app().renderer->set_terrain_tile(1.0f);
         core::log_info("[ruby] Splat-Boden: " + std::to_string(splats.size()) +
-                       " Flaeche(n), Atlas-Slot " + std::to_string(atlas.tex_index));
+                       " Fläche(n), Atlas-Slot " + std::to_string(atlas.tex_index));
     }
     return ok ? Qtrue : Qfalse;
 }
@@ -302,7 +302,7 @@ VALUE rune_camera_distance(VALUE) {
     return DBL2NUM(app().camera ? app().camera->dist : 0.0);
 }
 
-// Kamera-Zustand als Kurzstring fuer HUD/Debug (Etappe 14a):
+// Kamera-Zustand als Kurzstring für HUD/Debug (Etappe 14a):
 // "third d=7.0 a=3.2 k=3.5 l=0.5" (d=Soll, a=aktiv, k=Kollision, l=Anhebung)
 VALUE rune_camera_info(VALUE) {
     if (!app().camera) return rb_str_new_cstr("keine Kamera");
@@ -323,7 +323,7 @@ VALUE rune_camera_yaw(VALUE) {
     return DBL2NUM(app().camera ? app().camera->yaw : 0.0);
 }
 
-// Bildschirmpixel -> Weltstrahl. Rueckgabe: [ox, oy, oz, dx, dy, dz]
+// Bildschirmpixel -> Weltstrahl. Rückgabe: [ox, oy, oz, dx, dy, dz]
 VALUE rune_camera_ray(VALUE, VALUE sx, VALUE sy) {
     if (!app().camera || !app().window) return rb_ary_new();
     const gfx::Ray r = app().camera->pick_ray(app().window->width(), app().window->height(),
@@ -402,7 +402,7 @@ VALUE rune_input_mouse_pressed(VALUE, VALUE idx) {
     return app().window->input().mouse_pressed(static_cast<int>(NUM2INT(idx))) ? Qtrue : Qfalse;
 }
 
-// Zeichen, die seit dem letzten Frame gedruckt wurden (inkl. '\b' fuer
+// Zeichen, die seit dem letzten Frame gedruckt wurden (inkl. '\b' für
 // Backspace). Die Eingabe wird beim Lesen geleert.
 VALUE rune_input_typed_text(VALUE) {
     if (!app().window) return rb_str_new("", 0);
@@ -440,10 +440,21 @@ VALUE rune_window_height(VALUE) {
     return INT2NUM(app().window ? app().window->height() : 0);
 }
 
+// UTF-8 (Ruby) -> Wide (Win32): sonst verstümmelt die ANSI-Codepage
+// Umlaute im Fenstertitel.
+static std::wstring utf8_to_wide_vm(const std::string& s) {
+    if (s.empty()) return {};
+    const int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);
+    std::wstring w(static_cast<size_t>(n), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, &w[0], n);
+    if (!w.empty() && w.back() == L'\0') w.pop_back();
+    return w;
+}
+
 VALUE rune_window_title_set(VALUE, VALUE v) {
     if (!app().window) return v;
     const std::string title = to_std(v);
-    SetWindowTextA(app().window->hwnd(), title.c_str());
+    SetWindowTextW(app().window->hwnd(), utf8_to_wide_vm(title).c_str());
     return v;
 }
 
@@ -479,7 +490,7 @@ VALUE rune_world_generate(int argc, VALUE* argv, VALUE) {
     app().terrain->generate(width, height, res, seed, amp);
     const bool ok = app().renderer->set_terrain(app().terrain->vertices(), app().terrain->indices());
 
-    core::log_info("[ruby] Gelaende: " + std::to_string(static_cast<int>(width)) + " x " +
+    core::log_info("[ruby] Gelände: " + std::to_string(static_cast<int>(width)) + " x " +
                    std::to_string(static_cast<int>(height)) + ", " + std::to_string(res) +
                    " Zellen, Seed " + std::to_string(seed) + ", Amplitude " +
                    std::to_string(amp));
@@ -496,9 +507,9 @@ VALUE rune_world_ready(VALUE) {
     return (app().terrain && app().terrain->ready()) ? Qtrue : Qfalse;
 }
 
-// Etappe 18l: gemalte Hoehen-Pinsel setzen (vor World.generate).
-// Ruby: Rune::World.height_brushes = [[x, z, r, h], ...]  (leere Liste/NIL loescht).
-// Konvention wie im Terrain: r = Radius in m, h = Hoehen-Aenderung (negativ = Senke).
+// Etappe 18l: gemalte Höhen-Pinsel setzen (vor World.generate).
+// Ruby: Rune::World.height_brushes = [[x, z, r, h], ...]  (leere Liste/NIL löscht).
+// Konvention wie im Terrain: r = Radius in m, h = Höhen-Änderung (negativ = Senke).
 // Muss VOR dem generate()-Aufruf stehen, weil compute_heights() die Pinsel
 // beim Generieren einbaut.
 VALUE rune_world_height_brushes_set(VALUE, VALUE list) {
@@ -515,7 +526,7 @@ VALUE rune_world_height_brushes_set(VALUE, VALUE list) {
             b.x = static_cast<float>(NUM2DBL(rb_ary_entry(e, 0)));
             b.z = static_cast<float>(NUM2DBL(rb_ary_entry(e, 1)));
             b.w = static_cast<float>(NUM2DBL(rb_ary_entry(e, 2)));   // Radius
-            b.y = static_cast<float>(NUM2DBL(rb_ary_entry(e, 3)));   // Hoehe
+            b.y = static_cast<float>(NUM2DBL(rb_ary_entry(e, 3)));   // Höhe
             brushes.push_back(b);
         }
     }
@@ -542,7 +553,7 @@ VALUE rune_player_on_ground(VALUE) {
     return (app().physics && app().physics->on_ground()) ? Qtrue : Qfalse;
 }
 
-// Spieler aus einem Kreis herausdruecken (NPC-Kollision, Etappe 15).
+// Spieler aus einem Kreis herausdrücken (NPC-Kollision, Etappe 15).
 VALUE rune_player_push_out(VALUE, VALUE cx, VALUE cz, VALUE radius) {
     if (app().physics) {
         app().physics->push_out(static_cast<float>(NUM2DBL(cx)),
@@ -699,7 +710,7 @@ void register_bindings() {
     rb_define_module_function(mWorld, "generate_raw", RUBY_METHOD_FUNC(rune_world_generate), -1);
     rb_define_module_function(mWorld, "height_at", RUBY_METHOD_FUNC(rune_world_height_at), 2);
     rb_define_module_function(mWorld, "ready?", RUBY_METHOD_FUNC(rune_world_ready), 0);
-    // Etappe 18l: gemalte Hoehen-Pinsel (Berge/Senken aus dem Editor).
+    // Etappe 18l: gemalte Höhen-Pinsel (Berge/Senken aus dem Editor).
     rb_define_module_function(mWorld, "height_brushes=", RUBY_METHOD_FUNC(rune_world_height_brushes_set), 1);
 
     VALUE mPlayer = rb_define_module_under(mRune, "Player");
@@ -735,9 +746,9 @@ bool init(int argc, char** argv, const std::string& root) {
     app().root = root;
 
     // XCopy-Deployment: Liegt die Ruby-DLL neben der EXE (build/), berechnet
-    // sie ihr lib-Praefix relativ zu ihrem eigenen Speicherort und findet die
+    // sie ihr lib-Präfix relativ zu ihrem eigenen Speicherort und findet die
     // stdlib ('json', Gems) der Ruby-Installation nicht mehr. RUBYLIB zeigt
-    // den Load-Pfad zurueck dorthin; ruby_init_loadpath() liest die Variable.
+    // den Load-Pfad zurück dorthin; ruby_init_loadpath() liest die Variable.
     // Nur setzen, wenn nicht schon vom Nutzer belegt.
     {
         size_t len = 0;
@@ -772,7 +783,7 @@ bool init(int argc, char** argv, const std::string& root) {
     ruby_init_loadpath();
     ruby_script("rune3d");
 
-    // WICHTIG: ruby_init() allein fuehrt die eingebauten Ruby-Skripte nicht aus.
+    // WICHTIG: ruby_init() allein führt die eingebauten Ruby-Skripte nicht aus.
     // Ohne diesen Aufruf fehlen Kernmethoden wie Integer#times, Integer#to_i
     // oder Array#last (Ruby 3.4 definiert sie in Builtin-Skripten).
     rb_call_builtin_inits();
@@ -792,7 +803,7 @@ bool init(int argc, char** argv, const std::string& root) {
 
     register_bindings();
 
-    // UTF-8 als Default fuer Skripte
+    // UTF-8 als Default für Skripte
     rb_eval_string("Rune::Log.info('Ruby ' + RUBY_VERSION + ' eingebettet (' + RUBY_PLATFORM + ')')");
 
     core::log_info("Ruby-VM gestartet: " + std::string(ruby_version));
@@ -844,10 +855,10 @@ void tick(float dt) {
     if (state != 0) {
         report_error("Ruby-Fehler in Rune.tick");
         // Nicht 60x pro Sekunde dieselbe Meldung ins Log schreiben: nach drei
-        // Fehlern in Folge wird der Tick angehalten, bis F5 neu laedt.
+        // Fehlern in Folge wird der Tick angehalten, bis F5 neu lädt.
         if (++g_tick_errors >= 3) {
             g_tick_disabled = true;
-            core::log_warn("Ruby-Fehler haeufen sich - Tick gestoppt. F5 laedt die Skripte neu.");
+            core::log_warn("Ruby-Fehler häufen sich - Tick gestoppt. F5 lädt die Skripte neu.");
         }
     } else {
         g_tick_errors = 0;

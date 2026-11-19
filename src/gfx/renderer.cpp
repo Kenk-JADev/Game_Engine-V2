@@ -30,7 +30,7 @@ cbuffer ObjectCB : register(b1)
 {
     float4x4 gWorld;
     float4   gColor;
-    float4   gSize;     // xyz = Groesse der Box in Metern
+    float4   gSize;     // xyz = Grösse der Box in Metern
     float4   gParams;   // x = Textur-Slot (<0 = keine), y = Kachel in Metern (<=0 = UV roh)
 };
 
@@ -72,8 +72,8 @@ VSOut VSMain(VSIn i)
     o.lpos = mul(gLightVP, float4(worldPos.xyz + n * 0.06f, 1.0f));
     o.wpos = worldPos.xyz;
 
-    // Boxen: UV an der Flaeche in Weltmetern skalieren, damit Texturen
-    // ueberall gleichmassig kacheln (Hauswand wie Zaunlatte).
+    // Boxen: UV an der Fläche in Weltmetern skalieren, damit Texturen
+    // überall gleichmassig kacheln (Hauswand wie Zaunlatte).
     if (gParams.y > 0.0f)
     {
         float3 an = abs(n);
@@ -83,8 +83,8 @@ VSOut VSMain(VSIn i)
                                            : float2(gSize.x, gSize.y));
         o.uv = i.uv * ext / gParams.y;
     }
-    // Gelaende (Etappe 18c): UV-Faktor in gParams.z - 1.0 = Standard
-    // (2 m pro Kachel, gebacken), kleiner = groessere Kacheln.
+    // Gelände (Etappe 18c): UV-Faktor in gParams.z - 1.0 = Standard
+    // (2 m pro Kachel, gebacken), kleiner = grössere Kacheln.
     if (gParams.z > 0.0f)
     {
         o.uv = i.uv * gParams.z;
@@ -118,13 +118,13 @@ float4 PSMain(VSOut i) : SV_TARGET
 
     float lit = gSun.w + (1.0f - gSun.w) * ndl * shadow;
 
-    // Dezente Himmels-/Bodenstreuung: von oben kuehl, von unten warm.
+    // Dezente Himmels-/Bodenstreuung: von oben kühl, von unten warm.
     float hemi = i.nrm.y * 0.5f + 0.5f;
     float3 bounce = lerp(float3(0.06f, 0.05f, 0.03f), float3(0.07f, 0.09f, 0.13f), hemi);
 
     float3 outc = base * (lit + bounce);
 
-    // Distanznebel (Etappe 17b): sanfte Ueberblendung zur Nebelfarbe.
+    // Distanznebel (Etappe 17b): sanfte Überblendung zur Nebelfarbe.
     if (gFog.x > 0.5f)
     {
         float d = distance(i.wpos, gCamPos.xyz);
@@ -234,7 +234,7 @@ bool compile_stage(const char* entry, const char* target, ID3DBlob** out) {
     return true;
 }
 
-// Wuerfel mit UV 0..1 je Flaeche (Reihenfolge wie die Indizes darunter).
+// Würfel mit UV 0..1 je Fläche (Reihenfolge wie die Indizes darunter).
 const BoxVertex kCubeVertices[24] = {
     // +Z
     {{-0.5f, -0.5f,  0.5f}, { 0.0f,  0.0f,  1.0f}, {0.0f, 1.0f}},
@@ -302,7 +302,7 @@ bool Renderer::init(HWND hwnd, int width, int height) {
 
     IDXGIDevice* dxgi_device = nullptr;
     if (FAILED(m_device->QueryInterface(IID_IDXGIDevice, reinterpret_cast<void**>(&dxgi_device)))) {
-        log_error("IDXGIDevice nicht verfuegbar");
+        log_error("IDXGIDevice nicht verfügbar");
         return false;
     }
 
@@ -316,7 +316,7 @@ bool Renderer::init(HWND hwnd, int width, int height) {
         adapter->Release();
     }
     if (!factory) {
-        log_error("DXGI-Factory nicht verfuegbar");
+        log_error("DXGI-Factory nicht verfügbar");
         return false;
     }
 
@@ -411,7 +411,7 @@ bool Renderer::create_shaders() {
     }
 
     D3D11_SAMPLER_DESC sd{};
-    // Pixel-Schaerfe (Etappe 14b): Point-Filterung mit harten Mip-Wechseln —
+    // Pixel-Schärfe (Etappe 14b): Point-Filterung mit harten Mip-Wechseln —
     // Texel bleiben auch aus der Ferne krisselig sichtbar (Retro-Look),
     // statt linear zu verschwimmen.
     sd.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
@@ -555,7 +555,7 @@ bool Renderer::create_targets(int width, int height) {
     ID3D11Texture2D* back_buffer = nullptr;
     HRESULT hr = m_swap->GetBuffer(0, IID_ID3D11Texture2D, reinterpret_cast<void**>(&back_buffer));
     if (FAILED(hr) || !back_buffer) {
-        log_error("Backbuffer nicht verfuegbar: " + hresult_text(hr));
+        log_error("Backbuffer nicht verfügbar: " + hresult_text(hr));
         return false;
     }
     hr = m_device->CreateRenderTargetView(back_buffer, nullptr, &m_rtv);
@@ -624,8 +624,8 @@ void Renderer::resize(int width, int height) {
 
     // Etappe 18j: Nach ResizeBuffers ist der Inhalt des Backbuffers UNDEFINIERT.
     // Beim Ziehen der Fensterkante (Windows-Modalschleife) pausiert unsere
-    // Render-Schleife, deshalb blieben schwarze/garbage-Flaechen stehen.
-    // Einmal leeren + praesentieren liefert sofort ein sauberes Bild.
+    // Render-Schleife, deshalb blieben schwarze/garbage-Flächen stehen.
+    // Einmal leeren + präsentieren liefert sofort ein sauberes Bild.
     if (m_rtv) {
         const float c[4] = {
             ((m_clear_rgb >> 16) & 0xFF) / 255.0f,
@@ -644,7 +644,7 @@ void Renderer::apply_pipeline() {
     const UINT stride = sizeof(MeshVertex);
     const UINT offset = 0;
 
-    // Zustand zuruecksetzen, den die UI-Schicht aendern kann (Blend, Tiefe, Raster).
+    // Zustand zurücksetzen, den die UI-Schicht ändern kann (Blend, Tiefe, Raster).
     m_context->OMSetDepthStencilState(nullptr, 0);
     m_context->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
     m_context->RSSetState(nullptr);
@@ -685,8 +685,8 @@ void Renderer::begin_frame(const Mat4& view_proj, const Vec3& eye) {
         cb.sun[0] = sun.x; cb.sun[1] = sun.y; cb.sun[2] = sun.z;
         cb.sun[3] = m_ambient;
 
-        // Licht-Kamera: Sonne scheint auf die Terrainmitte, Ortho ueberdeckt
-        // das ganze Gelaende (bis 250 m Kantenlaenge).
+        // Licht-Kamera: Sonne scheint auf die Terrainmitte, Ortho überdeckt
+        // das ganze Gelände (bis 250 m Kantenlänge).
         Vec3 center{0.0f, 10.0f, 0.0f};
         Vec3 eye = add(center, scale(sun, 180.0f));
         Mat4 lview = look_at_lh(eye, center, Vec3{0.0f, 1.0f, 0.0f});
@@ -745,7 +745,7 @@ int Renderer::add_texture(const std::string& name, int w, int h, const uint8_t* 
     const int index = static_cast<int>(m_tex_srvs.size());
     m_tex_srvs.push_back(srv);
     m_tex_ids[name] = index;
-    // Etappe 18c: Pixel fuer Tileset-Vorschau mitfuehren.
+    // Etappe 18c: Pixel für Tileset-Vorschau mitführen.
     m_tex_pixels.emplace_back(rgba, rgba + static_cast<size_t>(w) * h * 4);
     m_tex_sizes.emplace_back(w, h);
     log_info("Textur '" + name + "' registriert (" + std::to_string(w) + "x" + std::to_string(h) + ")");
@@ -821,7 +821,7 @@ bool Renderer::set_terrain(const std::vector<MeshVertex>& verts, const std::vect
     D3D11_SUBRESOURCE_DATA vd{};
     vd.pSysMem = verts.data();
     if (FAILED(m_device->CreateBuffer(&bd, &vd, &m_terrain_vb))) {
-        log_error("Gelaende-Vertexbuffer konnte nicht erstellt werden");
+        log_error("Gelände-Vertexbuffer konnte nicht erstellt werden");
         return false;
     }
 
@@ -832,7 +832,7 @@ bool Renderer::set_terrain(const std::vector<MeshVertex>& verts, const std::vect
     D3D11_SUBRESOURCE_DATA id{};
     id.pSysMem = indices.data();
     if (FAILED(m_device->CreateBuffer(&ibd, &id, &m_terrain_ib))) {
-        log_error("Gelaende-Indexbuffer konnte nicht erstellt werden");
+        log_error("Gelände-Indexbuffer konnte nicht erstellt werden");
         clear_terrain();
         return false;
     }
@@ -852,7 +852,7 @@ bool Renderer::save_screenshot(const std::string& path) {
 
     ID3D11Texture2D* back = nullptr;
     if (FAILED(m_swap->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&back))) || !back) {
-        log_error("Screenshot: Backbuffer nicht verfuegbar");
+        log_error("Screenshot: Backbuffer nicht verfügbar");
         return false;
     }
 
@@ -998,7 +998,7 @@ void Renderer::end_frame() {
             m_context->DrawIndexed(static_cast<UINT>(m_index_count), 0, 0);
         }
 
-        // Haupt-Renderziel + Pipeline zurueck.
+        // Haupt-Renderziel + Pipeline zurück.
         m_context->OMSetRenderTargets(1, &m_rtv, m_dsv);
         D3D11_VIEWPORT vp{0.0f, 0.0f, static_cast<float>(m_width),
                           static_cast<float>(m_height), 0.0f, 1.0f};
@@ -1006,7 +1006,7 @@ void Renderer::end_frame() {
         apply_pipeline();
     }
 
-    // Himmel zuerst: Fullscreen-Dreieck ohne Tiefentest, danach normale Pipeline.
+    // Himmel zürst: Fullscreen-Dreieck ohne Tiefentest, danach normale Pipeline.
     if (m_sky_on && m_sky_vs && m_sky_ps) {
         D3D11_MAPPED_SUBRESOURCE mapped{};
         if (SUCCEEDED(m_context->Map(m_sky_cb, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
@@ -1030,11 +1030,11 @@ void Renderer::end_frame() {
         m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         m_context->Draw(3, 0);
 
-        // Szenen-Pipeline zurueck (Shader, CBs, Tiefe).
+        // Szenen-Pipeline zurück (Shader, CBs, Tiefe).
         apply_pipeline();
     }
 
-    // Gelaende zuerst (eigenes Mesh, Weltmatrix = Identitaet, Farbe weiss).
+    // Gelände zürst (eigenes Mesh, Weltmatrix = Identität, Farbe weiss).
     if (m_terrain_vb && m_terrain_ib && m_terrain_index_count > 0) {
         const UINT stride = sizeof(MeshVertex);
         const UINT offset = 0;
@@ -1050,8 +1050,8 @@ void Renderer::end_frame() {
             cb.size[0] = cb.size[1] = cb.size[2] = cb.size[3] = 0.0f;
             cb.params[0] = static_cast<float>(m_terrain_tex);  // UV steckt in den Vertices
             cb.params[1] = 0.0f;
-            // Etappe 18c: Kachelgroesse des Bodens (Terrain-UV ist auf
-            // 2 m gebacken; Faktor 2/tile skaliert auf die Wunschgroesse).
+            // Etappe 18c: Kachelgrösse des Bodens (Terrain-UV ist auf
+            // 2 m gebacken; Faktor 2/tile skaliert auf die Wunschgrösse).
             cb.params[2] = 2.0f / (m_terrain_tile > 0.0f ? m_terrain_tile : 2.0f);
             cb.params[3] = 0.0f;
             std::memcpy(mapped.pData, &cb, sizeof(cb));
@@ -1068,7 +1068,7 @@ void Renderer::end_frame() {
         m_context->IASetIndexBuffer(m_ib, DXGI_FORMAT_R16_UINT, 0);
     }
 
-    int bound_tex = -2;  // ungueltig, damit der erste Draw bindet
+    int bound_tex = -2;  // ungültig, damit der erste Draw bindet
     for (const DrawCmd& cmd : m_cmds) {
         const Mat4 world = mul(mul(scaling(cmd.size.x, cmd.size.y, cmd.size.z),
                                    rotation_roll_pitch_yaw(cmd.rot.x, cmd.rot.y, cmd.rot.z)),

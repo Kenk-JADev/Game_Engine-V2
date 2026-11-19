@@ -1,4 +1,4 @@
-# Zaehlt Zeilenenden (CRLF vs. LF) in den geaenderten Dateien.
+# Zählt Zeilenenden (CRLF vs. LF) in den geänderten Dateien.
 %w[docs/architecture.md docs/HANDOFF_Naechste_KI.md game/main.rb
    src/editor/editor_main.cpp src/gfx/renderer.cpp src/gfx/renderer.h
    src/ruby/vm.cpp src/core/window.cpp].each do |f|

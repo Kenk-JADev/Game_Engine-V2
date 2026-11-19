@@ -1,11 +1,11 @@
 #encoding: utf-8
 # ============================================================================
-#  Test fuer Textures.register_project (Etappe 17f, Spielseite):
+#  Test für Textures.register_project (Etappe 17f, Spielseite):
 #     ruby tools/project_tex_test.rb
 #
-#  Prueft ohne Engine: textures.json wird gelesen, rohe RGBA-Dateien werden
-#  als Rune::Gfx.texture angemeldet, falsche Groessen werden uebersprungen und
-#  die Kachelgroesse (tile_of) kommt aus den Metadaten.
+#  Prüft ohne Engine: textures.json wird gelesen, rohe RGBA-Dateien werden
+#  als Rune::Gfx.texture angemeldet, falsche Grössen werden übersprungen und
+#  die Kachelgrösse (tile_of) kommt aus den Metadaten.
 # ============================================================================
 
 require 'json'
@@ -21,7 +21,7 @@ def check(name)
   $fail += 1 unless ok
 end
 
-# --- Minimal-Attrappen fuer die Engine-Bindings -----------------------------
+# --- Minimal-Attrappen für die Engine-Bindings -----------------------------
 TEX_CALLS = {}
 
 module Rune
@@ -80,18 +80,18 @@ begin
   }
   File.write(File.join(tmp, 'textures.json'), JSON.generate(meta), encoding: 'UTF-8')
 
-  check('project_meta filtert Eintraege ohne Namen') do
+  check('project_meta filtert Einträge ohne Namen') do
     Textures.project_meta.size == 3   # wand_bunt + kaputt + fehlt (leer raus)
   end
 
   loaded = Textures.register_project
-  check('nur gueltige Datei geladen') { loaded == 1 }
+  check('nur gültige Datei geladen') { loaded == 1 }
   check('wand_bunt registriert') { TEX_CALLS.key?('wand_bunt') }
-  check('Groesse 4 x 2') do
+  check('Grösse 4 x 2') do
     t = TEX_CALLS['wand_bunt']
     t && t[:w] == 4 && t[:h] == 2
   end
-  check('Pixel unveraendert (rot oben, blau unten)') do
+  check('Pixel unverändert (rot oben, blau unten)') do
     t = TEX_CALLS['wand_bunt']
     t && t[:pixels].byteslice(0, 4).bytes == [255, 0, 0, 255] &&
       t[:pixels].byteslice(16, 4).bytes == [0, 0, 255, 255]

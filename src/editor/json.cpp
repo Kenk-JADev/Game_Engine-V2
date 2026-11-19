@@ -1,5 +1,5 @@
 // ============================================================================
-//  Minimaler JSON-Parser/-Schreiber fuer den RuneEditor (Etappe 17).
+//  Minimaler JSON-Parser/-Schreiber für den RuneEditor (Etappe 17).
 // ============================================================================
 
 #include "editor/json.h"
@@ -74,7 +74,7 @@ struct Parser {
             if (c >= '0' && c <= '9') v |= static_cast<unsigned>(c - '0');
             else if (c >= 'a' && c <= 'f') v |= static_cast<unsigned>(c - 'a' + 10);
             else if (c >= 'A' && c <= 'F') v |= static_cast<unsigned>(c - 'A' + 10);
-            else fail("ungueltiges \\u");
+            else fail("ungültiges \\u");
         }
         return v;
     }
@@ -156,7 +156,7 @@ struct Parser {
         }
 
         if (eat('"')) {
-            --p; // parse_string erwartet das Anfuehrungszeichen noch.
+            --p; // parse_string erwartet das Anführungszeichen noch.
             JsonValue v; v.type = JsonValue::Type::Str;
             v.str = parse_string();
             return v;
@@ -183,7 +183,7 @@ struct Parser {
                 }
                 break;
             }
-            if (p == start) fail("ungueltiges Zeichen");
+            if (p == start) fail("ungültiges Zeichen");
             JsonValue v; v.type = JsonValue::Type::Num;
             v.is_int = is_int;
             v.num = std::strtod(std::string(start, p).c_str(), nullptr);
@@ -218,14 +218,14 @@ void write_string(const std::string& s, std::string& out) {
 
 // Zahl schreiben.
 //  - Ganzzahlen ohne Nachkomma (1 statt 1.0), solange sie in long long passen.
-//  - Kommazahlen in der KUERZESTEN Form, die den Wert exakt wiederherstellt
+//  - Kommazahlen in der KÜRZESTEN Form, die den Wert exakt wiederherstellt
 //    (1..17 signifikante Stellen, Vergleich per strtod). Damit schreibt der
 //    Editor dieselben Bytes wie Ruby (JSON.pretty_generate). Der alte feste
 //    Wert %.12g hat still Zahlen beschnitten: aus dem Startblickwinkel
-//    3.141592653589793 wurde 3.14159265359, aus Spielstaenden wie
+//    3.141592653589793 wurde 3.14159265359, aus Spielständen wie
 //    2.0040341041749343e-05 wurden 2.00403410417e-05 — jede gespeicherte Karte
 //    unterschied sich danach vom Ruby-Ergebnis (Diff-Flut + Werteverlust).
-//  - NaN/Unendlich sind kein gueltiges JSON: sie werden zu null, damit die
+//  - NaN/Unendlich sind kein gültiges JSON: sie werden zu null, damit die
 //    Datei lesbar bleibt und der Karten-Scan (MapCheck/Probleme-Dialog) den
 //    kaputten Wert meldet statt ihn zu verschlucken.
 void write_number(const JsonValue& v, std::string& out) {
@@ -242,7 +242,7 @@ void write_number(const JsonValue& v, std::string& out) {
             out += buf;
             return;
         }
-        // Zu gross fuer long long: als Kommazahl schreiben (Wert bleibt erhalten).
+        // Zu gross für long long: als Kommazahl schreiben (Wert bleibt erhalten).
     }
 
     if (v.num == 0.0) {
@@ -250,7 +250,7 @@ void write_number(const JsonValue& v, std::string& out) {
         return;
     }
 
-    // 1) Kuerzeste Praezision suchen, die den Wert exakt wiederherstellt.
+    // 1) Kürzeste Präzision suchen, die den Wert exakt wiederherstellt.
     char buf[64];
     int prec = 17;
     for (int p = 1; p <= 17; ++p) {
@@ -261,7 +261,7 @@ void write_number(const JsonValue& v, std::string& out) {
 
     // 2) %g wechselt schon bei wenigen Stellen in die Exponentenschreibweise
     //    (240.0 -> "2.4e+02"), Ruby und Python bleiben bis Exponent 16 bei
-    //    Festkomma (240.0). Fuer Karten- und Systemdaten ist Festkomma das,
+    //    Festkomma (240.0). Für Karten- und Systemdaten ist Festkomma das,
     //    was beide Seiten schreiben — also bei Exponent [-4, 16) umformatieren,
     //    aber nur, wenn der Wert dabei exakt bleibt.
     const int exp10 = static_cast<int>(std::floor(std::log10(std::fabs(v.num))));

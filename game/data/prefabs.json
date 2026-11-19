@@ -31,7 +31,7 @@
     },
     {
       "id": "huette",
-      "name": "Huette",
+      "name": "Hütte",
       "parts": [
         {
           "d": [0.0, 1.3, 0.0],
@@ -207,7 +207,7 @@
     },
     {
       "id": "weg",
-      "name": "Wegstueck",
+      "name": "Wegstück",
       "parts": [
         {
           "d": [0.0, 0.08, 0.0],

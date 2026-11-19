@@ -40,7 +40,7 @@ module Project
     read_system(name)['name'] || name
   end
 
-  # Kurzinfo fuer den Titelbildschirm: Titel, Kartenanzahl, Spielstaende,
+  # Kurzinfo für den Titelbildschirm: Titel, Kartenanzahl, Spielstände,
   # zuletzt gespielt.
   def info(name)
     maps = begin
@@ -69,7 +69,7 @@ module Project
     FileUtils.rm_rf(path(name))
   end
 
-  # ---------------------------------------------------- Spielstaende (Etappe 10)
+  # ---------------------------------------------------- Spielstände (Etappe 10)
 
   def saves_dir(name) = File.join(path(name), 'saves')
 
@@ -89,13 +89,13 @@ module Project
     nil
   end
 
-  # Kurzinfo eines Slots (fuer Menue/Titelbildschirm): nil oder Zeit+Karte.
+  # Kurzinfo eines Slots (für Menü/Titelbildschirm): nil oder Zeit+Karte.
   def save_info(name, slot)
     d = load_save(name, slot)
     d && { 'saved' => d['saved'], 'map' => d['map'] }
   end
 
-  # Hoechster belegter Slot (3..1), nil wenn keine Spielstaende existieren.
+  # Höchster belegter Slot (3..1), nil wenn keine Spielstände existieren.
   def latest_save(name)
     3.downto(1) do |s|
       return s if File.exist?(File.join(saves_dir(name), "slot#{s}.json"))
@@ -123,7 +123,7 @@ module Project
   end
 
   # Neues Projekt anlegen: leere Welt (nur Gras), Startpunkt in der Mitte.
-  # Rueckgabe: der Projektordnername.
+  # Rückgabe: der Projektordnername.
   def create(title)
     name = unique_slug(title)
     Dir.mkdir(BASE) unless Dir.exist?(BASE)
@@ -167,7 +167,7 @@ module Project
     'dorf'
   end
 
-  # Naechste freie Karten-ID: welt01, welt02, ...
+  # Nächste freie Karten-ID: welt01, welt02, ...
   def next_map_id
     ids = Database.map_ids
     n = 1
@@ -176,7 +176,7 @@ module Project
   end
 
   # Neue leere Karte im aktiven Projekt anlegen (flach, Etappe 17b) und als
-  # JSON ablegen. Rueckgabe: die Karten-ID.
+  # JSON ablegen. Rückgabe: die Karten-ID.
   def create_map(name = 'Neue Welt')
     id = next_map_id
     dir = File.join(Database.root, 'maps')

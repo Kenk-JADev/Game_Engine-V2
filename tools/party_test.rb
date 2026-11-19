@@ -1,9 +1,9 @@
 #encoding: utf-8
 # ============================================================================
-#  Test fuer die Datenbank/Party (Etappe 17g):
+#  Test für die Datenbank/Party (Etappe 17g):
 #     ruby -I game/engine tools/party_test.rb
 #
-#  Prueft ohne Engine: Party.setup aus database.json, Inventar (+/-/benutzen),
+#  Prüft ohne Engine: Party.setup aus database.json, Inventar (+/-/benutzen),
 #  Gold, Heilung, Snapshot/Restore, die Interpreter-Befehle item/gold/heal und
 #  die Script-Sandbox-Helfer (gold, add_item, take_item, use_item, heal).
 # ============================================================================
@@ -21,7 +21,7 @@ def check(name)
   $fail += 1 unless ok
 end
 
-# --- Attrappen fuer die Engine-Bindings -------------------------------------
+# --- Attrappen für die Engine-Bindings -------------------------------------
 module Rune
   ROOT = ROOT
   module Log
@@ -97,7 +97,7 @@ check('Heilung begrenzt auf max_hp') do
   ok && arik.hp == arik.max_hp
 end
 check('Quest-Item nicht benutzbar') { !Party.use_item('kristall') }
-check('bei 0 Stueck nicht benutzbar') do
+check('bei 0 Stück nicht benutzbar') do
   arik.hp = 50
   2.times { Party.use_item('heiltrank') }   # beide aufbrauchen
   arik.hp = 50
@@ -126,7 +126,7 @@ check('Snapshot hat Gold/Items/Helden') do
     snap['actors'].first['hp'] == 33
 end
 Party.setup(Database.database)   # frische Party (voll HP, Start-Inventar)
-check('frische Party unabhaengig') { Party.gold == 120 && arik.hp != 33 || true }
+check('frische Party unabhängig') { Party.gold == 120 && arik.hp != 33 || true }
 Party.restore!(snap)
 check('Restore: Gold') { Party.gold == 77 }
 check('Restore: Items') { Party.item_count('kristall') == 2 }
@@ -148,10 +148,10 @@ interp.start([
 check('Interpreter item +2-1') { Party.item_count('heiltrank') == 1 }
 check('Interpreter gold +25-10') { Party.gold == 92 }
 check('Interpreter heal (voll)') { Party.find('arik').hp == Party.find('arik').max_hp }
-check('Interpreter item ohne Name uebersprungen') { !interp.running? }
+check('Interpreter item ohne Name übersprungen') { !interp.running? }
 
 # --- 7) Script-Sandbox ------------------------------------------------------
-Scripts.load_project rescue nil   # keine scripts.json noetig
+Scripts.load_project rescue nil   # keine scripts.json nötig
 ctx = Scripts::Context.new(interp, nil)
 ctx.instance_eval('add_item("kristall", 4)', 'test', 1)
 check('Script add_item') { Party.item_count('kristall') == 6 }
@@ -175,7 +175,7 @@ check('Script heal (voll)') { Party.find('mira').hp == Party.find('mira').max_hp
 
 # --- 8) Statuszeilen ---------------------------------------------------------
 lines = Party.status_lines
-check('status_lines enthaelt Helden und Gold') do
+check('status_lines enthält Helden und Gold') do
   lines[0].include?('Arik') && lines.any? { |l| l.include?('Gold') }
 end
 

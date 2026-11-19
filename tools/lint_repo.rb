@@ -2,24 +2,24 @@
 # ============================================================================
 #  Repo-Hygiene (Etappe 19a):  ruby tools/lint_repo.rb [--strict]
 #
-#  Prueft alles, was nichts mit Programmlogik zu tun hat, aber beim Arbeiten
+#  Prüft alles, was nichts mit Programmlogik zu tun hat, aber beim Arbeiten
 #  immer wieder kaputtgeht — und zwar BEVOR es im Commit landet:
 #
 #    1. JSON-Dateien parsebar (Karten, Datenbank, System, Scripte, Prefabs)
-#    2. Textdateien sind gueltiges UTF-8 und haben kein BOM
+#    2. Textdateien sind gültiges UTF-8 und haben kein BOM
 #    3. keine Doppelkodierung (Mojibake, z. B. "Ã¼" statt "ü") — der bekannte
 #       PowerShell-Fallstrick aus Etappe 18c
-#    4. Zeilenenden nach Konvention: LF fuer alles, CRLF nur fuer
+#    4. Zeilenenden nach Konvention: LF für alles, CRLF nur für
 #       *.ps1/*.psm1/*.manifest. Sonst kippt der Editor beim Speichern die
-#       Zeilenenden und die Versionsverwaltung zeigt ganze Dateien als Aenderung.
+#       Zeilenenden und die Versionsverwaltung zeigt ganze Dateien als Änderung.
 #    5. boot.rb require't nur Module, die es gibt (und umgekehrt)
-#    6. keine ignorierten Dateien im Index (build/, log/, Spielstaende) und
-#       keine Binaer-Artefakte (*.exe/*.dll/*.o)
+#    6. keine ignorierten Dateien im Index (build/, log/, Spielstände) und
+#       keine Binär-Artefakte (*.exe/*.dll/*.o)
 #    7. Grundausstattung: README.md, docs/, Manifest, CI-Workflow
-#    8. Auffaelliges als Info: uebergrosse Quellen, TODO-Markierungen
+#    8. Auffälliges als Info: übergrosse Quellen, TODO-Markierungen
 #
-#  Mit --strict zaehlen auch Warnungen als Fehlschlag.
-#  Laeuft ohne Git (die Index-Pruefung faellt dann mit einer Meldung aus).
+#  Mit --strict zählen auch Warnungen als Fehlschlag.
+#  Läuft ohne Git (die Index-Prüfung fällt dann mit einer Meldung aus).
 # ============================================================================
 require 'json'
 
@@ -50,7 +50,7 @@ BINAER_ENDUNGEN = %w[.exe .dll .o .obj .a .lib .pdb .png .bmp .ico .rgba
 
 # Typische Doppelkodierung: UTF-8-Bytes, die als CP1252 gelesen und erneut als
 # UTF-8 gespeichert wurden. Gesucht wird nach Byte-Folgen, nicht nach einzelnen
-# Zeichen, damit ein echtes "ü" nicht auffaellt.
+# Zeichen, damit ein echtes "ü" nicht auffällt.
 MOJIBAKE = [
   "\u00C3\u00A4", "\u00C3\u00B6", "\u00C3\u00BC", "\u00C3\u009F",
   "\u00C3\u0084", "\u00C3\u0096", "\u00C3\u009C",
@@ -116,8 +116,8 @@ kodierung_fehler = 0
 dateien.each do |p|
   bin = File.binread(p)
   # PowerShell 5.1 liest Skripte mit Nicht-ASCII-Zeichen ohne BOM als ANSI —
-  # dort ist das BOM richtig. Fuer C++, Ruby, JSON und Markdown ist es Gift
-  # (MSYS2-g++ gibt es als Zeichen aus, Ruby haengt es an den ersten Token).
+  # dort ist das BOM richtig. Für C++, Ruby, JSON und Markdown ist es Gift
+  # (MSYS2-g++ gibt es als Zeichen aus, Ruby hängt es an den ersten Token).
   if bin.start_with?("\xEF\xBB\xBF".b) && !CRLF_ERLAUBT.include?(File.extname(p).downcase)
     kodierung_fehler += 1
     fehler("#{p}: UTF-8-BOM am Dateianfang")
@@ -126,7 +126,7 @@ dateien.each do |p|
   text = bin.dup.force_encoding('UTF-8')
   unless text.valid_encoding?
     kodierung_fehler += 1
-    fehler("#{p}: kein gueltiges UTF-8")
+    fehler("#{p}: kein gültiges UTF-8")
     next
   end
 
@@ -142,7 +142,7 @@ end
 ok('alle Dateien UTF-8, ohne BOM und ohne Doppelkodierung') if kodierung_fehler.zero?
 
 # ------------------------------------------------------------- 4. Zeilenenden
-puts '== Zeilenenden (LF; CRLF nur fuer .ps1/.psm1/.manifest) =='
+puts '== Zeilenenden (LF; CRLF nur für .ps1/.psm1/.manifest) =='
 eol_fehler = 0
 crlf_dateien = []
 dateien.each do |p|
@@ -190,7 +190,7 @@ main_rb = File.read('game/main.rb', encoding: 'utf-8')
 ungenutzt = vorhanden - requires
 ungenutzt = ungenutzt.reject { |m| main_rb.include?("require '#{m}'") }
 warnung("Module ohne require in boot.rb/main.rb: #{ungenutzt.join(', ')}") if ungenutzt.any?
-ok("#{requires.size} Requires aufgeloest, #{vorhanden.size} Module vorhanden") if module_fehler.zero?
+ok("#{requires.size} Requires aufgelöst, #{vorhanden.size} Module vorhanden") if module_fehler.zero?
 
 # ------------------------------------------------------- 6. Index und Artefakte
 puts '== Versionsverwaltung =='
@@ -200,12 +200,12 @@ if git?
 
   binaer = trackte.select { |p| BINAER_ENDUNGEN.include?(File.extname(p).downcase) }
   if binaer.any?
-    warnung("Binaer-Artefakte im Index (gehoeren nach build/): #{binaer.join(', ')}")
+    warnung("Binär-Artefakte im Index (gehören nach build/): #{binär.join(', ')}")
   else
-    ok('keine Binaer-Artefakte im Index')
+    ok('keine Binär-Artefakte im Index')
   end
 
-  # Ignorierte Dateien duerfen nicht trackt sein. Ausnahme: der Demo-Spielstand,
+  # Ignorierte Dateien dürfen nicht trackt sein. Ausnahme: der Demo-Spielstand,
   # der bewusst als Beispiel im Repo liegt (siehe .gitignore).
   ausnahme = %w[projekte/dorf/saves/slot1.json]
   ignoriert = trackte.select do |p|
@@ -217,7 +217,7 @@ if git?
     ok('keine ignorierten Dateien im Index (Demo-Spielstand ist ausgenommen)')
   end
 else
-  warnung('git nicht verfuegbar — Index-Pruefung uebersprungen')
+  warnung('git nicht verfügbar — Index-Prüfung übersprungen')
 end
 
 # ------------------------------------------------------------ 7. Grundausstattung
@@ -232,8 +232,8 @@ puts '== Grundausstattung =='
   end
 end
 
-# ------------------------------------------------------------ 8. Auffaelliges
-puts '== Auffaelliges (Info) =='
+# ------------------------------------------------------------ 8. Auffälliges
+puts '== Auffälliges (Info) =='
 dateien.each do |p|
   next unless File.extname(p).downcase == '.cpp'
 

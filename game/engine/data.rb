@@ -1,10 +1,10 @@
 #encoding: utf-8
 # ============================================================================
-#  Datenbank: laedt die JSON-Dateien des aktiven Projekts (System + Karten).
+#  Datenbank: lädt die JSON-Dateien des aktiven Projekts (System + Karten).
 #
 #  Projekte liegen in  projekte/<name>/data/...  (wie beim RPG Maker jedes
 #  Spiel ein eigener Ordner ist). Ohne Projekt gilt game/data als Wurzel -
-#  das ist zugleich die Vorlage fuer das Demo-Projekt.
+#  das ist zugleich die Vorlage für das Demo-Projekt.
 #  Alle Dateien werden als UTF-8 gelesen, damit Umlaute und Sonderzeichen
 #  im Text korrekt durchkommen.
 # ============================================================================
