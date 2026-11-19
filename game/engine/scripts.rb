@@ -107,6 +107,7 @@ module Scripts
 
     def teleport(x, z, yaw: Math::PI)
       Rune::Player.teleport(x.to_f, Game.gy(x.to_f, z.to_f) + 0.2, z.to_f)
+      Game.reset_step_tracking if Game.respond_to?(:reset_step_tracking)
       Rune::Camera.yaw = yaw.to_f
     end
 

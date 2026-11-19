@@ -430,12 +430,34 @@ end
 check('steps <= 0 -> Warnung') do
   k = saubere_karte
   k['encounters'] = { 'troops' => ['waldweg'], 'steps' => 0 }
-  hat?(MapCheck.scan(k, **OPTS), "'steps' muss eine Zahl > 0 sein", MapCheck::WARNUNG)
+  hat?(MapCheck.scan(k, **OPTS), "'steps' muss eine ganze Zahl > 0 sein", MapCheck::WARNUNG)
 end
 check('steps als Text -> Warnung') do
   k = saubere_karte
   k['encounters'] = { 'troops' => ['waldweg'], 'steps' => 'viel' }
-  hat?(MapCheck.scan(k, **OPTS), "'steps' muss eine Zahl > 0 sein", MapCheck::WARNUNG)
+  hat?(MapCheck.scan(k, **OPTS), "'steps' muss eine ganze Zahl > 0 sein", MapCheck::WARNUNG)
+end
+check('gebrochene Schrittzahl -> Warnung') do
+  k = saubere_karte
+  k['encounters'] = { 'troops' => ['waldweg'], 'steps' => 0.5 }
+  hat?(MapCheck.scan(k, **OPTS), "'steps' muss eine ganze Zahl > 0 sein", MapCheck::WARNUNG)
+end
+check('ganzzahlige Kommazahl wird akzeptiert') do
+  k = saubere_karte
+  k['encounters'] = { 'troops' => ['waldweg'], 'steps' => 2.0 }
+  MapCheck.scan(k, **OPTS).empty?
+end
+check('leere Truppen-ID -> Fehler') do
+  k = saubere_karte
+  k['encounters'] = { 'troops' => ['  '] }
+  hat?(MapCheck.scan(k, **OPTS), 'ist keine Truppen-ID (Text)', MapCheck::FEHLER)
+end
+check('null als encounters oder optionale Felder -> keine Funde') do
+  k = saubere_karte
+  k['encounters'] = nil
+  ohne = MapCheck.scan(k, **OPTS).empty?
+  k['encounters'] = { 'troops' => nil, 'steps' => nil }
+  ohne && MapCheck.scan(k, **OPTS).empty?
 end
 
 puts '== MapCheck: NPCs =='

@@ -157,6 +157,7 @@ class Interpreter
       when 'teleport'
         Rune::Player.teleport(cmd['x'].to_f, Game.gy(cmd['x'].to_f, cmd['z'].to_f) + 0.2,
                               cmd['z'].to_f)
+        Game.reset_step_tracking if Game.respond_to?(:reset_step_tracking)
         Rune::Camera.yaw = (cmd['yaw'] || Math::PI).to_f
       when 'move_player'
         # Spieler bewegen (18f): absolut oder relativ zur aktuellen Position.
@@ -164,6 +165,7 @@ class Interpreter
         tx = cmd['relative'] ? px + cmd['x'].to_f : cmd['x'].to_f
         tz = cmd['relative'] ? pz + cmd['z'].to_f : cmd['z'].to_f
         Rune::Player.teleport(tx, Game.gy(tx, tz) + 0.2, tz)
+        Game.reset_step_tracking if Game.respond_to?(:reset_step_tracking)
       when 'save_game'
         Game.save_game((cmd['slot'] || 1).to_i)
       when 'load_game'

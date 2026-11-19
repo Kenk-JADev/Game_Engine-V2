@@ -42,6 +42,7 @@
 #include "core/log.h"
 #include "core/sound.h"
 #include "editor/json.h"
+#include "editor/encounter_check.h"
 #include "gfx/camera.h"      // nur fuer Kamera-Konstanten, falls noetig
 #include "gfx/renderer.h"
 #include "math/math.h"
@@ -891,34 +892,9 @@ void issues_scan_map() {
         }
     }
 
-    // Etappe 19l: Zufallskämpfe - wie MapCheck.pruefe_encounters.
-    // { "troops": ["waldweg", ...], "steps": 30 }; ob die Truppen in der
-    // Datenbank existieren, prüft erst der Kampf (Battle.start warnt).
-    if (const JsonValue* enc = g.map_root.find("encounters"); enc) {
-        const std::string wo = mapname + " encounters";
-        if (!enc->is_obj()) {
-            issue_report(2, wo, "ist kein Objekt");
-        } else {
-            if (const JsonValue* tr = enc->find("troops"); tr) {
-                if (!tr->is_arr()) {
-                    issue_report(2, wo, "'troops' ist keine Liste");
-                } else {
-                    for (int i = 0; i < static_cast<int>(tr->arr.size()); ++i) {
-                        const JsonValue& t = tr->arr[i];
-                        if (!t.is_str() || t.str.empty()) {
-                            issue_report(2, wo + " troops #" + std::to_string(i + 1),
-                                         "ist keine Truppen-ID (Text)");
-                        }
-                    }
-                }
-            }
-            if (const JsonValue* st = enc->find("steps"); st) {
-                if (!st->is_num() || st->number(0.0) <= 0.0) {
-                    issue_report(1, wo, "'steps' muss eine Zahl > 0 sein");
-                }
-            }
-        }
-    }
+    // Etappe 19l: Zufallskämpfe (auch im kopflosen C++-Test geprüft).
+    // Die Existenz der Truppen prüft erst Battle.start gegen die Datenbank.
+    issue_scan_encounters(g.map_root.find("encounters"), mapname + " encounters", issue_report);
 
     // Etappe 19k.3: Positionen in Block-Zonen (Parität zu MapCheck) - der
     // Spieler käme dort nicht hinein, NPCs stünden an der Wand und Wegpunkte

@@ -344,6 +344,18 @@ Game.map['encounters'] = { 'troops' => 'waldweg', 'steps' => 'viel' }
 check('kaputte encounters: Liste leer, Schrittzahl 30') do
   $game_map.encounter_list.empty? && $game_map.encounter_step == 30
 end
+Game.map['encounters'] = { 'troops' => ['waldweg', 42, nil, '', '  '] }
+check('nur nicht-leere Text-IDs werden als Truppen übernommen') do
+  $game_map.encounter_list == ['waldweg']
+end
+[0.5, 2.5, Float::INFINITY, Float::NAN].each do |wert|
+  Game.map['encounters']['steps'] = wert
+  check("ungültige Schrittzahl #{wert.inspect} -> Default 30") { $game_map.encounter_step == 30 }
+end
+Game.map['encounters']['steps'] = 2.0
+check('ganzzahlige JSON-Kommazahl wird als Schrittzahl übernommen') do
+  $game_map.encounter_step == 2
+end
 Game.map['encounters'] = ['waldweg']
 check('encounters als Liste (kein Objekt) -> leer/Default') do
   $game_map.encounter_list.empty? && $game_map.encounter_step == 30

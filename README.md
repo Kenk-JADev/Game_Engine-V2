@@ -209,13 +209,22 @@ Karten sind JSON unter `projekte/<name>/data/maps/<id>.json`:
                 "path": [[4.0, 4.0], [4.0, -1.0]], "commands": [] }],
   "fog": { "on": false, "far": 120.0, "color": 15263976 },
   "weather": { "type": "kein", "intensity": 1.0 },
-  "blocked": [{ "x": 8.0, "z": 2.0, "w": 4.0, "h": 3.0 }]
+  "blocked": [{ "x": 8.0, "z": 2.0, "w": 4.0, "h": 3.0 }],
+  "encounters": { "troops": ["waldweg", "banditen"], "steps": 30 }
 }
 ```
 
 `blocked` (optional) sind unsichtbare Wände über alle Höhen (x/z = Mitte,
 w/h = Größe in Metern) — im Editor unter F2 editierbar und als rote
 Flach-Quader sichtbar.
+
+`encounters` ist optional: Die Truppen-IDs müssen in der `database.json`
+desselben Projekts existieren; `steps` ist eine positive ganze mittlere
+Schrittzahl (Standard 30). Ohne Truppen gibt es keine Zufallskämpfe. Das
+Feld wird direkt im Karten-JSON bearbeitet; ein F2-Feld gibt es noch nicht.
+Die Vorlage `game/data` enthält passende Beispieltruppen. Bestehende
+Projekte, auch `projekte/dorf`, werden nicht automatisch umgestellt und
+benötigen bei Bedarf eigene Gegner und Truppen in ihrer Datenbank (F9).
 
 Regeln: Editor und Spiel schreiben beide `JSON.pretty_generate`-Format (LF,
 2 Leerzeichen, kürzeste exakte Zahlendarstellung) — deshalb wirft Speichern

@@ -1463,8 +1463,9 @@ Helden, Gold an die Party, Drop-Würfe; Niederlage: `$game_temp.gameover`
 vor dem Spieler, HP-Balken + Namen als 2D-Overlay; Befehls-/Itemfenster,
 Party- und Gegnerstatus, Kampflog (letzte 6 Zeilen) zeichnet `Battle.draw`
 über dem abgedunkelten Bild. Während `Battle.active?` friert `Game.update`
-die Welt ein (nur Battle/Effects/Fade laufen), `Game.draw` zeigt das
-Kampf-Overlay. Kartenwechsel bricht Kämpfe ab (`Battle.abort!` aus
+die Welt einschließlich der nativen Spielerphysik ein (`Rune::Simulation.paused`);
+nur Battle/Effects/Fade laufen, `Game.draw` zeigt das Kampf-Overlay. Nach
+Kampfende läuft die Physik wieder. Kartenwechsel bricht Kämpfe ab (`Battle.abort!` aus
 `enter_map`, neben `RGSS.reset!`).
 
 **Event-Befehl:** `{"cmd":"battle","name":"waldweg","can_escape":true,
@@ -1485,8 +1486,8 @@ geführt, Zahleneingabe zusätzlich als RGSS-Zustand (`num_input_*` in
 
 **Grenzen (Backlog):** keine Skills/Magie (MP ungenutzt), keine Zustände
 (Vergiftung etc.), keine Gegner-KI außer "Angriff auf zufälligen Helden",
-keine Formationen/Positionen, Zufallskämpfe beim Laufen fehlen
-(encounter_count liegt bereit), Kampfhintergrund = abgedunkelte Karte.
+keine Formationen/Positionen, Kampfhintergrund = abgedunkelte Karte.
+Zufallskämpfe kamen später in Etappe 19l hinzu (siehe unten).
 
 **Tests:** `tools/battle_test.rb` (kopflos, ~45 Checks: Datenbank, Start/
 Absagen, Befehls-/Item-/Zielwahl-Cursor, Schaden, Sieg+Belohnung,
@@ -1630,39 +1631,46 @@ Körperbox).
 
 ## Zufallskämpfe beim Laufen (Etappe 19l)
 
-Die letzte Lücke des Kampf-Grundgerüsts (19i): Kämpfe gab es nur per
+Eine Lücke des Kampf-Grundgerüsts (19i): Kämpfe gab es nur per
 Event-Befehl. Seit 19l lösen Karten selbst Kämpfe aus - wie XP
 (`016 - Game_Map.rb`, `022 - Game_Player.rb`, `071 - Scene_Map.rb`).
 
 - **Karten-JSON**: optionaler Schlüssel `"encounters"`:
   `{ "troops": ["waldweg", "banditen"], "steps": 30 }` - `troops` sind
-  Truppen-IDs aus `database.json` (Zufallswahl pro Kampf), `steps` die
-  mittlere Schrittzahl zwischen Kämpfen (XP-Default 30). Ohne Schlüssel
-  oder mit leerer Liste: keine Zufallskämpfe.
-- **RGSS**: `$game_map.encounter_list` / `encounter_step` lesen dieselben
-  Werte (kaputte Einträge → leere Liste / 30); `$game_player.
-  make_encounter_count` würfelt nach XP-Formel `rand(n) + rand(n) + 1`
-  (im Mittel n Schritte), `decrease_encounter_count` zählt nur bis 0
-  herunter (kein Auto-Reset mehr).
-- **Spiel** (`main.rb`): Das Schritt-Event (alle 0,6 m, wie der
-  Schritt-Sound) zählt den Zähler herunter; bei 0, nicht-leerer Liste,
-  laufendem Event ausgenommen und `$game_system.encounter_disabled`
-  aus, startet `battle_start` (Flucht erlaubt, Niederlage = gameover
-  wie XP) und würfelt den Zähler neu (XP `call_battle`). Schlägt der
-  Start fehl (unbekannte Truppe), bleibt der Zähler auf 0 und der
-  nächste Schritt versucht es erneut. `enter_map` würfelt beim
-  Kartenbetreten neu (XP `refresh`).
-- **MapCheck + Editor**: `pruefe_encounters` bzw. der C++-Issues-Scan
-  prüfen die Struktur (Objekt, `troops` = Liste aus Text-IDs, `steps`
-  = Zahl > 0). Ob die Truppen existieren, prüft erst `Battle.start`
-  (warnt) - wie beim `battle`-Befehl kennt die Prüfung die Datenbank
-  nicht.
-- **Demo**: `game/data/maps/dorf.json` hat `encounters` mit den
-  Truppen `waldweg`/`banditen` aus `game/data/database.json` - der
-  CI-Karten-Scan prüft sie gleich mit.
+  Truppen-IDs aus der `database.json` desselben Projekts (Zufallswahl pro
+  Kampf); `steps` ist die positive ganze mittlere Schrittzahl (Default 30).
+  Ohne Truppenliste gibt es keine Zufallskämpfe.
+- **RGSS**: `$game_map.encounter_list` überspringt ungültige oder leere
+  IDs; `encounter_step` fällt bei ungültigem Wert auf 30 zurück.
+  `$game_player.make_encounter_count` würfelt `rand(n) + rand(n) + 1`
+  (im Mittel n Schritte), `decrease_encounter_count` zählt bis 0 herunter.
+- **Spiel** (`main.rb`): Boden-Schritt-Events (wie der Schritt-Sound:
+  0,60 m beim Gehen, 0,85 m beim Rennen) zählen herunter. Bei 0, nicht
+  leerer Liste, keinem laufenden Event und nicht gesperrten Begegnungen
+  startet `battle_start` (Flucht erlaubt, Niederlage = Game Over) und
+  würfelt neu. Ein gleichzeitiges Touch-/Auto-Event hat Vorrang, und im
+  Editor laufen weder Countdown noch Zufallskampf. Ab dem Start-Frame
+  steht die Welt. Ein fehlgeschlagener Start lässt den Zähler auf 0; der
+  nächste freie Schritt versucht es erneut. Beim Kaltstart/F5 wird nach
+  `RGSS.setup` gewürfelt, beim Kartenwechsel in `enter_map`. Teleports über
+  Karte/Laden, Event (`teleport`, `move_player`), RGSS (`moveto`) und den
+  Script-Helfer `teleport` zählen nicht als Schritte. Eigenes direktes
+  `Rune::Player.teleport` sollte anschließend `Game.reset_step_tracking`
+  aufrufen; schrittweise Bewegungsrouten bleiben dagegen zählbar. Beim
+  Laden wird neu gewürfelt; der Zähler ist nicht Teil des Spielstands.
+- **MapCheck + Editor**: `pruefe_encounters` bzw. `issue_scan_encounters`
+  prüfen Objekt, Liste aus nicht-leeren Text-IDs und positive ganze
+  `steps` (null/fehlend ist optional). Die Existenz der Truppen prüft
+  erst `Battle.start` gegen die Projekt-Datenbank.
+- **Demo**: Die Vorlage `game/data/maps/dorf.json` verweist auf Truppen
+  aus `game/data/database.json`. Bestehende Projekte, darunter das
+  mitgelieferte `projekte/dorf`, werden nicht automatisch geändert und
+  brauchen eigene Truppen/Gegner, bevor dort Kämpfe konfiguriert werden.
 
-Tests: `rgss_test.rb` (Liste/Schrittzahl, XP-Formel 1..2n-1, Zähler
-bleibt bei 0, kaputte Werte) und `mapcheck_test.rb` (7 Checks).
+Tests: `encounter_test.rb` führt den echten Spielstart und Schritt-Frames
+mit `Battle`, Interpreter und Demo-Datenbank aus; `rgss_test.rb` und
+`mapcheck_test.rb` prüfen die Datenregeln. `json_test.cpp` testet dieselbe
+C++-Editorprüfung direkt und kopflos.
 
 Grenzen (Backlog): kein F2-Editorfeld für `encounters` (JSON von Hand
 editieren), keine Kampf-Hintergrundmusik/-bilder, keine

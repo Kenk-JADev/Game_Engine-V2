@@ -17,11 +17,13 @@
 // ============================================================================
 
 #include "editor/json.h"
+#include "editor/encounter_check.h"
 
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <vector>
 
 using rune::editor::JsonValue;
 using rune::editor::json_parse;
@@ -36,6 +38,22 @@ void check(const char* name, bool ok) {
     ++g_count;
     if (!ok) ++g_fail;
     std::printf("  %s %s\n", ok ? "ok  " : "FAIL", name);
+}
+
+struct EncounterFinding {
+    int severity;
+    std::string where;
+    std::string text;
+};
+
+std::vector<EncounterFinding> encounter_funde(const std::string& json) {
+    const JsonValue root = json_parse(json);
+    std::vector<EncounterFinding> funde;
+    rune::editor::issue_scan_encounters(root.find("encounters"), "Karte encounters",
+        [&](int severity, const std::string& where, const std::string& text) {
+            funde.push_back({severity, where, text});
+        });
+    return funde;
 }
 
 // Wirft json_parse bei diesem Text?
@@ -275,6 +293,33 @@ int main(int argc, char** argv) {
         check("NaN wird zu null (Datei bleibt lesbar)",
               out.find("\"kaputt\": null") != std::string::npos);
         check("NaN-Ausgabe ist parsebar", json_parse(out).find("ok")->number() == 1.5);
+    }
+
+    std::printf("== Editor: Zufallskampf-Prüfung ==\n");
+    {
+        check("encounters fehlt", encounter_funde(R"({})").empty());
+        check("encounters null", encounter_funde(R"({"encounters":null})").empty());
+        check("optionale Felder null",
+              encounter_funde(R"({"encounters":{"troops":null,"steps":null}})").empty());
+        check("gültige Truppen und ganzzahlige Kommazahl",
+              encounter_funde(R"({"encounters":{"troops":["waldweg","banditen"],"steps":2.0}})").empty());
+        const auto objekt = encounter_funde(R"({"encounters":[]})");
+        check("Liste statt Objekt: Fehler", objekt.size() == 1 && objekt[0].severity == 2 &&
+              objekt[0].text == "ist kein Objekt");
+        const auto liste = encounter_funde(R"({"encounters":{"troops":"waldweg"}})");
+        check("Truppen keine Liste: Fehler", liste.size() == 1 && liste[0].severity == 2 &&
+              liste[0].text == "'troops' ist keine Liste");
+        const auto ids = encounter_funde(R"({"encounters":{"troops":["waldweg",42,"  "]}})");
+        check("nur gültige IDs: zwei Fehler mit Index", ids.size() == 2 &&
+              ids[0].severity == 2 && ids[0].where == "Karte encounters troops #2" &&
+              ids[1].severity == 2 && ids[1].where == "Karte encounters troops #3");
+        const auto null = encounter_funde(R"({"encounters":{"steps":0}})");
+        const auto bruch = encounter_funde(R"({"encounters":{"steps":0.5}})");
+        const auto text = encounter_funde(R"({"encounters":{"steps":"30"}})");
+        check("0, Bruch und Text als Schrittzahl: Warnungen",
+              null.size() == 1 && bruch.size() == 1 && text.size() == 1 &&
+              null[0].severity == 1 && bruch[0].severity == 1 && text[0].severity == 1 &&
+              bruch[0].text == "'steps' muss eine ganze Zahl > 0 sein");
     }
 
     std::printf("== JSON: Grosse/tiefe Dokumente ==\n");

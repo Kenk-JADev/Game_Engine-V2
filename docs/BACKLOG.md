@@ -183,24 +183,27 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 
 ## Erledigt
 ### [Engine] Zufallskämpfe beim Laufen — erledigt (19l)
-- Wunsch: die letzte Lücke des Kampf-Grundgerüsts (19i) schließen - Kämpfe
+- Wunsch: eine Lücke des Kampf-Grundgerüsts (19i) schließen - Kämpfe
   gab es nur per Event-Befehl, Karten konnten keine Kämpfe auslösen.
-- Umsetzung: Karten-JSON `"encounters": {"troops": [...], "steps": 30}`
-  (XP encounter_list/encounter_step); `$game_map.encounter_list/
-  encounter_step` + XP-Formel `rand(n)+rand(n)+1` in
-  `$game_player.make_encounter_count`; Trigger im Schritt-Event von
-  `Game.update` (Zähler 0, Liste nicht leer, kein Event läuft,
-  `encounter_disabled` aus) → `battle_start` + Neu-Würfeln; `enter_map`
-  würfelt beim Betreten neu; MapCheck `pruefe_encounters` + C++
-  Issues-Parität; Demo-Karte `dorf.json` mit Truppen aus
-  `game/data/database.json`.
-- Tests: rgss_test (8 Checks: Liste/Schrittzahl, Formel, Zähler bleibt
-  bei 0, kaputte Werte), mapcheck_test (7 Checks).
+- Umsetzung: optionales Karten-JSON `"encounters": {"troops": [...],
+  "steps": 30}`; RGSS-Kartenwerte und XP-Würfel `rand(n)+rand(n)+1`.
+  Boden-Schritte zählen herunter; bei 0 und freier Spielwelt startet ein
+  zufälliger Kampf. Events/F4 haben Vorrang, der Editor zählt nicht,
+  fehlgeschlagene Kämpfe werden erst beim nächsten Schritt erneut versucht.
+  Kaltstart, F5 und Kartenwechsel würfeln korrekt; Karten-, Event-, RGSS-
+  und Script-Teleports werden nicht als Schritt gezählt. MapCheck und der
+  C++-Editor prüfen dieselben
+  Strukturregeln; ungültige IDs werden übersprungen, ungültige Schrittzahlen
+  fallen auf 30 zurück. Die Demo-Vorlage hat passende Truppen.
+- Tests: `encounter_test.rb` testet Spielstart, Kartenwechsel, tatsächliche
+  Kampfstarts und Sperren; `rgss_test.rb`, `mapcheck_test.rb` und der
+  C++-Logiktest `json_test.cpp` prüfen Zähler und Datenvalidierung.
 - Grenzen: kein F2-Editorfeld für `encounters` (JSON von Hand), keine
-  Kampf-BGM/-Bilder, keine Gebiets-Tabellen wie XP.
-- Betroffene Stellen: `game/engine/{rgss,mapcheck}.rb`, `game/main.rb`,
-  `src/editor/editor_main.cpp`, `game/data/maps/dorf.json`,
-  `tools/{rgss_test,mapcheck_test}.rb`.
+  Kampf-BGM/-Bilder, keine Gebiets-Tabellen wie XP. Bestehende Projekte
+  werden nicht automatisch mit Gegnern/Truppen und Encounters versehen.
+- Betroffene Stellen: `game/engine/{rgss,mapcheck,interpreter,scripts}.rb`, `game/main.rb`,
+  `src/editor/{editor_main.cpp,encounter_check.h}`, `game/data/maps/dorf.json`,
+  `tools/{encounter_test,rgss_test,mapcheck_test}.rb`, `tools/json_test.cpp`.
 
 ### [Engine/Editor] Passierbarkeit rund gemacht — erledigt (19k.3)
 - Wunsch: die 19k.2-Restlücken schließen (NPCs/Routen liefen durch Zonen,

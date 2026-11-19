@@ -377,8 +377,10 @@ module MapCheck
       end
 
       steps = enc['steps']
-      if !steps.nil? && !(zahl?(steps) && steps > 0)
-        melde(WARNUNG, wo, "'steps' muss eine Zahl > 0 sein")
+      gueltig = (steps.is_a?(Integer) && steps.positive?) ||
+                 (steps.is_a?(Float) && steps.finite? && steps >= 1 && steps == steps.floor)
+      if !steps.nil? && !gueltig
+        melde(WARNUNG, wo, "'steps' muss eine ganze Zahl > 0 sein")
       end
     end
 

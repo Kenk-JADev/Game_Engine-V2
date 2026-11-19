@@ -93,9 +93,20 @@ end
     end
   end
 
+  # Teleports sind keine gelaufenen Schritte. Die nächste Position wird neu
+  # als Referenz aufgenommen; auch ein vorher angesammelter Teil-Schritt
+  # darf weder einen Sound noch einen Zufallskampf auslösen.
+  def self.reset_step_tracking
+    @last_pos = nil
+    @step_dist = 0.0
+    @step_event = nil
+    @was_air = nil
+  end
+
   def self.enter_map(id)
     @map_id = id
     @map = Database.map(id)
+    reset_step_tracking
     Fade.reset!   # Etappe 19d: nie mit dunklem Bildschirm in eine Karte kommen
     Mover.reset!  # Etappe 19g: Routen sind flüchtig (Ziel-NPCs sind neu)
     RGSS.reset!   # Etappe 19h: Sprites/Fenster/$scene sind flüchtig
@@ -233,9 +244,7 @@ end
     Rune::Camera.yaw = pl['yaw'].to_f
     Rune::Camera.mode = (pl['mode'] || 'third').to_sym
     @time = data['time'].to_f
-    @last_pos = nil
-    @was_air = nil
-    @step_dist = 0.0
+    reset_step_tracking
     Rune::Log.info("Geladen: Slot #{slot} (Karte '#{@map['name']}', Spielzeit #{@time.to_i}s)")
     true
   rescue StandardError => e
@@ -418,6 +427,9 @@ end
     # baut es ebenfalls auf, damit Kartengrenze und gemalte Berge stimmen).
     enter_map(map_id)
     RGSS.setup   # Etappe 19e: $game_*-Globale (RPG-Maker-XP-Schicht)
+    # enter_map läuft beim Kaltstart vor RGSS.setup; dieses ersetzt den
+    # Spieler auch bei F5. Den neuen Spieler daher auf der Startkarte würfeln.
+    $game_player.make_encounter_count
     Rune::Camera.mode = :third
     Rune::Camera.distance = 7   # Launcher-Überblick (28) -> normaler Follow-Cam
     Rune::Sound.loop('musik', 0.22)   # im Spiel etwas lauter als im Titel
@@ -467,17 +479,26 @@ end
       end
     end
 
-    # Etappe 19i: Im Kampf steht die Welt - nur der Kampf läuft.
+    # Etappe 19i: Im Kampf steht die Welt - auch die native Spielerphysik,
+    # die vor Game.update tickt. Nach dem Ende darf sie wieder laufen.
     if defined?(Battle) && Battle.active?
+      Rune::Simulation.paused = true
       Battle.update(dt)
       Effects.update(dt)
       Fade.update(dt)
+      Rune::Simulation.paused = false unless Battle.active?
       return
     end
 
     # Interpreter zürst: blockiert er (Textfenster offen), wird nichts Neues
     # ausgelöst und auch kein Prompt gesetzt.
     @interpreter.update(dt)
+    # Ein Event kann selbst einen Kampf gestartet haben. Vor dem nächsten
+    # Physik-Tick anhalten, statt noch einen Welt-Frame abzuarbeiten.
+    if defined?(Battle) && Battle.active?
+      Rune::Simulation.paused = true
+      return
+    end
     # Zahleneingabe (19i): Eingabe am Eingabefeld weiterdrehen.
     if @interpreter.busy_number?
       ni = @interpreter.num_input
@@ -514,24 +535,18 @@ end
     Mover.update(dt)  # Etappe 19g: Bewegungsrouten laufen IMMER (auch bei Text)
     Graphics.update         # Etappe 19h.2: RGSS-Frame-Zähler (frame_count)
     $game_system.update(dt) if $game_system   # 19h.2: XP-Timer tickt
-    if $game_player && @step_event
-      $game_player.increase_steps
-      $game_player.decrease_encounter_count
-      # Etappe 19l: Zufallskampf (XP Scene_Map): Zähler auf 0, Truppenliste
-      # der Karte nicht leer, kein Event läuft, nicht verboten -> Kampf
-      # starten (Flucht erlaubt, Niederlage = gameover wie XP) und den
-      # Zähler neu würfeln (XP call_battle). Schlägt der Start fehl
-      # (unbekannte Truppe), bleibt der Zähler auf 0 und der nächste
-      # Schritt versucht es erneut - wie XP bei ungültiger Truppe.
-      if $game_player.encounter_count == 0 && $game_map &&
-         !($game_system && $game_system.encounter_disabled) &&
-         !@interpreter.running? && !$game_map.encounter_list.empty?
-        troop = $game_map.encounter_list.sample
-        $game_player.make_encounter_count if battle_start(troop)
-      end
-    end
+    # Einen Schritt nur dann für Begegnungen vormerken, wenn er im Spiel und
+    # nicht bereits im Editor oder einem soeben gestarteten Kampf stattfand.
+    # Ob er zählt, entscheiden wir nach Events und dem F4-Moduswechsel.
+    encounter_schritt = @step_event && $game_player && !@editor.active? &&
+                        !(defined?(Battle) && Battle.active?)
+    $game_player.increase_steps if $game_player && @step_event
     @step_event = nil
     Graphics.scene_update   # Etappe 19h: $scene.main (RGSS-Szenen-Schleife)
+    if defined?(Battle) && Battle.active?
+      Rune::Simulation.paused = true
+      return
+    end
 
     # 19h.2: XP-Flags aus $game_temp beachten (Scene_Gameover/Title-Abruf).
     if $game_temp
@@ -636,6 +651,27 @@ end
       return
     end
     Rune::Simulation.paused = false
+
+    # Events und F4 haben Vorrang: ein im selben Schritt ausgelöstes Event
+    # darf nicht zusammen mit einem Zufallskampf starten. Ein gesperrter oder
+    # fehlgeschlagener Kampf lässt den Zähler bei 0; der nächste Schritt
+    # versucht es erneut. Nach Erfolg steht die Welt sofort still.
+    # Ein Script kann nach dem Vormerken teleportieren und damit die
+    # Schritt-Referenz zurücksetzen; dann darf der alte Schritt nicht zählen.
+    if encounter_schritt && @last_pos && $game_player && $game_map
+      $game_player.decrease_encounter_count
+      liste = $game_map.encounter_list
+      if $game_player.encounter_count == 0 && !liste.empty? &&
+         !($game_system && $game_system.encounter_disabled) &&
+         !@interpreter.running? && !(defined?(Battle) && Battle.active?)
+        if battle_start(liste.sample)
+          $game_player.make_encounter_count
+          @prompt = nil
+          Rune::Simulation.paused = true
+          return
+        end
+      end
+    end
 
     @scene.update(dt)
     update_picking

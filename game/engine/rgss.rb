@@ -303,6 +303,7 @@ module RGSS
 
     def moveto(x, z, yaw: Math::PI)
       Rune::Player.teleport(x.to_f, Game.gy(x.to_f, z.to_f) + 0.2, z.to_f)
+      Game.reset_step_tracking if Game.respond_to?(:reset_step_tracking)
       Rune::Camera.yaw = yaw.to_f
     end
 
@@ -447,9 +448,9 @@ module RGSS
     # Etappe 19l: Zufallskämpfe der Karte (XP Game_Map#encounter_list/
     # #encounter_step, 016). Karten-JSON:
     #   "encounters": { "troops": ["waldweg", "banditen"], "steps": 30 }
-    # troops: Truppen-IDs aus database.json (Zufallswahl pro Kampf);
-    # steps:  mittlere Schrittzahl zwischen Kämpfen (XP-Default 30).
-    # Ohne Schlüssel oder mit kaputten Werten: keine Kämpfe (leere Liste).
+    # troops: nicht-leere Truppen-IDs aus database.json (Zufallswahl);
+    # steps:  positive ganze mittlere Schrittzahl (XP-Default 30).
+    # Ungültige IDs werden übersprungen; ungültige steps ergeben 30.
     def encounter_list
       enc = (Game.map || {})['encounters']
       return [] unless enc.is_a?(Hash)
@@ -457,7 +458,7 @@ module RGSS
       troops = enc['troops']
       return [] unless troops.is_a?(Array)
 
-      troops.map(&:to_s).reject(&:empty?)
+      troops.select { |t| t.is_a?(String) && !t.strip.empty? }
     end
 
     def encounter_step
@@ -465,7 +466,10 @@ module RGSS
       return 30 unless enc.is_a?(Hash)
 
       n = enc['steps']
-      n.is_a?(Numeric) && n > 0 ? n.to_i : 30
+      return n if n.is_a?(Integer) && n.positive?
+      return n.to_i if n.is_a?(Float) && n.finite? && n >= 1 && n == n.floor
+
+      30
     end
   end
 
