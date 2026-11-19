@@ -170,6 +170,21 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Etappe 19a.
 
 ## Erledigt
+### [Engine/Editor] Bewegungsrouten (XP Move Routes) — erledigt (19g)
+- Wunsch: XP-Features einbauen (User, "Ja alles" auf die Roadmap
+  Bewegungsrouten/RGSS-Vertiefung/Zahleneingabe+Kampf).
+- Umsetzung: `game/engine/mover.rb` (Schritte up/down/left/right/zufall/
+  spieler_nah/spieler_weg/warte, repeat, Routen-Ersetzung, Spieler gleitet
+  per teleport, NPC `move_to` + Pfad-Pause), Interpreter-Befehl `move_route`
+  (wait blockiert bis zum Ende, repeat+wait warnt statt zu blockieren),
+  Editor-Befehlstyp ohne neue Controls, MapCheck-Prüfung, Context-Helfer
+  `move_route` (RGSS-Leitlinie), `Mover.reset!` bei Kartenwechsel.
+- Grenzen: keine Kollisions-/Passierbarkeitsprüfung (eigener Offener
+  Eintrag), keine Dreh-Schritte.
+- Betroffene Stellen: `game/engine/{mover,npc,interpreter,scripts,boot}.rb`,
+  `game/main.rb`, `game/engine/mapcheck.rb`, `src/editor/editor_main.cpp`,
+  `tools/{move_route_test,script_test,mapcheck_test}.rb`.
+
 ### [CI/Build] Artefakt enthielt keine Laufzeit-Daten — erledigt (19f)
 - Symptom (User-Konsole unter Downloads/Build): „Ruby-Fehler in
   game\editor\boot.rb: LoadError", „prefabs.json nicht gefunden",

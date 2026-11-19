@@ -45,6 +45,7 @@ require 'mapcheck'   # Etappe 19a: Karten-Daten prüfen (Regeln wie im Editor)
 require 'party'
 require 'event'
 require 'npc'
+require 'mover'      # Etappe 19g: Bewegungsrouten (XP Move Routes)
 require 'effects'
 require 'weather'
 require 'fade'        # Etappe 19d: Bildschirm ein-/ausblenden (XP-Feature)

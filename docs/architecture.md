@@ -1286,6 +1286,57 @@ die Events/NPCs der aktuellen Karte; `Game.map_id` kam mit 19d.
 Graphics-Frame-Umrechnung, Audio-Kürzung, JSON-Rundlauf) und Abschnitt 6 in
 `tools/script_test.rb` (fade/self_switch-Context-Helfer), beide kopflos.
 
+## Bewegungsrouten (Etappe 19g)
+
+Zweites großes XP-Feature nach den Self-Switches: Bewegungsrouten
+("Bewegungsroute festlegen") für NPCs und Spieler.
+
+**Mover (`game/engine/mover.rb`):** eine Route ist eine Schrittliste, die
+ein Ziel abläuft - pro Sekunde `speed` Meter, ein Schritt ist 1 m. Schritte:
+`up/down/left/right` (3D: -z/+z/-x/+x), `zufall`, `spieler_nah`,
+`spieler_weg` (normiert zum Spieler), `warte` (0.5 s). Optionen: `repeat`
+(Endlosschleife) und im Interpreter `wait` (Befehlsliste blockiert, bis die
+Route fertig ist - mit repeat absichtlich NICHT, sonst Endlos-Falle; Warnung).
+
+**Ziele:** `"spieler"` (gleitet per `Rune::Player.teleport` wie der
+move_player-Befehl, inkl. Bodenhöhe) oder ein NPC-Name. NPCs brauchen
+dafür `move_to(x,z)` (Event-Position + Node folgen - Reden/Benutzen bleibt
+an der neuen Stelle möglich). `Npc#update` pausiert sein Wegpunkt-Laufen,
+solange `Mover.moving?(self)` - die Route hat Vorrang, danach läuft die
+Patrouille weiter. Eine neue Route ersetzt die alte desselben Ziels (wie XP
+`force_move_route`).
+
+**Unabhängigkeit:** `Game.update` dreht `Mover.update(dt)` neben
+Effects/Fade - Routen laufen auch während Textfenstern/Wahlen weiter (XP-
+Verhalten). Kartenwechsel (`enter_map`) und Playtest-Ende rufen
+`Mover.reset!`: Routen sind flüchtig, Ziel-NPCs sind nach dem Neuaufbau
+andere Objekte (Savegames nehmen Routen nicht mit - wie bei XP).
+
+**Event-Befehl:** `{"cmd":"move_route","target":"Wanderer","steps":["up",
+"warte","spieler_nah"],"repeat":false,"wait":true,"speed":2.0}` - 24. Typ,
+synchron in `CMD_TYPES`/`ISSUE_CMD_TYPES`/`EV_TYPES`; MapCheck prüft
+target/steps-Pflicht, Schritt-Vokabular (eigene Konstante `MOVER_SCHRITTE`,
+weil mapcheck.rb vor mover.rb lädt - der Sync wird in move_route_test.rb
+gegen `Mover::SCHRITTE` assertet) und speed > 0.
+
+**Editor:** Befehlstyp "[Bewegung] Bewegungsroute" im Event-Dialog, ganz
+ohne neue Controls: Ziel im Namensfeld, Schritte als Zeilenliste im
+Textfeld (wie bei text/choices), Tempo in Wert 1, "Warten bis fertig"
+(1 = ja) in Wert 2, das an/aus-Combo = wiederholen (Default "an" wie im
+XP-Routen-Dialog).
+
+**Ruby-Zugang (RGSS-Leitlinie 19e):** `Mover.start('Wanderer', %w[up up],
+repeat: true)` aus jedem Script plus Context-Helfer
+`move_route(target, steps, repeat:, speed:)` für Event-Scripts.
+
+**Grenzen (Backlog):** keine Kollisionsprüfung unterwegs (Passierbarkeit
+fehlt insgesamt), keine Dreh-Schritte (turn_*) - Nodes rotieren sichtbar
+nicht, sichtbare Events ohne NPC-Körper können nicht laufen.
+
+**Tests:** `tools/move_route_test.rb` (Richtungen, Timing, warte/repeat/
+stop/Ersetzung, Spieler-Route, Interpreter wait/ohne wait/repeat+wait,
+MapCheck inkl. Sync-Assert), script_test.rb-Abschnitt 7 (Context-Helfer).
+
 ## Ruby-API (Stand Etappe 2)
 
 | API | Bedeutung |

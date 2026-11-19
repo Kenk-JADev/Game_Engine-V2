@@ -26,6 +26,8 @@
 #    {"cmd":"self_switch","letter":"A","value":true}     (Self-Switch, Etappe 19d)
 #    {"cmd":"if_self_switch","letter":"A","value":b,"then":[...],"else":[...]}  (19d)
 #    {"cmd":"fade","direction":"aus","seconds":0.5}      (Bildschirmblende, 19d)
+#    {"cmd":"move_route","target":"Wanderer","steps":["up","warte"],
+#     "repeat":false,"wait":false,"speed":2.0}        (Bewegungsroute, 19g)
 #    {"cmd":"save_game","slot":1} / {"cmd":"load_game","slot":1}           (18f)
 #    {"cmd":"script","name":"projekt_script"}  |  {"cmd":"script","code":"..."}
 # ============================================================================
@@ -38,10 +40,12 @@ class Interpreter
     @message = nil   # offene Textzeilen, wenn blockierend
     @choices = nil   # Wahlmöglichkeiten {options:, branches:, sel:}
     @wait_left = 0.0
+    @route_wait = nil  # Etappe 19g: move_route mit wait blockiert hier
   end
 
   def running?
-    !@stack.empty? || !@message.nil? || !@choices.nil? || @wait_left > 0.0
+    !@stack.empty? || !@message.nil? || !@choices.nil? || @wait_left > 0.0 ||
+      !@route_wait.nil?
   end
 
   def busy_text?
@@ -81,6 +85,12 @@ class Interpreter
     if @wait_left > 0.0
       @wait_left -= dt
       return
+    end
+
+    # Etappe 19g: move_route mit "wait" - blockieren, bis der Mover fertig ist.
+    if @route_wait
+      return if Mover.running?(@route_wait)
+      @route_wait = nil
     end
 
     # Kommandos abarbeiten, bis eines blockiert oder die Liste leer ist.
@@ -182,6 +192,18 @@ class Interpreter
         Weather.set(cmd['name'] || 'kein', (cmd['intensity'] || 1.0).to_f)
       when 'fade'   # {"cmd":"fade","direction":"aus","seconds":0.5} (Etappe 19d)
         Fade.start(cmd['direction'] || 'aus', cmd['seconds'] || 0.5)
+      when 'move_route'   # Bewegungsroute (Etappe 19g, RPG Maker XP)
+        route = Mover.start(cmd['target'], cmd['steps'],
+                            repeat: cmd['repeat'], speed: cmd['speed'])
+        if route && cmd['wait']
+          if cmd['repeat']
+            Rune::Log.warn('Interpreter: move_route wait+repeat - Warten ' \
+                           'würde nie enden (Route läuft endlos weiter)')
+          else
+            @route_wait = route
+            return
+          end
+        end
       else
         Rune::Log.warn("Interpreter: unbekanntes Kommando '#{cmd['cmd']}' übersprungen")
         Issues.report('Interpreter', "unbekanntes Kommando '#{cmd['cmd']}'")

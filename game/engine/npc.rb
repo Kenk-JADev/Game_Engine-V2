@@ -52,6 +52,9 @@ class Npc
   # zum übernächsten. Ohne Wegpunkte bleibt der NPC stehen. Steht der
   # Spieler im Weg (Etappe 15), wartet der NPC statt durch ihn zu laufen.
   def update(dt)
+    # Bewegungsroute aktiv (Etappe 19g)? Dann bewegt der Mover diesen NPC -
+    # das eigene Wegpunkt-Laufen pausiert, bis die Route fertig ist.
+    return if defined?(Mover) && Mover.moving?(self)
     return if @path.empty?
 
     tx, tz = @path[@target]
@@ -80,6 +83,14 @@ class Npc
       @event.z = nz
     end
 
+    @node.position = [@event.x, Game.gy(@event.x, @event.z) + 0.9, @event.z]
+  end
+
+  # Position direkt setzen (Bewegungsrouten, Etappe 19g): Event folgt, damit
+  # Reden/Benutzen an der neuen Stelle funktioniert, Node folgt fürs Bild.
+  def move_to(x, z)
+    @event.x = x.to_f
+    @event.z = z.to_f
     @node.position = [@event.x, Game.gy(@event.x, @event.z) + 0.9, @event.z]
   end
 

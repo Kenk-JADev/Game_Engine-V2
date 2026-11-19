@@ -759,7 +759,8 @@ const char* const ISSUE_CMD_TYPES[] = {
     "weather", "effect", "sound",
     "item", "gold",
     "save_game", "load_game",
-    "self_switch", "if_self_switch", "fade"
+    "self_switch", "if_self_switch", "fade",
+    "move_route"
 };
 const int ISSUE_CMD_TYPE_COUNT =
     static_cast<int>(sizeof(ISSUE_CMD_TYPES) / sizeof(ISSUE_CMD_TYPES[0]));
@@ -4524,6 +4525,7 @@ enum EvType {
     ET_ITEM, ET_GOLD,
     ET_SAVE_GAME, ET_LOAD_GAME,
     ET_SELF_SWITCH, ET_IF_SELF_SWITCH, ET_FADE,   // Etappe 19d (XP-Features)
+    ET_MOVE_ROUTE,                                // Etappe 19g (XP-Feature)
     ET_COUNT
 };
 const char* const EV_TYPES[ET_COUNT] = {
@@ -4534,7 +4536,8 @@ const char* const EV_TYPES[ET_COUNT] = {
     "weather", "effect", "sound",
     "item", "gold",
     "save_game", "load_game",
-    "self_switch", "if_self_switch", "fade"
+    "self_switch", "if_self_switch", "fade",
+    "move_route"
 };
 const wchar_t* const EV_TYPE_LABELS[ET_COUNT] = {
     L"[Nachricht] Text", L"[Nachricht] Wahlmöglichkeiten", L"[Nachricht] Log",
@@ -4547,7 +4550,8 @@ const wchar_t* const EV_TYPE_LABELS[ET_COUNT] = {
     L"[Party] Item geben/nehmen", L"[Party] Gold +/-",
     L"[Spiel] Spiel speichern", L"[Spiel] Spiel laden",
     L"[Steuerung] Self-Switch", L"[Steuerung] Wenn Self-Switch",
-    L"[Welt] Bild aus-/einblenden"
+    L"[Welt] Bild aus-/einblenden",
+    L"[Bewegung] Bewegungsroute"
 };
 const wchar_t* const EV_TRIGGERS[4] = { L"action", L"touch", L"auto", L"parallel" };
 const wchar_t* const EV_OPS[6] = { L"==", L"!=", L"<", L"<=", L">", L">=" };
@@ -4717,6 +4721,14 @@ std::string ev_cmd_label(const JsonValue& c) {
         const bool ein = ev_str_of(c, "direction", "aus") == "ein";
         return std::string(ein ? "Bild einblenden (" : "Bild ausblenden (") +
                ev_num_str(ev_num_of(c, "seconds"), 2) + " s)";
+    }
+    if (type == "move_route") {
+        const JsonValue* steps = c.find("steps");
+        const int n = (steps && steps->is_arr())
+                          ? static_cast<int>(steps->arr.size()) : 0;
+        return "Bewegungsroute: " + ev_str_of(c, "target") + " (" +
+               std::to_string(n) + (n == 1 ? " Schritt" : " Schritte") +
+               (ev_bool_of(c, "repeat") ? ", wiederholend)" : ")");
     }
     if (type == "teleport") {
         return "Teleport nach (" + ev_num_str(ev_num_of(c, "x"), 1) + ", " +
@@ -5028,22 +5040,25 @@ void ev_cmd_visibility() {
         ShowWindow(h, v ? SW_SHOW : SW_HIDE);
         EnableWindow(h, v ? TRUE : FALSE);
     };
-    const bool is_text = (t == ET_TEXT || t == ET_LOG || t == ET_CHOICES);
+    const bool is_text = (t == ET_TEXT || t == ET_LOG || t == ET_CHOICES ||
+                         t == ET_MOVE_ROUTE);
     const bool has_name = (t == ET_SWITCH || t == ET_TOGGLE_SWITCH || t == ET_VARIABLE ||
                           t == ET_IF_SWITCH || t == ET_IF_VARIABLE || t == ET_SCRIPT ||
                           t == ET_SOUND || t == ET_EFFECT || t == ET_ITEM || t == ET_WEATHER ||
-                          t == ET_SELF_SWITCH || t == ET_IF_SELF_SWITCH || t == ET_FADE);
+                          t == ET_SELF_SWITCH || t == ET_IF_SELF_SWITCH || t == ET_FADE ||
+                          t == ET_MOVE_ROUTE);
     const bool has_val1 = (t == ET_WAIT || t == ET_VARIABLE || t == ET_IF_VARIABLE ||
                           t == ET_TELEPORT || t == ET_MOVE_PLAYER || t == ET_SOUND ||
                           t == ET_EFFECT || t == ET_GOLD || t == ET_HEAL ||
                           t == ET_WEATHER || t == ET_SAVE_GAME || t == ET_LOAD_GAME ||
-                          t == ET_FADE);
+                          t == ET_FADE || t == ET_MOVE_ROUTE);
     const bool has_val2 = (t == ET_VARIABLE || t == ET_TELEPORT || t == ET_MOVE_PLAYER ||
-                          t == ET_EFFECT || t == ET_ITEM);
+                          t == ET_EFFECT || t == ET_ITEM || t == ET_MOVE_ROUTE);
     const bool has_val3 = (t == ET_TELEPORT);
     const bool has_op = (t == ET_IF_VARIABLE);
     const bool has_bool = (t == ET_SWITCH || t == ET_IF_SWITCH ||
-                          t == ET_SELF_SWITCH || t == ET_IF_SELF_SWITCH);
+                          t == ET_SELF_SWITCH || t == ET_IF_SELF_SWITCH ||
+                          t == ET_MOVE_ROUTE);
 
     show(g_ev.lbl_name, has_name);
     show(g_ev.ed_ce_name, has_name);
@@ -5070,6 +5085,14 @@ void ev_cmd_visibility() {
         SetWindowTextW(g_ev.lbl_name, L"Self-Switch (A-D)");
     if (t == ET_FADE) { SetWindowTextW(g_ev.lbl_name, L"Richtung (aus = dunkel, ein = hell)");
                   SetWindowTextW(g_ev.lbl_val1, L"Sekunden"); }
+    if (t == ET_MOVE_ROUTE) {
+        SetWindowTextW(g_ev.lbl_name, L"Ziel (NPC-Name oder 'spieler')");
+        SetWindowTextW(g_ev.lbl_val1, L"Tempo m/s (leer = Standard)");
+        SetWindowTextW(g_ev.lbl_val2, L"Warten bis fertig (1 = ja)");
+        // Ganze Schrittliste: up down left right zufall spieler_nah
+        // spieler_weg warte - steht in Doku und mover.rb-Kopf.
+        SetWindowTextW(g_ev.lbl_text, L"Schritte, einer pro Zeile (an/aus = wiederholen)");
+    }
     if (t == ET_VARIABLE) { SetWindowTextW(g_ev.lbl_name, L"Variable");
                   SetWindowTextW(g_ev.lbl_val1, L"Wert (leer = lassen)");
                   SetWindowTextW(g_ev.lbl_val2, L"Add (optional)"); }
@@ -5164,6 +5187,22 @@ void ev_load_cmd_form() {
     } else if (type == "fade") {
         ev_set_text(g_ev.ed_ce_name, ev_str_of(c, "direction", "aus"));
         ev_set_text(g_ev.ed_ce_val1, ev_num_str(ev_num_of(c, "seconds"), 2));
+    } else if (type == "move_route") {
+        // Etappe 19g: Schritte als Zeilenliste, wie bei text/choices.
+        ev_set_text(g_ev.ed_ce_name, ev_str_of(c, "target"));
+        const JsonValue* steps = c.find("steps");
+        std::string joined;
+        if (steps && steps->is_arr()) {
+            for (size_t i = 0; i < steps->arr.size(); ++i) {
+                if (i) joined += "\r\n";
+                joined += steps->arr[i].str;
+            }
+        }
+        ev_set_text(g_ev.ed_ce_text, joined);
+        if (c.find("speed"))
+            ev_set_text(g_ev.ed_ce_val1, ev_num_str(ev_num_of(c, "speed"), 2));
+        if (ev_bool_of(c, "wait")) ev_set_text(g_ev.ed_ce_val2, "1");
+        SendMessageW(g_ev.cb_ce_bool, CB_SETCURSEL, ev_bool_of(c, "repeat") ? 0 : 1, 0);
     } else if (type == "variable") {
         if (c.find("value")) ev_set_text(g_ev.ed_ce_val1, ev_num_str(ev_num_of(c, "value"), 2));
         if (c.find("add"))   ev_set_text(g_ev.ed_ce_val2, ev_num_str(ev_num_of(c, "add"), 2));
@@ -5499,6 +5538,26 @@ JsonValue ev_build_command(const JsonValue* existing) {
                        });
         cmd.set("direction", JsonValue::make_str(dir == "ein" ? "ein" : "aus"));
         cmd.set("seconds", JsonValue::make_num(ev_number(g_ev.ed_ce_val1, 0.5), false));
+    } else if (ti == ET_MOVE_ROUTE) {
+        // Etappe 19g: Ziel + Schritte (Zeilen); Tempo/Warten optional,
+        // "an/aus"-Combo = wiederholen (Default "an" wie im XP-Dialog).
+        cmd.set("target", JsonValue::make_str(ev_text(g_ev.ed_ce_name)));
+        const std::vector<std::string> lines = ev_split_lines(ev_text(g_ev.ed_ce_text));
+        JsonValue steps = JsonValue::make_arr();
+        for (const std::string& line : lines) {
+            if (line.empty()) continue;
+            steps.arr.push_back(JsonValue::make_str(line));
+        }
+        cmd.set("steps", steps);
+        if (!ev_text(g_ev.ed_ce_val1).empty()) {
+            const double sp = ev_number(g_ev.ed_ce_val1, 0.0);
+            if (sp > 0) cmd.set("speed", JsonValue::make_num(sp, false));
+        }
+        if (ev_number(g_ev.ed_ce_val2, 0.0) != 0.0) {
+            cmd.set("wait", JsonValue::make_bool(true));
+        }
+        const int b = static_cast<int>(SendMessageW(g_ev.cb_ce_bool, CB_GETCURSEL, 0, 0));
+        if (b == 0) cmd.set("repeat", JsonValue::make_bool(true));
     } else if (ti == ET_TOGGLE_SWITCH) {
         cmd.set("name", JsonValue::make_str(ev_text(g_ev.ed_ce_name)));
     } else if (ti == ET_VARIABLE) {

@@ -48,6 +48,7 @@ module MapCheck
     item gold
     save_game load_game
     self_switch if_self_switch fade
+    move_route
   ].freeze
 
   TRIGGER   = %w[action touch auto parallel].freeze
@@ -57,6 +58,9 @@ module MapCheck
   BEDINGUNGEN = %w[switch variable self_switch].freeze
   SELF_SWITCH_BUCHSTABEN = %w[A B C D].freeze     # Etappe 19d (XP: A-D)
   FADE_RICHTUNGEN = %w[ein aus].freeze            # Etappe 19d
+  # Etappe 19g: muss zu Mover::SCHRITTE passen (move_route_test prüft das -
+  # mapcheck.rb wird früher geladen als mover.rb, deshalb keine Referenz).
+  MOVER_SCHRITTE = %w[up down left right zufall spieler_nah spieler_weg warte].freeze
   SPEICHER_SLOTS = (1..3).freeze
 
   module_function
@@ -545,6 +549,23 @@ module MapCheck
         end
         if c.key?('seconds') && !(zahl?(c['seconds']) && c['seconds'] >= 0)
           melde(WARNUNG, w, "'seconds' muss eine Zahl >= 0 sein")
+        end
+      when 'move_route'
+        # Etappe 19g: Bewegungsroute (Ziel = NPC-Name oder 'spieler').
+        melde(FEHLER, w, "'target' fehlt oder ist leer") unless text?(c['target'])
+        steps = c['steps']
+        if !steps.is_a?(Array) || steps.empty?
+          melde(FEHLER, w, "'steps' fehlt/leer")
+        else
+          steps.each_with_index do |s, si|
+            unless MOVER_SCHRITTE.include?(s.to_s)
+              melde(WARNUNG, "#{w} Schritt ##{si + 1}",
+                    "unbekannter Schritt '#{s}' (#{MOVER_SCHRITTE.join('/')})")
+            end
+          end
+        end
+        if c.key?('speed') && !(zahl?(c['speed']) && c['speed'] > 0)
+          melde(WARNUNG, w, "'speed' muss eine Zahl > 0 sein")
         end
       end
     end

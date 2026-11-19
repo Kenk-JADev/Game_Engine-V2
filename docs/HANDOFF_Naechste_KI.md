@@ -1,4 +1,4 @@
-# Handoff für die nächste KI - Rune3D, Stand nach Etappe 19e
+# Handoff für die nächste KI - Rune3D, Stand nach Etappe 19g
 
 **Datum des Stands:** HEAD (nach Commit) — Etappe 19a: CI (GitHub Actions), portabler Build, Daten-Validierung
 **Projekt:** `C:/Users/jusagu/Desktop/Engine` — Windows-Only 3D-RPG-Engine (C++20/Win32/D3D11 + echtes CRuby 3.4.11), Editor = eigenes Programm `RuneEditor.exe`.
@@ -35,6 +35,8 @@ Der User beauftragte eine Überarbeitung von Engine und Editor **im Stil von RPG
 | 19c | `20494e1` + Nacharbeit `ad9ac18`, `3687d3a` (CI-Grün) | Editor-Hauptfenster professionell: linke Spalte als drei Gruppen mit Radio-Modi (`set_mode`), Objektliste als ListView (6 Spalten, sortierbar per Kopflick), Platzier-Vorschau („Geist" folgt dem Cursor, `R` dreht in 15°), Kontextmenü für Viewport und Liste, `log/editor_objects.json` als Leseweg für Live-Tests (edclick) |
 | 19d | `e56b692` + Nacharbeit `0660de3` (CI-Grün) | XP-Features Welle 1: Self-Switches A-D pro Event (GameState, Seiten-Bedingung, `self_switch`/`if_self_switch`, Savegame, Editor-Combos im Seite-Kasten) + Bildschirmblende (`fade.rb`, Befehl `fade`, Reset bei Kartenwechsel); 23 Befehlstypen synchron in CMD_TYPES/ISSUE_CMD_TYPES/EV_TYPES; Tests `self_switch_test.rb`, `fade_test.rb` |
 | 19e | `59845c1` (CI-Grün) | RGSS-Schicht (`game/engine/rgss.rb`): `$game_*`-Globale, `Graphics`/`Input`/`Audio`/`load_data`+`save_data` wie RPG Maker XP (Abweichungen: JSON statt Marshal, Namen statt IDs, kein `$scene`-Loop) + Launcher-Ersteinrichtung `:first` (ohne Projekt: Enter/N = erstellen, D = Demo, Esc = beenden; `ensure_demo` nicht mehr automatisch) + Context-Helfer `fade`/`self_switch` + `$game_system.menu_disabled/save_disabled` beachtet; Tests `rgss_test.rb`, script_test-Abschnitt 6 |
+| 19f | `96be63d` (CI-Grün) | Artefakt-Bugfix (User-Konsole): `Rune3D-Windows` enthält jetzt `game/` + `projekte/` neben den EXEs (CI kopiert sie nach `build/`); beide EXEs loggen einen klaren Hinweis, wenn `game/` unter der Wurzel fehlt |
+| 19g | HEAD | Bewegungsrouten (XP Move Routes): `mover.rb` (8 Schritte, repeat, wait, Ersetzung, Spieler/NPC-Ziele), Befehl `move_route` (24 Typen synchron), Editor-Formular ohne neue Controls, Context-Helfer, `Mover.reset!` bei enter_map; Tests `move_route_test.rb` + script_test-Abschnitt 7 |
 
 Alle Etappen sind gebaut, live getestet (headless Ruby-Tests + Fenster-Injektion) und committed. Es gibt **keine uncommitteten Quelländerungen**; `opencode.json` ist lokaler Harness-Kram (steht jetzt im .gitignore).
 

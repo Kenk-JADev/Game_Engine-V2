@@ -137,6 +137,12 @@ module Scripts
       Fade.start(direction.to_s, seconds.to_f)
     end
 
+    # Bewegungsroute starten (Etappe 19g): Ziel 'spieler' oder NPC-Name,
+    # Schritte z.B. %w[up up warte zufall]. Läuft nebenher (Mover).
+    def move_route(target, steps, repeat: false, speed: nil)
+      Mover.start(target, Array(steps), repeat: repeat, speed: speed)
+    end
+
     # Self-Switch des Besitzer-Events: ohne Argument lesen, mit Argument
     # setzen. Ohne Event (nil) liefern beide nil - das Script läuft ins Leere.
     def self_switch(letter, value = nil)

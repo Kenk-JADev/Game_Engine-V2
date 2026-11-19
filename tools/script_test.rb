@@ -57,6 +57,7 @@ require 'issues'
 require 'interpreter'
 require 'scripts'
 require 'fade'      # Etappe 19e: fade-Helfer im Context
+require 'mover'     # Etappe 19g: move_route-Helfer im Context
 
 module Effects
   LOG = []
@@ -185,6 +186,12 @@ begin
   check('self_switch-Helfer liest ohne Argument') { $rgss_gelesen == true }
   Scripts.run_code('ohne_event', "$rgss_ohne = self_switch 'C'", interp, ev)
   check('self_switch ohne Besitzer-Event -> nil') { $rgss_ohne.nil? }
+
+  # 7) Context-Helfer (Etappe 19g): move_route startet eine Bewegungsroute.
+  Mover.reset!
+  Scripts.run_code('route', "move_route 'spieler', %w[up]", interp, ev)
+  check('move_route-Helfer startet Route') { Mover.active? }
+  Mover.reset!
 ensure
   FileUtils.remove_entry(tmp)
 end

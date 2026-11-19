@@ -87,6 +87,7 @@ end
     @map_id = id
     @map = Database.map(id)
     Fade.reset!   # Etappe 19d: nie mit dunklem Bildschirm in eine Karte kommen
+    Mover.reset!  # Etappe 19g: Routen sind flüchtig (Ziel-NPCs sind neu)
     @events = (@map['events'] || []).map { |h| Event.new(h) }
     @map['objects'] ||= []
     # Etappe 18l: Terrain gehört zur Karte - beim Wechsel neu aufbauen,
@@ -446,6 +447,7 @@ end
 
     Effects.update(dt)
     Fade.update(dt)   # Etappe 19d: Bildschirmblende (XP-Fade) weiterdrehen
+    Mover.update(dt)  # Etappe 19g: Bewegungsrouten laufen IMMER (auch bei Text)
     px, py, pz = Rune::Player.position
     Weather.update(dt, px, py, pz)   # Etappe 17h: Regen/Schnee um den Spieler
 
