@@ -21,6 +21,7 @@
 #include "editor/database_form.h"
 #include "editor/encounter_check.h"
 #include "editor/encounter_form.h"
+#include "editor/event_form.h"
 #include "editor/map_document.h"
 #include "editor/map_props_form.h"
 #include "editor/number_format.h"
@@ -1133,6 +1134,483 @@ void map_document_tests(const std::string& wurzel) {
     }
 }
 
+// C++ erzeugt reale F6-Edits; tools/event_bridge_check.rb liest sie mit der
+// tatsächlichen Ruby-Event-/Interpreter-Laufzeit, nicht mit einem Nachbau.
+int event_bridge_modus(int argc, char** argv) {
+    using namespace rune::editor;
+    if (argc != 3) { std::fprintf(stderr, "Aufruf: json_test --event-bridge <ausgabe.json>\n"); return 2; }
+    const JsonValue old = json_parse(R"({"id":7,"name":"Brücke","x":1.23456789012345,"z":9007199254740993,"radius":2.75,"trigger":"touch","commands":[{"cmd":"if_switch","name":"quest","value":true,"then":[{"cmd":"text","lines":["Alt"],"extra":{"integer":9007199254740993}}],"else":[{"cmd":"text","lines":["Zu"]}],"condition_meta":42}],"visual":"schild","extra":{"keep":true}})");
+    EventBatch batch;
+    batch.page = 0;
+    batch.event_fields = true; batch.event_before = event_form_read(old); batch.event_after = batch.event_before;
+    batch.event_after.name = "Brücke neu";
+    batch.page_fields = true; batch.page_before = event_page_form_read(old, 0); batch.page_after = batch.page_before;
+    batch.page_after.switch_name = "offen"; batch.page_after.switch_value = 0;
+    batch.command = EventCommandAction::Update; batch.path = {{0, "then", 0}}; batch.command_index = 0;
+    const JsonValue& text = old.find("commands")->arr[0].find("then")->arr[0];
+    batch.command_before = event_command_form_read(text); batch.command_after = batch.command_before;
+    batch.command_after.text = "Neu";
+    const EventEdit migrated = event_batch_prepare(old, batch);
+    const EventEdit added = event_add_page_prepare(old);
+    const EventEdit copied = event_duplicate_prepare(old, 8);
+    JsonValue root = JsonValue::make_obj(), events = JsonValue::make_arr(), npcs = JsonValue::make_arr();
+    events.arr.push_back(old); events.arr.push_back(copied.value);
+    JsonValue npc = JsonValue::make_obj(); npc.set("name", JsonValue::make_str("Brücke (Kopie) 2"));
+    npcs.arr.push_back(std::move(npc));
+    root.set("events", std::move(events)); root.set("npcs", std::move(npcs));
+    const EventEdit unique_copy = event_duplicate_prepare(old, 9, &root);
+    EventCommandForm number_form; number_form.type = ET_INPUT_NUMBER; number_form.name = "anzahl";
+    number_form.val1 = "2"; number_form.val2 = "99"; number_form.flag = 1;
+    const EventEdit number = event_command_prepare(nullptr, EventCommandForm{}, number_form);
+    EventPageForm trigger_before = event_page_form_read(old, 0), trigger_after = trigger_before;
+    trigger_after.trigger = 3;
+    const EventEdit trigger = event_page_prepare(old, 0, trigger_before, trigger_after);
+    const JsonValue choice = json_parse(R"({"cmd":"choices","options":["Ja","Nein"],"branches":[[{"cmd":"log","text":"eins"}],[{"cmd":"log","text":"zwei"}],[{"extra":123}]],"meta":{"keep":true}})");
+    EventCommandForm cb = event_command_form_read(choice), ca = cb; ca.text = "Nein\r\nJa";
+    const EventEdit reordered = event_command_prepare(&choice, cb, ca);
+    if (!migrated.ok || !migrated.renames_event || !added.ok || !copied.ok || !unique_copy.ok || !number.ok ||
+        !trigger.ok || !reordered.ok || !reordered.reassigns_choices) {
+        std::fprintf(stderr, "F6-Brückenbeispiele konnten nicht vorbereitet werden.\n"); return 1;
+    }
+    JsonValue result = JsonValue::make_obj();
+    result.set("old", old); result.set("migrated", migrated.value); result.set("added", added.value);
+    result.set("copy", copied.value); result.set("unique_copy", unique_copy.value);
+    result.set("number", number.value); result.set("trigger", trigger.value);
+    result.set("choice_old", choice); result.set("choice_reordered", reordered.value);
+    if (!datei_schreiben(argv[2], json_write(result))) { std::fprintf(stderr, "F6-Brückendatei nicht schreibbar.\n"); return 1; }
+    return 0;
+}
+
+void event_form_tests(const std::string& wurzel) {
+    using namespace rune::editor;
+    std::printf("== Editor: F6-Datentreue und Transaktionen ==\n");
+    const JsonValue legacy = json_parse(R"({"id":5,"name":"Alt","x":1.23456789012345,"z":9007199254740993,"radius":2.123456789,"trigger":"touch","commands":[{"cmd":"if_switch","name":"quest","value":true,"meta":{"n":9007199254740993},"then":[{"cmd":"choices","options":["Ja","Nein"],"branches":[[{"cmd":"move_player","x":1.23456789,"z":9007199254740993,"relative":false,"custom":{"keep":7}}],[]],"extra":42}],"else":[]}],"visual":"schild","unknown":{"a":1}})");
+    const std::string saved = json_write(legacy);
+    check("Altformat zeigt eine implizite Seite ohne Migration", event_page_count(legacy) == 1 &&
+          event_legacy_page(legacy) && event_page_view(legacy, 0) == &legacy && json_write(legacy) == saved);
+    check("alte Befehle und Trigger werden nicht beim Lesen erzeugt/verschoben",
+          event_commands_view(legacy, 0) && event_commands_view(legacy, 0)->arr.size() == 1 &&
+          event_page_form_read(legacy, 0).trigger == 1 && json_write(legacy) == saved);
+    const JsonValue empty = json_parse(R"({"name":"Leer"})");
+    check("fehlende Felder und Befehle werden beim Lesen nicht angelegt",
+          event_page_count(empty) == 1 && !event_commands_view(empty, 0) && json_write(empty) == json_write(json_parse(R"({"name":"Leer"})")));
+    const JsonValue broken_pages = json_parse(R"({"pages":{"fremd":42},"trigger":"touch","commands":[]})");
+    check("ungültiges pages wird wie die Laufzeit als implizite Seite angesehen, aber erhalten",
+          event_legacy_page(broken_pages) && event_page_count(broken_pages) == 1 &&
+          !event_add_page_prepare(broken_pages).ok && broken_pages.find("pages")->is_obj());
+    const JsonValue duplicates = json_parse(R"({"pages":[],"pages":[{}],"x":1,"x":2})");
+    check("mehrfaches pages wird nicht anhand des ersten Treffers bearbeitet", event_page_count(duplicates) == 0 &&
+          !event_add_page_prepare(duplicates).ok);
+    const JsonValue bad_page = json_parse(R"({"pages":[null,"fremd",{"commands":[]}]})");
+    check("kaputte Seiten bleiben einzeln erhalten und nicht editierbar", event_page_count(bad_page) == 3 &&
+          !event_page_view(bad_page, 0) && !event_page_view(bad_page, 1) && event_page_view(bad_page, 2));
+
+    EventForm ev_before = event_form_read(legacy), ev_after = ev_before;
+    check("Event zeigt exakte Ganzzahl und ausreichend präzise Kommazahl",
+          ev_before.z == "9007199254740993" && ev_before.x == database_number_text(legacy.find("x")));
+    EventEdit edit = event_form_prepare(legacy, ev_before, ev_before);
+    check("unverändertes Event bleibt bytegleich im JSON-Modell", edit.ok && !edit.changed && json_write(edit.value) == saved);
+    ev_after.name = "Neu";
+    edit = event_form_prepare(legacy, ev_before, ev_after);
+    check("nur Name geändert: Position, Radius, Seiten und Zusatzdaten unverändert",
+          edit.ok && edit.changed && json_write(*edit.value.find("x")) == json_write(*legacy.find("x")) &&
+          json_write(*edit.value.find("z")) == json_write(*legacy.find("z")) &&
+          json_write(*edit.value.find("commands")) == json_write(*legacy.find("commands")) &&
+          json_write(*edit.value.find("unknown")) == json_write(*legacy.find("unknown")) && !edit.value.find("pages"));
+    check("Event-Umbenennung warnt vor Änderungen an Spielstand-/Self-Switch-Schlüsseln", edit.renames_event);
+    EventForm position_only = ev_before; position_only.x = "4";
+    check("reine Positionsänderung löst keine Umbenennungswarnung aus",
+          event_form_prepare(legacy, ev_before, position_only).ok &&
+          !event_form_prepare(legacy, ev_before, position_only).renames_event);
+    ev_after.x = "1,25"; ev_after.z = "kaputt";
+    edit = event_form_prepare(legacy, ev_before, ev_after);
+    check("ungültige Koordinate rollt auch vorherige Feldänderungen zurück", !edit.ok && !edit.changed && json_write(edit.value) == saved);
+    for (const std::string& invalid : {std::string(""), std::string("NaN"), std::string("1e999"), std::string("1x"),
+                                      std::string("0x1"), std::string("1000001"), std::string("2\0x", 3)}) {
+        ev_after = ev_before; ev_after.x = invalid;
+        check("ungültige Event-Position wird vollständig abgelehnt", !event_form_prepare(legacy, ev_before, ev_after).ok);
+    }
+    ev_after = ev_before; ev_after.radius = "0";
+    check("Radius muss positiv sein", !event_form_prepare(legacy, ev_before, ev_after).ok);
+    const JsonValue bad_event = json_parse(R"({"name":42,"x":"kaputt","z":1})");
+    ev_before = event_form_read(bad_event); ev_after = ev_before; ev_after.x = "3";
+    check("Ersetzen ungültiger Positionsdaten erfordert Bestätigung", event_form_prepare(bad_event, ev_before, ev_after).replaces_invalid);
+    ev_after = ev_before; ev_after.name = "Heilung";
+    check("Ersetzen ungültiger Namensdaten erfordert Bestätigung", event_form_prepare(bad_event, ev_before, ev_after).replaces_invalid);
+    const JsonValue dup_x = json_parse(R"({"x":1,"x":2,"name":"n"})");
+    ev_before = event_form_read(dup_x); ev_after = ev_before; ev_after.x = "3";
+    check("mehrfaches bearbeitetes Event-Feld wird abgelehnt", !event_form_prepare(dup_x, ev_before, ev_after).ok);
+    ev_after = ev_before; ev_after.name = "m";
+    check("unberührte doppelte Event-Felder bleiben erhalten", event_form_prepare(dup_x, ev_before, ev_after).ok &&
+          !event_unique(event_form_prepare(dup_x, ev_before, ev_after).value, "x"));
+    const JsonValue nul_name = json_parse(R"({"name":"a\u0000b"})");
+    ev_before = event_form_read(nul_name); ev_after = ev_before; ev_after.name = "sicher";
+    check("nicht darstellbarer Name kann nur mit Warnung ersetzt werden", event_form_prepare(nul_name, ev_before, ev_after).replaces_invalid);
+
+    EventPageForm pg_before = event_page_form_read(legacy, 0), pg_after = pg_before;
+    pg_after.trigger = 3;
+    edit = event_page_prepare(legacy, 0, pg_before, pg_after);
+    check("Trigger im Altformat bleibt Top-Level und erzeugt kein pages", edit.ok && edit.changed &&
+          !edit.value.find("pages") && edit.value.find("trigger")->str == "parallel" &&
+          json_write(*edit.value.find("commands")) == json_write(*legacy.find("commands")));
+    pg_after = pg_before; pg_after.switch_name = "tor"; pg_after.switch_value = 0;
+    edit = event_page_prepare(legacy, 0, pg_before, pg_after);
+    check("neue Bedingung migriert erst beim Bearbeiten und erhält alte Felder",
+          edit.ok && edit.value.find("pages") && edit.value.find("pages")->arr.size() == 1 &&
+          json_write(*edit.value.find("commands")) == json_write(*legacy.find("commands")) &&
+          json_write(*event_commands_view(edit.value, 0)) == json_write(*legacy.find("commands")) &&
+          edit.value.find("trigger")->str == "touch" &&
+          event_page_view(edit.value, 0)->find("conditions")->find("switch")->find("name")->str == "tor");
+    const EventEdit added = event_add_page_prepare(legacy);
+    check("Neue Seite migriert und erhält den alten Auslöser und alle Befehle",
+          added.ok && event_page_count(added.value) == 2 && added.value.find("trigger")->str == "touch" &&
+          json_write(*event_commands_view(added.value, 0)) == json_write(*legacy.find("commands")));
+    check("Seite löschen erhält Event- und Seitenmetadaten", added.ok && event_delete_page_prepare(added.value, 1).ok &&
+          event_page_count(event_delete_page_prepare(added.value, 1).value) == 1 &&
+          json_write(*event_delete_page_prepare(added.value, 1).value.find("unknown")) == json_write(*legacy.find("unknown")));
+    check("letzte Seite kann nicht gelöscht werden", !event_delete_page_prepare(legacy, 0).ok);
+    for (const char* text : {R"({"trigger":"unbekannt","commands":[]})", R"({"trigger":3,"commands":[]})",
+                             R"({"trigger":"touch","commands":{"alt":1}})", R"({"trigger":"touch","trigger":"auto"})"}) {
+        const JsonValue v = json_parse(text);
+        const EventEdit bad = event_add_page_prepare(v);
+        check("nicht äquivalente/mehrdeutige Altdaten verhindern Migration", !bad.ok && json_write(bad.value) == json_write(v));
+    }
+    const JsonValue empty_pages = json_parse(R"({"pages":[],"trigger":"auto","commands":[{"cmd":"wait","seconds":1}]})");
+    check("leeres pages-Array migriert wie das implizite Altformat", event_add_page_prepare(empty_pages).ok &&
+          event_page_count(event_add_page_prepare(empty_pages).value) == 2);
+
+    const JsonValue rich = json_parse(R"({"pages":[{"trigger":"action","conditions":{"other":{"keep":7},"switch":{"name":"a","value":true,"meta":123},"variable":{"name":"v","op":">=","value":12345678901234567890,"units":"gold"},"self_switch":{"letter":"B","value":true,"extra":9}},"commands":[],"page_extra":5}]})");
+    pg_before = event_page_form_read(rich, 0); pg_after = pg_before; pg_after.switch_name = "b";
+    edit = event_page_prepare(rich, 0, pg_before, pg_after);
+    const JsonValue* rich_cond = edit.ok ? event_page_view(edit.value, 0)->find("conditions") : nullptr;
+    check("Schaltername ändert nur sein Feld und erhält Metadaten und andere Bedingungen",
+          rich_cond && rich_cond->find("switch")->find("meta")->number() == 123 &&
+          json_write(*rich_cond->find("variable")) == json_write(*event_page_view(rich, 0)->find("conditions")->find("variable")) &&
+          rich_cond->find("other") && rich_cond->find("self_switch"));
+    pg_after = pg_before; pg_after.variable_value = "3,5"; pg_after.self_value = 1;
+    edit = event_page_prepare(rich, 0, pg_before, pg_after);
+    rich_cond = edit.ok ? event_page_view(edit.value, 0)->find("conditions") : nullptr;
+    check("Variablen-/Self-Switch-Änderung erhält Unterobjekt-Zusatzdaten",
+          rich_cond && rich_cond->find("variable")->find("units")->str == "gold" &&
+          rich_cond->find("self_switch")->find("extra")->number() == 9 &&
+          rich_cond->find("variable")->find("value")->number() == 3.5);
+    pg_after = pg_before; pg_after.switch_name.clear();
+    edit = event_page_prepare(rich, 0, pg_before, pg_after);
+    check("Entfernen einer Bedingung warnt und erhält fremde Bedingungen", edit.ok && edit.removes_condition &&
+          !event_page_view(edit.value, 0)->find("conditions")->find("switch") &&
+          event_page_view(edit.value, 0)->find("conditions")->find("other"));
+    pg_after = pg_before; pg_after.trigger = 1; pg_after.variable_value = "ungültig";
+    edit = event_page_prepare(rich, 0, pg_before, pg_after);
+    check("ungültiger Bedingungswert verwirft Trigger und alle übrigen Seitenänderungen",
+          !edit.ok && !edit.changed && json_write(edit.value) == json_write(rich));
+    const JsonValue dup_cond = json_parse(R"({"pages":[{"conditions":{"switch":{"name":"a","name":"b","value":true}}}]})");
+    pg_before = event_page_form_read(dup_cond, 0); pg_after = pg_before; pg_after.switch_name = "c";
+    check("mehrfacher Bedingungsname blockiert nur diese Änderung", !event_page_prepare(dup_cond, 0, pg_before, pg_after).ok);
+    pg_after = pg_before; pg_after.trigger = 1;
+    check("Triggeränderung lässt doppelte Bedingungen unangetastet", event_page_prepare(dup_cond, 0, pg_before, pg_after).ok);
+    const JsonValue bad_cond = json_parse(R"({"pages":[{"conditions":{"fremd":1},"trigger":"seltsam"}]})");
+    pg_before = event_page_form_read(bad_cond, 0); pg_after = pg_before; pg_after.trigger = 2;
+    check("unbekannter Trigger wird nicht als action überschrieben", pg_before.trigger == -1 &&
+          event_page_prepare(bad_cond, 0, pg_before, pg_after).replaces_invalid);
+
+    const std::vector<std::string> samples = {
+        R"({"cmd":"text","lines":["a","b"]})", R"({"cmd":"choices","options":["a"],"branches":[[]]})",
+        R"({"cmd":"log","text":"a\nb"})", R"({"cmd":"wait","seconds":1.23456789})",
+        R"({"cmd":"switch","name":"a","value":true})", R"({"cmd":"toggle_switch","name":"a"})",
+        R"({"cmd":"variable","name":"a","value":9007199254740993,"add":0.123456789})",
+        R"({"cmd":"if_switch","name":"a","value":false,"then":[{"cmd":"log","text":"x"}],"else":[]})",
+        R"({"cmd":"if_variable","name":"a","value":1.23456789,"op":">=","then":[],"else":[]})",
+        R"({"cmd":"script","name":"a","code":"side_effect"})", R"({"cmd":"teleport","x":1,"z":2,"yaw":3.141592653589793})",
+        R"({"cmd":"move_player","x":1.23456789,"z":2,"relative":false})", R"({"cmd":"heal","amount":10})",
+        R"({"cmd":"weather","name":"regen","intensity":0.123456789})", R"({"cmd":"effect","name":"burst","height":1,"color":0})",
+        R"({"cmd":"sound","name":"a","volume":0.123456789})", R"({"cmd":"item","name":"a","take":9007199254740993})",
+        R"({"cmd":"gold","amount":9007199254740993})", R"({"cmd":"save_game","slot":2})", R"({"cmd":"load_game","slot":3})",
+        R"({"cmd":"self_switch","letter":"A","value":true})", R"({"cmd":"if_self_switch","letter":"B","value":false,"then":[],"else":[]})",
+        R"({"cmd":"fade","direction":"ein","seconds":0.123456789})", R"({"cmd":"move_route","target":"x","steps":["up"],"speed":2.123456789,"repeat":false,"wait":true,"code":"a"})",
+        R"({"cmd":"input_number","name":"a","digits":3,"initial":99,"cancel":false})", R"({"cmd":"battle","name":"a","can_escape":false,"can_lose":true})"
+    };
+    check("Beispiel für jeden der 26 Befehlstypen vorhanden", samples.size() == ET_COUNT);
+    for (size_t i = 0; i < samples.size(); ++i) {
+        JsonValue c = json_parse(samples[i]); c.set("extra_meta", json_parse(R"({"n":9007199254740993})"));
+        const EventCommandForm f = event_command_form_read(c);
+        const EventEdit noop = event_command_prepare(&c, f, f);
+        const std::string label = "unberührter Befehl inkl. Zusatzdaten: " + std::string(EV_TYPES[i]);
+        check(label.c_str(), f.type == static_cast<int>(i) && noop.ok && !noop.changed && json_write(noop.value) == json_write(c));
+        const EventEdit created = event_command_prepare(nullptr, EventCommandForm{}, f);
+        const std::string create_label = "Befehl aus gültigem Formular neu erzeugen: " + std::string(EV_TYPES[i]);
+        check(create_label.c_str(), created.ok && created.changed && created.value.find("cmd") &&
+              created.value.find("cmd")->str == EV_TYPES[i]);
+        EventCommandForm changed = f;
+        switch (i) {
+            case ET_TEXT: case ET_CHOICES: case ET_LOG: changed.text = "neuer Text"; break;
+            case ET_WAIT: case ET_TELEPORT: case ET_MOVE_PLAYER: case ET_HEAL: case ET_GOLD: changed.val1 = "4"; break;
+            case ET_SAVE_GAME: case ET_LOAD_GAME: changed.val1 = "1"; break;
+            case ET_SELF_SWITCH: case ET_IF_SELF_SWITCH: changed.name = "C"; break;
+            case ET_FADE: changed.name = "aus"; break;
+            default: changed.name = "neuer_name"; break;
+        }
+        const EventEdit patched = event_command_prepare(&c, f, changed);
+        const std::string patch_label = "Teiländerung erhält zusätzliche Befehlsdaten: " + std::string(EV_TYPES[i]);
+        check(patch_label.c_str(), patched.ok && patched.changed && patched.value.find("extra_meta") &&
+              json_write(*patched.value.find("extra_meta")) == json_write(*c.find("extra_meta")));
+    }
+    JsonValue move = json_parse(samples[ET_MOVE_PLAYER]);
+    move.set("extra", json_parse(R"({"data":[1,2]})"));
+    EventCommandForm cmd_before = event_command_form_read(move), cmd_after = cmd_before;
+    cmd_after.val1 = "4,25";
+    edit = event_command_prepare(&move, cmd_before, cmd_after);
+    check("Spielerbewegung behält relative=false, Z-Präzision und Zusatzdaten", edit.ok &&
+          edit.value.find("relative") && !edit.value.find("relative")->b && edit.value.find("extra") &&
+          json_write(*edit.value.find("z")) == json_write(*move.find("z")));
+    JsonValue script = json_parse(samples[ET_SCRIPT]);
+    cmd_before = event_command_form_read(script); cmd_after = cmd_before; cmd_after.name = "b";
+    edit = event_command_prepare(&script, cmd_before, cmd_after);
+    check("Script-Änderung erhält unsichtbaren Inline-Code", edit.ok && edit.value.find("code")->str == "side_effect");
+    JsonValue var = json_parse(samples[ET_VARIABLE]);
+    cmd_before = event_command_form_read(var); cmd_after = cmd_before; cmd_after.name = "b";
+    edit = event_command_prepare(&var, cmd_before, cmd_after);
+    check("Variable behält große Ganzzahl und präzises Add", edit.ok &&
+          json_write(*edit.value.find("value")) == json_write(*var.find("value")) &&
+          json_write(*edit.value.find("add")) == json_write(*var.find("add")));
+    cmd_after.val1 = "42"; cmd_after.val2 = "falsch";
+    edit = event_command_prepare(&var, cmd_before, cmd_after);
+    check("ungültiger Befehl rollt alle Befehl-Felder zurück", !edit.ok && json_write(edit.value) == json_write(var));
+    const JsonValue huge_color = json_parse("{\"cmd\":\"effect\",\"name\":\"burst\",\"color\":" + std::string(400, '9') + "}");
+    check("extreme Farbe wird ohne unsicheren Integer-Cast angezeigt", event_command_form_read(huge_color).val2 == "[ungültig]");
+    cmd_before = event_command_form_read(huge_color); cmd_after = cmd_before; cmd_after.val2 = "000000";
+    edit = event_command_prepare(&huge_color, cmd_before, cmd_after);
+    check("Schwarz ist gültige Farbe und Ersetzen extremer Farbe wird bestätigt", edit.ok && edit.replaces_invalid && edit.value.find("color")->number() == 0);
+    cmd_after = cmd_before; cmd_after.val2 = "XX";
+    check("ungültige Hex-Farbe wird nicht zu Standardfarbe", !event_command_prepare(&huge_color, cmd_before, cmd_after).ok);
+    const JsonValue malformed_list = json_parse(R"({"cmd":"text","lines":["a",{"extra":7},"b"]})");
+    cmd_before = event_command_form_read(malformed_list); cmd_after = cmd_before; cmd_after.text = "neu";
+    check("Ersetzen nicht darstellbarer Textliste erfordert Warnung", event_command_prepare(&malformed_list, cmd_before, cmd_after).replaces_invalid);
+    const JsonValue unknown = json_parse(R"({"cmd":"fremd","then":[{"x":1}],"extra":2})");
+    cmd_before = event_command_form_read(unknown); cmd_after = cmd_before; cmd_after.type = ET_TEXT; cmd_after.text = "neu";
+    edit = event_command_prepare(&unknown, cmd_before, cmd_after);
+    check("Befehlstypwechsel verlangt explizite Bestätigung", edit.ok && edit.converts_command);
+    const JsonValue dup_cmd = json_parse(R"({"cmd":"text","cmd":"log","lines":["alt"]})");
+    cmd_before = event_command_form_read(dup_cmd); cmd_after = cmd_before; cmd_after.type = ET_TEXT;
+    check("mehrfacher cmd-Schlüssel verhindert Umwandlung", !event_command_prepare(&dup_cmd, cmd_before, cmd_after).ok);
+    JsonValue choices = json_parse(R"({"cmd":"choices","options":["a","b"],"branches":[[{"cmd":"log","text":"a"}],[{"cmd":"log","text":"b"}],[{"extra":7}]],"meta":42})");
+    cmd_before = event_command_form_read(choices); cmd_after = cmd_before; cmd_after.text = "b\r\na";
+    edit = event_command_prepare(&choices, cmd_before, cmd_after);
+    check("Optionen umordnen warnt vor Indexzuordnung und erhält sämtliche Zweige",
+          edit.ok && edit.reassigns_choices && json_write(*edit.value.find("branches")) == json_write(*choices.find("branches")) && edit.value.find("meta"));
+    cmd_after.text = "nur eins"; edit = event_command_prepare(&choices, cmd_before, cmd_after);
+    check("weniger Optionen verwerfen keinen zusätzlichen Zweig", edit.ok && edit.reassigns_choices && edit.value.find("branches")->arr.size() == 3);
+    cmd_after.text = "a\r\n\r\nb";
+    check("leere Optionen werden nicht still entfernt", !event_command_prepare(&choices, cmd_before, cmd_after).ok);
+    JsonValue item = json_parse(samples[ET_ITEM]);
+    cmd_before = event_command_form_read(item);
+    check("große Item-Entnahme wird exakt mit negativem Vorzeichen angezeigt", cmd_before.val2 == "-9007199254740993");
+    cmd_after = cmd_before; cmd_after.val2 = "5";
+    edit = event_command_prepare(&item, cmd_before, cmd_after);
+    check("Wechsel von take zu count warnt vor Entfernen des alten Feldes", edit.ok && edit.replaces_invalid &&
+          !edit.value.find("take") && edit.value.find("count")->integer_text() == "5");
+
+    EventBatch batch;
+    batch.page = 0; batch.event_fields = true; batch.event_before = event_form_read(legacy); batch.event_after = batch.event_before;
+    batch.event_after.name = "Geändert";
+    batch.page_fields = true; batch.page_before = event_page_form_read(legacy, 0); batch.page_after = batch.page_before;
+    batch.page_after.variable_name = "score"; batch.page_after.variable_value = "kaputt";
+    edit = event_batch_prepare(legacy, batch);
+    check("mehrere Formulare sind zusammen atomar: kein Eventname bei ungültiger Seite", !edit.ok && json_write(edit.value) == saved);
+    batch.page_after.variable_value = "3.5";
+    batch.command = EventCommandAction::Update;
+    batch.path = {{0, "then", 0}, {0, "branches", 0}}; batch.command_index = 0;
+    const JsonValue* old_nested = &legacy.find("commands")->arr[0].find("then")->arr[0].find("branches")->arr[0].arr[0];
+    batch.command_before = event_command_form_read(*old_nested); batch.command_after = batch.command_before;
+    batch.command_after.val1 = "8"; batch.command_after.val2 = "oops";
+    edit = event_batch_prepare(legacy, batch);
+    check("ungültiger verschachtelter Befehl rollt Event, Seitenmigration und Befehl zurück", !edit.ok && json_write(edit.value) == saved);
+    batch.command_after.val2 = batch.command_before.val2;
+    edit = event_batch_prepare(legacy, batch);
+    check("Event, Migration und verschachtelter Befehl werden gemeinsam vorbereitet", edit.ok && edit.changed &&
+          edit.value.find("pages") && edit.value.find("name")->str == "Geändert" && !edit.converts_command);
+    check("Umbenennungswarnung bleibt beim gemeinsamen Batch erhalten", edit.ok && edit.renames_event);
+    std::string error;
+    JsonValue* nested = edit.ok ? event_command_list_mutable(edit.value, 0, batch.path, false, error) : nullptr;
+    check("Pfad bleibt nach Migration gültig; relative und Metadaten bleiben", nested && nested->arr[0].find("x")->number() == 8 &&
+          !nested->arr[0].find("relative")->b && nested->arr[0].find("custom") &&
+          nested->arr[0].find("z")->integer_text() == "9007199254740993");
+    EventBatch ins;
+    ins.page = 0; ins.command = EventCommandAction::Insert; ins.path = {{0, "else", 0}};
+    ins.command_after.type = ET_LOG; ins.command_after.text = "neuer Zweig";
+    edit = event_batch_prepare(legacy, ins);
+    nested = edit.ok ? event_command_list_mutable(edit.value, 0, ins.path, false, error) : nullptr;
+    check("Einfügen in leeren Wenn-Zweig erhält andere Zweige", nested && nested->arr.size() == 1 &&
+          json_write(*edit.value.find("commands")->arr[0].find("then")) == json_write(*legacy.find("commands")->arr[0].find("then")));
+    const JsonValue missing_branch = json_parse(R"({"commands":[{"cmd":"if_switch","name":"x","value":true}]})");
+    ins.path = {{0, "then", 0}};
+    edit = event_batch_prepare(missing_branch, ins);
+    check("fehlender Zweig entsteht erst beim Einfügen, nicht beim Anzeigen", edit.ok &&
+          !missing_branch.find("commands")->arr[0].find("then") && edit.value.find("commands")->arr[0].find("then"));
+    const JsonValue invalid_branch = json_parse(R"({"commands":[{"cmd":"if_switch","then":{"meta":1}}]})");
+    edit = event_batch_prepare(invalid_branch, ins);
+    check("beschädigter Zweig wird nicht überschrieben", !edit.ok && json_write(edit.value) == json_write(invalid_branch));
+    const JsonValue missing_choices = json_parse(R"({"commands":[{"cmd":"choices","options":["a","b"]}]})");
+    ins.path = {{0, "branches", 1}};
+    edit = event_batch_prepare(missing_choices, ins);
+    nested = edit.ok ? event_command_list_mutable(edit.value, 0, ins.path, false, error) : nullptr;
+    check("fehlende Wahlzweige werden bei Einfügen bis zum Ziel angelegt", nested && nested->arr.size() == 1 &&
+          edit.value.find("commands")->arr[0].find("branches")->arr.size() == 2);
+    const JsonValue invalid_commands = json_parse(R"({"commands":{"custom":42}})");
+    ins.path.clear(); edit = event_batch_prepare(invalid_commands, ins);
+    check("ungültige Befehlsliste wird beim Einfügen nicht ersetzt", !edit.ok && json_write(edit.value) == json_write(invalid_commands));
+    ins.command_after.type = ET_WAIT; ins.command_after.val1 = "unsinn";
+    check("ungültiger neuer Befehl wird nicht eingefügt", !event_batch_prepare(empty, ins).ok);
+    ins.command_after.val1 = "2";
+    edit = event_batch_prepare(empty, ins);
+    check("fehlende Befehlsliste entsteht erst beim gültigen Einfügen", edit.ok && !empty.find("commands") &&
+          event_commands_view(edit.value, 0)->arr.size() == 1 && !edit.value.find("pages"));
+    edit = event_command_remove_or_move(legacy, 0, {{0, "then", 0}, {0, "branches", 0}}, 0, 0);
+    check("verschachteltes Löschen lässt andere Metadaten und Zweige stehen", edit.ok && edit.changed &&
+          edit.value.find("commands")->arr[0].find("meta") &&
+          edit.value.find("commands")->arr[0].find("then")->arr[0].find("branches")->arr[1].is_arr());
+
+    edit = event_duplicate_prepare(legacy, 77);
+    check("Duplikat erhält Altformat und Zusatzdaten; Original bleibt unverändert", edit.ok &&
+          !edit.value.find("pages") && edit.value.find("id")->integer_text() == "77" &&
+          edit.value.find("z")->integer_text() == "9007199254740994" &&
+          edit.value.find("name")->str == "Alt (Kopie)" && edit.value.find("unknown") && json_write(legacy) == saved);
+    check("Duplizieren mehrfacher Positionsschlüssel wird verhindert", !event_duplicate_prepare(dup_x, 8).ok);
+    check("Duplizieren eines fremden Namensobjekts wird verhindert", !event_duplicate_prepare(bad_event, 8).ok);
+    check("Duplikat benötigt eine positive Event-ID", !event_duplicate_prepare(legacy, 0).ok);
+    check("normal verschobene Koordinaten erfordern keine Kopierwarnung", !event_duplicate_prepare(legacy, 8).unshifted_coordinate);
+    const JsonValue missing_position = json_parse(R"({"name":"Leer","z":null})");
+    const EventEdit missing_copy = event_duplicate_prepare(missing_position, 8);
+    check("fehlende und null-Koordinaten bleiben erhalten, Kopie warnt vor gleicher Position",
+          missing_copy.ok && missing_copy.unshifted_coordinate && !missing_copy.value.find("x") &&
+          missing_copy.value.find("z")->is_null());
+    const JsonValue invalid_position = json_parse(R"({"name":"Defekt","x":"alt","z":2})");
+    const EventEdit invalid_copy = event_duplicate_prepare(invalid_position, 8);
+    check("ungültige Koordinate bleibt in der Kopie erhalten und löst Warnung aus",
+          invalid_copy.ok && invalid_copy.unshifted_coordinate && invalid_copy.value.find("x")->str == "alt" &&
+          invalid_copy.value.find("z")->number() == 3);
+    const JsonValue imprecise_position = json_parse(R"({"name":"Weit","x":1e100,"z":0})");
+    const EventEdit imprecise_copy = event_duplicate_prepare(imprecise_position, 8);
+    check("nicht darstellbares Float-Inkrement bleibt unverändert und wird gemeldet",
+          imprecise_copy.ok && imprecise_copy.unshifted_coordinate &&
+          json_write(*imprecise_copy.value.find("x")) == json_write(*imprecise_position.find("x")));
+    const std::string enormous(400, '9');
+    const JsonValue huge_position = json_parse("{\"name\":\"Gross\",\"x\":" + enormous + ",\"z\":0}");
+    const EventEdit huge_copy = event_duplicate_prepare(huge_position, 8);
+    check("400-stellige Ganzzahl wird trotz unendlicher double-Näherung exakt inkrementiert",
+          huge_copy.ok && !huge_copy.unshifted_coordinate &&
+          huge_copy.value.find("x")->integer_text() == "1" + std::string(400, '0'));
+
+    const JsonValue names = json_parse(R"json({"events":[{"name":"Alt"},{"name":"Alt (Kopie)"},{"name":"Alt (Kopie) 2"},{"name":null},{"name":"erstes","name":"letztes"},{"name":12}],"npcs":[{"name":"Event 1"},{"name":"NPC-Name"}]})json");
+    check("Namensprüfung berücksichtigt NPCs, Fallback und doppelte Schlüssel",
+          event_name_used(names, "NPC-Name") && event_name_used(names, "Event") &&
+          event_name_used(names, "erstes") && event_name_used(names, "letztes") && event_name_used(names, "12"));
+    check("der eigene Eventname darf unverändert bleiben", !event_name_used(names, "Alt", 0));
+    check("neuer Eventname weicht NPC-Namen aus", event_available_name(names, "Event 1") == "Event 1 2");
+    const EventEdit named_copy = event_duplicate_prepare(names.find("events")->arr[0], 8, &names);
+    check("wiederholtes Duplizieren erzeugt einen eindeutigen Namen für Self-Switches",
+          named_copy.ok && named_copy.value.find("name")->str == "Alt (Kopie) 3" &&
+          !event_name_used(names, named_copy.value.find("name")->str));
+
+    const JsonValue duplicate_ids = json_parse(R"({"events":[{"id":1,"id":2},{"id":3},{"id":9007199254740993}]})");
+    check("neue ID beachtet alle mehrfachen ID-Schlüssel", event_next_id(duplicate_ids) == 4);
+    const JsonValue mixed_ids = json_parse("{\"events\":[{\"id\":1.0},{\"id\":2.5},{\"id\":-1},{\"id\":" + enormous + "}]}");
+    check("ID-Vergabe ignoriert nicht-ganzzahlige und extreme Werte sicher", event_next_id(mixed_ids) == 2);
+    check("uneindeutige oder ungültige Eventliste erhält keine neue ID",
+          event_next_id(json_parse(R"({"events":[],"events":[]})")) == 0 &&
+          event_next_id(json_parse(R"({"events":{}})")) == 0);
+    JsonValue many_events = JsonValue::make_obj();
+    JsonValue id_list = JsonValue::make_arr();
+    for (int i = 1; i <= 12000; ++i) {
+        JsonValue item = JsonValue::make_obj();
+        item.set("id", JsonValue::make_integer(std::to_string(i)));
+        id_list.arr.push_back(std::move(item));
+    }
+    many_events.set("events", std::move(id_list));
+    check("ID-Vergabe bleibt auch bei 12000 lückenlosen Events handhabbar", event_next_id(many_events) == 12001);
+
+    const bool all_fields[] = {true, true, true, true, true};
+    const bool protected_text[] = {true, true, true, true, false};
+    const bool protected_name[] = {false, true, true, true, true};
+    check("Sichtbarkeit und Schutz nutzen dieselbe F6-Feldzuordnung",
+          event_command_fields_available(ET_MOVE_ROUTE, all_fields) &&
+          !event_command_fields_available(ET_TEXT, protected_text) &&
+          event_command_fields_available(ET_WAIT, protected_text) &&
+          !event_command_fields_available(ET_SWITCH, protected_name) &&
+          !event_command_uses_field(-1, 0) && !event_command_uses_field(ET_TEXT, 5));
+    const JsonValue duplicate_relative = json_parse(R"({"cmd":"move_player","x":1,"z":2,"relative":true,"relative":false})");
+    cmd_before = event_command_form_read(duplicate_relative); cmd_after = cmd_before; cmd_after.val1 = "3";
+    check("mehrdeutiges verstecktes relative blockiert die Befehlsänderung", !event_command_prepare(&duplicate_relative, cmd_before, cmd_after).ok);
+    const JsonValue duplicate_num = json_parse(R"({"cmd":"wait","seconds":1,"seconds":2})");
+    check("mehrfaches Befehlsfeld wird nicht als eindeutiger erster Wert angezeigt",
+          event_command_form_read(duplicate_num).val1 == "[mehrfach vorhanden]");
+    const JsonValue long_text = json_parse("{\"cmd\":\"text\",\"lines\":[\"" + std::string(20000, 'a') + "\"]}");
+    cmd_before = event_command_form_read(long_text); cmd_after = cmd_before;
+    check("mehr als 8192 Textzeichen bleiben beim Lesen und unverändertem Übernehmen erhalten",
+          cmd_before.text.size() == 20000 && json_write(event_command_prepare(&long_text, cmd_before, cmd_after).value) == json_write(long_text));
+    EventCommandForm invalid_new; invalid_new.type = ET_INPUT_NUMBER; invalid_new.name = "n"; invalid_new.val1 = "7";
+    check("Ziffernzahl außerhalb 1–6 wird nicht geklemmt", !event_command_prepare(nullptr, EventCommandForm{}, invalid_new).ok);
+    invalid_new.val1 = "3"; invalid_new.val2 = "-1";
+    check("negativer Startwert wird nicht still verworfen", !event_command_prepare(nullptr, EventCommandForm{}, invalid_new).ok);
+    invalid_new.val1 = "2"; invalid_new.val2 = "100";
+    check("Startwert außerhalb der Ziffernzahl wird nicht still im Spiel geklemmt",
+          !event_command_prepare(nullptr, EventCommandForm{}, invalid_new).ok);
+    invalid_new.val2 = "99";
+    check("größter passender Startwert wird zugelassen", event_command_prepare(nullptr, EventCommandForm{}, invalid_new).ok);
+    invalid_new.val1.clear(); invalid_new.val2 = "10";
+    check("fehlende Ziffernzahl verwendet für die Prüfung den Ruby-Standard 1",
+          !event_command_prepare(nullptr, EventCommandForm{}, invalid_new).ok);
+    const JsonValue old_number = json_parse(R"({"cmd":"input_number","name":"zahl","digits":3,"initial":999,"extra":42})");
+    cmd_before = event_command_form_read(old_number); cmd_after = cmd_before; cmd_after.val1 = "2";
+    check("kleinere Ziffernzahl verlangt passenden Startwert statt stiller Klemmen",
+          !event_command_prepare(&old_number, cmd_before, cmd_after).ok);
+    cmd_after.val2 = "99";
+    check("Ziffernzahl und passend korrigierter Startwert werden gemeinsam übernommen",
+          event_command_prepare(&old_number, cmd_before, cmd_after).ok);
+    const JsonValue old_clamped = json_parse(R"({"cmd":"input_number","name":"alt","digits":1,"initial":999})");
+    cmd_before = event_command_form_read(old_clamped); cmd_after = cmd_before; cmd_after.name = "neu";
+    edit = event_command_prepare(&old_clamped, cmd_before, cmd_after);
+    check("unberührter historischer Startwert bleibt bei Namensänderung erhalten",
+          edit.ok && edit.value.find("initial")->integer_text() == "999");
+    invalid_new.type = ET_SAVE_GAME; invalid_new.val1 = "4";
+    check("ungültiger Speicher-Slot wird nicht übernommen", !event_command_prepare(nullptr, EventCommandForm{}, invalid_new).ok);
+    invalid_new.type = ET_MOVE_ROUTE; invalid_new.name = "spieler"; invalid_new.val1 = "0"; invalid_new.val2 = "1";
+    check("ungültiges Routentempo wird nicht still entfernt", !event_command_prepare(nullptr, EventCommandForm{}, invalid_new).ok);
+    invalid_new.val1 = "2"; invalid_new.val2 = "2";
+    check("Warten akzeptiert nur 0, 1 oder leer", !event_command_prepare(nullptr, EventCommandForm{}, invalid_new).ok);
+    invalid_new.type = ET_SELF_SWITCH; invalid_new.name = "Z";
+    check("ungültiger Self-Switch wird nicht zu A umgewandelt", !event_command_prepare(nullptr, EventCommandForm{}, invalid_new).ok);
+    invalid_new.type = ET_FADE; invalid_new.name = "falsch"; invalid_new.val1 = "1";
+    check("ungültige Fade-Richtung wird nicht zu aus umgewandelt", !event_command_prepare(nullptr, EventCommandForm{}, invalid_new).ok);
+    invalid_new.type = ET_LOG; invalid_new.text = std::string("a\0b", 3);
+    check("NUL in neuem Logtext wird abgelehnt", !event_command_prepare(nullptr, EventCommandForm{}, invalid_new).ok);
+    invalid_new.type = ET_VARIABLE; invalid_new.name = "x"; invalid_new.val1 = std::string(400, '9'); invalid_new.val2.clear();
+    check("nicht endlicher Variablenwert wird abgelehnt", !event_command_prepare(nullptr, EventCommandForm{}, invalid_new).ok);
+
+    for (const char* path : {"game/data/maps/dorf.json", "projekte/dorf/data/maps/dorf.json"}) {
+        std::string file;
+        bool ok = datei_lesen(wurzel + "/" + path, file);
+        if (ok) {
+            const JsonValue root = json_parse(file);
+            const JsonValue* events = root.find("events");
+            ok = events && events->is_arr();
+            if (ok) for (const JsonValue& e : events->arr) {
+                if (!e.is_obj()) continue;
+                const std::string original = json_write(e);
+                const EventForm f = event_form_read(e);
+                const EventEdit no = event_form_prepare(e, f, f);
+                if (!no.ok || no.changed || json_write(no.value) != original) ok = false;
+                for (size_t i = 0; i < event_page_count(e); ++i) if (event_page_view(e, i)) {
+                    const EventPageForm p = event_page_form_read(e, i);
+                    const EventEdit same = event_page_prepare(e, i, p, p);
+                    if (!same.ok || same.changed || json_write(same.value) != original) ok = false;
+                }
+            }
+        }
+        const std::string label = std::string("mitgelieferte Events/Seiten lesend unverändert: ") + path;
+        check(label.c_str(), ok);
+    }
+}
+
 #ifdef _WIN32
 // Echter Dateitest ohne GUI: Die gemeinsame Karte/F9-Schreibfunktion arbeitet
 // mit Unicode-Pfaden und darf bestehende Daten bei Fehlern nicht beschädigen.
@@ -1212,6 +1690,7 @@ void atomic_file_windows_tests() {
 
 int main(int argc, char** argv) {
     if (argc >= 2 && std::strcmp(argv[1], "--roundtrip") == 0) return roundtrip_modus(argc, argv);
+    if (argc >= 2 && std::strcmp(argv[1], "--event-bridge") == 0) return event_bridge_modus(argc, argv);
 
     // Repo-Wurzel für die Daten-Prüfung: argv[1] oder aktuelles Verzeichnis.
     const std::string wurzel = (argc >= 2) ? argv[1] : ".";
@@ -1491,6 +1970,7 @@ int main(int argc, char** argv) {
     database_form_tests(wurzel);
     map_document_tests(wurzel);
     object_props_tests(wurzel);
+    event_form_tests(wurzel);
 #ifdef _WIN32
     atomic_file_windows_tests();
 #endif

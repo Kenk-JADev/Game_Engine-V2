@@ -4,7 +4,7 @@
 #  maschinell abgleichen. Bisher war die „Sync-Pflicht" (HANDOFF) Handarbeit:
 #  MapCheck::CMD_TYPES (Ruby) musste zu ISSUE_CMD_TYPES + EV_TYPES (C++)
 #  passen,Trigger/Operatoren/Wetter/Self-Switches ebenfalls. Dieser Test
-#  parst src/editor/editor_main.cpp als Text und vergleicht die Listen —
+#  parst editor_main.cpp und event_form.h als Text und vergleicht die Listen —
 #  jede neue Befehlsart kippt hier, solange eine Seite vergessen wurde.
 #
 #  Kopflos ohne Engine-Stubs lauffähig (MapCheck braucht nur json):
@@ -17,8 +17,9 @@ ROOT = File.expand_path('..', __dir__)
 $LOAD_PATH.unshift(File.join(ROOT, 'game', 'engine'))
 require 'mapcheck'
 
-CPP    = File.read(File.join(ROOT, 'src', 'editor', 'editor_main.cpp'),
-                   encoding: 'utf-8')
+CPP    = %w[editor_main.cpp event_form.h].map do |name|
+  File.read(File.join(ROOT, 'src', 'editor', name), encoding: 'utf-8')
+end.join("\n")
 INTERP = File.read(File.join(ROOT, 'game', 'engine', 'interpreter.rb'),
                    encoding: 'utf-8')
 DATEN  = JSON.parse(File.read(File.join(ROOT, 'game', 'data', 'database.json'),
@@ -94,6 +95,10 @@ check('EV_TRIGGERS (C++) == MapCheck::TRIGGER') do
 end
 check('EV_OPS (C++) == MapCheck::VERGLEICH') do
   c_array('EV_OPS', wide: true) == MapCheck::VERGLEICH
+end
+check('portables F6-Modell verwendet dieselben Trigger und Operatoren wie die Win32-Combos') do
+  c_array('EVENT_TRIGGERS') == c_array('EV_TRIGGERS', wide: true) &&
+    c_array('EVENT_OPS') == c_array('EV_OPS', wide: true)
 end
 check('Interpreter-Vergleiche (when-Zeilen, 4er-Einzug) == MapCheck::VERGLEICH') do
   interp_whens(4).sort == MapCheck::VERGLEICH.sort

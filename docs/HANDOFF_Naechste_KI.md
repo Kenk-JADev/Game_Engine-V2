@@ -1,6 +1,6 @@
-# Handoff für die nächste KI - Rune3D, Stand nach Etappe 19o.4
+# Handoff für die nächste KI - Rune3D, Stand nach Etappe 19o.5
 
-**Datum des Stands:** 2026-11-19 — Etappe 19o.4: datentreues Objektformular; CI-Status in GitHub Actions prüfen
+**Datum des Stands:** 2026-11-19 — Etappe 19o.5: datentreuer Event-Editor; CI-Status in GitHub Actions prüfen
 **Projekt:** `C:/Users/jusagu/Desktop/Engine` — Windows-Only 3D-RPG-Engine (C++20/Win32/D3D11 + echtes CRuby 3.4.11), Editor = eigenes Programm `RuneEditor.exe`.
 
 ## 0. Auftrag und Fortschritt (RPG-Maker-XP-Überholung)
@@ -36,7 +36,8 @@ Der User beauftragte eine Überarbeitung von Engine und Editor **im Stil von RPG
 | 19d | `e56b692` + Nacharbeit `0660de3` (CI-Grün) | XP-Features Welle 1: Self-Switches A-D pro Event (GameState, Seiten-Bedingung, `self_switch`/`if_self_switch`, Savegame, Editor-Combos im Seite-Kasten) + Bildschirmblende (`fade.rb`, Befehl `fade`, Reset bei Kartenwechsel); 23 Befehlstypen synchron in CMD_TYPES/ISSUE_CMD_TYPES/EV_TYPES; Tests `self_switch_test.rb`, `fade_test.rb` |
 | 19e | `59845c1` (CI-Grün) | RGSS-Schicht (`game/engine/rgss.rb`): `$game_*`-Globale, `Graphics`/`Input`/`Audio`/`load_data`+`save_data` wie RPG Maker XP (Abweichungen: JSON statt Marshal, Namen statt IDs, kein `$scene`-Loop) + Launcher-Ersteinrichtung `:first` (ohne Projekt: Enter/N = erstellen, D = Demo, Esc = beenden; `ensure_demo` nicht mehr automatisch) + Context-Helfer `fade`/`self_switch` + `$game_system.menu_disabled/save_disabled` beachtet; Tests `rgss_test.rb`, script_test-Abschnitt 6 |
 | 19f | `96be63d` (CI-Grün) | Artefakt-Bugfix (User-Konsole): `Rune3D-Windows` enthält jetzt `game/` + `projekte/` neben den EXEs (CI kopiert sie nach `build/`); beide EXEs loggen einen klaren Hinweis, wenn `game/` unter der Wurzel fehlt |
-| 19o.4 | dieser Commit (CI-Status siehe Actions) | Objektformular datentreu, Pending-/Drag-Schutz und sicheres Kartenladen; portable Tests |
+| 19o.5 | dieser Commit (CI-Status siehe Actions) | F6: datentreue Event-/Seiten-/Befehlsformulare, Pending-Schutz, bedarfsweise Altseitenmigration und C++/Ruby-Event-Brücke |
+| 19o.4 | `38ed554` (CI-Grün Run 44614856669) | Objektformular datentreu, Pending-/Drag-Schutz und sicheres Kartenladen; portable Tests |
 | 19o.3 | `19067d4` (CI-Grün Run 44603441976) | F9: unveränderte Felder/Gold datentreu, Validierung, Warnungen und Dateischutz; portable Tests |
 | 19o.2 | `f6539a4` (CI-Grün Run 44600036172) | F2-Block-Zonen: stabile Sitzungsnummern, Zusatzfelder/präzise Werte erhalten, Validierung und Rückfrage bei Verlust, F6-Zeigerschutz |
 | 19o.1 | `a35cbdf` (CI-Grün Run 44598814272) | JSON-Ganzzahlen beliebiger Größe behalten ihren exakten Token; striktes Parsen, Inkrement ohne Rundung, Zahlenanzeige und Ruby-Brücke geprüft |
@@ -52,7 +53,7 @@ Der User beauftragte eine Überarbeitung von Engine und Editor **im Stil von RPG
 | 19h | `1695951` + Nacharbeit bis `070da7e` (CI-Grün) | RGSS-Vertiefung: `graphics.rb` (Bitmap/Sprite/Window/Viewport, z-sortiert über `Graphics.draw`), `$scene` + `Graphics.scene_update`, `$game_temp`, `$data_actors/items/system`, `passable?` echt (Grenzen + Geländestufe), `RGSS.reset!` bei enter_map; Tests `graphics_test.rb` + rgss_test-Abschnitt |
 | 19g | `e8ac3e5` + Nacharbeit `89eb6d6` (CI-Grün) | Bewegungsrouten (XP Move Routes): `mover.rb` (8 Schritte, repeat, wait, Ersetzung, Spieler/NPC-Ziele), Befehl `move_route` (24 Typen synchron), Editor-Formular ohne neue Controls, Context-Helfer, `Mover.reset!` bei enter_map; Tests `move_route_test.rb` + script_test-Abschnitt 7 |
 
-Stand 19o.4: 390 portable C++-Checks/0 Fehler, ASan/UBSan/float-cast-overflow und Win64-Cross-Kompilierung erfolgreich; Ruby-WASM 25 OK/1 Windows-EXE-Skip, Ruby/C++-JSON-Brücke 14 Dateien/0 Fehler. Den vollständigen Windows-Build übernimmt CI. Grafische Live-Tests von Objektformular, F2/F5/F9 und F9-Dateioperationen stehen noch aus (kein Windows-Desktop/GPU in dieser Umgebung). Arbeitsbaum und CI vor Weiterarbeit prüfen; `opencode.json` ist lokaler Harness-Kram (steht im .gitignore).
+Stand 19o.5: 577 portable C++-Checks/0 Fehler; ASan/UBSan/float-cast-overflow und Win64-Cross-Kompilierung, Ruby-WASM 25 OK/1 Windows-EXE-Skip. Die C++/Ruby-Event-Brücke prüft 17 Fälle gegen die echte Laufzeit; die JSON-Brücke prüft 14 Dateien ohne Semantik-/Formatabweichung. Beide liefen lokal über C++-Fixtures und Ruby-WASM; die native Open3-Ausführung und den vollständigen Windows-Build prüft CI. Grafische Live-/DPI-Tests von F6, Objektformular, F2/F5/F9 und F9-Dateioperationen stehen aus (kein Windows-Desktop/GPU in dieser Umgebung). Arbeitsbaum und CI vor Weiterarbeit prüfen; `opencode.json` ist lokaler Harness-Kram (steht im .gitignore).
 
 **Nacharbeit 19a (notiert für die Historie):** Der erste CI-Lauf hat genau das getan,
 wofür er da ist: `build.ps1 -Test` übergab g++ Argumente mit angehängtem Komma
@@ -78,7 +79,7 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
   `-v` = Ausgaben auch bei Grün, `--only NAME` = filtern).
   Auf Windows dasselbe in einem Rutsch: `.\build.ps1 -Test` (baut zusätzlich
   `build/json_test.exe`, läuft die Ruby-Suite mit `--strict` und prüft die
-  JSON-Brücke). Stand 19a: 17 Ruby-Tests + C++-JSON-Test (88 Checks).
+  JSON- und Event-Brücke). Stand 19a: 17 Ruby-Tests + C++-JSON-Test (88 Checks).
   Achtung: Tests, die Engine-Module direkt laden, brauchen `require 'issues'` (Muster siehe tools/add_issues_requires.rb).
 - **Sprache/Zeichen:** Prosa (Kommentare, UI- und Spieltexte, Doku, Namen in
   JSON) schreibt echte Umlaute; Identifier (Funktionen, JSON-Keys, IDs, Pfade,
@@ -105,8 +106,9 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
   (Schlüssel `karte|name`), Seitenbedingungen können sie prüfen; der Befehl
   `fade` blendet den Bildschirm nicht-blockierend ab/auf. Neue Befehlstypen
   immer in ALLEN drei Listen eintragen (`CMD_TYPES` mapcheck.rb,
-  `ISSUE_CMD_TYPES` + `EV_TYPES` editor_main.cpp) und die Zähl-Assertion in
-  `mapcheck_test.rb` anpassen.
+  `ISSUE_CMD_TYPES` editor_main.cpp und `EV_TYPES`/`EvType` event_form.h)
+  und die Zähl-Assertion in `mapcheck_test.rb` anpassen. `sync_test.rb`
+  liest beide C++-Dateien und vergleicht auch Trigger/Operatoren.
 - **CI läuft automatisch** (`.github/workflows/ci.yml`, bei push und pull_request):
   `hygiene` (lint_repo), `engine` (test_all + mapcheck), `cpp-logik` (json_test mit
   `-Werror` + Brücke) auf ubuntu, `windows` (build.ps1 -Clean und -Test, EXEs als
@@ -131,7 +133,7 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
   prüfen, dieselben Regeln wie `issues_scan_map` im Editor; `Game.enter_map` meldet harte
   Fehler an `Issues`).
 - **Editor:** `src/editor/editor_main.cpp` (eine große Datei, ~4700 Zeilen). Eigene Fensterklassen: `RuneEditorMain`, Viewport `RuneEditorView`, Dialoge `RuneEditorDlg`/`DlgNew` (Karten), `RuneEditorEventDlg`, `ScriptDlg`, `MatDlg`, `DbDlg`, `SoundDlg` — **alle modeless**.
-- Editor-IDs: Menü 100–115 (115=TILESET; 112=SOUNDTEST, 113=PLAYTEST, 114=PROJECT), Haupt-Controls 3001–3033 (Toolbar 3025, Boden-malen-Radio 3026, Kartenbaum 3027, Höhe-malen-Radio 3029, Objektformular-Hinweis 3033), Karten-Dialog 4100–4115 (Wetter 4113/4114, **Block-Zonen 4115**), Projekt-Dialog 4201–4205, Tileset-Dialog 4301–4319 (Liste 4301, Kachelgröße 4303, Übernehmen 4304, Speichern 4305, Erzeugen 4306, Farben/Muster/Name 4307–4310, Schließen 4311, Vorschau 4312, Splat-Flächen X/Z/B/T 4313–4316, Hinzufügen 4317, Entfernen 4318, Flächen-Liste 4319), Event 5001–5045, Script 6001–6016, Material 7001–7013, DB 8001–8055, Sound 8101–8107. F-Tasten: F1 Hilfe, F2 Eigenschaften, F3 Materialbase, F4 Playtest, F6 Events, **F7 Tileset**, F8 Sound-Test, F9 Datenbank, F11 Scripts.
+- Editor-IDs: Menü 100–115 (115=TILESET; 112=SOUNDTEST, 113=PLAYTEST, 114=PROJECT), Haupt-Controls 3001–3033 (Toolbar 3025, Boden-malen-Radio 3026, Kartenbaum 3027, Höhe-malen-Radio 3029, Objektformular-Hinweis 3033), Karten-Dialog 4100–4115 (Wetter 4113/4114, **Block-Zonen 4115**), Projekt-Dialog 4201–4205, Tileset-Dialog 4301–4319 (Liste 4301, Kachelgröße 4303, Übernehmen 4304, Speichern 4305, Erzeugen 4306, Farben/Muster/Name 4307–4310, Schließen 4311, Vorschau 4312, Splat-Flächen X/Z/B/T 4313–4316, Hinzufügen 4317, Entfernen 4318, Flächen-Liste 4319), Event 5001–5056, Script 6001–6016, Material 7001–7013, DB 8001–8055, Sound 8101–8107. F-Tasten: F1 Hilfe, F2 Eigenschaften, F3 Materialbase, F4 Playtest, F6 Events, **F7 Tileset**, F8 Sound-Test, F9 Datenbank, F11 Scripts.
 - **Toolbar:** 8 Buttons, Icons prozedural per GDI gezeichnet (`make_toolbar_icon` + Namensraum `ico`), senden Menü-IDs via `WM_COMMAND`. F-Tasten: F1 Hilfe, F2 Eigenschaften, F3 Materialbase, F4 Playtest, F6 Events, F8 Sound-Test, F9 Datenbank, F11 Scripts.
 - **Playtest:** Menü/Toolbar F4 → `save_map()` + `CreateProcessW("build\Rune3D.exe", "--project dorf")`. Spiel: `main.cpp` setzt `RUNE_PROJECT`, `game/main.rb` (`Game.setup`) lädt das Projekt direkt (ohne Titelbildschirm); unbekannter Name → Launcher + Warnung.
 - **Wetter:** Karten-JSON `"weather":{"type":"kein|regen|schnee","intensity":1.0}`; `Weather.load_map/update/draw`; Interpreter `{"cmd":"weather",...}`; Editor-Dialog F2 schreibt das Feld.
@@ -149,6 +151,23 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
 
 **Backlog:** Offene Fehler, Grenzen und Test-Wissen stehen zentral in `docs/BACKLOG.md` — dort nachsehen und neue Erkenntnisse dorthin eintragen (nicht mehr hier listen).
 
+- **F6-Datentreue (19o.5):** `event_form.h` liest Event, Seite und Befehl
+  nichtmutierend und bereitet gemeinsame Änderungen auf Kopien vor. Alte
+  Seiten werden nur für neue Bedingungen/Seiten migriert; Top-Level-
+  `trigger`/`commands` bleiben als Altdaten. Unberührte Felder, Zahlen,
+  Zusatzdaten und Zweige bleiben erhalten; fehlerhafte/mehrfache Daten sind
+  geschützt, destruktive Änderungen und Choice-Indexwechsel werden bestätigt.
+  Pfade ersetzen langlebige Befehlszeiger; Pending-Entwürfe werden vor
+  Auswahl, Schließen, Kartenwechsel und Speichern geklärt. Win32-Auswahl-
+  Benachrichtigungen werden gepostet und vor Button- und Hauptfensteraktionen
+  abgeglichen; MessageBox-Reentranz wird mit `data_prompt` geschützt. Neue Events/Kopien
+  erhalten nicht kollidierende darstellbare Namen; jede Umbenennung warnt vor
+  alten Spielstand-/Self-Switch-Schlüsseln. Große Integerpositionen werden exakt
+  inkrementiert; fehlende/nicht verschiebbare Achsen warnen.
+  `input_number` prüft Startwert gegen Ziffernzahl. `json_test.cpp` und die
+  echte Ruby-Laufzeitbrücke prüfen das Modell; GUI-/DPI-Live-Test steht aus.
+  Das feste 1000×730-Fenster kann auf 1024×640 über den Bildschirm ragen;
+  kein Resize/Scroll (eigener offener Backlog-Eintrag).
 - **Objektformular-Datentreue (19o.4):** `object_props_form.h` liest
   X/Z, Grad-Drehung und Material und bereitet nur Änderungen transaktional
   vor. Integer-Tokens, unberührte Floats, Y und unbekannte Felder bleiben
@@ -187,19 +206,19 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
   ohne Marke. Unbekannte Felder und unberührte Zahlen bleiben erhalten;
   kaputte alte Felder/Einträge sind geschützt, Ersetzen und Löschen nach
   Rückfrage, ungültige Eingabe blockiert die gesamte Übernahme. F6 muss vor
-  F2 geschlossen sein (Root-Vector-Zeiger). Grafischer Live-Test steht aus.
+  F2 geschlossen sein (Formularzustand/Kartenkopie). Grafischer Live-Test steht aus.
 - **JSON-Ganzzahlen (19o.1):** `JsonValue` bewahrt den originalen Integer-
   Token beliebiger Länge; `number()` bleibt eine double-Näherung und ist
   schreibgeschützt. `make_num`/`make_integer` ersetzen Werte, `increment()`
   inkrementiert Integer auch über 2^53 hinaus exakt. `-0` wird `0`; ungültige
   Zahlentokens werden abgelehnt. `editor_number_text` entfernt keine
-  Integer-Endnullen mehr. F6 kann beim Übernehmen noch andere, gerundet
-  angezeigte Felder überschreiben (Backlog); das Objektformular ist geschützt.
+  Integer-Endnullen mehr. F6 und das Objektformular schreiben unberührte
+  Anzeigen seit 19o.5 bzw. 19o.4 nicht zurück.
 - **Platzier-Editor (19n):** F5, `placement_dialog.h` + portables
   `placement_form.h`: NPCs, Schild-Events und Prefab-Objekte, X/Z und Y als
   Geländeversatz, Wegpunkte, erster Text, letzte Cursorposition. Dialog ist
-  modal und arbeitet auf Kartenkopie; F6 muss geschlossen sein, weil seine
-  Befehlszeiger sonst veralten. OK übernimmt, Strg+S speichert. Alte komplexe
+  modal und arbeitet auf Kartenkopie; F6 muss für konsistente Entwürfe vor
+  F5 geschlossen sein. OK übernimmt, Strg+S speichert. Alte komplexe
   Befehle/Zusatzfelder bleiben erhalten. `Game.update` verarbeitet NPC-Events,
   `Game.pickables` lässt NPC- und Schild-Grafik die Events nicht verdecken;
   Kollision/Interaktion weiterhin XZ-basiert; NPC-Auto-/Touch-Zustände im
@@ -216,9 +235,9 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
 - **Problem-Backlog (18h):** Der Editor scannt die Karte nach jedem Laden (`issues_scan_map()`, Abschnitt vor `load_map` — steht VOR der Event-Editor-Sektion und nutzt deshalb die eigene Liste `ISSUE_CMD_TYPES`, nicht `EV_TYPES`!). Funde: unbekannte Prefab-Typen/Material-Overrides/Trigger/Befehle, kaputte Seiten + Bedingungen, fehlende then/else/options/branches/lines. Probleme-Dialog F10 (ID_MENU_PROBLEMS 116, IDs 5301–5304, Klasse `RuneEditorProblemsDlg`). Spiel: `game/engine/issues.rb` (`Issues.report(area, msg, severity:)` → Log + `log/issues.json`, `Issues.clear!` in `Game.setup`). Verdrahtet: Interpreter, Scripts, Party, Weather, Textures. Tests laden ohne boot.rb → dort `require 'issues'` ergänzen.
 - **Responsives Layout (18i):** `layout_children()` rechnet die Spaltenbreiten aus der Fensterbreite: `left_w = clamp(W*16/100, 214, 280)`, `right_w = clamp(W*19/100, 258, 340)`, Viewport bekommt den Rest. Die Werkzeugliste bekommt den freien Platz, der Bedienblock (7 Zeilen à 30 px, 6 px Lücke = 246 px) wird **darunter** verteilt — vorher standen feste y-Werte im Code, dadurch schoben sich Undo/Redo bei 1024×640 in die Statusleiste und bei großen Fenstern blieb unten alles leer. Undo/Redo jetzt **volle Spaltenbreite** (alte 96 px schnitten „(Strg+Z)/(Strg+Y)" ab). Statusleisten-Felder proportional (`W/8, W/9, W/6, -1`). Neu: `renderer_resize()` schreibt bei Änderung `Viewport: W x H` ins Log. Live-Test: `log/live18i.ps1` (18 Checks). Lambda-Falle: `move_child(HWND h, …)` kollidiert mit `int h` des Aufrufers → Parameter heißen `hwnd`/`ht`.
 - **Resize-Fakten (belegt):** Swapchain/Viewport folgen korrekt (`ResizeBuffers` fehlerfrei, Screenshot-Größe == Viewport-Größe), auch das Spiel behandelt `WM_SIZE` (`window.cpp` → `consume_resize()` → `renderer.resize()`). Bei Resize-Verdacht zürst `log/editor.log` auf `Viewport: …` prüfen. F12-Screenshot geht **nur** per echtem Tastendruck (`[EdClick]::Key(0x7B)`) — `PostMessage(WM_KEYDOWN)` wirkt nicht, weil `handle_shortcuts` `GetAsyncKeyState` fragt.
-- **Event-Seiten (18g):** Events haben `pages` (Liste aus `{conditions, trigger, commands}`); die Seite mit dem **höchsten Index** mit erfüllten Bedingungen gewinnt (Seite 0 = Standard, leere Bedingungen = immer). Bedingungen: `switch` {name,value} und `variable` {name,op,value} (UND-verknüpft). `Event.refresh_page!` läuft in main.rb vor den Trigger-Schleifen; **Seitenwechsel setzt `fired` zurück** (touch/auto feuern erneut). Alte Karten ohne `pages` → implizite Seite 0; der Editor migriert das geöffnete Event sofort (`ev_ensure_pages`) und speichert dann ohne Top-Level-trigger/commands. Editor-IDs: Seitenliste 5046, Neue Seite 5047, Seite löschen 5048, Seite übernehmen 5049, Bedingungsfelder 5050–5054. Der Trigger-ComboBox (5015) sitzt jetzt in der Gruppenbox „Seite". Tests: `tools/event_pages_test.rb` (44 Checks), `log/live18g.ps1`.
-- **Event-Editor (18f):** 20 Befehlstypen mit Kategorie-Präfixen (Enum EvType ersetzt magische Indizes!), `choices` (Wahlmöglichkeiten mit Zweigen als „Wenn [x]:"-Kopfzeilen), `toggle_switch`, `move_player`, `weather`, `save_game`/`load_game`, Trigger `parallel`. Neue Tests: `tools/event18f_test.rb` (23 Checks, Mock-Muster wie event_test.rb). **Live-Test-Falle:** Der Event-Dialog blockiert Strg+S des Hauptfensters (`event_editor_focused()`) → im Test erst Dialog schließen (IDEV_CLOSE 5005), dann speichern. `load_game` im Interpreter baut die Karte neu auf und ersetzt den laufenden Interpreter (dokumentiert).
-- **Nächste Kandidaten:** Datentreue des F6-Eventformulars, danach Undo/Redo über Objekte hinaus und Kampf-/RGSS-Ausbau (siehe Backlog).
+- **Event-Seiten (18g):** Events haben `pages` (Liste aus `{conditions, trigger, commands}`); die Seite mit dem **höchsten Index** mit erfüllten Bedingungen gewinnt (Seite 0 = Standard, leere Bedingungen = immer). Bedingungen: `switch` {name,value} und `variable` {name,op,value} (UND-verknüpft). `Event.refresh_page!` läuft in main.rb vor den Trigger-Schleifen; **Seitenwechsel setzt `fired` zurück** (touch/auto feuern erneut). Alte Karten ohne `pages` → implizite Seite 0; seit 19o.5 wird erst bei Bedarf migriert und Top-Level-trigger/commands bleiben als Altdaten erhalten. Editor-IDs: Seitenliste 5046, Neue Seite 5047, Seite löschen 5048, Seite übernehmen 5049, Bedingungsfelder 5050–5054. Der Trigger-ComboBox (5015) sitzt jetzt in der Gruppenbox „Seite". Tests: `tools/event_pages_test.rb` (44 Checks), `log/live18g.ps1`.
+- **Event-Editor (18f):** 20 Befehlstypen mit Kategorie-Präfixen (Enum EvType ersetzt magische Indizes!), `choices` (Wahlmöglichkeiten mit Zweigen als „Wenn [x]:"-Kopfzeilen), `toggle_switch`, `move_player`, `weather`, `save_game`/`load_game`, Trigger `parallel`. Neue Tests: `tools/event18f_test.rb` (23 Checks, Mock-Muster wie event_test.rb). **Live-Test-Falle:** Strg+S wird bei Fokus im F6-Fenster nicht vom Hauptfenster verarbeitet. Zum Speichern das Hauptfenster fokussieren oder F6 schließen; seit 19o.5 werden offene F6-Eingaben vorher geklärt. `load_game` im Interpreter baut die Karte neu auf und ersetzt den laufenden Interpreter (dokumentiert).
+- **Nächste Kandidaten:** GUI-Live-Tests, Undo/Redo über Objekte hinaus sowie Kampf-/RGSS-Ausbau (siehe Backlog).
 - **WICHTIG bei Skript-Rewrites von Quellen:** NIEMALS `Get-Content -Raw` + `Set-Content -Encoding utf8` für C++-Dateien mit Umlauten — PowerShell liest dann CP1252 und produziert Doppelkodierung („Ã¼") + BOM. Reparatur per `tools/repair_mojibake.rb` (UTF-8 → CP1252 → UTF-8), Scan per `tools/scan_mojibake_bytes.rb`.
 - **Nächste Kandidaten:** Passierbarkeits-Regeln (blockierte Zonen), Autotiles, Weich-Übergänge per Weightmap, Undo/Redo für Splat-Operationen (derzeit nur Objekte).
 - Boden/Tileset (18c): `terrain.texture` + `terrain.tile` im Karten-JSON; Shader skaliert Terrain-UV mit 2.0/tile über `gParams.z` (Boxen nutzen `gParams.y`, Shadow-Pass beide 0 — nicht vermischen!). `Renderer::texture_rgba` liefert Pixel für Vorschauen; `Rune::Gfx.terrain_texture(name, tile_meters)` hat jetzt 2 Argumente (2. optional).
@@ -234,6 +253,29 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
 - Hardware: i5-10400T, 7,7 GB RAM, Intel UHD 630, keine Admin-Rechte.
 
 ## 5. Live-Test-Vorlage
+
+**Noch offen für 19o.5 (echter Windows-Rechner):** Gesichertes Testprojekt
+mit mindestens zwei Events und einem NPC erstellen: altes Top-Level-Event,
+mehrseitiges Event mit Schalter-/Variablen-/Self-Switch-Bedingungen,
+verschachtelte Wenn-/Choice-Zweige, große Integer, präzise Floatwerte,
+Zusatzfelder und einen langen Text. F6 öffnen, ohne Änderungen navigieren,
+schließen und speichern: kein automatisches `pages` und keine Änderung an
+Originalwerten. Namen ändern und die Warnung zu alten Spielstands-/Self-Switch-
+Schlüsseln bestätigen oder abbrechen; einen verschachtelten Befehl ändern und
+JSON auf unberührte Werte/Typen und Fremdfelder prüfen. Erst eine Bedingung oder
+neue Seite anlegen und die aufbewahrten Top-Level-Daten sowie Ruby-Verhalten
+kontrollieren. Fehlende, falsche und doppelte Schlüssel separat prüfen.
+
+Event-, Seiten- und Befehlsauswahl mit unübernommenen Eingaben schnell
+wechseln; Ja/Nein/Abbrechen, ungültige Werte, Rückfragen, Fokus und alte
+Auswahl prüfen. Dasselbe bei Speichern, Karten-/Projektwechsel, Schließen,
+Löschen, Duplizieren und Einfügen; kein Teil-Commit bei Fehler. Wahloptionen
+umordnen, Typwechsel/kaputte Daten nur nach Bestätigung ersetzen, Zweige und
+Zusatzdaten kontrollieren. Dasselbe Event mehrfach duplizieren, NPC-Namen
+und Self-Switch-Isolation prüfen; fehlende/nicht verschiebbare Koordinaten
+müssen warnen. Zahleneingabe mit zwei Stellen: 99 gültig, 100 abgelehnt.
+Lange/geschützte Felder, Tastatur/Tab/Enter sowie Layout bei 1024×640 und
+verschiedenen DPI-Skalierungen prüfen. F2/F5-Guard und F6 ohne Undo beachten.
 
 **Noch offen für 19o.4 (echter Windows-Rechner):** In einem gesicherten
 Testprojekt eine normale Karte mit mindestens zwei Objekten, präzisen

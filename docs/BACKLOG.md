@@ -21,17 +21,16 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 ---
 
 ## Offen
-### [Editor] F6 schreibt unberührte Felder um — offen (Daten-Treue)
-- Symptom: Event-/Seitenformulare schreiben bei Übernahme/Selektion auch
-  unveränderte, gerundet angezeigte Felder zurück. Genaue Koordinaten und
-  große Ganzzahlen können verändert werden; F6 migriert alte Event-Seiten
-  und kann vor dem Duplizieren Werte runden.
-- Analyse: `ev_num_str`-Endnullenverlust ist seit 19o.1 behoben; F2/F5/F9
-  und das Hauptfenster-Objektformular (19o.4) schützen unberührte Werte.
-  F6 braucht denselben Schutz, inklusive Seitenmigration und Duplizieren.
-- Betroffene Stellen: `src/editor/editor_main.cpp` (`ev_apply_event_fields`,
-  `ev_apply_page_fields`, `ev_ensure_pages` und Event-Duplizieren).
-- Gefunden in: Etappe 19o.1; F6 weiterhin offen nach 19o.4.
+### [Editor] F6-Fenster ist nicht an kleine Bildschirme angepasst — offen (Layout)
+- Statische Analyse: Das Event-Fenster ist fest 1000 × 730 Pixel groß; seine
+  unteren Schaltflächen liegen bis etwa y=690. Es ist weder größenänderbar
+  noch scrollbar. Bei 1024 × 640 und/oder hoher Windows-Skalierung können
+  daher Teile außerhalb des Arbeitsbereichs liegen.
+- Responsives oder scrollbar erreichbares Layout entwickeln und auf einem
+  echten Windows-Desktop mit verschiedenen Auflösungen/DPI prüfen. Die
+  tatsächliche Darstellung wurde in dieser Umgebung nicht live getestet.
+- Betroffene Stellen: `src/editor/editor_main.cpp` (`open_event_editor`).
+- Gefunden in: F6-Audit zu Etappe 19o.5.
 
 ### [Editor/Engine] Extreme Terrain-/Atmosphärenwerte sind nicht vollständig abgesichert — offen
 - Symptom: Wohlgeformtes JSON mit extrem großen Ganzzahlen/Kommazahlen oder
@@ -205,7 +204,7 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
   MapCheck::CMD_TYPES, Trigger/Operatoren/Wetter/Self-Switches/Effekte und
   die when-Listen des Interpreters. Eine vergessene Seite kippt den Test.
 - Betroffene Stellen: `game/engine/mapcheck.rb`, `src/editor/editor_main.cpp`
-  (`ISSUE_CMD_TYPES`, `EV_TYPES`, `issues_scan_map`), `tools/sync_test.rb`,
+  (`ISSUE_CMD_TYPES`, `issues_scan_map`), `src/editor/event_form.h` (`EV_TYPES`), `tools/sync_test.rb`,
   `game/engine/interpreter.rb`.
 - Gefunden in: Etappe 19a.
 
@@ -214,7 +213,8 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
   eine GPU und D3D11; GitHub-Runner haben beides nicht.
 - Vermutung/Analyse: Kein Fehler, eine Grenze. CI deckt Logik ab (Ruby-Tests,
   C++-JSON, Daten-Scan, Windows-Linken); grafisches Verhalten muss weiter am
-  Rechner geprüft werden (F12-Screenshot, `edclick`).
+  Rechner geprüft werden (F12-Screenshot, `edclick`). Insbesondere stehen
+  die neuen Dialog- und DPI-Tests für F6 sowie Objektformular/F2/F5/F9 aus.
 - Betroffene Stellen: `.github/workflows/ci.yml`, `tools/edclick.psm1`.
 - Gefunden in: Etappe 19a.
 
@@ -239,6 +239,26 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Etappe 19a.
 
 ## Erledigt
+### [Editor] F6 schreibt unberührte Felder um — erledigt (19o.5)
+- `event_form.h` liest ohne Mutation und bereitet Event-, Seiten- und
+  Befehlsänderungen gemeinsam auf Kopien vor. Nur geänderte Felder werden
+  ersetzt; unberührte Zahlen, Typen, Zusatzdaten und Zweige bleiben erhalten.
+- Altseiten werden erst bei Bedarf materialisiert; ursprüngliche Top-Level-
+  Daten bleiben erhalten. Uneindeutige oder beschädigte Strukturen werden
+  geschützt, destruktive Änderungen und Wahlzweig-Neuzuordnung bestätigt.
+  Ungültige Eingaben blockieren die gesamte gemeinsame Übernahme.
+- Offene Entwürfe vor Auswahlwechsel, Schließen, Karten-/Projektwechsel und
+  Speichern klären; verschachtelte Befehle werden über Pfade statt dauerhafte
+  JSON-Zeiger adressiert. Neue Events/Kopien erhalten eindeutige darstellbare
+  Namen, integergenaue Positionsverschiebung und Warnung bei fehlgeschlagener
+  Verschiebung. Umbenennen warnt vor alten Spielstand-/Self-Switch-Schlüsseln;
+  eine zu kleine Ziffernzahl klemmt den Startwert nicht still.
+- Tests: portable C++-Suite, Sanitizer, Win64-Cross-Kompilierung,
+  Ruby-Tests und C++/Ruby-Event-Brücke. Echter Windows-GUI-/DPI-Test bleibt
+  offen (siehe Live-Test-Eintrag und Handoff); Event-Undo bleibt offen.
+- Betroffene Stellen: `src/editor/event_form.h`, `editor_main.cpp`,
+  `tools/json_test.cpp`, `tools/event_bridge_check.rb`, `tools/sync_test.rb`.
+
 ### [Editor] Objektformular schreibt unberührte Felder um — erledigt (19o.4)
 - Das portable `object_props_form.h` bereitet X/Z, Grad-Drehung und
   Material transaktional vor. Unveränderte Integer-/Floatwerte, Y, fehlende
@@ -260,8 +280,8 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
   Vergleich ist keine durchgehende Sperre (separater Backlog-Eintrag).
 - Tests: `tools/json_test.cpp`, ASan/UBSan und Win64-Cross-Kompilierung;
   Windows-CI prüft die gemeinsame Dateihilfe kopflos. Der grafische
-  Windows-Live-Test steht aus. F6 und extreme Terrain-/Atmosphärenwerte
-  bleiben eigene offene Einträge.
+  Windows-Live-Test steht aus. F6 ist seit 19o.5 geschützt; extreme
+  Terrain-/Atmosphärenwerte bleiben ein eigener offener Eintrag.
 - Betroffene Stellen: `src/editor/{object_props_form,map_document,json_validation,text_validation,atomic_file_win}.h`,
   `src/editor/editor_main.cpp`, `src/editor/placement_dialog.h`.
 
@@ -285,7 +305,7 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
   Zusatzdaten und unberührte Koordinaten exakt bei der richtigen Zone.
   Neue Zeilen ohne Nummer; Entfernen/Ersetzen nach Rückfrage. Fehlerhafte
   Eingaben verhindern die gesamte F2-Übernahme; alte kaputte Einträge
-  können unverändert erhalten werden. F6 vor F2 schließen (Zeigerschutz).
+  können unverändert erhalten werden. F6 vor F2 schließen (Formularzustand).
 - Tests: `tools/json_test.cpp`; grafischer Windows-Live-Test steht aus.
 - Betroffene Stellen: `src/editor/blocked_form.h`, `map_props_form.h`,
   `editor_main.cpp`.
@@ -295,12 +315,11 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
   einschließlich negativer Zahlen und solcher außerhalb des double-Bereichs.
   Geänderte Werte ersetzen ihren Token, Duplizieren inkrementiert ganze
   Koordinaten exakt; die numerische Rechensicht bleibt eine double-Näherung.
-  F6 kann allerdings vor dem Duplizieren noch die Formularanzeige zurück-
-  schreiben (siehe offener Formulareintrag).
+  Seit 19o.5 schreibt F6 unberührte Formularanzeigen nicht mehr zurück.
 - JSON-Zahlengrammatik wird strikt geprüft; neue numerische Ganzzahlen werden
   ohne überlaufenden long-long-Cast geschrieben. Ruby-Brücke prüft Typ und
-  Inhalt mit großen synthetischen Integern. Rundende GUI-Formulare bleiben
-  ein eigener offener Eintrag; Encounter-Eingabe weiterhin auf 2^53−1 begrenzt.
+  Inhalt mit großen synthetischen Integern. Encounter-Eingaben sind weiterhin
+  auf 2^53−1 begrenzt.
 - Betroffene Stellen: `src/editor/json.{h,cpp}`, `number_format.h`,
   `tools/json_test.cpp`, `tools/json_bridge_check.rb`.
 

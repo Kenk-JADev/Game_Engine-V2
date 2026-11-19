@@ -48,6 +48,7 @@
 #include "editor/database_form.h"
 #include "editor/encounter_check.h"
 #include "editor/encounter_form.h"
+#include "editor/event_form.h"
 #include "editor/map_document.h"
 #include "editor/map_props_form.h"
 #include "editor/number_format.h"
@@ -357,6 +358,11 @@ constexpr UINT WM_TREE_OPEN_PROPS = WM_APP + 46;
 constexpr UINT WM_TREE_CONTEXT = WM_APP + 47;
 constexpr UINT WM_OBJECT_LIST_SORT = WM_APP + 48;
 constexpr UINT WM_TREE_RENAME_WARNING = WM_APP + 49;
+constexpr UINT WM_EVENT_SELECT_EVENT = WM_APP + 50;
+constexpr UINT WM_EVENT_SELECT_PAGE = WM_APP + 51;
+constexpr UINT WM_EVENT_SELECT_COMMAND = WM_APP + 52;
+
+void event_requeue_selections();
 
 void cancel_object_drag() {
     const bool had_capture = g.dragging;
@@ -409,6 +415,7 @@ int data_prompt(HWND owner, const wchar_t* text, const wchar_t* title, UINT flag
         g.map_menu_delayed = false;
         PostMessageW(g.main, WM_REBUILD_MAP_MENU, 0, 0);
     }
+    event_requeue_selections();
     return result;
 }
 
@@ -461,6 +468,9 @@ void open_event_editor();
 void close_event_editor();
 bool event_editor_open();
 bool event_editor_focused();
+bool event_editor_pending();
+bool resolve_event_edits();
+bool resolve_event_editor();
 
 // Etappe 19n: Platzier-Dialog für NPCs, Schilder und Objekte.
 void open_placement_dialog();
@@ -1343,7 +1353,9 @@ bool load_map(int index, bool departure_checked = false) {
 bool save_map() {
     if (g.cur_map < 0 || g.cur_map >= static_cast<int>(g.map_files.size())) return false;
     cancel_object_drag();
-    // Strg+S darf ein noch aktives Formular nicht einfach auslassen.
+    // Moduslose Formulare und gepostete F6-Auswahlwechsel dürfen beim
+    // Speichern nicht still ausgelassen werden.
+    if (!resolve_event_editor()) return false;
     if (object_form_pending() && !apply_property_fields()) return false;
     if (!editor_json_utf8(g.map_root) || !editor_json_serializable(g.map_root)) {
         data_prompt(GetActiveWindow(), L"Die Karte enthält ungültiges Unicode oder eine nicht darstellbare Kommazahl. "
@@ -1391,7 +1403,7 @@ bool save_map() {
 // einfach die nächste Karte geladen.
 bool prepare_map_departure() {
     cancel_object_drag();
-    if (!resolve_object_edits()) return false;
+    if (!resolve_event_editor() || !resolve_object_edits()) return false;
     if (!g.dirty) return true;
     HWND owner = GetActiveWindow();
     if (!owner) owner = g.main;
@@ -4438,7 +4450,7 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 return 0;   // erst den offenen Dialog bestätigen oder abbrechen
             }
             cancel_object_drag();
-            if (!resolve_object_edits()) return 0;
+            if (!resolve_event_editor() || !resolve_object_edits()) return 0;
             if (g.dirty) {
                 const int r = data_prompt(h, L"Ungespeicherte Änderungen verwerfen?",
                                           L"RuneEditor", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2);
@@ -5500,7 +5512,7 @@ void delete_current_map() {
     const std::string name = g.cur_map < static_cast<int>(g.map_names.size())
                                  ? g.map_names[g.cur_map] : "?";
     std::wstring text = L"Karte \"" + utf8_to_wide(name) + L"\" wirklich löschen?";
-    if (g.dirty || object_form_pending())
+    if (g.dirty || object_form_pending() || event_editor_pending())
         text += L"\r\nAuch ungespeicherte Änderungen und Formulareingaben gehen verloren.";
     const int r = data_prompt(g.main, text.c_str(), L"Karte löschen",
                               MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
@@ -5602,13 +5614,14 @@ enum {
     IDEV_CSELFVAL  = 5056,
 };
 
-// Ein Eintrag der flachen Befehlsliste. list/index zeigen in den JSON-Baum;
-// header = "Dann:"/"Sonst:"-Zeile (list ist dann das Ziel-Array).
+// Pfade statt langlebiger Zeiger: jede Strukturänderung löst die Referenz auf
+// der vorbereiteten Event-Kopie neu auf.
 struct EventCmdRef {
-    JsonValue* list = nullptr;
-    int  index = -1;
-    int  depth = 0;
+    EventCommandPath path;
+    int index = -1;
+    int depth = 0;
     bool header = false;
+    bool insertable = true;
     std::string label;
 };
 
@@ -5636,52 +5649,40 @@ struct EventDlgState {
     HWND lbl_val3 = nullptr;
     HWND lbl_text = nullptr;
     HWND lbl_insert = nullptr;
-    // Etappe 18g: Seiten
+    HWND lbl_status = nullptr;
     HWND list_pages = nullptr;
     HWND ed_cswitch = nullptr;
     HWND cb_cswval = nullptr;
     HWND ed_cvar = nullptr;
     HWND cb_cvop = nullptr;
     HWND ed_cvval = nullptr;
-    // Etappe 19d: Self-Switch-Bedingung (RPG Maker XP)
-    HWND cb_cself = nullptr;      // keins/A/B/C/D
-    HWND cb_cselfval = nullptr;   // an/aus
+    HWND cb_cself = nullptr;
+    HWND cb_cselfval = nullptr;
     int sel_event = -1;
     int sel_page = -1;
     int sel_cmd = -1;
     std::vector<EventCmdRef> refs;
+    EventForm event_before;
+    EventPageForm page_before;
+    EventCommandForm command_before;
+    bool event_active = false, page_active = false, command_active = false;
+    bool event_editable[4] = {};
+    bool page_editable[3] = {};
+    bool command_editable[5] = {};
     bool syncing = false;
+    bool select_queued[3] = {};
+    bool select_delayed[3] = {};
 };
 
 static EventDlgState g_ev;
 
-// Etappe 18f: Befehlstypen mit Kategorien (RPG-Maker-XP-Gruppen).
-// Das Enum ersetzt die früheren magischen Indexzahlen überall.
-enum EvType {
-    ET_TEXT = 0, ET_CHOICES, ET_LOG,
-    ET_WAIT, ET_SWITCH, ET_TOGGLE_SWITCH, ET_VARIABLE,
-    ET_IF_SWITCH, ET_IF_VARIABLE, ET_SCRIPT,
-    ET_TELEPORT, ET_MOVE_PLAYER, ET_HEAL,
-    ET_WEATHER, ET_EFFECT, ET_SOUND,
-    ET_ITEM, ET_GOLD,
-    ET_SAVE_GAME, ET_LOAD_GAME,
-    ET_SELF_SWITCH, ET_IF_SELF_SWITCH, ET_FADE,   // Etappe 19d (XP-Features)
-    ET_MOVE_ROUTE,                                // Etappe 19g (XP-Feature)
-    ET_INPUT_NUMBER,                              // Etappe 19i (XP-Feature)
-    ET_BATTLE,                                    // Etappe 19i (XP-Feature)
-    ET_COUNT
+struct EventSyncGuard {
+    bool previous;
+    EventSyncGuard() : previous(g_ev.syncing) { g_ev.syncing = true; }
+    ~EventSyncGuard() { g_ev.syncing = previous; }
 };
-const char* const EV_TYPES[ET_COUNT] = {
-    "text", "choices", "log",
-    "wait", "switch", "toggle_switch", "variable",
-    "if_switch", "if_variable", "script",
-    "teleport", "move_player", "heal",
-    "weather", "effect", "sound",
-    "item", "gold",
-    "save_game", "load_game",
-    "self_switch", "if_self_switch", "fade",
-    "move_route", "input_number", "battle"
-};
+
+// Etappe 18f: Befehlstypen mit Kategorien (Enum und JSON-Namen im Modell).
 const wchar_t* const EV_TYPE_LABELS[ET_COUNT] = {
     L"[Nachricht] Text", L"[Nachricht] Wahlmöglichkeiten", L"[Nachricht] Log",
     L"[Steuerung] Warte", L"[Steuerung] Schalter setzen",
@@ -5705,22 +5706,10 @@ std::string ev_num_str(double v, int prec = 2) {
     return editor_number_text(v, prec);
 }
 
-std::string ev_text(HWND h) {
-    wchar_t buf[8192];
-    buf[0] = 0;
-    GetWindowTextW(h, buf, 8192);
-    return wide_to_utf8(buf);
-}
+std::string ev_text(HWND h) { return control_text(h); }
 
 void ev_set_text(HWND h, const std::string& s) {
     SetWindowTextW(h, utf8_to_wide(s).c_str());
-}
-
-double ev_number(HWND h, double fallback) {
-    std::string s = ev_text(h);
-    std::replace(s.begin(), s.end(), ',', '.');
-    if (s.empty()) return fallback;
-    return std::atof(s.c_str());
 }
 
 std::string ev_str_of(const JsonValue& o, const char* key, const std::string& def = "") {
@@ -5738,83 +5727,38 @@ bool ev_bool_of(const JsonValue& o, const char* key, bool def = false) {
     return (v && v->type == JsonValue::Type::Bool) ? v->b : def;
 }
 
+// Lesen legt weder eine fehlende Liste an noch überschreibt es beschädigte
+// Daten. Doppelte Root-Schlüssel sind wegen Ruby-Last-Wins nicht eindeutig.
 JsonValue* ev_events() {
+    if (!g.map_root.is_obj() || !event_unique(g.map_root, "events")) return nullptr;
     JsonValue* e = g.map_root.find("events");
-    if (!e || !e->is_arr()) {
-        e = &g.map_root.set("events", JsonValue::make_arr());
-        // set() kann beim Anhängen die Wurzel-Paarliste umallozieren.
-        g.objects = g.map_root.find("objects");
-    }
-    return e;
+    return e && e->is_arr() ? e : nullptr;
 }
 
-// Etappe 18g: Seiten-Array eines Events holen und notfalls aus dem alten
-// Format migrieren (Top-Level trigger/commands werden zu Seite 0 umgebaut).
-JsonValue* ev_ensure_pages(int ev_index) {
-    JsonValue* evs = ev_events();
-    if (ev_index < 0 || ev_index >= static_cast<int>(evs->arr.size())) return nullptr;
-    JsonValue& e = evs->arr[ev_index];
-    JsonValue* pages = e.find("pages");
-    if (pages && pages->is_arr() && !pages->arr.empty()) return pages;
-
-    JsonValue migrated = JsonValue::make_arr();
-    JsonValue page0 = JsonValue::make_obj();
-    page0.set("conditions", JsonValue::make_obj());
-    const JsonValue* old_trig = e.find("trigger");
-    page0.set("trigger", JsonValue::make_str(
-        (old_trig && old_trig->is_str()) ? old_trig->str : "action"));
-    const JsonValue* old_cmds = e.find("commands");
-    page0.set("commands",
-              (old_cmds && old_cmds->is_arr()) ? *old_cmds : JsonValue::make_arr());
-    migrated.arr.push_back(std::move(page0));
-    e.set("pages", std::move(migrated));
-    json_remove_key(e, "trigger");
-    json_remove_key(e, "commands");
-    return e.find("pages");
+JsonValue* ev_selected_event() {
+    JsonValue* events = ev_events();
+    if (!events || g_ev.sel_event < 0 || static_cast<size_t>(g_ev.sel_event) >= events->arr.size()) return nullptr;
+    return &events->arr[static_cast<size_t>(g_ev.sel_event)];
 }
 
-// Objekt der gewählten Seite (oder nullptr, wenn es sie nicht gibt).
-JsonValue* ev_page(int ev_index, int page_index) {
-    JsonValue* pages = ev_ensure_pages(ev_index);
-    if (!pages) return nullptr;
-    if (page_index < 0 || page_index >= static_cast<int>(pages->arr.size())) return nullptr;
-    return &pages->arr[page_index];
+const JsonValue* ev_selected_commands() {
+    const JsonValue* e = ev_selected_event();
+    if (!e || g_ev.sel_page < 0) return nullptr;
+    return event_commands_view(*e, static_cast<size_t>(g_ev.sel_page));
 }
 
-JsonValue* ev_current_page() {
-    return ev_page(g_ev.sel_event, g_ev.sel_page);
+// Ein überlanges oder von Win32 nicht unverändert darstellbares Feld wird
+// gesperrt. Seine Snapshot-Version wird beim Auslesen unverändert verwendet.
+void ev_install_field(HWND control, const std::string& text, bool active, bool& editable) {
+    ev_set_text(control, text);
+    std::string returned;
+    editable = active && control_text_strict(control, returned) && returned == text;
+    if (active && !editable) SetWindowTextW(control, L"[nicht vollständig darstellbar – geschützt]");
+    EnableWindow(control, editable ? TRUE : FALSE);
 }
 
-// Befehlsliste der AKTÜLLEN SEITE (früher: Top-Level 'commands').
-JsonValue* ev_commands(int ev_index) {
-    JsonValue* pg = ev_page(ev_index, g_ev.sel_page);
-    if (!pg) return nullptr;
-    JsonValue* c = pg->find("commands");
-    if (!c || !c->is_arr()) c = &pg->set("commands", JsonValue::make_arr());
-    return c;
-}
-
-std::vector<std::string> ev_split_lines(const std::string& text) {
-    std::vector<std::string> out;
-    std::string cur;
-    for (char ch : text) {
-        if (ch == '\r') continue;
-        if (ch == '\n') { out.push_back(cur); cur.clear(); }
-        else cur.push_back(ch);
-    }
-    out.push_back(cur);
-    return out;
-}
-
-std::string ev_join_lines(const JsonValue& cmd) {
-    const JsonValue* lines = cmd.find("lines");
-    if (!lines || !lines->is_arr()) return "";
-    std::string out;
-    for (size_t i = 0; i < lines->arr.size(); ++i) {
-        if (i) out += "\r\n";
-        out += lines->arr[i].str;
-    }
-    return out;
+bool ev_read_field(HWND control, bool editable, std::string& value) {
+    return !editable || control_text_strict(control, value);
 }
 
 std::string ev_cmd_label(const JsonValue& c) {
@@ -5942,247 +5886,192 @@ std::string ev_cmd_label(const JsonValue& c) {
     return type;
 }
 
-// Befehlsbaum in die flache Liste bringen (Dann/Sonst als Kopfzeilen).
-void ev_flatten(JsonValue& list, int depth) {
-    for (int i = 0; i < static_cast<int>(list.arr.size()); ++i) {
-        JsonValue& c = list.arr[i];
+// Keine Zweige beim Anzeigen anlegen. Auch leere oder fehlende Zweige bekommen
+// eine auswählbare Kopfzeile; ihr Array entsteht erst bei gültigem Einfügen.
+void ev_flatten(const JsonValue& list, int depth, const EventCommandPath& path) {
+    if (depth > 128) {
+        EventCmdRef r; r.path = path; r.depth = depth; r.header = true; r.insertable = false;
+        r.label = "[weitere Ebenen nicht angezeigt]";
+        g_ev.refs.push_back(std::move(r));
+        return;
+    }
+    for (size_t i = 0; i < list.arr.size(); ++i) {
+        const JsonValue& c = list.arr[i];
         EventCmdRef r;
-        r.list = &list;
-        r.index = i;
-        r.depth = depth;
-        r.label = ev_cmd_label(c);
-        g_ev.refs.push_back(r);
-
+        r.path = path; r.index = static_cast<int>(i); r.depth = depth;
+        r.label = c.is_obj() ? ev_cmd_label(c) : "[ungültiger Befehl]";
+        if (r.label.empty()) r.label = "[unbekannter Befehl]";
+        g_ev.refs.push_back(std::move(r));
+        if (!c.is_obj() || !event_unique(c, "cmd")) continue;
         const std::string type = ev_str_of(c, "cmd");
         if (type == "choices") {
-            // Wahlmöglichkeiten: pro Option ein Zweig (wie Dann/Sonst).
-            JsonValue* opts = c.find("options");
-            JsonValue* branches = c.find("branches");
-            if (opts && opts->is_arr() && branches && branches->is_arr()) {
-                for (size_t oi = 0; oi < opts->arr.size(); ++oi) {
-                    if (oi >= branches->arr.size()) break;
-                    JsonValue& br = branches->arr[oi];
-                    if (!br.is_arr() || br.arr.empty()) continue;
-                    EventCmdRef h;
-                    h.list = &br;
-                    h.index = -1;
-                    h.depth = depth + 1;
-                    h.header = true;
-                    h.label = "Wenn [" + opts->arr[oi].str + "]:";
-                    g_ev.refs.push_back(h);
-                    ev_flatten(br, depth + 2);
-                }
+            const JsonValue* opts = event_unique(c, "options") ? c.find("options") : nullptr;
+            if (!opts || !opts->is_arr()) continue;
+            const bool unique = event_unique(c, "branches");
+            const JsonValue* branches = unique ? c.find("branches") : nullptr;
+            for (size_t oi = 0; oi < opts->arr.size(); ++oi) {
+                const JsonValue* br = branches && branches->is_arr() && oi < branches->arr.size()
+                                          ? &branches->arr[oi] : nullptr;
+                EventCmdRef h; h.path = path; h.path.push_back({i, "branches", oi});
+                h.depth = depth + 1; h.header = true;
+                h.insertable = unique && (!branches || branches->is_arr()) && (!br || br->is_arr());
+                h.label = "Wenn [" + event_string_view(&opts->arr[oi], "[leer]") + "]:";
+                if (!h.insertable) h.label += " [ungültig/mehrfach]";
+                else if (!br) h.label += " [fehlt]";
+                const EventCommandPath child_path = h.path;
+                g_ev.refs.push_back(std::move(h));
+                if (br && br->is_arr() && unique) ev_flatten(*br, depth + 2, child_path);
             }
             continue;
         }
-        if (type != "if_switch" && type != "if_variable" &&
-            type != "if_self_switch") continue;
-
-        JsonValue* th = c.find("then");
-        if (th && th->is_arr() && !th->arr.empty()) {
-            EventCmdRef h;
-            h.list = th;
-            h.index = -1;
-            h.depth = depth + 1;
-            h.header = true;
-            h.label = "Dann:";
-            g_ev.refs.push_back(h);
-            ev_flatten(*th, depth + 2);
-        }
-        JsonValue* el = c.find("else");
-        if (el && el->is_arr() && !el->arr.empty()) {
-            EventCmdRef h;
-            h.list = el;
-            h.index = -1;
-            h.depth = depth + 1;
-            h.header = true;
-            h.label = "Sonst:";
-            g_ev.refs.push_back(h);
-            ev_flatten(*el, depth + 2);
+        if (type != "if_switch" && type != "if_variable" && type != "if_self_switch") continue;
+        for (const char* key : {"then", "else"}) {
+            const bool unique = event_unique(c, key);
+            const JsonValue* branch = unique ? c.find(key) : nullptr;
+            EventCmdRef h; h.path = path; h.path.push_back({i, key, 0});
+            h.depth = depth + 1; h.header = true;
+            h.insertable = unique && (!branch || branch->is_arr());
+            h.label = std::string(key) == "then" ? "Dann:" : "Sonst:";
+            if (!h.insertable) h.label += " [ungültig/mehrfach]";
+            else if (!branch) h.label += " [fehlt]";
+            const EventCommandPath child_path = h.path;
+            g_ev.refs.push_back(std::move(h));
+            if (branch && branch->is_arr() && unique) ev_flatten(*branch, depth + 2, child_path);
         }
     }
 }
 
 void ev_refresh_events() {
     if (!g_ev.list_events) return;
+    EventSyncGuard sync;
     SendMessageW(g_ev.list_events, LB_RESETCONTENT, 0, 0);
-    JsonValue* evs = ev_events();
-    for (int i = 0; i < static_cast<int>(evs->arr.size()); ++i) {
-        const JsonValue& e = evs->arr[i];
-        const JsonValue* id = e.find("id");
-        std::string id_s;
-        if (id && id->is_num()) id_s = id->is_int && !id->integer_text().empty()
-            ? id->integer_text() : ev_num_str(id->number(), 0);
-        else if (id && id->is_str()) id_s = id->str;
-        else id_s = "?";
-        const std::string line = id_s + ". " + ev_str_of(e, "name", "Event") + "  (" +
-                                 ev_num_str(ev_num_of(e, "x"), 1) + " / " +
-                                 ev_num_str(ev_num_of(e, "z"), 1) + ")";
-        const std::wstring w = utf8_to_wide(line);
-        const int idx = static_cast<int>(
-            SendMessageW(g_ev.list_events, LB_ADDSTRING, 0,
-                         reinterpret_cast<LPARAM>(w.c_str())));
-        SendMessageW(g_ev.list_events, LB_SETITEMDATA, idx,
-                     static_cast<LPARAM>(static_cast<INT_PTR>(i)));
+    JsonValue* events = ev_events();
+    const bool root_ok = g.map_root.is_obj() && event_unique(g.map_root, "events") &&
+                         (!g.map_root.find("events") || events);
+    EnableWindow(GetDlgItem(g_ev.win, IDEV_NEW), root_ok ? TRUE : FALSE);
+    if (!events) {
+        g_ev.sel_event = -1;
+        if (!root_ok) {
+            const int row = static_cast<int>(SendMessageW(g_ev.list_events, LB_ADDSTRING, 0,
+                reinterpret_cast<LPARAM>(L"[events ungültig oder mehrfach – extern prüfen]")));
+            SendMessageW(g_ev.list_events, LB_SETITEMDATA, row, static_cast<LPARAM>(-1));
+        }
+        EnableWindow(GetDlgItem(g_ev.win, IDEV_DEL), FALSE);
+        EnableWindow(GetDlgItem(g_ev.win, IDEV_DUP), FALSE);
+        return;
     }
-    if (g_ev.sel_event >= 0 &&
-        g_ev.sel_event < static_cast<int>(evs->arr.size())) {
-        SendMessageW(g_ev.list_events, LB_SETCURSEL, g_ev.sel_event, 0);
+    for (size_t i = 0; i < events->arr.size(); ++i) {
+        const JsonValue& e = events->arr[i];
+        std::string line;
+        if (!e.is_obj()) line = "[ungültiger Event-Eintrag]";
+        else {
+            const JsonValue* id = e.find("id");
+            const std::string id_s = id && id->is_str() ? event_string_view(id, "?") : event_number_view(id, "?");
+            line = id_s + ". " + event_string_view(e.find("name"), "Event") + "  (" +
+                   event_number_view(e.find("x"), "0") + " / " + event_number_view(e.find("z"), "0") + ")";
+        }
+        const std::wstring wide = utf8_to_wide(line);
+        const int row = static_cast<int>(SendMessageW(g_ev.list_events, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(wide.c_str())));
+        SendMessageW(g_ev.list_events, LB_SETITEMDATA, row, static_cast<LPARAM>(i));
     }
+    if (g_ev.sel_event < 0 || static_cast<size_t>(g_ev.sel_event) >= events->arr.size()) g_ev.sel_event = -1;
+    SendMessageW(g_ev.list_events, LB_SETCURSEL, static_cast<WPARAM>(g_ev.sel_event), 0);
+    EnableWindow(GetDlgItem(g_ev.win, IDEV_DEL), g_ev.sel_event >= 0 ? TRUE : FALSE);
+    EnableWindow(GetDlgItem(g_ev.win, IDEV_DUP), g_ev.sel_event >= 0 && events->arr[g_ev.sel_event].is_obj() ? TRUE : FALSE);
 }
 
 void ev_refresh_fields() {
-    if (!g_ev.ed_name) return;
-    JsonValue* evs = ev_events();
-    if (g_ev.sel_event < 0 || g_ev.sel_event >= static_cast<int>(evs->arr.size())) {
-        SetWindowTextW(g_ev.ed_id, L"");
-        SetWindowTextW(g_ev.ed_name, L"");
-        SetWindowTextW(g_ev.ed_x, L"");
-        SetWindowTextW(g_ev.ed_z, L"");
-        SetWindowTextW(g_ev.ed_radius, L"");
-        EnableWindow(g_ev.ed_name, FALSE);
-        EnableWindow(g_ev.ed_x, FALSE);
-        EnableWindow(g_ev.ed_z, FALSE);
-        EnableWindow(g_ev.ed_radius, FALSE);
-        return;
+    EventSyncGuard sync;
+    JsonValue* e = ev_selected_event();
+    g_ev.event_active = e && e->is_obj();
+    g_ev.event_before = g_ev.event_active ? event_form_read(*e) : EventForm{};
+    std::string id;
+    if (g_ev.event_active) {
+        const JsonValue* v = e->find("id");
+        id = v && v->is_str() ? event_string_view(v) : event_number_view(v);
     }
-    EnableWindow(g_ev.ed_name, TRUE);
-    EnableWindow(g_ev.ed_x, TRUE);
-    EnableWindow(g_ev.ed_z, TRUE);
-    EnableWindow(g_ev.ed_radius, TRUE);
-
-    const JsonValue& e = evs->arr[g_ev.sel_event];
-    const JsonValue* id = e.find("id");
-    std::string id_s;
-    if (id && id->is_num()) id_s = id->is_int && !id->integer_text().empty()
-            ? id->integer_text() : ev_num_str(id->number(), 0);
-    else if (id && id->is_str()) id_s = id->str;
-    ev_set_text(g_ev.ed_id, id_s);
-    ev_set_text(g_ev.ed_name, ev_str_of(e, "name", "Event"));
-    ev_set_text(g_ev.ed_x, ev_num_str(ev_num_of(e, "x"), 2));
-    ev_set_text(g_ev.ed_z, ev_num_str(ev_num_of(e, "z"), 2));
-    ev_set_text(g_ev.ed_radius, ev_num_str(ev_num_of(e, "radius", 2.0), 2));
+    ev_set_text(g_ev.ed_id, id);
+    ev_install_field(g_ev.ed_name, g_ev.event_before.name, g_ev.event_active, g_ev.event_editable[0]);
+    ev_install_field(g_ev.ed_x, g_ev.event_before.x, g_ev.event_active, g_ev.event_editable[1]);
+    ev_install_field(g_ev.ed_z, g_ev.event_before.z, g_ev.event_active, g_ev.event_editable[2]);
+    ev_install_field(g_ev.ed_radius, g_ev.event_before.radius, g_ev.event_active, g_ev.event_editable[3]);
+    EnableWindow(GetDlgItem(g_ev.win, IDEV_APPLY_EV), g_ev.event_active ? TRUE : FALSE);
 }
 
-// Etappe 18g: Seitenliste füllen (Seite 1 = Standard, Bedingungen als Hinweis).
 void ev_refresh_pages() {
-    if (!g_ev.list_pages) return;
+    EventSyncGuard sync;
     SendMessageW(g_ev.list_pages, LB_RESETCONTENT, 0, 0);
-    JsonValue* pages = ev_ensure_pages(g_ev.sel_event);
-    if (!pages) {
+    const JsonValue* e = ev_selected_event();
+    const size_t count = e ? event_page_count(*e) : 0;
+    if (!count) {
         g_ev.sel_page = -1;
+        if (e && e->is_obj() && !event_unique(*e, "pages")) {
+            const int row = static_cast<int>(SendMessageW(g_ev.list_pages, LB_ADDSTRING, 0,
+                reinterpret_cast<LPARAM>(L"[pages mehrfach – extern prüfen]")));
+            SendMessageW(g_ev.list_pages, LB_SETITEMDATA, row, static_cast<LPARAM>(-1));
+        }
+        EnableWindow(GetDlgItem(g_ev.win, IDEV_NEWPAGE), FALSE);
+        EnableWindow(GetDlgItem(g_ev.win, IDEV_DELPAGE), FALSE);
         return;
     }
-    if (g_ev.sel_page < 0 || g_ev.sel_page >= static_cast<int>(pages->arr.size())) {
-        g_ev.sel_page = 0;
-    }
-    for (int i = 0; i < static_cast<int>(pages->arr.size()); ++i) {
-        const JsonValue& p = pages->arr[i];
+    if (g_ev.sel_page < 0 || static_cast<size_t>(g_ev.sel_page) >= count) g_ev.sel_page = 0;
+    for (size_t i = 0; i < count; ++i) {
+        const JsonValue* page = event_page_view(*e, i);
         std::string line = "Seite " + std::to_string(i + 1);
-        const JsonValue* cond = p.find("conditions");
-        if (cond && cond->is_obj()) {
-            const JsonValue* sw = cond->find("switch");
-            const JsonValue* va = cond->find("variable");
-            if (sw && sw->is_obj()) {
-                line += "  [Schalter '" + ev_str_of(*sw, "name") + "' = " +
-                        (ev_bool_of(*sw, "value") ? "an" : "aus") + "]";
-            }
-            if (va && va->is_obj()) {
-                line += "  [Var '" + ev_str_of(*va, "name") + "' " +
-                        ev_str_of(*va, "op", "==") + " " +
-                        ev_num_str(ev_num_of(*va, "value"), 0) + "]";
-            }
-            if (!sw && !va) line += "  [immer]";
-        } else {
-            line += "  [immer]";
+        if (!page) line += "  [ungültiger Eintrag]";
+        else if (event_legacy_page(*e)) line += "  [implizit / Altformat]";
+        else {
+            const JsonValue* cond = page->find("conditions");
+            if (cond && cond->is_obj()) {
+                const JsonValue* sw = cond->find("switch");
+                const JsonValue* va = cond->find("variable");
+                const JsonValue* ss = cond->find("self_switch");
+                if (sw && sw->is_obj()) line += "  [Schalter '" + event_string_view(sw->find("name")) + "']";
+                if (va && va->is_obj()) line += "  [Var '" + event_string_view(va->find("name")) + "']";
+                if (ss && ss->is_obj()) line += "  [Self-Switch '" + event_string_view(ss->find("letter")) + "']";
+                if (!sw && !va && !ss) line += "  [immer/weitere Bedingungen]";
+            } else if (cond && !cond->is_null()) line += "  [Bedingungen ungültig]";
+            else line += "  [immer]";
         }
-        const std::wstring w = utf8_to_wide(line);
-        const int idx = static_cast<int>(
-            SendMessageW(g_ev.list_pages, LB_ADDSTRING, 0,
-                         reinterpret_cast<LPARAM>(w.c_str())));
-        SendMessageW(g_ev.list_pages, LB_SETITEMDATA, idx,
-                     static_cast<LPARAM>(static_cast<INT_PTR>(i)));
+        const std::wstring wide = utf8_to_wide(line);
+        const int row = static_cast<int>(SendMessageW(g_ev.list_pages, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(wide.c_str())));
+        SendMessageW(g_ev.list_pages, LB_SETITEMDATA, row, static_cast<LPARAM>(i));
     }
     SendMessageW(g_ev.list_pages, LB_SETCURSEL, g_ev.sel_page, 0);
+    EnableWindow(GetDlgItem(g_ev.win, IDEV_NEWPAGE), TRUE);
+    EnableWindow(GetDlgItem(g_ev.win, IDEV_DELPAGE), count > 1 ? TRUE : FALSE);
 }
 
-// Etappe 18g: Trigger + Bedingungsfelder der aktuellen Seite laden.
 void ev_refresh_page_fields() {
-    if (!g_ev.cb_trigger) return;
-    JsonValue* pg = ev_current_page();
-    if (!pg) {
-        SendMessageW(g_ev.cb_trigger, CB_SETCURSEL, static_cast<WPARAM>(-1), 0);
-        ev_set_text(g_ev.ed_cswitch, "");
-        ev_set_text(g_ev.ed_cvar, "");
-        ev_set_text(g_ev.ed_cvval, "");
-        SendMessageW(g_ev.cb_cswval, CB_SETCURSEL, 0, 0);
-        SendMessageW(g_ev.cb_cvop, CB_SETCURSEL, 0, 0);
-        SendMessageW(g_ev.cb_cself, CB_SETCURSEL, 0, 0);
-        SendMessageW(g_ev.cb_cselfval, CB_SETCURSEL, 0, 0);
-        EnableWindow(g_ev.cb_trigger, FALSE);
-        EnableWindow(g_ev.ed_cswitch, FALSE);
-        EnableWindow(g_ev.cb_cswval, FALSE);
-        EnableWindow(g_ev.ed_cvar, FALSE);
-        EnableWindow(g_ev.cb_cvop, FALSE);
-        EnableWindow(g_ev.ed_cvval, FALSE);
-        EnableWindow(g_ev.cb_cself, FALSE);
-        EnableWindow(g_ev.cb_cselfval, FALSE);
-        EnableWindow(GetDlgItem(g_ev.win, IDEV_APPLY_PAGE), FALSE);
-        return;
-    }
-    EnableWindow(g_ev.cb_trigger, TRUE);
-    EnableWindow(g_ev.ed_cswitch, TRUE);
-    EnableWindow(g_ev.cb_cswval, TRUE);
-    EnableWindow(g_ev.ed_cvar, TRUE);
-    EnableWindow(g_ev.cb_cvop, TRUE);
-    EnableWindow(g_ev.ed_cvval, TRUE);
-    EnableWindow(g_ev.cb_cself, TRUE);
-    EnableWindow(g_ev.cb_cselfval, TRUE);
-    EnableWindow(GetDlgItem(g_ev.win, IDEV_APPLY_PAGE), TRUE);
+    EventSyncGuard sync;
+    const JsonValue* e = ev_selected_event();
+    g_ev.page_active = e && g_ev.sel_page >= 0 && event_page_view(*e, static_cast<size_t>(g_ev.sel_page));
+    g_ev.page_before = g_ev.page_active ? event_page_form_read(*e, static_cast<size_t>(g_ev.sel_page)) : EventPageForm{};
+    if (!g_ev.page_active) g_ev.page_before.trigger = -1;
+    SendMessageW(g_ev.cb_trigger, CB_SETCURSEL, static_cast<WPARAM>(g_ev.page_before.trigger), 0);
+    SendMessageW(g_ev.cb_cswval, CB_SETCURSEL, static_cast<WPARAM>(g_ev.page_before.switch_value), 0);
+    SendMessageW(g_ev.cb_cvop, CB_SETCURSEL, static_cast<WPARAM>(g_ev.page_before.variable_op), 0);
+    SendMessageW(g_ev.cb_cself, CB_SETCURSEL, static_cast<WPARAM>(g_ev.page_before.self_letter), 0);
+    SendMessageW(g_ev.cb_cselfval, CB_SETCURSEL, static_cast<WPARAM>(g_ev.page_before.self_value), 0);
+    ev_install_field(g_ev.ed_cswitch, g_ev.page_before.switch_name, g_ev.page_active, g_ev.page_editable[0]);
+    ev_install_field(g_ev.ed_cvar, g_ev.page_before.variable_name, g_ev.page_active, g_ev.page_editable[1]);
+    ev_install_field(g_ev.ed_cvval, g_ev.page_before.variable_value, g_ev.page_active, g_ev.page_editable[2]);
+    for (HWND control : {g_ev.cb_trigger, g_ev.cb_cswval, g_ev.cb_cvop, g_ev.cb_cself, g_ev.cb_cselfval})
+        EnableWindow(control, g_ev.page_active ? TRUE : FALSE);
+    EnableWindow(GetDlgItem(g_ev.win, IDEV_APPLY_PAGE), g_ev.page_active ? TRUE : FALSE);
+}
 
-    const std::string trig = ev_str_of(*pg, "trigger", "action");
-    int ti = 0;
-    for (int i = 0; i < 4; ++i) {
-        if (trig == wide_to_utf8(EV_TRIGGERS[i])) ti = i;
-    }
-    SendMessageW(g_ev.cb_trigger, CB_SETCURSEL, ti, 0);
-
-    // Bedingungen ins Formular laden (leer = keine Bedingung).
-    ev_set_text(g_ev.ed_cswitch, "");
-    ev_set_text(g_ev.ed_cvar, "");
-    ev_set_text(g_ev.ed_cvval, "");
-    SendMessageW(g_ev.cb_cswval, CB_SETCURSEL, 0, 0);
-    SendMessageW(g_ev.cb_cvop, CB_SETCURSEL, 0, 0);
-    SendMessageW(g_ev.cb_cself, CB_SETCURSEL, 0, 0);
-    SendMessageW(g_ev.cb_cselfval, CB_SETCURSEL, 0, 0);
-    const JsonValue* cond = pg->find("conditions");
-    if (cond && cond->is_obj()) {
-        const JsonValue* sw = cond->find("switch");
-        if (sw && sw->is_obj()) {
-            ev_set_text(g_ev.ed_cswitch, ev_str_of(*sw, "name"));
-            SendMessageW(g_ev.cb_cswval, CB_SETCURSEL, ev_bool_of(*sw, "value") ? 0 : 1, 0);
-        }
-        const JsonValue* va = cond->find("variable");
-        if (va && va->is_obj()) {
-            ev_set_text(g_ev.ed_cvar, ev_str_of(*va, "name"));
-            const std::string op = ev_str_of(*va, "op", "==");
-            for (int i = 0; i < 6; ++i) {
-                if (op == wide_to_utf8(EV_OPS[i])) SendMessageW(g_ev.cb_cvop, CB_SETCURSEL, i, 0);
-            }
-            ev_set_text(g_ev.ed_cvval, ev_num_str(ev_num_of(*va, "value"), 2));
-        }
-        const JsonValue* ss = cond->find("self_switch");
-        if (ss && ss->is_obj()) {
-            // Buchstabe A-D -> Combo-Index 1-4 (0 = "keins").
-            const std::string letter = ev_str_of(*ss, "letter");
-            if (!letter.empty() && letter[0] >= 'A' && letter[0] <= 'D') {
-                SendMessageW(g_ev.cb_cself, CB_SETCURSEL,
-                             static_cast<WPARAM>(letter[0] - 'A' + 1), 0);
-            }
-            SendMessageW(g_ev.cb_cselfval, CB_SETCURSEL,
-                         ev_bool_of(*ss, "value") ? 0 : 1, 0);
-        }
-    }
+void ev_update_status() {
+    if (!g_ev.lbl_status) return;
+    bool protected_field = false;
+    if (g_ev.event_active) for (bool editable : g_ev.event_editable) if (!editable) protected_field = true;
+    if (g_ev.page_active) for (bool editable : g_ev.page_editable) if (!editable) protected_field = true;
+    if (g_ev.command_active) for (bool editable : g_ev.command_editable) if (!editable) protected_field = true;
+    const JsonValue* e = ev_selected_event();
+    const wchar_t* status = protected_field ? L"Zu lange/nicht darstellbare Felder sind geschützt."
+        : e && e->is_obj() && event_legacy_page(*e) ? L"Altformat: Seiten entstehen erst bei Bedarf."
+        : L"Übernehmen, dann Karte im Hauptfenster speichern.";
+    SetWindowTextW(g_ev.lbl_status, status);
 }
 
 // Formularfelder je Befehlstyp ein-/ausblenden und beschriften.
@@ -6191,24 +6080,20 @@ void ev_cmd_visibility() {
     auto show = [](HWND h, bool v) {
         if (!h) return;
         ShowWindow(h, v ? SW_SHOW : SW_HIDE);
-        EnableWindow(h, v ? TRUE : FALSE);
+        bool editable = g_ev.command_active;
+        if (h == g_ev.ed_ce_name) editable &= g_ev.command_editable[0];
+        if (h == g_ev.ed_ce_val1) editable &= g_ev.command_editable[1];
+        if (h == g_ev.ed_ce_val2) editable &= g_ev.command_editable[2];
+        if (h == g_ev.ed_ce_val3) editable &= g_ev.command_editable[3];
+        if (h == g_ev.ed_ce_text) editable &= g_ev.command_editable[4];
+        EnableWindow(h, v && editable ? TRUE : FALSE);
     };
-    const bool is_text = (t == ET_TEXT || t == ET_LOG || t == ET_CHOICES ||
-                         t == ET_MOVE_ROUTE);
-    const bool has_name = (t == ET_SWITCH || t == ET_TOGGLE_SWITCH || t == ET_VARIABLE ||
-                          t == ET_IF_SWITCH || t == ET_IF_VARIABLE || t == ET_SCRIPT ||
-                          t == ET_SOUND || t == ET_EFFECT || t == ET_ITEM || t == ET_WEATHER ||
-                          t == ET_SELF_SWITCH || t == ET_IF_SELF_SWITCH || t == ET_FADE ||
-                          t == ET_MOVE_ROUTE || t == ET_INPUT_NUMBER || t == ET_BATTLE);
-    const bool has_val1 = (t == ET_WAIT || t == ET_VARIABLE || t == ET_IF_VARIABLE ||
-                          t == ET_TELEPORT || t == ET_MOVE_PLAYER || t == ET_SOUND ||
-                          t == ET_EFFECT || t == ET_GOLD || t == ET_HEAL ||
-                          t == ET_WEATHER || t == ET_SAVE_GAME || t == ET_LOAD_GAME ||
-                          t == ET_FADE || t == ET_MOVE_ROUTE || t == ET_INPUT_NUMBER);
-    const bool has_val2 = (t == ET_VARIABLE || t == ET_TELEPORT || t == ET_MOVE_PLAYER ||
-                          t == ET_EFFECT || t == ET_ITEM || t == ET_MOVE_ROUTE ||
-                          t == ET_INPUT_NUMBER || t == ET_BATTLE);
-    const bool has_val3 = (t == ET_TELEPORT || t == ET_MOVE_ROUTE);
+    EnableWindow(g_ev.cb_ce_type, g_ev.command_active ? TRUE : FALSE);
+    const bool has_name = event_command_uses_field(t, 0);
+    const bool has_val1 = event_command_uses_field(t, 1);
+    const bool has_val2 = event_command_uses_field(t, 2);
+    const bool has_val3 = event_command_uses_field(t, 3);
+    const bool is_text = event_command_uses_field(t, 4);
     const bool has_op = (t == ET_IF_VARIABLE);
     const bool has_bool = (t == ET_SWITCH || t == ET_IF_SWITCH ||
                           t == ET_SELF_SWITCH || t == ET_IF_SELF_SWITCH ||
@@ -6224,29 +6109,36 @@ void ev_cmd_visibility() {
     show(g_ev.ed_ce_val3, has_val3);
     show(g_ev.cb_ce_op, has_op);
     show(g_ev.cb_ce_bool, has_bool);
-    show(g_ev.lbl_text, is_text);
+    const bool has_hint = t == ET_INPUT_NUMBER || t == ET_BATTLE || t == ET_FADE ||
+                          t == ET_EFFECT || t == ET_WEATHER || t == ET_ITEM ||
+                          t == ET_HEAL || t == ET_MOVE_PLAYER || t == ET_VARIABLE ||
+                          t == ET_SELF_SWITCH || t == ET_IF_SELF_SWITCH;
+    show(g_ev.lbl_text, is_text || has_hint);
     show(g_ev.ed_ce_text, is_text);
 
     SetWindowTextW(g_ev.lbl_name, L"Name");
     SetWindowTextW(g_ev.lbl_val1, L"Wert");
     SetWindowTextW(g_ev.lbl_val2, L"Add");
-    SetWindowTextW(g_ev.lbl_val3, L"Yaw (Grad)");
+    SetWindowTextW(g_ev.lbl_val3, L"Yaw (Radiant)");
     SetWindowTextW(g_ev.lbl_text, L"Zeilen (eine pro Zeile)");
 
     if (t == ET_SWITCH || t == ET_TOGGLE_SWITCH || t == ET_IF_SWITCH)
         SetWindowTextW(g_ev.lbl_name, L"Schalter");
-    if (t == ET_SELF_SWITCH || t == ET_IF_SELF_SWITCH)
-        SetWindowTextW(g_ev.lbl_name, L"Self-Switch (A-D)");
-    if (t == ET_FADE) { SetWindowTextW(g_ev.lbl_name, L"Richtung (aus = dunkel, ein = hell)");
-                  SetWindowTextW(g_ev.lbl_val1, L"Sekunden"); }
+    if (t == ET_SELF_SWITCH || t == ET_IF_SELF_SWITCH) {
+        SetWindowTextW(g_ev.lbl_name, L"Self-Switch");
+        SetWindowTextW(g_ev.lbl_text, L"Buchstabe A bis D; an/aus = Wert.");
+    }
+    if (t == ET_FADE) { SetWindowTextW(g_ev.lbl_name, L"Richtung");
+                  SetWindowTextW(g_ev.lbl_val1, L"Sekunden");
+                  SetWindowTextW(g_ev.lbl_text, L"Richtung: aus = dunkel, ein = hell."); }
     if (t == ET_MOVE_ROUTE) {
-        SetWindowTextW(g_ev.lbl_name, L"Ziel (NPC-Name oder 'spieler')");
-        SetWindowTextW(g_ev.lbl_val1, L"Tempo m/s (leer = Standard)");
-        SetWindowTextW(g_ev.lbl_val2, L"Warten bis fertig (1 = ja)");
+        SetWindowTextW(g_ev.lbl_name, L"Ziel");
+        SetWindowTextW(g_ev.lbl_val1, L"Tempo m/s");
+        SetWindowTextW(g_ev.lbl_val2, L"Warten (1/0)");
         // Etappe 19h.2: Schritte = XP-Vokabular (move_up, turn_left, wait,
         // XP-Codes 11..57, deutsche Kurznamen gehen weiter) - mover.rb-Kopf.
-        SetWindowTextW(g_ev.lbl_val3, L"Code-Parameter (switch_on/change_speed/script)");
-        SetWindowTextW(g_ev.lbl_text, L"Schritte, einer pro Zeile (an/aus = wiederholen)");
+        SetWindowTextW(g_ev.lbl_val3, L"Parameter");
+        SetWindowTextW(g_ev.lbl_text, L"Schritte pro Zeile; Ziel: NPC-Name/spieler; an = wiederholen.");
     }
     if (t == ET_INPUT_NUMBER) {
         // Etappe 19i: XP "Input Number Processing".
@@ -6256,31 +6148,37 @@ void ev_cmd_visibility() {
         SetWindowTextW(g_ev.lbl_text, L"Zahleneingabe: an/aus = Abbrechen erlaubt (Esc -> 0)");
     }
     if (t == ET_BATTLE) {
-        SetWindowTextW(g_ev.lbl_name, L"Gegnergruppe (troops-ID aus database.json)");
-        SetWindowTextW(g_ev.lbl_val2, L"Niederlage ohne Game Over (1 = ja)");
-        SetWindowTextW(g_ev.lbl_text, L"Kampf: an/aus = Flucht möglich (Standard an)");
+        SetWindowTextW(g_ev.lbl_name, L"Truppen-ID");
+        SetWindowTextW(g_ev.lbl_val2, L"Verlust (1/0)");
+        SetWindowTextW(g_ev.lbl_text, L"an/aus = Flucht; Verlust 1 verhindert Game Over.");
     }
     if (t == ET_VARIABLE) { SetWindowTextW(g_ev.lbl_name, L"Variable");
-                  SetWindowTextW(g_ev.lbl_val1, L"Wert (leer = lassen)");
-                  SetWindowTextW(g_ev.lbl_val2, L"Add (optional)"); }
+                  SetWindowTextW(g_ev.lbl_val1, L"Wert");
+                  SetWindowTextW(g_ev.lbl_val2, L"Add");
+                  SetWindowTextW(g_ev.lbl_text, L"Leerer Wert = nicht setzen; Add ist optional."); }
     if (t == ET_IF_VARIABLE) { SetWindowTextW(g_ev.lbl_name, L"Variable");
                   SetWindowTextW(g_ev.lbl_val1, L"Wert"); }
     if (t == ET_SOUND) { SetWindowTextW(g_ev.lbl_name, L"Sound-Name");
                   SetWindowTextW(g_ev.lbl_val1, L"Lautstärke"); }
-    if (t == ET_EFFECT) { SetWindowTextW(g_ev.lbl_name, L"Effekt (sparkle/dust/burst)");
+    if (t == ET_EFFECT) { SetWindowTextW(g_ev.lbl_name, L"Effekt");
                   SetWindowTextW(g_ev.lbl_val1, L"Höhe");
-                  SetWindowTextW(g_ev.lbl_val2, L"Farbe (hex)"); }
+                  SetWindowTextW(g_ev.lbl_val2, L"Farbe (hex)");
+                  SetWindowTextW(g_ev.lbl_text, L"Effekt (sparkle/dust/burst)"); }
     if (t == ET_SCRIPT) SetWindowTextW(g_ev.lbl_name, L"Script-Name");
     if (t == ET_ITEM) { SetWindowTextW(g_ev.lbl_name, L"Item-ID");
-                   SetWindowTextW(g_ev.lbl_val2, L"Menge (negativ = nehmen)"); }
-    if (t == ET_GOLD) SetWindowTextW(g_ev.lbl_val1, L"Gold +/- (z.B. 50 oder -20)");
-    if (t == ET_HEAL) SetWindowTextW(g_ev.lbl_val1, L"HP (leer = voll heilen)");
+                   SetWindowTextW(g_ev.lbl_val2, L"Menge (+/-)");
+                   SetWindowTextW(g_ev.lbl_text, L"Negative Menge = nehmen, positive Menge = geben."); }
+    if (t == ET_GOLD) SetWindowTextW(g_ev.lbl_val1, L"Gold (+/-)");
+    if (t == ET_HEAL) { SetWindowTextW(g_ev.lbl_val1, L"HP");
+                        SetWindowTextW(g_ev.lbl_text, L"Leeres HP-Feld heilt vollständig."); }
     if (t == ET_TELEPORT) { SetWindowTextW(g_ev.lbl_val1, L"X");
                   SetWindowTextW(g_ev.lbl_val2, L"Z"); }
     if (t == ET_MOVE_PLAYER) { SetWindowTextW(g_ev.lbl_val1, L"X");
-                  SetWindowTextW(g_ev.lbl_val2, L"Z (relativ, wenn befüllt)"); }
-    if (t == ET_WEATHER) { SetWindowTextW(g_ev.lbl_name, L"Wetter (kein/regen/schnee)");
-                  SetWindowTextW(g_ev.lbl_val1, L"Intensität"); }
+                  SetWindowTextW(g_ev.lbl_val2, L"Z");
+                  SetWindowTextW(g_ev.lbl_text, L"Neue Bewegungen sind relativ; bestehende behalten ihren Modus."); }
+    if (t == ET_WEATHER) { SetWindowTextW(g_ev.lbl_name, L"Wetter");
+                  SetWindowTextW(g_ev.lbl_val1, L"Intensität");
+                  SetWindowTextW(g_ev.lbl_text, L"Wetter: kein, regen oder schnee."); }
     if (t == ET_SAVE_GAME || t == ET_LOAD_GAME)
         SetWindowTextW(g_ev.lbl_val1, L"Slot (1-3)");
     if (t == ET_WAIT) SetWindowTextW(g_ev.lbl_val1, L"Sekunden");
@@ -6288,623 +6186,430 @@ void ev_cmd_visibility() {
     if (t == ET_CHOICES) SetWindowTextW(g_ev.lbl_text, L"Optionen (eine pro Zeile)");
 }
 
-void ev_clear_cmd_form() {
-    SetWindowTextW(g_ev.ed_ce_name, L"");
-    SetWindowTextW(g_ev.ed_ce_val1, L"");
-    SetWindowTextW(g_ev.ed_ce_val2, L"");
-    SetWindowTextW(g_ev.ed_ce_val3, L"");
-    SetWindowTextW(g_ev.ed_ce_text, L"");
-    SendMessageW(g_ev.cb_ce_op, CB_SETCURSEL, 0, 0);
-    SendMessageW(g_ev.cb_ce_bool, CB_SETCURSEL, 0, 0);
-}
-
-void ev_load_cmd_form() {
-    if (!g_ev.cb_ce_type) return;
-    g_ev.syncing = true;
-    if (g_ev.sel_cmd < 0 || g_ev.sel_cmd >= static_cast<int>(g_ev.refs.size()) ||
-        g_ev.refs[g_ev.sel_cmd].header) {
-        ev_clear_cmd_form();
-        SendMessageW(g_ev.cb_ce_type, CB_SETCURSEL, 0, 0);
-        ev_cmd_visibility();
-        EnableWindow(GetDlgItem(g_ev.win, IDEV_APPLYCMD), FALSE);
-        EnableWindow(GetDlgItem(g_ev.win, IDEV_DELCMD), FALSE);
-        EnableWindow(GetDlgItem(g_ev.win, IDEV_UP), FALSE);
-        EnableWindow(GetDlgItem(g_ev.win, IDEV_DOWN), FALSE);
-        g_ev.syncing = false;
-        return;
-    }
-    EnableWindow(GetDlgItem(g_ev.win, IDEV_APPLYCMD), TRUE);
-    EnableWindow(GetDlgItem(g_ev.win, IDEV_DELCMD), TRUE);
-    EnableWindow(GetDlgItem(g_ev.win, IDEV_UP), TRUE);
-    EnableWindow(GetDlgItem(g_ev.win, IDEV_DOWN), TRUE);
-
-    const EventCmdRef& ref = g_ev.refs[g_ev.sel_cmd];
-    const JsonValue& c = ref.list->arr[ref.index];
-    const std::string type = ev_str_of(c, "cmd");
-    int ti = 0;
-    for (int i = 0; i < ET_COUNT; ++i) {
-        if (type == EV_TYPES[i]) ti = i;
-    }
-    ev_clear_cmd_form();
-    SendMessageW(g_ev.cb_ce_type, CB_SETCURSEL, ti, 0);
-
-    ev_set_text(g_ev.ed_ce_name, ev_str_of(c, "name"));
-    if (type == "text") {
-        ev_set_text(g_ev.ed_ce_text, ev_join_lines(c));
-    } else if (type == "choices") {
-        const JsonValue* opts = c.find("options");
-        std::string joined;
-        if (opts && opts->is_arr()) {
-            for (size_t i = 0; i < opts->arr.size(); ++i) {
-                if (i) joined += "\r\n";
-                joined += opts->arr[i].str;
-            }
-        }
-        ev_set_text(g_ev.ed_ce_text, joined);
-    } else if (type == "log") {
-        ev_set_text(g_ev.ed_ce_text, ev_str_of(c, "text"));
-    } else if (type == "wait") {
-        ev_set_text(g_ev.ed_ce_val1, ev_num_str(ev_num_of(c, "seconds"), 2));
-    } else if (type == "switch" || type == "if_switch") {
-        SendMessageW(g_ev.cb_ce_bool, CB_SETCURSEL, ev_bool_of(c, "value") ? 0 : 1, 0);
-    } else if (type == "self_switch" || type == "if_self_switch") {
-        // Etappe 19d: Buchstabe im Namensfeld, an/aus im Bool-Combo.
-        ev_set_text(g_ev.ed_ce_name, ev_str_of(c, "letter"));
-        SendMessageW(g_ev.cb_ce_bool, CB_SETCURSEL, ev_bool_of(c, "value") ? 0 : 1, 0);
-    } else if (type == "fade") {
-        ev_set_text(g_ev.ed_ce_name, ev_str_of(c, "direction", "aus"));
-        ev_set_text(g_ev.ed_ce_val1, ev_num_str(ev_num_of(c, "seconds"), 2));
-    } else if (type == "move_route") {
-        // Etappe 19g: Schritte als Zeilenliste, wie bei text/choices.
-        ev_set_text(g_ev.ed_ce_name, ev_str_of(c, "target"));
-        const JsonValue* steps = c.find("steps");
-        std::string joined;
-        if (steps && steps->is_arr()) {
-            for (size_t i = 0; i < steps->arr.size(); ++i) {
-                if (i) joined += "\r\n";
-                joined += steps->arr[i].str;
-            }
-        }
-        ev_set_text(g_ev.ed_ce_text, joined);
-        if (c.find("speed"))
-            ev_set_text(g_ev.ed_ce_val1, ev_num_str(ev_num_of(c, "speed"), 2));
-        if (ev_bool_of(c, "wait")) ev_set_text(g_ev.ed_ce_val2, "1");
-        if (c.find("code")) ev_set_text(g_ev.ed_ce_val3, ev_str_of(c, "code"));
-        SendMessageW(g_ev.cb_ce_bool, CB_SETCURSEL, ev_bool_of(c, "repeat") ? 0 : 1, 0);
-    } else if (type == "input_number") {
-        // Etappe 19i: Variable + Ziffern + Startwert; an/aus = Abbruch erlaubt.
-        if (c.find("digits"))
-            ev_set_text(g_ev.ed_ce_val1, ev_num_str(ev_num_of(c, "digits", 1.0), 0));
-        if (c.find("initial"))
-            ev_set_text(g_ev.ed_ce_val2, ev_num_str(ev_num_of(c, "initial", 0.0), 0));
-        SendMessageW(g_ev.cb_ce_bool, CB_SETCURSEL,
-                     ev_bool_of(c, "cancel", true) ? 0 : 1, 0);
-    } else if (type == "battle") {
-        // Etappe 19i: Truppe im Namensfeld; an/aus = Flucht, Wert 2 = can_lose.
-        if (ev_bool_of(c, "can_lose")) ev_set_text(g_ev.ed_ce_val2, "1");
-        SendMessageW(g_ev.cb_ce_bool, CB_SETCURSEL,
-                     ev_bool_of(c, "can_escape", true) ? 0 : 1, 0);
-    } else if (type == "variable") {
-        if (c.find("value")) ev_set_text(g_ev.ed_ce_val1, ev_num_str(ev_num_of(c, "value"), 2));
-        if (c.find("add"))   ev_set_text(g_ev.ed_ce_val2, ev_num_str(ev_num_of(c, "add"), 2));
-    } else if (type == "if_variable") {
-        const std::string op = ev_str_of(c, "op", "==");
-        for (int i = 0; i < 6; ++i) {
-            if (op == wide_to_utf8(EV_OPS[i])) SendMessageW(g_ev.cb_ce_op, CB_SETCURSEL, i, 0);
-        }
-        ev_set_text(g_ev.ed_ce_val1, ev_num_str(ev_num_of(c, "value"), 2));
-    } else if (type == "teleport") {
-        ev_set_text(g_ev.ed_ce_val1, ev_num_str(ev_num_of(c, "x"), 2));
-        ev_set_text(g_ev.ed_ce_val2, ev_num_str(ev_num_of(c, "z"), 2));
-        ev_set_text(g_ev.ed_ce_val3, ev_num_str(ev_num_of(c, "yaw", 3.14159265), 3));
-    } else if (type == "sound") {
-        ev_set_text(g_ev.ed_ce_val1, ev_num_str(ev_num_of(c, "volume", 1.0), 2));
-    } else if (type == "effect") {
-        ev_set_text(g_ev.ed_ce_val1, ev_num_str(ev_num_of(c, "height", 1.0), 2));
-        char col[16];
-        std::snprintf(col, sizeof(col), "%06X",
-                      static_cast<uint32_t>(ev_num_of(c, "color", 0xFFD866)));
-        ev_set_text(g_ev.ed_ce_val2, col);
-    } else if (type == "item") {
-        const JsonValue* take = c.find("take");
-        const JsonValue* count = c.find("count");
-        if (count) ev_set_text(g_ev.ed_ce_val2, ev_num_str(count->number(), 0));
-        if (take)  ev_set_text(g_ev.ed_ce_val2, ev_num_str(-take->number(), 0));
-    } else if (type == "gold") {
-        ev_set_text(g_ev.ed_ce_val1, ev_num_str(ev_num_of(c, "amount"), 0));
-    } else if (type == "heal") {
-        if (c.find("amount")) ev_set_text(g_ev.ed_ce_val1, ev_num_str(ev_num_of(c, "amount"), 0));
-    } else if (type == "move_player") {
-        ev_set_text(g_ev.ed_ce_val1, ev_num_str(ev_num_of(c, "x"), 2));
-        ev_set_text(g_ev.ed_ce_val2, ev_num_str(ev_num_of(c, "z"), 2));
-    } else if (type == "weather") {
-        ev_set_text(g_ev.ed_ce_val1, ev_num_str(ev_num_of(c, "intensity", 1.0), 2));
-    } else if (type == "save_game" || type == "load_game") {
-        ev_set_text(g_ev.ed_ce_val1, ev_num_str(ev_num_of(c, "slot", 1.0), 0));
-    }
-    ev_cmd_visibility();
-    g_ev.syncing = false;
-}
-
 void ev_refresh_cmds() {
     if (!g_ev.list_cmds) return;
+    EventSyncGuard sync;
     SendMessageW(g_ev.list_cmds, LB_RESETCONTENT, 0, 0);
     g_ev.refs.clear();
-    JsonValue* cmds = ev_commands(g_ev.sel_event);
-    if (cmds) ev_flatten(*cmds, 0);
-    for (int i = 0; i < static_cast<int>(g_ev.refs.size()); ++i) {
+    const JsonValue* cmds = ev_selected_commands();
+    if (cmds) ev_flatten(*cmds, 0, {});
+    for (size_t i = 0; i < g_ev.refs.size(); ++i) {
         const EventCmdRef& r = g_ev.refs[i];
         std::string text(static_cast<size_t>(r.depth) * 2, ' ');
         if (r.header) text += "-> ";
         text += r.label;
-        const std::wstring w = utf8_to_wide(text);
-        const int idx = static_cast<int>(
-            SendMessageW(g_ev.list_cmds, LB_ADDSTRING, 0,
-                         reinterpret_cast<LPARAM>(w.c_str())));
-        SendMessageW(g_ev.list_cmds, LB_SETITEMDATA, idx,
-                     static_cast<LPARAM>(static_cast<INT_PTR>(i)));
+        const std::wstring wide = utf8_to_wide(text);
+        const int row = static_cast<int>(SendMessageW(g_ev.list_cmds, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(wide.c_str())));
+        SendMessageW(g_ev.list_cmds, LB_SETITEMDATA, row, static_cast<LPARAM>(i));
     }
-    if (g_ev.sel_cmd >= 0 && g_ev.sel_cmd < static_cast<int>(g_ev.refs.size())) {
-        SendMessageW(g_ev.list_cmds, LB_SETCURSEL, g_ev.sel_cmd, 0);
-    } else {
-        g_ev.sel_cmd = -1;
-    }
-
-    // Ziel für neue Befehle anzeigen.
+    if (g_ev.sel_cmd < 0 || static_cast<size_t>(g_ev.sel_cmd) >= g_ev.refs.size()) g_ev.sel_cmd = -1;
+    SendMessageW(g_ev.list_cmds, LB_SETCURSEL, static_cast<WPARAM>(g_ev.sel_cmd), 0);
     std::wstring target = L"Ziel: Wurzel";
-    if (g_ev.sel_cmd >= 0 && g_ev.sel_cmd < static_cast<int>(g_ev.refs.size())) {
-        const EventCmdRef& r = g_ev.refs[g_ev.sel_cmd];
-        JsonValue* root = ev_commands(g_ev.sel_event);
-        if (r.header) {
-            target = L"Ziel: " + utf8_to_wide(r.label);
-            // "Dann:" / "Sonst:" / "Wenn [x]:" ohne Doppelpunkt hinten
-            if (!target.empty() && target.back() == L':') target.pop_back();
-            target += L"-Zweig";
-        } else if (r.list != root) {
-            target = L"Ziel: Zweig-Ebene";
-        }
+    if (g_ev.sel_cmd >= 0) {
+        const EventCmdRef& r = g_ev.refs[static_cast<size_t>(g_ev.sel_cmd)];
+        if (r.header) target = r.insertable ? L"Ziel: ausgewählter Zweig" : L"Zweig nicht bearbeitbar";
+        else if (!r.path.empty()) target = L"Ziel: Zweig-Ebene";
     }
     SetWindowTextW(g_ev.lbl_insert, target.c_str());
 }
 
+void ev_load_cmd_form() {
+    EventSyncGuard sync;
+    const JsonValue* command = nullptr;
+    bool leaf = false;
+    if (g_ev.page_active && g_ev.sel_cmd >= 0 && static_cast<size_t>(g_ev.sel_cmd) < g_ev.refs.size()) {
+        const EventCmdRef& ref = g_ev.refs[static_cast<size_t>(g_ev.sel_cmd)];
+        JsonValue* event = ev_selected_event();
+        std::string error;
+        JsonValue* list = ref.header || !event ? nullptr : event_command_list_mutable(
+            *event, static_cast<size_t>(g_ev.sel_page), ref.path, false, error);
+        if (list && ref.index >= 0 && static_cast<size_t>(ref.index) < list->arr.size()) {
+            command = &list->arr[static_cast<size_t>(ref.index)];
+            leaf = true;
+        }
+    }
+    g_ev.command_active = g_ev.page_active;
+    g_ev.command_before = command ? event_command_form_read(*command) : EventCommandForm{};
+    SendMessageW(g_ev.cb_ce_type, CB_SETCURSEL, static_cast<WPARAM>(g_ev.command_before.type), 0);
+    SendMessageW(g_ev.cb_ce_op, CB_SETCURSEL, static_cast<WPARAM>(g_ev.command_before.op), 0);
+    SendMessageW(g_ev.cb_ce_bool, CB_SETCURSEL, static_cast<WPARAM>(g_ev.command_before.flag), 0);
+    ev_install_field(g_ev.ed_ce_name, g_ev.command_before.name, g_ev.command_active, g_ev.command_editable[0]);
+    ev_install_field(g_ev.ed_ce_val1, g_ev.command_before.val1, g_ev.command_active, g_ev.command_editable[1]);
+    ev_install_field(g_ev.ed_ce_val2, g_ev.command_before.val2, g_ev.command_active, g_ev.command_editable[2]);
+    ev_install_field(g_ev.ed_ce_val3, g_ev.command_before.val3, g_ev.command_active, g_ev.command_editable[3]);
+    ev_install_field(g_ev.ed_ce_text, g_ev.command_before.text, g_ev.command_active, g_ev.command_editable[4]);
+    for (int id : {IDEV_APPLYCMD, IDEV_DELCMD, IDEV_UP, IDEV_DOWN}) EnableWindow(GetDlgItem(g_ev.win, id), leaf ? TRUE : FALSE);
+    const bool selected = g_ev.sel_cmd >= 0 && static_cast<size_t>(g_ev.sel_cmd) < g_ev.refs.size();
+    const bool can_insert = g_ev.command_active && (!selected ||
+        !g_ev.refs[static_cast<size_t>(g_ev.sel_cmd)].header || g_ev.refs[static_cast<size_t>(g_ev.sel_cmd)].insertable);
+    EnableWindow(GetDlgItem(g_ev.win, IDEV_INSERT), can_insert ? TRUE : FALSE);
+    ev_cmd_visibility();
+    ev_update_status();
+}
+
 void ev_refresh() {
-    g_ev.syncing = true;
+    EventSyncGuard sync;
     ev_refresh_events();
     ev_refresh_fields();
-    ev_refresh_pages();      // Etappe 18g
-    ev_refresh_page_fields(); // Etappe 18g
+    ev_refresh_pages();
+    ev_refresh_page_fields();
     ev_refresh_cmds();
     ev_load_cmd_form();
-    g_ev.syncing = false;
 }
 
-// Event-Felder aus dem Formular ins JSON schreiben.
-void ev_apply_event_fields(bool mark_dirty) {
-    JsonValue* evs = ev_events();
-    if (g_ev.sel_event < 0 || g_ev.sel_event >= static_cast<int>(evs->arr.size())) return;
-    JsonValue& e = evs->arr[g_ev.sel_event];
-    e.set("name", JsonValue::make_str(ev_text(g_ev.ed_name)));
-    e.set("x", JsonValue::make_num(ev_number(g_ev.ed_x, 0.0), false));
-    e.set("z", JsonValue::make_num(ev_number(g_ev.ed_z, 0.0), false));
-    e.set("radius", JsonValue::make_num(ev_number(g_ev.ed_radius, 2.0), false));
-    // Trigger steht seit 18g pro Seite (ev_apply_page_fields).
-    if (mark_dirty) g.dirty = true;
+bool ev_current_event_form(EventForm& form) {
+    form = g_ev.event_before;
+    if (!g_ev.event_active) return true;
+    return ev_read_field(g_ev.ed_name, g_ev.event_editable[0], form.name) &&
+           ev_read_field(g_ev.ed_x, g_ev.event_editable[1], form.x) &&
+           ev_read_field(g_ev.ed_z, g_ev.event_editable[2], form.z) &&
+           ev_read_field(g_ev.ed_radius, g_ev.event_editable[3], form.radius);
+}
+
+bool ev_current_page_form(EventPageForm& form) {
+    form = g_ev.page_before;
+    if (!g_ev.page_active) return true;
+    form.trigger = static_cast<int>(SendMessageW(g_ev.cb_trigger, CB_GETCURSEL, 0, 0));
+    form.switch_value = static_cast<int>(SendMessageW(g_ev.cb_cswval, CB_GETCURSEL, 0, 0));
+    form.variable_op = static_cast<int>(SendMessageW(g_ev.cb_cvop, CB_GETCURSEL, 0, 0));
+    form.self_letter = static_cast<int>(SendMessageW(g_ev.cb_cself, CB_GETCURSEL, 0, 0));
+    form.self_value = static_cast<int>(SendMessageW(g_ev.cb_cselfval, CB_GETCURSEL, 0, 0));
+    return ev_read_field(g_ev.ed_cswitch, g_ev.page_editable[0], form.switch_name) &&
+           ev_read_field(g_ev.ed_cvar, g_ev.page_editable[1], form.variable_name) &&
+           ev_read_field(g_ev.ed_cvval, g_ev.page_editable[2], form.variable_value);
+}
+
+bool ev_current_command_form(EventCommandForm& form) {
+    form = g_ev.command_before;
+    if (!g_ev.command_active) return true;
+    form.type = static_cast<int>(SendMessageW(g_ev.cb_ce_type, CB_GETCURSEL, 0, 0));
+    form.op = static_cast<int>(SendMessageW(g_ev.cb_ce_op, CB_GETCURSEL, 0, 0));
+    form.flag = static_cast<int>(SendMessageW(g_ev.cb_ce_bool, CB_GETCURSEL, 0, 0));
+    return ev_read_field(g_ev.ed_ce_name, g_ev.command_editable[0], form.name) &&
+           ev_read_field(g_ev.ed_ce_val1, g_ev.command_editable[1], form.val1) &&
+           ev_read_field(g_ev.ed_ce_val2, g_ev.command_editable[2], form.val2) &&
+           ev_read_field(g_ev.ed_ce_val3, g_ev.command_editable[3], form.val3) &&
+           ev_read_field(g_ev.ed_ce_text, g_ev.command_editable[4], form.text);
+}
+
+bool event_editor_pending() {
+    if (!g_ev.win || !IsWindow(g_ev.win)) return false;
+    EventForm ev; EventPageForm page; EventCommandForm command;
+    return !ev_current_event_form(ev) || !ev_current_page_form(page) || !ev_current_command_form(command) ||
+           (g_ev.event_active && !event_form_equal(ev, g_ev.event_before)) ||
+           (g_ev.page_active && !event_page_form_equal(page, g_ev.page_before)) ||
+           (g_ev.command_active && !event_command_form_equal(command, g_ev.command_before));
+}
+
+void ev_error(const EventEdit& edit) {
+    const std::wstring message = utf8_to_wide(edit.error + "\nEs wurde nichts übernommen.");
+    data_prompt(g_ev.win, message.c_str(), L"Event-Editor", MB_OK | MB_ICONWARNING);
+    HWND focus = nullptr;
+    if (edit.field == "name") focus = g_ev.ed_name;
+    else if (edit.field == "x") focus = g_ev.ed_x;
+    else if (edit.field == "z") focus = g_ev.ed_z;
+    else if (edit.field == "radius") focus = g_ev.ed_radius;
+    else if (edit.field == "trigger") focus = g_ev.cb_trigger;
+    else if (edit.field == "switch_name") focus = g_ev.ed_cswitch;
+    else if (edit.field == "switch_value") focus = g_ev.cb_cswval;
+    else if (edit.field == "variable_name") focus = g_ev.ed_cvar;
+    else if (edit.field == "variable_op") focus = g_ev.cb_cvop;
+    else if (edit.field == "variable_value") focus = g_ev.ed_cvval;
+    else if (edit.field == "self_letter") focus = g_ev.cb_cself;
+    else if (edit.field == "self_value") focus = g_ev.cb_cselfval;
+    else if (edit.field == "cmd_type") focus = g_ev.cb_ce_type;
+    else if (edit.field == "cmd_name") focus = g_ev.ed_ce_name;
+    else if (edit.field == "cmd_val1") focus = g_ev.ed_ce_val1;
+    else if (edit.field == "cmd_val2") focus = g_ev.ed_ce_val2;
+    else if (edit.field == "cmd_val3") focus = g_ev.ed_ce_val3;
+    else if (edit.field == "cmd_text") focus = g_ev.ed_ce_text;
+    else if (edit.field == "cmd_op") focus = g_ev.cb_ce_op;
+    else if (edit.field == "cmd_flag") focus = g_ev.cb_ce_bool;
+    if (focus && IsWindowEnabled(focus) && IsWindowVisible(focus)) SetFocus(focus);
+}
+
+bool ev_confirm_edit(const EventEdit& edit) {
+    std::wstring text;
+    if (edit.converts_command)
+        text += L"Der Befehlstyp wird ersetzt. Alte Felder, Zusatzdaten und Zweige dieses Befehls gehen verloren.\r\n";
+    if (edit.removes_condition)
+        text += L"Eine Bedingung wird einschließlich ihrer Zusatzfelder entfernt.\r\n";
+    if (edit.replaces_invalid)
+        text += L"Fehlerhafte/nicht darstellbare oder nicht mehr verwendete Altdaten werden ersetzt oder entfernt.\r\n";
+    if (edit.renames_event)
+        text += L"Der Eventname wird geändert. Bestehende Spielstände und Self-Switches verwenden den alten Namen und werden nicht umbenannt.\r\n";
+    if (edit.reassigns_choices)
+        text += L"Wahlzweige bleiben nach Index erhalten. Umordnen/Entfernen von Optionen ändert ihre Zuordnung; zusätzliche Zweige bleiben im JSON.\r\n";
+    if (text.empty()) return true;
+    text += L"\r\nTrotzdem übernehmen?";
+    return data_prompt(g_ev.win, text.c_str(), L"Event-Daten ändern",
+                       MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) == IDYES;
+}
+
+enum class EvCommandApply { None, Auto, Update, Insert };
+
+// Beliebige Kombination der drei Formulare zuerst gemeinsam auf einer Kopie
+// validieren. Bei Fehler oder abgelehnter Warnung bleibt auch g.dirty gleich.
+bool ev_apply(bool event_fields, bool page_fields, EvCommandApply command_mode) {
+    JsonValue* current = ev_selected_event();
+    if (!current) return !event_fields && !page_fields && command_mode == EvCommandApply::None;
+    EventBatch batch;
+    batch.page = g_ev.sel_page >= 0 ? static_cast<size_t>(g_ev.sel_page) : 0;
+    batch.event_fields = event_fields && g_ev.event_active;
+    batch.page_fields = page_fields && g_ev.page_active;
+    batch.event_before = g_ev.event_before; batch.page_before = g_ev.page_before;
+    batch.command_before = g_ev.command_before;
+    if ((batch.event_fields && !ev_current_event_form(batch.event_after)) ||
+        (batch.page_fields && !ev_current_page_form(batch.page_after)) ||
+        (command_mode != EvCommandApply::None && g_ev.command_active && !ev_current_command_form(batch.command_after))) {
+        ev_error(event_failure(*current, "", "Ein Formular enthält ungültiges Unicode oder konnte nicht vollständig gelesen werden."));
+        return false;
+    }
+    if (command_mode != EvCommandApply::None && g_ev.command_active) {
+        if (command_mode == EvCommandApply::Auto && event_command_form_equal(batch.command_after, g_ev.command_before))
+            command_mode = EvCommandApply::None;
+        if (command_mode != EvCommandApply::None) {
+            const bool selected = g_ev.sel_cmd >= 0 && static_cast<size_t>(g_ev.sel_cmd) < g_ev.refs.size();
+            const EventCmdRef ref = selected ? g_ev.refs[static_cast<size_t>(g_ev.sel_cmd)] : EventCmdRef{};
+            const bool leaf = selected && !ref.header && ref.index >= 0;
+            if (command_mode == EvCommandApply::Auto) command_mode = leaf ? EvCommandApply::Update : EvCommandApply::Insert;
+            if (command_mode == EvCommandApply::Update && !leaf) {
+                ev_error(event_failure(*current, "commands", "Bitte einen Befehl auswählen.")); return false;
+            }
+            if (command_mode == EvCommandApply::Insert && selected && ref.header && !ref.insertable) {
+                ev_error(event_failure(*current, "commands", "Dieser Zweig ist beschädigt oder nicht eindeutig.")); return false;
+            }
+            const bool fresh = command_mode == EvCommandApply::Insert ||
+                               batch.command_before.type != batch.command_after.type;
+            if (fresh && !event_command_fields_available(batch.command_after.type, g_ev.command_editable)) {
+                ev_error(event_failure(*current, "commands",
+                    "Ein für diesen neuen Befehl benötigtes Feld ist wegen seiner alten Länge/Darstellung geschützt. "
+                    "Bitte den Editor erneut öffnen und einen leeren Befehlsentwurf verwenden."));
+                return false;
+            }
+            batch.command = command_mode == EvCommandApply::Update ? EventCommandAction::Update : EventCommandAction::Insert;
+            if (selected) batch.path = ref.path;
+            if (leaf) batch.command_index = static_cast<size_t>(ref.index);
+        }
+    }
+    const std::string original = json_write(*current);
+    EventEdit edit = event_batch_prepare(*current, batch);
+    if (!edit.ok) { ev_error(edit); return false; }
+    if (batch.event_fields && batch.event_before.name != batch.event_after.name &&
+        event_name_used(g.map_root, batch.event_after.name, g_ev.sel_event)) {
+        ev_error(event_failure(*current, "name",
+            "Dieser Name wird bereits von einem Event oder NPC verwendet. "
+            "Bitte einen eindeutigen Namen wählen (Spielstände und Self-Switches)."));
+        return false;
+    }
+    if (edit.changed && !ev_confirm_edit(edit)) return false;
+    // Eine modale Rückfrage pumpt Nachrichten. Das Ziel vor dem Commit neu
+    // prüfen, statt einen möglicherweise veralteten Zeiger zu verwenden.
+    current = ev_selected_event();
+    if (!current || json_write(*current) != original) {
+        ev_error(event_failure(JsonValue{}, "event", "Das Event wurde während der Rückfrage verändert.")); return false;
+    }
+    if (edit.changed) {
+        *current = std::move(edit.value);
+        g.dirty = true;
+    }
+    if (batch.event_fields) g_ev.event_before = batch.event_after;
+    if (batch.page_fields) g_ev.page_before = batch.page_after;
+    EventSyncGuard sync;
     ev_refresh_events();
-    if (mark_dirty) update_title();
-}
-
-// Etappe 18g: Trigger + Bedingungen der aktuellen Seite aus dem Formular
-// ins JSON schreiben. Leere Bedingungsfelder entfernen die Bedingung.
-void ev_apply_page_fields(bool mark_dirty) {
-    JsonValue* pg = ev_current_page();
-    if (!pg) return;
-    std::string trig = ev_text(g_ev.cb_trigger);
-    if (trig.empty()) trig = "action";
-    pg->set("trigger", JsonValue::make_str(trig));
-
-    const std::string sw_name = ev_text(g_ev.ed_cswitch);
-    const std::string va_name = ev_text(g_ev.ed_cvar);
-    // Etappe 19d: Self-Switch-Auswahl (Index 0 = "keins" = Bedingung aus).
-    const int self_sel =
-        static_cast<int>(SendMessageW(g_ev.cb_cself, CB_GETCURSEL, 0, 0));
-    const bool has_self = (self_sel >= 1 && self_sel <= 4);
-    if (sw_name.empty() && va_name.empty() && !has_self) {
-        json_remove_key(*pg, "conditions");
-    } else {
-        JsonValue cond = pg->find("conditions") && pg->find("conditions")->is_obj()
-                             ? *pg->find("conditions") : JsonValue::make_obj();
-        if (sw_name.empty()) {
-            json_remove_key(cond, "switch");
-        } else {
-            JsonValue sw = JsonValue::make_obj();
-            sw.set("name", JsonValue::make_str(sw_name));
-            const int b = static_cast<int>(SendMessageW(g_ev.cb_cswval, CB_GETCURSEL, 0, 0));
-            sw.set("value", JsonValue::make_bool(b == 0));
-            cond.set("switch", std::move(sw));
-        }
-        if (va_name.empty()) {
-            json_remove_key(cond, "variable");
-        } else {
-            JsonValue va = JsonValue::make_obj();
-            va.set("name", JsonValue::make_str(va_name));
-            const int op = static_cast<int>(SendMessageW(g_ev.cb_cvop, CB_GETCURSEL, 0, 0));
-            va.set("op", JsonValue::make_str(wide_to_utf8(EV_OPS[(op >= 0 && op < 6) ? op : 0])));
-            va.set("value", JsonValue::make_num(ev_number(g_ev.ed_cvval, 0.0), false));
-            cond.set("variable", std::move(va));
-        }
-        if (!has_self) {
-            json_remove_key(cond, "self_switch");
-        } else {
-            JsonValue ss = JsonValue::make_obj();
-            const char letter = static_cast<char>('A' + self_sel - 1);
-            ss.set("letter", JsonValue::make_str(std::string(1, letter)));
-            const int b =
-                static_cast<int>(SendMessageW(g_ev.cb_cselfval, CB_GETCURSEL, 0, 0));
-            ss.set("value", JsonValue::make_bool(b == 0));
-            cond.set("self_switch", std::move(ss));
-        }
-        pg->set("conditions", std::move(cond));
-    }
-    if (mark_dirty) g.dirty = true;
     ev_refresh_pages();
-    if (mark_dirty) update_title();
+    if (batch.command == EventCommandAction::Insert) g_ev.sel_cmd = -1;
+    ev_refresh_cmds();
+    if (batch.command != EventCommandAction::None) ev_load_cmd_form();
+    ev_update_status();
+    if (edit.changed) update_title();
+    return true;
 }
 
-// Etappe 18g: neue (leere) Seite ans Event hängen.
+bool resolve_event_edits() {
+    if (!event_editor_pending()) return true;
+    const int answer = data_prompt(g_ev.win,
+        L"Nicht übernommene Event-, Seiten- oder Befehlseingaben übernehmen?\r\n"
+        L"Ja ändert den ausgewählten Befehl; ohne Auswahl wird ein Entwurf eingefügt.\r\n\r\n"
+        L"Ja: übernehmen   Nein: Eingaben verwerfen   Abbrechen: zurück",
+        L"Event-Editor", MB_YESNOCANCEL | MB_ICONQUESTION | MB_DEFBUTTON3);
+    if (answer == IDYES) return ev_apply(true, true, EvCommandApply::Auto);
+    if (answer != IDNO) return false;
+    ev_refresh();
+    return true;
+}
+
+bool ev_confirm_delete(const wchar_t* what) {
+    std::wstring message = std::wstring(what) + L" wirklich löschen?\r\n"
+        L"Auch enthaltene Befehle, Zweige und Zusatzdaten gehen verloren. F6-Löschen ist nicht rückgängig.";
+    return data_prompt(g_ev.win, message.c_str(), L"Event-Daten löschen",
+                       MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) == IDYES;
+}
+
+bool ev_commit_structural(EventEdit edit) {
+    if (!edit.ok) { ev_error(edit); return false; }
+    JsonValue* event = ev_selected_event();
+    if (!event) return false;
+    if (edit.changed) {
+        *event = std::move(edit.value);
+        g.dirty = true;
+        update_title();
+    }
+    return true;
+}
+
 void ev_new_page() {
-    JsonValue* pages = ev_ensure_pages(g_ev.sel_event);
-    if (!pages) return;
-    JsonValue pg = JsonValue::make_obj();
-    pg.set("conditions", JsonValue::make_obj());
-    pg.set("trigger", JsonValue::make_str("action"));
-    pg.set("commands", JsonValue::make_arr());
-    pages->arr.push_back(std::move(pg));
-    g_ev.sel_page = static_cast<int>(pages->arr.size()) - 1;
+    if (!resolve_event_edits()) return;
+    const JsonValue* event = ev_selected_event();
+    if (!event) return;
+    EventEdit edit = event_add_page_prepare(*event);
+    if (!ev_commit_structural(std::move(edit))) return;
+    event = ev_selected_event();
+    g_ev.sel_page = static_cast<int>(event_page_count(*event)) - 1;
     g_ev.sel_cmd = -1;
-    g.dirty = true;
-    ev_refresh_pages();
-    ev_refresh_page_fields();
-    ev_refresh_cmds();
-    ev_load_cmd_form();
-    update_title();
+    ev_refresh();
 }
 
-// Etappe 18g: gewählte Seite löschen (die letzte bleibt).
 void ev_delete_page() {
-    JsonValue* pages = ev_ensure_pages(g_ev.sel_event);
-    if (!pages) return;
-    if (pages->arr.size() <= 1) {
-        core::log_warn("Event-Editor: die letzte Seite kann nicht gelöscht werden");
-        return;
-    }
-    if (g_ev.sel_page < 0 || g_ev.sel_page >= static_cast<int>(pages->arr.size())) return;
-    pages->arr.erase(pages->arr.begin() + g_ev.sel_page);
-    if (g_ev.sel_page >= static_cast<int>(pages->arr.size())) {
-        g_ev.sel_page = static_cast<int>(pages->arr.size()) - 1;
-    }
+    if (!resolve_event_edits()) return;
+    const JsonValue* event = ev_selected_event();
+    if (!event || g_ev.sel_page < 0 || event_page_count(*event) <= 1) return;
+    if (!ev_confirm_delete(L"Diese Seite")) return;
+    event = ev_selected_event();
+    if (!event) return;
+    EventEdit edit = event_delete_page_prepare(*event, static_cast<size_t>(g_ev.sel_page));
+    if (!ev_commit_structural(std::move(edit))) return;
+    event = ev_selected_event();
+    if (static_cast<size_t>(g_ev.sel_page) >= event_page_count(*event))
+        g_ev.sel_page = static_cast<int>(event_page_count(*event)) - 1;
     g_ev.sel_cmd = -1;
-    g.dirty = true;
-    ev_refresh_pages();
-    ev_refresh_page_fields();
-    ev_refresh_cmds();
-    ev_load_cmd_form();
-    update_title();
+    ev_refresh();
 }
 
 void ev_new_event() {
-    JsonValue* evs = ev_events();
-    // Auch grosse oder ungültige alte IDs dürfen keinen int-Überlauf
-    // auslösen. Dieselbe lückenfüllende Vergabe wie beim Schild-Editor.
-    const int id = placement_next_event_id(g.map_root);
+    if (!resolve_event_edits()) return;
+    if (!g.map_root.is_obj() || !event_unique(g.map_root, "events")) {
+        ev_error(event_failure(g.map_root, "events", "events ist mehrfach vorhanden.")); return;
+    }
+    JsonValue* events = g.map_root.find("events");
+    if (events && !events->is_arr()) {
+        ev_error(event_failure(g.map_root, "events", "events ist keine Liste; die Altdaten bleiben erhalten.")); return;
+    }
+    const int id = event_next_id(g.map_root);
+    if (id <= 0) { ev_error(event_failure(g.map_root, "events", "Keine freie Event-ID gefunden.")); return; }
     JsonValue e = JsonValue::make_obj();
-    e.set("id", JsonValue::make_num(id, true));
-    e.set("name", JsonValue::make_str("Event " + std::to_string(id)));
-    const float x = g.hover_valid ? g.hover_pos.x : 0.0f;
-    const float z = g.hover_valid ? g.hover_pos.z : 0.0f;
-    e.set("x", JsonValue::make_num(std::round(x / g.grid) * g.grid, false));
-    e.set("z", JsonValue::make_num(std::round(z / g.grid) * g.grid, false));
+    e.set("id", JsonValue::make_integer(std::to_string(id)));
+    e.set("name", JsonValue::make_str(event_available_name(g.map_root, "Event " + std::to_string(id))));
+    const double grid = std::isfinite(g.grid) && g.grid > 0 ? g.grid : 1.0;
+    const double x = g.hover_valid && std::isfinite(g.hover_pos.x) ? g.hover_pos.x : 0.0;
+    const double z = g.hover_valid && std::isfinite(g.hover_pos.z) ? g.hover_pos.z : 0.0;
+    const double snapped_x = std::round(x / grid) * grid, snapped_z = std::round(z / grid) * grid;
+    if (!std::isfinite(snapped_x) || !std::isfinite(snapped_z) ||
+        std::fabs(snapped_x) > 1000000.0 || std::fabs(snapped_z) > 1000000.0) {
+        ev_error(event_failure(g.map_root, "events", "Die Rasterposition des neuen Events ist nicht darstellbar.")); return;
+    }
+    e.set("x", JsonValue::make_num(snapped_x, false));
+    e.set("z", JsonValue::make_num(snapped_z, false));
     e.set("radius", JsonValue::make_num(2.0, false));
-    // Etappe 18g: neue Events starten mit einer Standard-Seite.
-    JsonValue pages = JsonValue::make_arr();
-    JsonValue pg = JsonValue::make_obj();
-    pg.set("conditions", JsonValue::make_obj());
-    pg.set("trigger", JsonValue::make_str("action"));
-    pg.set("commands", JsonValue::make_arr());
-    pages.arr.push_back(std::move(pg));
+    JsonValue page = JsonValue::make_obj();
+    page.set("conditions", JsonValue::make_obj());
+    page.set("trigger", JsonValue::make_str("action"));
+    page.set("commands", JsonValue::make_arr());
+    JsonValue pages = JsonValue::make_arr(); pages.arr.push_back(std::move(page));
     e.set("pages", std::move(pages));
-    evs->arr.push_back(std::move(e));
-    g_ev.sel_event = static_cast<int>(evs->arr.size()) - 1;
-    g_ev.sel_page = 0;
-    g_ev.sel_cmd = -1;
+    if (!events) {
+        g_ev.refs.clear();
+        events = &g.map_root.set("events", JsonValue::make_arr());
+        g.objects = g.map_root.find("objects");
+    }
+    events->arr.push_back(std::move(e));
+    g_ev.sel_event = static_cast<int>(events->arr.size()) - 1;
+    g_ev.sel_page = 0; g_ev.sel_cmd = -1;
     g.dirty = true;
-    ev_refresh();
-    update_title();
+    ev_refresh(); update_title();
 }
 
 void ev_delete_event() {
-    JsonValue* evs = ev_events();
-    if (g_ev.sel_event < 0 || g_ev.sel_event >= static_cast<int>(evs->arr.size())) return;
-    evs->arr.erase(evs->arr.begin() + g_ev.sel_event);
-    if (g_ev.sel_event >= static_cast<int>(evs->arr.size())) {
-        g_ev.sel_event = static_cast<int>(evs->arr.size()) - 1;
-    }
-    g_ev.sel_page = 0;
-    g_ev.sel_cmd = -1;
-    g.dirty = true;
-    ev_refresh();
-    update_title();
+    if (!resolve_event_edits() || !ev_selected_event()) return;
+    if (!ev_confirm_delete(L"Dieses Event")) return;
+    JsonValue* events = ev_events();
+    if (!events || g_ev.sel_event < 0 || static_cast<size_t>(g_ev.sel_event) >= events->arr.size()) return;
+    events->arr.erase(events->arr.begin() + g_ev.sel_event);
+    if (g_ev.sel_event >= static_cast<int>(events->arr.size())) g_ev.sel_event = static_cast<int>(events->arr.size()) - 1;
+    g_ev.sel_page = 0; g_ev.sel_cmd = -1;
+    g.dirty = true; ev_refresh(); update_title();
 }
 
 void ev_duplicate_event() {
-    JsonValue* evs = ev_events();
-    if (g_ev.sel_event < 0 || g_ev.sel_event >= static_cast<int>(evs->arr.size())) return;
-    ev_apply_event_fields(true);
-    const int id = placement_next_event_id(g.map_root);
-    JsonValue copy = evs->arr[g_ev.sel_event];
-    copy.set("id", JsonValue::make_num(id, true));
-    copy.set("name", JsonValue::make_str(ev_str_of(copy, "name", "Event") + " (Kopie)"));
-    JsonValue* x = copy.find("x");
-    JsonValue* z = copy.find("z");
-    if (x) x->increment();
-    if (z) z->increment();
-    evs->arr.push_back(std::move(copy));
-    g_ev.sel_event = static_cast<int>(evs->arr.size()) - 1;
-    g_ev.sel_page = 0;
-    g_ev.sel_cmd = -1;
-    g.dirty = true;
-    ev_refresh();
-    update_title();
+    if (!resolve_event_edits()) return;
+    const JsonValue* event = ev_selected_event();
+    if (!event) return;
+    const int id = event_next_id(g.map_root);
+    if (id <= 0) { ev_error(event_failure(*event, "events", "Keine freie Event-ID gefunden.")); return; }
+    EventEdit edit = event_duplicate_prepare(*event, id, &g.map_root);
+    if (!edit.ok) { ev_error(edit); return; }
+    if (edit.unshifted_coordinate && data_prompt(g_ev.win,
+            L"Mindestens eine Koordinate fehlt, ist ungültig oder kann nicht um eins verschoben werden. "
+            L"Sie bleibt in der Kopie unverändert; die Kopie kann daher am selben Ort liegen. Fortfahren?",
+            L"Event duplizieren", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) return;
+    JsonValue* events = ev_events();
+    if (!events || g_ev.sel_event < 0 || static_cast<size_t>(g_ev.sel_event) >= events->arr.size()) return;
+    events->arr.push_back(std::move(edit.value));
+    g_ev.sel_event = static_cast<int>(events->arr.size()) - 1;
+    g_ev.sel_page = 0; g_ev.sel_cmd = -1;
+    g.dirty = true; ev_refresh(); update_title();
 }
 
-// Befehl aus dem Formular bauen. existing = alter Befehl (für Dann/Sonst).
-JsonValue ev_build_command(const JsonValue* existing) {
-    const int t = static_cast<int>(SendMessageW(g_ev.cb_ce_type, CB_GETCURSEL, 0, 0));
-    const int ti = (t >= 0 && t < ET_COUNT) ? t : 0;
-    JsonValue cmd = JsonValue::make_obj();
-    cmd.set("cmd", JsonValue::make_str(EV_TYPES[ti]));
-
-    if (ti == ET_TEXT) {
-        const std::vector<std::string> lines = ev_split_lines(ev_text(g_ev.ed_ce_text));
-        JsonValue arr = JsonValue::make_arr();
-        for (const std::string& line : lines) arr.arr.push_back(JsonValue::make_str(line));
-        cmd.set("lines", arr);
-    } else if (ti == ET_CHOICES) {
-        // Wahlmöglichkeiten: Optionen aus den Zeilen; Zweige aus dem alten
-        // Befehl übernehmen (sonst leere Arrays für jede Option).
-        const std::vector<std::string> lines = ev_split_lines(ev_text(g_ev.ed_ce_text));
-        JsonValue opts = JsonValue::make_arr();
-        JsonValue branches = JsonValue::make_arr();
-        const JsonValue* old_branches = existing ? existing->find("branches") : nullptr;
-        for (size_t i = 0; i < lines.size(); ++i) {
-            if (lines[i].empty()) continue;
-            opts.arr.push_back(JsonValue::make_str(lines[i]));
-            if (old_branches && old_branches->is_arr() &&
-                branches.arr.size() < old_branches->arr.size()) {
-                branches.arr.push_back(old_branches->arr[branches.arr.size()]);
-            } else {
-                branches.arr.push_back(JsonValue::make_arr());
-            }
-        }
-        cmd.set("options", opts);
-        cmd.set("branches", branches);
-    } else if (ti == ET_WAIT) {
-        cmd.set("seconds", JsonValue::make_num(ev_number(g_ev.ed_ce_val1, 1.0), false));
-    } else if (ti == ET_SWITCH || ti == ET_IF_SWITCH) {
-        cmd.set("name", JsonValue::make_str(ev_text(g_ev.ed_ce_name)));
-        const int b = static_cast<int>(SendMessageW(g_ev.cb_ce_bool, CB_GETCURSEL, 0, 0));
-        cmd.set("value", JsonValue::make_bool(b == 0));
-    } else if (ti == ET_SELF_SWITCH || ti == ET_IF_SELF_SWITCH) {
-        // Etappe 19d: Buchstabe A-D; klein wird groß, Ungültiges/Leeres -> A
-        // (wie GameState.set_self_switch bzw. der Interpreter es erwarten).
-        std::string letter = ev_text(g_ev.ed_ce_name);
-        char c0 = letter.empty() ? 'A'
-                                 : static_cast<char>(std::toupper(
-                                       static_cast<unsigned char>(letter[0])));
-        if (c0 < 'A' || c0 > 'D') c0 = 'A';
-        cmd.set("letter", JsonValue::make_str(std::string(1, c0)));
-        const int b = static_cast<int>(SendMessageW(g_ev.cb_ce_bool, CB_GETCURSEL, 0, 0));
-        cmd.set("value", JsonValue::make_bool(b == 0));
-    } else if (ti == ET_FADE) {
-        std::string dir = ev_text(g_ev.ed_ce_name);
-        std::transform(dir.begin(), dir.end(), dir.begin(),
-                       [](unsigned char ch) {
-                           return static_cast<char>(std::tolower(ch));
-                       });
-        cmd.set("direction", JsonValue::make_str(dir == "ein" ? "ein" : "aus"));
-        cmd.set("seconds", JsonValue::make_num(ev_number(g_ev.ed_ce_val1, 0.5), false));
-    } else if (ti == ET_MOVE_ROUTE) {
-        // Etappe 19g: Ziel + Schritte (Zeilen); Tempo/Warten optional,
-        // "an/aus"-Combo = wiederholen (Default "an" wie im XP-Dialog).
-        cmd.set("target", JsonValue::make_str(ev_text(g_ev.ed_ce_name)));
-        const std::vector<std::string> lines = ev_split_lines(ev_text(g_ev.ed_ce_text));
-        JsonValue steps = JsonValue::make_arr();
-        for (const std::string& line : lines) {
-            if (line.empty()) continue;
-            steps.arr.push_back(JsonValue::make_str(line));
-        }
-        cmd.set("steps", steps);
-        if (!ev_text(g_ev.ed_ce_val1).empty()) {
-            const double sp = ev_number(g_ev.ed_ce_val1, 0.0);
-            if (sp > 0) cmd.set("speed", JsonValue::make_num(sp, false));
-        }
-        if (ev_number(g_ev.ed_ce_val2, 0.0) != 0.0) {
-            cmd.set("wait", JsonValue::make_bool(true));
-        }
-        if (!ev_text(g_ev.ed_ce_val3).empty()) {
-            cmd.set("code", JsonValue::make_str(ev_text(g_ev.ed_ce_val3)));
-        }
-        const int b = static_cast<int>(SendMessageW(g_ev.cb_ce_bool, CB_GETCURSEL, 0, 0));
-        if (b == 0) cmd.set("repeat", JsonValue::make_bool(true));
-    } else if (ti == ET_INPUT_NUMBER) {
-        // Etappe 19i: Variable (Namensfeld), Ziffern/Startwert, an/aus = cancel.
-        cmd.set("name", JsonValue::make_str(ev_text(g_ev.ed_ce_name)));
-        const int digits = static_cast<int>(ev_number(g_ev.ed_ce_val1, 1.0));
-        cmd.set("digits", JsonValue::make_num(digits < 1 ? 1 : (digits > 6 ? 6 : digits), false));
-        const int initial = static_cast<int>(ev_number(g_ev.ed_ce_val2, 0.0));
-        if (initial > 0) cmd.set("initial", JsonValue::make_num(initial, false));
-        const int cb = static_cast<int>(SendMessageW(g_ev.cb_ce_bool, CB_GETCURSEL, 0, 0));
-        if (cb != 0) cmd.set("cancel", JsonValue::make_bool(false));
-    } else if (ti == ET_BATTLE) {
-        // Etappe 19i: Truppe (Namensfeld), an/aus = Flucht möglich,
-        // Wert 2 = Niederlage ohne Game Over.
-        cmd.set("name", JsonValue::make_str(ev_text(g_ev.ed_ce_name)));
-        const int cb = static_cast<int>(SendMessageW(g_ev.cb_ce_bool, CB_GETCURSEL, 0, 0));
-        if (cb != 0) cmd.set("can_escape", JsonValue::make_bool(false));
-        if (ev_number(g_ev.ed_ce_val2, 0.0) != 0.0)
-            cmd.set("can_lose", JsonValue::make_bool(true));
-    } else if (ti == ET_TOGGLE_SWITCH) {
-        cmd.set("name", JsonValue::make_str(ev_text(g_ev.ed_ce_name)));
-    } else if (ti == ET_VARIABLE) {
-        cmd.set("name", JsonValue::make_str(ev_text(g_ev.ed_ce_name)));
-        const std::string v1 = ev_text(g_ev.ed_ce_val1);
-        const std::string v2 = ev_text(g_ev.ed_ce_val2);
-        if (!v1.empty() || v2.empty()) {
-            cmd.set("value", JsonValue::make_num(ev_number(g_ev.ed_ce_val1, 0.0), false));
-        }
-        if (!v2.empty()) {
-            std::string add = v2;
-            std::replace(add.begin(), add.end(), ',', '.');
-            cmd.set("add", JsonValue::make_num(std::atof(add.c_str()), false));
-        }
-    } else if (ti == ET_IF_VARIABLE) {
-        cmd.set("name", JsonValue::make_str(ev_text(g_ev.ed_ce_name)));
-        const int op = static_cast<int>(SendMessageW(g_ev.cb_ce_op, CB_GETCURSEL, 0, 0));
-        cmd.set("op", JsonValue::make_str(wide_to_utf8(EV_OPS[(op >= 0 && op < 6) ? op : 0])));
-        cmd.set("value", JsonValue::make_num(ev_number(g_ev.ed_ce_val1, 0.0), false));
-    } else if (ti == ET_TELEPORT) {
-        cmd.set("x", JsonValue::make_num(ev_number(g_ev.ed_ce_val1, 0.0), false));
-        cmd.set("z", JsonValue::make_num(ev_number(g_ev.ed_ce_val2, 0.0), false));
-        const std::string yaw = ev_text(g_ev.ed_ce_val3);
-        cmd.set("yaw", JsonValue::make_num(yaw.empty() ? 3.14159265
-                                                     : ev_number(g_ev.ed_ce_val3, 3.14159265),
-                                          false));
-    } else if (ti == ET_MOVE_PLAYER) {
-        cmd.set("x", JsonValue::make_num(ev_number(g_ev.ed_ce_val1, 0.0), false));
-        cmd.set("z", JsonValue::make_num(ev_number(g_ev.ed_ce_val2, 0.0), false));
-        cmd.set("relative", JsonValue::make_bool(true));   // Standard: relativ
-    } else if (ti == ET_LOG) {
-        cmd.set("text", JsonValue::make_str(ev_text(g_ev.ed_ce_text)));
-    } else if (ti == ET_SOUND) {
-        cmd.set("name", JsonValue::make_str(ev_text(g_ev.ed_ce_name)));
-        cmd.set("volume", JsonValue::make_num(ev_number(g_ev.ed_ce_val1, 1.0), false));
-    } else if (ti == ET_EFFECT) {
-        cmd.set("name", JsonValue::make_str(ev_text(g_ev.ed_ce_name)));
-        cmd.set("height", JsonValue::make_num(ev_number(g_ev.ed_ce_val1, 1.0), false));
-        const uint32_t parsed = parse_hex_color(ev_text(g_ev.ed_ce_val2));
-        cmd.set("color", JsonValue::make_num(
-            static_cast<double>(parsed ? parsed : 0xFFD866), true));
-    } else if (ti == ET_SCRIPT) {
-        cmd.set("name", JsonValue::make_str(ev_text(g_ev.ed_ce_name)));
-    } else if (ti == ET_ITEM) {
-        // Item geben (positive Menge) oder nehmen (negative Menge).
-        cmd.set("name", JsonValue::make_str(ev_text(g_ev.ed_ce_name)));
-        const double n = ev_number(g_ev.ed_ce_val2, 1.0);
-        if (n < 0) {
-            cmd.set("take", JsonValue::make_num(-n, false));
-        } else {
-            cmd.set("count", JsonValue::make_num(n, false));
-        }
-    } else if (ti == ET_GOLD) {
-        cmd.set("amount", JsonValue::make_num(ev_number(g_ev.ed_ce_val1, 0.0), false));
-    } else if (ti == ET_HEAL) {
-        const std::string amt = ev_text(g_ev.ed_ce_val1);
-        if (!amt.empty()) {
-            cmd.set("amount", JsonValue::make_num(ev_number(g_ev.ed_ce_val1, 0.0), false));
-        }
-    } else if (ti == ET_WEATHER) {
-        cmd.set("name", JsonValue::make_str(ev_text(g_ev.ed_ce_name)));
-        cmd.set("intensity", JsonValue::make_num(ev_number(g_ev.ed_ce_val1, 1.0), false));
-    } else if (ti == ET_SAVE_GAME || ti == ET_LOAD_GAME) {
-        cmd.set("slot", JsonValue::make_num(ev_number(g_ev.ed_ce_val1, 1.0), false));
-    }
-
-    const std::string type = EV_TYPES[ti];
-    if (type == "if_switch" || type == "if_variable" || type == "if_self_switch") {
-        // Zweige erhalten, wenn der Befehl schon ein Wenn war.
-        const std::string old_type = existing ? ev_str_of(*existing, "cmd") : "";
-        if (existing && (old_type == "if_switch" || old_type == "if_variable" ||
-                         old_type == "if_self_switch")) {
-            const JsonValue* th = existing->find("then");
-            const JsonValue* el = existing->find("else");
-            cmd.set("then", th ? *th : JsonValue::make_arr());
-            cmd.set("else", el ? *el : JsonValue::make_arr());
-        } else {
-            cmd.set("then", JsonValue::make_arr());
-            cmd.set("else", JsonValue::make_arr());
-        }
-    }
-    return cmd;
-}
-
-void ev_insert_command() {
-    JsonValue cmd = ev_build_command(nullptr);
-    JsonValue* target = nullptr;
-    if (g_ev.sel_cmd >= 0 && g_ev.sel_cmd < static_cast<int>(g_ev.refs.size())) {
-        target = g_ev.refs[g_ev.sel_cmd].list;
-    }
-    if (!target) target = ev_commands(g_ev.sel_event);
-    if (!target) return;
-    target->arr.push_back(std::move(cmd));
-    g.dirty = true;
-    g_ev.sel_cmd = -1;
-    ev_refresh_cmds();
-    ev_load_cmd_form();
-    update_title();
-}
-
-void ev_update_command() {
-    if (g_ev.sel_cmd < 0 || g_ev.sel_cmd >= static_cast<int>(g_ev.refs.size())) return;
-    const EventCmdRef ref = g_ev.refs[g_ev.sel_cmd];
-    if (ref.header) return;
-    const JsonValue* old = &ref.list->arr[ref.index];
-    JsonValue cmd = ev_build_command(old);
-    ref.list->arr[ref.index] = std::move(cmd);
-    g.dirty = true;
-    ev_refresh_cmds();
-    ev_load_cmd_form();
-    update_title();
-}
+void ev_insert_command() { ev_apply(false, false, EvCommandApply::Insert); }
+void ev_update_command() { ev_apply(false, false, EvCommandApply::Update); }
 
 void ev_delete_command() {
-    if (g_ev.sel_cmd < 0 || g_ev.sel_cmd >= static_cast<int>(g_ev.refs.size())) return;
-    const EventCmdRef ref = g_ev.refs[g_ev.sel_cmd];
-    if (ref.header) return;
-    ref.list->arr.erase(ref.list->arr.begin() + ref.index);
+    if (!resolve_event_edits()) return;
+    if (g_ev.sel_cmd < 0 || static_cast<size_t>(g_ev.sel_cmd) >= g_ev.refs.size()) return;
+    const EventCmdRef ref = g_ev.refs[static_cast<size_t>(g_ev.sel_cmd)];
+    if (ref.header || ref.index < 0 || !ev_confirm_delete(L"Diesen Befehl")) return;
+    const JsonValue* event = ev_selected_event();
+    if (!event || g_ev.sel_page < 0) return;
+    EventEdit edit = event_command_remove_or_move(*event, static_cast<size_t>(g_ev.sel_page), ref.path,
+                                                 static_cast<size_t>(ref.index), 0);
+    if (!ev_commit_structural(std::move(edit))) return;
     g_ev.sel_cmd = -1;
-    g.dirty = true;
-    ev_refresh_cmds();
-    ev_load_cmd_form();
-    update_title();
+    ev_refresh_cmds(); ev_load_cmd_form();
+}
+
+bool ev_same_path(const EventCommandPath& a, const EventCommandPath& b) {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i)
+        if (a[i].command != b[i].command || a[i].key != b[i].key || a[i].choice != b[i].choice) return false;
+    return true;
 }
 
 void ev_move_command(int delta) {
-    if (g_ev.sel_cmd < 0 || g_ev.sel_cmd >= static_cast<int>(g_ev.refs.size())) return;
-    const EventCmdRef ref = g_ev.refs[g_ev.sel_cmd];
-    if (ref.header) return;
-    const int n = static_cast<int>(ref.list->arr.size());
-    const int to = ref.index + delta;
-    if (to < 0 || to >= n) return;
-    std::swap(ref.list->arr[ref.index], ref.list->arr[to]);
+    if (!resolve_event_edits()) return;
+    if (g_ev.sel_cmd < 0 || static_cast<size_t>(g_ev.sel_cmd) >= g_ev.refs.size()) return;
+    const EventCmdRef ref = g_ev.refs[static_cast<size_t>(g_ev.sel_cmd)];
+    const JsonValue* event = ev_selected_event();
+    if (ref.header || ref.index < 0 || !event || g_ev.sel_page < 0) return;
+    EventEdit edit = event_command_remove_or_move(*event, static_cast<size_t>(g_ev.sel_page), ref.path,
+                                                 static_cast<size_t>(ref.index), delta);
+    if (!edit.ok) { ev_error(edit); return; }
+    if (!edit.changed || !ev_commit_structural(std::move(edit))) return;
+    const int to = ref.index + (delta < 0 ? -1 : 1);
     g_ev.sel_cmd = -1;
-    g.dirty = true;
     ev_refresh_cmds();
-    // denselben Befehl wieder markieren (seine Position hat sich verschoben)
-    for (int i = 0; i < static_cast<int>(g_ev.refs.size()); ++i) {
-        const EventCmdRef& r = g_ev.refs[i];
-        if (!r.header && r.list == ref.list && r.index == to) {
-            g_ev.sel_cmd = i;
-            break;
+    for (size_t i = 0; i < g_ev.refs.size(); ++i) {
+        const EventCmdRef& candidate = g_ev.refs[i];
+        if (!candidate.header && candidate.index == to && ev_same_path(candidate.path, ref.path)) {
+            g_ev.sel_cmd = static_cast<int>(i); break;
         }
     }
-    if (g_ev.sel_cmd >= 0) {
-        SendMessageW(g_ev.list_cmds, LB_SETCURSEL, g_ev.sel_cmd, 0);
-    }
+    SendMessageW(g_ev.list_cmds, LB_SETCURSEL, static_cast<WPARAM>(g_ev.sel_cmd), 0);
     ev_load_cmd_form();
-    update_title();
 }
 
 HWND ev_control(const wchar_t* cls, const wchar_t* text, DWORD style,
                 int x, int y, int w, int h, int id) {
+    if (id != 0 && std::wcscmp(cls, L"Static") != 0) style |= WS_TABSTOP;
     HWND c = CreateWindowExW(0, cls, text, WS_CHILD | WS_VISIBLE | style,
                              x, y, w, h, g_ev.win,
                              reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),
@@ -6917,62 +6622,122 @@ void ev_label(const wchar_t* text, int x, int y, int w) {
     ev_control(L"Static", text, 0, x, y, w, 20, 0);
 }
 
-LRESULT CALLBACK event_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
-    switch (msg) {
-        case WM_COMMAND: {
-            const int id = LOWORD(wp);
-            const int code = HIWORD(wp);
-            if (g_ev.syncing) return 0;
+void ev_queue_selection(int which) {
+    if (!g_ev.win || which < 0 || which > 2 || g_ev.select_queued[which]) return;
+    const UINT msg = which == 0 ? WM_EVENT_SELECT_EVENT : which == 1 ? WM_EVENT_SELECT_PAGE : WM_EVENT_SELECT_COMMAND;
+    g_ev.select_queued[which] = PostMessageW(g_ev.win, msg, 0, 0) != 0;
+    if (!g_ev.select_queued[which]) {
+        HWND list = which == 0 ? g_ev.list_events : which == 1 ? g_ev.list_pages : g_ev.list_cmds;
+        const int previous = which == 0 ? g_ev.sel_event : which == 1 ? g_ev.sel_page : g_ev.sel_cmd;
+        SendMessageW(list, LB_SETCURSEL, static_cast<WPARAM>(previous), 0);
+    }
+}
 
-            if (id == IDEV_LIST && code == LBN_SELCHANGE) {
-                const int sel = static_cast<int>(
-                    SendMessageW(g_ev.list_events, LB_GETCURSEL, 0, 0));
-                if (sel == g_ev.sel_event) return 0;
-                if (g_ev.sel_event >= 0) ev_apply_event_fields(false);
-                g_ev.sel_event = sel;
-                g_ev.sel_page = 0;   // Etappe 18g: Seitenwechsel beim Eventwechsel
-                g_ev.sel_cmd = -1;
-                ev_refresh_events();   // Auswahl nach dem Neuaufbau wiederherstellen
-                ev_refresh_fields();
-                ev_refresh_pages();
-                ev_refresh_page_fields();
-                ev_refresh_cmds();
-                ev_load_cmd_form();
-                return 0;
+void event_requeue_selections() {
+    if (!g_ev.win || !IsWindow(g_ev.win)) return;
+    for (int i = 0; i < 3; ++i) if (g_ev.select_delayed[i]) {
+        g_ev.select_delayed[i] = false;
+        ev_queue_selection(i);
+    }
+}
+
+int ev_list_selection(HWND list) {
+    const LRESULT row = SendMessageW(list, LB_GETCURSEL, 0, 0);
+    if (row == LB_ERR) return -1;
+    const LRESULT item = SendMessageW(list, LB_GETITEMDATA, static_cast<WPARAM>(row), 0);
+    return item == LB_ERR ? -1 : static_cast<int>(item);
+}
+
+bool ev_reconcile_selection(int which) {
+    g_ev.select_queued[which] = false;
+    HWND list = which == 0 ? g_ev.list_events : which == 1 ? g_ev.list_pages : g_ev.list_cmds;
+    const int previous = which == 0 ? g_ev.sel_event : which == 1 ? g_ev.sel_page : g_ev.sel_cmd;
+    const int next = ev_list_selection(list);
+    if (next == previous) return true;
+    EventCmdRef target;
+    const bool has_target = which == 2 && next >= 0 && static_cast<size_t>(next) < g_ev.refs.size();
+    if (has_target) target = g_ev.refs[static_cast<size_t>(next)];
+    if (!resolve_event_edits()) {
+        SendMessageW(list, LB_SETCURSEL, static_cast<WPARAM>(previous), 0);
+        return false;
+    }
+    if (which == 0) {
+        g_ev.sel_event = next; g_ev.sel_page = 0; g_ev.sel_cmd = -1;
+        ev_refresh();
+    } else if (which == 1) {
+        g_ev.sel_page = next; g_ev.sel_cmd = -1;
+        ev_refresh();
+    } else {
+        // Eine bestätigte Änderung kann Kopfzeilen einfügen/entfernen; die
+        // angeklickte Zeile deshalb anhand ihres Pfades wiederfinden.
+        g_ev.sel_cmd = -1;
+        if (has_target) for (size_t i = 0; i < g_ev.refs.size(); ++i) {
+            const EventCmdRef& r = g_ev.refs[i];
+            if (r.header == target.header && r.index == target.index && ev_same_path(r.path, target.path)) {
+                g_ev.sel_cmd = static_cast<int>(i); break;
             }
-            // Etappe 18g: Seitenliste
-            if (id == IDEV_PAGES && code == LBN_SELCHANGE) {
-                const int sel = static_cast<int>(
-                    SendMessageW(g_ev.list_pages, LB_GETCURSEL, 0, 0));
-                if (sel == g_ev.sel_page) return 0;
-                if (g_ev.sel_page >= 0) ev_apply_page_fields(false);
-                g_ev.sel_page = sel;
-                g_ev.sel_cmd = -1;
-                ev_refresh_pages();
-                ev_refresh_page_fields();
-                ev_refresh_cmds();
-                ev_load_cmd_form();
-                return 0;
+        }
+        ev_refresh_cmds();
+        ev_load_cmd_form();
+    }
+    return true;
+}
+
+// Ein schneller Button- oder Schließen-Aufruf darf keine noch gepostete
+// Listenauswahl übergehen und dadurch die vorherige Zeile bearbeiten.
+// Dies läuft nur außerhalb von LBN_SELCHANGE, nie im Listen-Callback selbst.
+bool ev_flush_queued_selections() {
+    for (int i = 0; i < 3; ++i)
+        if (g_ev.select_queued[i] && !ev_reconcile_selection(i)) return false;
+    return true;
+}
+
+// Auch Aktionen des Haupt-/Projektfensters dürfen keine noch gepostete
+// Auswahl ignorieren. Der Auswahlabgleich selbst ruft nur den Kern auf, damit
+// diese Funktion nicht rekursiv denselben Listenwechsel bearbeitet.
+bool resolve_event_editor() {
+    // Andere moduslose Fenster können bereits gepostete Befehle während einer
+    // MessageBox zustellen, selbst wenn sie inzwischen deaktiviert wurden.
+    if (g.data_prompt_active) return false;
+    return ev_flush_queued_selections() && resolve_event_edits();
+}
+
+LRESULT CALLBACK event_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
+    if (g.data_prompt_active) {
+        const int which = msg == WM_EVENT_SELECT_EVENT ? 0 : msg == WM_EVENT_SELECT_PAGE ? 1 :
+                          msg == WM_EVENT_SELECT_COMMAND ? 2 : -1;
+        if (which >= 0) {
+            if (g_ev.select_queued[which]) {
+                g_ev.select_queued[which] = false;
+                g_ev.select_delayed[which] = true;
             }
+            return 0;
+        }
+        if (msg == WM_COMMAND || msg == WM_CLOSE) return 0;
+    }
+    switch (msg) {
+        // Ein bereits synchron abgeglichener Post ist nur noch eine veraltete
+        // Nachricht und darf keine weitere Auswahländerung auslösen.
+        case WM_EVENT_SELECT_EVENT: if (g_ev.select_queued[0]) ev_reconcile_selection(0); return 0;
+        case WM_EVENT_SELECT_PAGE: if (g_ev.select_queued[1]) ev_reconcile_selection(1); return 0;
+        case WM_EVENT_SELECT_COMMAND: if (g_ev.select_queued[2]) ev_reconcile_selection(2); return 0;
+        case WM_COMMAND: {
+            const int id = LOWORD(wp), code = HIWORD(wp);
+            if (g_ev.syncing) return 0;
+            if (id == IDEV_LIST && code == LBN_SELCHANGE) { ev_queue_selection(0); return 0; }
+            if (id == IDEV_PAGES && code == LBN_SELCHANGE) { ev_queue_selection(1); return 0; }
+            if (id == IDEV_CMDS && code == LBN_SELCHANGE) { ev_queue_selection(2); return 0; }
+            if (id == IDEV_CETYPE && code == CBN_SELCHANGE) { ev_cmd_visibility(); return 0; }
+            if (code != BN_CLICKED) return 0;
+            if (!ev_flush_queued_selections()) return 0;
             if (id == IDEV_NEWPAGE)   { ev_new_page(); return 0; }
             if (id == IDEV_DELPAGE)   { ev_delete_page(); return 0; }
-            if (id == IDEV_APPLY_PAGE) { ev_apply_page_fields(true); return 0; }
-            if (id == IDEV_CMDS && code == LBN_SELCHANGE) {
-                g_ev.sel_cmd = static_cast<int>(
-                    SendMessageW(g_ev.list_cmds, LB_GETCURSEL, 0, 0));
-                ev_refresh_cmds();
-                ev_load_cmd_form();
-                return 0;
-            }
+            if (id == IDEV_APPLY_PAGE) { ev_apply(false, true, EvCommandApply::None); return 0; }
             if (id == IDEV_NEW)      { ev_new_event(); return 0; }
             if (id == IDEV_DEL)      { ev_delete_event(); return 0; }
             if (id == IDEV_DUP)      { ev_duplicate_event(); return 0; }
-            if (id == IDEV_CLOSE)    { DestroyWindow(h); return 0; }
-            if (id == IDEV_APPLY_EV) { ev_apply_event_fields(true); return 0; }
-            if (id == IDEV_CETYPE && code == CBN_SELCHANGE) {
-                ev_cmd_visibility();
-                return 0;
-            }
+            if (id == IDEV_CLOSE || id == IDCANCEL) { if (resolve_event_edits()) DestroyWindow(h); return 0; }
+            if (id == IDEV_APPLY_EV) { ev_apply(true, false, EvCommandApply::None); return 0; }
             if (id == IDEV_INSERT)   { ev_insert_command(); return 0; }
             if (id == IDEV_APPLYCMD) { ev_update_command(); return 0; }
             if (id == IDEV_DELCMD)   { ev_delete_command(); return 0; }
@@ -6981,16 +6746,10 @@ LRESULT CALLBACK event_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
         case WM_CLOSE:
-            DestroyWindow(h);
+            if (resolve_event_editor()) DestroyWindow(h);
             return 0;
         case WM_DESTROY:
-            if (g_ev.win == h) {
-                g_ev.win = nullptr;
-                g_ev.refs.clear();
-                g_ev.sel_event = -1;
-                g_ev.sel_page = -1;
-                g_ev.sel_cmd = -1;
-            }
+            if (g_ev.win == h) g_ev = EventDlgState{};
             return 0;
     }
     return DefWindowProcW(h, msg, wp, lp);
@@ -7003,6 +6762,8 @@ void open_event_editor() {
     }
     if (g.cur_map < 0) return;
     cancel_object_drag();
+    g_ev = EventDlgState{};
+    g_ev.syncing = true;
 
     WNDCLASSW wc{};
     wc.lpfnWndProc = event_proc;
@@ -7020,6 +6781,7 @@ void open_event_editor() {
                                WS_POPUP | WS_CAPTION | WS_SYSMENU,
                                mr.left + 120, mr.top + 60, W, H,
                                g.main, nullptr, GetModuleHandleW(nullptr), nullptr);
+    if (!g_ev.win) { g_ev = EventDlgState{}; return; }
 
     // Linke Spalte: Event-Liste + Seiten (Etappe 18g)
     ev_label(L"EVENTS", 12, 8, 200);
@@ -7036,6 +6798,7 @@ void open_event_editor() {
                                  12, 424, 280, 130, IDEV_PAGES);
     ev_control(L"Button", L"Neue Seite", BS_PUSHBUTTON, 12, 560, 136, 28, IDEV_NEWPAGE);
     ev_control(L"Button", L"Seite löschen", BS_PUSHBUTTON, 156, 560, 136, 28, IDEV_DELPAGE);
+    g_ev.lbl_status = ev_control(L"Static", L"", 0, 12, 600, 280, 36, 0);
     ev_control(L"Button", L"Schließen", BS_PUSHBUTTON, 12, 640, 280, 30, IDEV_CLOSE);
 
     // Rechte Seite oben: Event-Eigenschaften (Trigger steht jetzt pro Seite)
@@ -7118,7 +6881,7 @@ void open_event_editor() {
                                 WS_VSCROLL | WS_BORDER | LBS_NOTIFY | LBS_HASSTRINGS,
                                 316, 252, 660, 230, IDEV_CMDS);
 
-    ev_label(L"Neuer Befehl:", 316, 494, 110);
+    ev_label(L"Befehlstyp:", 316, 494, 110);
     g_ev.cb_ce_type = ev_control(L"ComboBox", nullptr,
                                  CBS_DROPDOWNLIST | WS_VSCROLL,
                                  424, 490, 250, 220, IDEV_CETYPE);
@@ -7147,7 +6910,7 @@ void open_event_editor() {
         SendMessageW(g_ev.cb_ce_op, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(o));
     }
     SendMessageW(g_ev.cb_ce_op, CB_SETCURSEL, 0, 0);
-    g_ev.lbl_val3 = ev_control(L"Static", L"Yaw (Grad)", 0, 606, 554, 90, 20, IDEV_L_VAL3);
+    g_ev.lbl_val3 = ev_control(L"Static", L"Yaw (Radiant)", 0, 606, 554, 90, 20, IDEV_L_VAL3);
     g_ev.ed_ce_val3 = ev_control(L"Edit", nullptr, WS_BORDER | ES_RIGHT,
                                  698, 550, 70, 24, IDEV_CE_VAL3);
     g_ev.cb_ce_bool = ev_control(L"ComboBox", nullptr, CBS_DROPDOWNLIST | WS_VSCROLL,
@@ -7157,7 +6920,7 @@ void open_event_editor() {
     SendMessageW(g_ev.cb_ce_bool, CB_SETCURSEL, 0, 0);
 
     g_ev.lbl_text = ev_control(L"Static", L"Zeilen (eine pro Zeile)", 0,
-                               316, 582, 220, 20, IDEV_L_TEXT);
+                               316, 582, 620, 20, IDEV_L_TEXT);
     g_ev.ed_ce_text = ev_control(L"Edit", nullptr,
                                  WS_BORDER | WS_VSCROLL | ES_LEFT | ES_MULTILINE |
                                  ES_AUTOVSCROLL | ES_WANTRETURN,
@@ -7170,13 +6933,20 @@ void open_event_editor() {
     ev_control(L"Button", L"Hoch", BS_PUSHBUTTON, 476, 660, 96, 28, IDEV_UP);
     ev_control(L"Button", L"Runter", BS_PUSHBUTTON, 580, 660, 96, 28, IDEV_DOWN);
 
-    // Startzustand: erstes Event auswählen.
+    // Lange Eingaben nicht am Win32-Standardlimit abschneiden. Noch längere
+    // Bestandsdaten werden durch den Rücklesevergleich feldweise geschützt.
+    for (HWND field : {g_ev.ed_name, g_ev.ed_x, g_ev.ed_z, g_ev.ed_radius,
+                       g_ev.ed_cswitch, g_ev.ed_cvar, g_ev.ed_cvval,
+                       g_ev.ed_ce_name, g_ev.ed_ce_val1, g_ev.ed_ce_val2,
+                       g_ev.ed_ce_val3, g_ev.ed_ce_text})
+        SendMessageW(field, EM_SETLIMITTEXT, 1000000, 0);
+    // Ein fehlendes oder ungültiges events wird beim Öffnen nicht angelegt.
     JsonValue* evs = ev_events();
-    g_ev.sel_event = evs->arr.empty() ? -1 : 0;
+    g_ev.sel_event = evs && !evs->arr.empty() ? 0 : -1;
     g_ev.sel_page = 0;
     g_ev.sel_cmd = -1;
     ev_refresh();
-    ev_cmd_visibility();
+    g_ev.syncing = false;
 
     ShowWindow(g_ev.win, SW_SHOW);
     SetForegroundWindow(g_ev.win);
@@ -9027,9 +8797,10 @@ int main(int argc, char** argv) {
         MSG msg;
         while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
             if (msg.message == WM_QUIT) { running = false; break; }
-            // Auch die moduslosen Karten-Dialoge brauchen Tab/Esc/Enter;
-            // Mehrzeiler behalten Enter dank ES_WANTRETURN als Zeilenumbruch.
+            // Auch moduslose Dialoge brauchen Tab/Esc/Enter; Mehrzeiler
+            // behalten Enter dank ES_WANTRETURN als Zeilenumbruch.
             if (g.props_dlg && IsDialogMessageW(g.props_dlg, &msg)) continue;
+            if (event_editor_open() && IsDialogMessageW(g_ev.win, &msg)) continue;
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }

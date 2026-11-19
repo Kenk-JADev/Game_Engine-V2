@@ -7,8 +7,8 @@
 #    hygiene    Repo-Hygiene: JSON parsebar, UTF-8 ohne BOM/Doppelkodierung,
 #               Zeilenenden-Konvention, boot.rb-Requires, keine Artefakte
 #    engine     Ruby-Engine: alle tools/*_test.rb + Karten-Scan (MapCheck)
-#    cpp-logik  C++ ohne Win32: JSON-Schicht des Editors mit -Werror, danach
-#               die Brückenprüfung gegen Ruby JSON.pretty_generate
+#    cpp-logik  C++ ohne Win32: Editor-Logik mit -Werror, danach JSON- und
+#               Event-Brücke gegen die Ruby-Schicht
 #    windows    der echte Bau: Rune3D.exe + RuneEditor.exe mit MSYS2-ucrt64-g++
 #               und CRuby, danach dieselbe Testsuite wie build.ps1 -Test
 #
@@ -87,6 +87,9 @@ jobs:
       - name: JSON-Brücke (C++-Schreiber gegen Ruby pretty_generate)
         run: ruby tools/json_bridge_check.rb ./json_test --strict-format
 
+      - name: Event-Brücke (C++-Edits gegen Ruby-Laufzeit)
+        run: ruby tools/event_bridge_check.rb ./json_test
+
   windows:
     name: Windows-Build (Rune3D + RuneEditor)
     # windows-2022, weil setup-ruby dort die zum Bauen von Ruby nötigen
@@ -136,7 +139,7 @@ jobs:
         shell: pwsh
         run: .\build.ps1 -Clean
 
-      - name: Tests (C++-JSON-Test, Ruby-Suite, JSON-Brücke)
+      - name: Tests (C++-Logik, Ruby-Suite, JSON- und Event-Brücke)
         shell: pwsh
         run: .\build.ps1 -Test
 

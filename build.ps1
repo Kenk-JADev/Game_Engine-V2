@@ -7,7 +7,7 @@
     .\build.ps1                     nur bauen
     .\build.ps1 -Run                bauen und Rune3D starten
     .\build.ps1 -Clean              alles neu bauen
-    .\build.ps1 -Test               Testsuite (C++-JSON-Test, Ruby-Tests, JSON-Brücke)
+    .\build.ps1 -Test               Testsuite (C++-Logik, Ruby-Tests, JSON- und Event-Brücke)
     .\build.ps1 -RubyRoot C:\Ruby34-x64   andere Ruby-Installation benutzen
 
     Werkzeug-Suche (seit Etappe 19a):
@@ -176,6 +176,10 @@ if ($Test) {
     $BrueckeArgs = @((Join-Path $ProjectRoot 'tools\json_bridge_check.rb'), $JsonTestExe, '--strict-format')
     & $Ruby.Exe @BrueckeArgs
     if ($LASTEXITCODE -ne 0) { throw 'JSON-Brückenprüfung fehlgeschlagen' }
+
+    Write-Step 'Event-Brücke (C++-Edits gegen Ruby-Laufzeit) ...'
+    & $Ruby.Exe (Join-Path $ProjectRoot 'tools\event_bridge_check.rb') $JsonTestExe
+    if ($LASTEXITCODE -ne 0) { throw 'Event-Brückenprüfung fehlgeschlagen' }
 
     Write-Host 'ALLE TESTS GRÜN' -ForegroundColor Green
     return

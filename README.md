@@ -95,7 +95,7 @@ Offene Punkte mit Symptom und betroffener Datei stehen in
 .\build.ps1              # build\Rune3D.exe + build\RuneEditor.exe
 .\build.ps1 -Clean       # komplett neu
 .\build.ps1 -Run         # bauen und das Spiel starten
-.\build.ps1 -Test        # Testsuite (C++-JSON-Test, Ruby-Tests, JSON-Brücke)
+.\build.ps1 -Test        # C++-/Ruby-Tests und JSON-/Event-Brücke
 .\build.ps1 -RubyRoot D:\Ruby34-x64   # andere Ruby-Installation
 ```
 
@@ -112,7 +112,7 @@ Get-Process RuneEditor,Rune3D -ErrorAction SilentlyContinue | Stop-Process -Forc
 
 ## Testen
 
-Drei Ebenen, alle headless:
+Die wichtigsten Prüfungen, überwiegend headless:
 
 ```powershell
 .\build.ps1 -Test                              # alles zusammen
@@ -124,8 +124,9 @@ ruby tools\lint_repo.rb                        # Repo-Hygiene
 | Ebene | Was | Wo |
 |---|---|---|
 | Ruby-Modultests | Engine-Logik mit `Rune::*`-Stubs (Events, Seiten, Interpreter, Party, Kampf, Wetter, Scripte, Projekte, Speichern) + Ruby/C++-Vokabular-Sync | `tools/*_test.rb`, Runner `tools/test_all.rb` |
-| C++-Logiktest | JSON-Schicht des Editors: Parser, Schreiber, Zahlen-Treue, Umlaute, Roundtrip echter Karten | `tools/json_test.cpp` |
+| C++-Logiktest | JSON und portable Editor-Formularmodelle, darunter F6-Transaktionen und Datentreue | `tools/json_test.cpp` |
 | JSON-Brücke | Schreibt C++ bytegleich zu Ruby `JSON.pretty_generate`? | `tools/json_bridge_check.rb` |
+| Event-Brücke | C++-F6-Änderungen gegen echte Ruby-Event- und Interpreter-Laufzeit | `tools/event_bridge_check.rb` |
 | Karten-Scan | Daten-Validierung (Befehle, Trigger, Bedingungen, Wegpunkte, Terrain) | `game/engine/mapcheck.rb` |
 | Repo-Hygiene | UTF-8, BOM, Doppelkodierung, Zeilenenden, Requires, Index | `tools/lint_repo.rb` |
 | Live-Tests | Fenster-Injektion am echten Editor (nur Windows, manüll) | `tools/edclick.psm1` |
@@ -142,7 +143,7 @@ Pull Request:
 |---|---|---|
 | `hygiene` | ubuntu | `tools/lint_repo.rb` |
 | `engine` | ubuntu | `tools/test_all.rb` + Karten-Scan |
-| `cpp-logik` | ubuntu | `tools/json_test.cpp` mit `-Werror`, danach JSON-Brücke |
+| `cpp-logik` | ubuntu | `tools/json_test.cpp` mit `-Werror`, danach JSON- und Event-Brücke |
 | `windows` | windows-2022 | `build.ps1 -Clean` **und** `-Test`, EXEs als Artefakt |
 
 Der Windows-Job ist der einzige Ort, an dem D3D11/Win32 wirklich kompiliert und
@@ -254,6 +255,43 @@ Objektänderungen aus F5 sind mit Strg+Z rückgängig zu machen; NPCs und
 Schilder sind noch nicht im Undo enthalten. Beim Kartenwechsel wird der
 Objekt-Undo-Stapel geleert.
 
+### Event-Editor (F6)
+
+F6 öffnet ein eigenes Fenster für Events, Seiten und Befehle. „Event
+übernehmen“, „Seite übernehmen“ und „Befehl übernehmen“ ändern jeweils
+das betreffende Formular; „Einfügen“ erstellt einen neuen Befehl im
+angezeigten Zielzweig. Noch offene Eingaben werden vor Auswahlwechsel,
+Schließen, Karten-/Projektwechsel und Speichern abgefragt: Ja übernimmt,
+Nein verwirft die Formulareingaben, Abbrechen behält sie samt alter Auswahl.
+Ein nicht ausgewählter Befehlsentwurf wird bei Ja eingefügt. Ungültige
+Eingaben verhindern die gesamte gemeinsame Übernahme. Die Karte wird
+anschließend im Hauptfenster mit Strg+S gespeichert; mit Fokus im F6-Fenster
+ist das Tastenkürzel für das Hauptfenster abgeschaltet.
+
+Nur geänderte Felder werden geschrieben. Unberührte Zahlen, fehlende Felder,
+Zusatzdaten und verschachtelte Zweige bleiben erhalten. Alte Events ohne
+Seitenliste erscheinen zunächst als implizite Seite; erst neue Bedingungen
+oder „Neue Seite“ legen `pages` an. Die ursprünglichen Top-Level-Felder
+`trigger`/`commands` bleiben als Altdaten erhalten; die Laufzeit nutzt bei
+vorhandenen Seiten deren Werte. Beschädigte oder mehrdeutige Daten werden
+nicht still ersetzt. Vor Löschen, Typwechsel oder Ersetzen kaputter Daten
+wird gewarnt. Bei geänderten Wahloptionen bleiben Zweige nach Index erhalten;
+ihre Zuordnung kann sich ändern, zusätzliche Zweige bleiben im JSON.
+
+Neue Events und Kopien erhalten eindeutige Namen gegenüber darstellbaren
+Event-/NPC-Namen; eine entsprechende Namenskollision beim Umbenennen wird
+abgelehnt. Jede Umbenennung wird bestätigt, weil Spielstände und Self-Switches
+weiterhin den alten Namen verwenden. Beim Duplizieren werden ganzzahlige
+Positionen exakt um eins erhöht. Fehlt eine Koordinate oder lässt sie sich
+nicht verschieben, bleibt sie unverändert und es erscheint eine Warnung.
+Bei der Zahleneingabe muss der Startwert zur Ziffernzahl passen. Sehr lange,
+vom Windows-Feld nicht verlustfrei darstellbare Eingaben sind geschützt.
+Für Events gibt es weiterhin kein Undo; vor F2/F5 muss F6 geschlossen sein.
+Das feste F6-Fenster kann auf kleinen Bildschirmen teilweise außerhalb des
+Arbeitsbereichs liegen; ein grafischer Windows-Live- und DPI-Test steht aus.
+
+### Karten-Eigenschaften (F2)
+
 `blocked` (optional) sind unsichtbare Wände über alle Höhen (x/z = Mitte,
 w/h = Größe in Metern). In **F2** stehen vorhandene Zonen als nummerierte
 Zeilen, etwa `#1: 0; 2; 4; 3`. Beim Bearbeiten oder Verschieben der Zeile
@@ -316,9 +354,9 @@ bzw. Löschen können verloren gehen. Sicherungskopien bleiben wichtig.
 Regeln: Editor und Spiel schreiben beide `JSON.pretty_generate`-Format (LF,
 2 Leerzeichen, kürzeste exakte Zahlendarstellung) — deshalb wirft Speichern
 keine Diff-Flut. Unbekannte Schlüssel und große vorhandene JSON-Ganzzahlen
-bleiben beim reinen Laden/Speichern erhalten. Numerische Berechnungen nutzen
-weiterhin double; der Event-Editor F6 kann bei Bearbeitung noch andere
-angezeigte Felder runden (siehe Backlog).
+bleiben beim reinen Laden/Speichern erhalten. Die Formulare F2, F5, F6, F9
+und das Objektformular schreiben unberührte Felder nicht zurück. Numerische
+Berechnungen und neu eingegebene Kommazahlen bleiben double-basiert.
 Spielstände liegen in `projekte/<name>/saves/slot1..3.json`.
 
 ## Dokumentation

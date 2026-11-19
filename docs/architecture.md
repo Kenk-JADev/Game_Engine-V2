@@ -328,9 +328,9 @@ Position in die Karten-JSON.
 **Eigenes Fenster:** `Events -> Event-Editor...` (`ID_MENU_EVENTS = 107`)
 öffnet ein modusloses Top-Level-Fenster der Klasse
 `RuneEditorEventDlg` (kein modaler Loop, damit der D3D11-Flip-Model-
-Viewport weiterrendert). Beim Kartenwechsel wird es geschlossen, weil
-Zeiger in `map_root` ungültig werden (`load_map` ruft
-`close_event_editor()`).
+Viewport weiterrendert). Beim Kartenwechsel werden seit 19o.5 zuerst offene
+Entwürfe geklärt und das Fenster anschließend geschlossen (`load_map` ruft
+`close_event_editor()`). Befehlsreferenzen verwenden inzwischen Pfade.
 
 **Daten:** Der Dialog arbeitet direkt auf `g.map_root["events"]` und
 schreibt dieselben Schlüssel wie die Engine (`id`, `name`, `x`, `z`,
@@ -339,7 +339,7 @@ schreibt dieselben Schlüssel wie die Engine (`id`, `name`, `x`, `z`,
 
 **Aufbau:** links Event-Liste mit *Neu* (setzt das Event auf die
 aktuelle Mausposition im Viewport), *Löschen* und *Duplizieren*
-(neue ID, Name + " (Kopie)", X/Z + 1). Rechts die Event-Felder
+(neue ID, eindeutiger Kopiename und, soweit möglich, X/Z + 1). Rechts die Event-Felder
 (Name, X, Z, Radius, Trigger `action`/`touch`/`auto`) mit
 *Event übernehmen*, darunter die Befehlsliste.
 
@@ -355,11 +355,10 @@ Text (mehrzeilig, eine Zeile pro Textfenster-Zeile), Warte, Schalter
 setzen, Variable (Wert und/oder Add), Wenn Schalter, Wenn Variable
 (Operator `==`, `!=`, `<`, `<=`, `>`, `>=`), Teleport (X, Z, Yaw),
 Log, Sound (Name, Lautstärke) und Effekt (Name, Höhe, Hexfarbe).
-*Einfügen* baut ein neues Kommando, *Befehl übernehmen* ersetzt das
-markierte; beim Ändern eines Wenn-Befehls bleiben Dann/Sonst erhalten,
-solange der Typ ein Wenn bleibt. Unbekannte Schlüssel anderer Events
-überleben das Speichern, weil nur die bearbeiteten Felder gesetzt
-werden.
+*Einfügen* baut ein neues Kommando; seit 19o.5 patcht *Befehl übernehmen*
+beim gleichen Typ nur geänderte Felder. Ein Typwechsel ersetzt den Befehl
+nach Warnung, einschließlich seiner Zweige; fremde Daten unberührter
+Befehle und Events bleiben erhalten.
 
 **Tastatur:** Solange das Event-Fenster den Fokus hat, sind die
 globalen Editor-Shortcuts (R, Entf, Strg+Z/Y, ...) abgeschaltet
@@ -533,10 +532,9 @@ plus *Neue Seite* / *Seite löschen* (die letzte Seite bleibt). Rechts ist
 der Trigger in eine eigene Gruppenbox **"Seite"** gezogen, zusammen mit den
 Bedingungsfeldern (Schalter-Name + an/aus, Variable + Operator + Wert);
 leere Felder entfernen die Bedingung. Die Befehlsliste und das Befehls-
-formular arbeiten auf der gewählten Seite. Öffnet der Dialog ein altes
-Event ohne `pages`, migriert `ev_ensure_pages` es sofort (Top-Level-Felder
-werden zu Seite 0, Top-Level-Schlüssel fallen weg); gespeichert wird nur
-das geöffnete Event migriert.
+formular arbeiten auf der gewählten Seite. Seit 19o.5 zeigt F6 alte Events
+ohne `pages` zunächst als implizite Seite und materialisiert sie nur bei
+Bedarf; die Top-Level-Felder bleiben als Altdaten erhalten (siehe unten).
 
 **Geprüft:** `tools/event_pages_test.rb` (44 Checks: altes Format,
 Normalisierung, Seiten-Auswahl, alle Operatoren, fired-Reset,
@@ -959,8 +957,8 @@ im Runner), grafische Prüfung bleibt bei `tools/edclick.psm1` am echten Rechner
 - **Header, libdir, Importbibliothek, DLL-Name** kommen aus `RbConfig`
   (`rubyhdrdir`, `rubyarchhdrdir`, `libdir`, `LIBRUBYARG_SHARED`,
   `RUBY_SO_NAME`), mit RubyInstaller-3.4-Fallback, falls die Abfrage leer ist.
-- Neu: `-Test` = C++-JSON-Test + Ruby-Suite + JSON-Brücke. Fehlende
-  Laufzeit-DLLs warnen nur noch statt den Build abzubrechen.
+- Neu: `-Test` = C++-JSON-Test + Ruby-Suite + JSON-Brücke (seit 19o.5 auch
+  Event-Brücke). Fehlende Laufzeit-DLLs warnen nur noch statt den Build abzubrechen.
 
 Die Reihenfolge `-lucrtbase` VOR der Ruby-Importbibliothek bleibt unantastbar
 (siehe `fclose`-Falle im Handoff).
@@ -1500,15 +1498,16 @@ input_number inkl. Abbruch und clamp) + script_test-Abschnitt 8
 Die Sync-Pflicht für neue Befehlstypen (MapCheck::CMD_TYPES in Ruby =
 ISSUE_CMD_TYPES + EV_TYPES in C++) war bisher Handarbeit mit einer
 Zähl-Assertion. `tools/sync_test.rb` macht daraus eine maschinelle Prüfung:
-Der Test parst `src/editor/editor_main.cpp` als Text (kein Compiler nötig)
-und vergleicht
+Der Test parst `src/editor/editor_main.cpp` und seit 19o.5 auch
+`src/editor/event_form.h` als Text (kein Compiler nötig) und vergleicht
 
 - `EV_TYPES` (Reihenfolge) und `ISSUE_CMD_TYPES` (Menge) mit
   `MapCheck::CMD_TYPES`, `EV_TYPE_LABELS`-Anzahl und die `enum EvType`-
   Einträge (Name + Reihenfolge) mit denselben Listen,
 - die `when`-Zeilen des Interpreters (6er-Einzug = Befehls-case) mit
   `CMD_TYPES` — ein Befehl ohne Interpreter-Implementierung fällt auf,
-- `EV_TRIGGERS`/`EV_OPS` mit `MapCheck::TRIGGER`/`VERGLEICH`, die Wetter-
+- `EV_TRIGGERS`/`EV_OPS` mit `MapCheck::TRIGGER`/`VERGLEICH` und den
+  entsprechenden Modell-Arrays, die Wetter-
   und Self-Switch-Combos (Inline-Listen) mit `WETTER`/
   `SELF_SWITCH_BUCHSTABEN`, die Effekt-Beschriftung mit `EFFEKTE`,
 - die Dialogfelder `KEYS`/`ACTOR_LABELS`/`ITEM_LABELS` des Datenbank-
@@ -1713,6 +1712,66 @@ Demo-Datenbank, JSON-Roundtrips und unberührte allgemeine Eigenschaften.
 CI baut/linkt den Win32-Editor, hat aber keine GPU/Fenster für einen echten
 grafischen Live-Test (siehe Backlog und Handoff).
 
+## Datentreue im Event-Editor (Etappe 19o.5)
+
+`event_form.h` kapselt das portable Modell für Event-, Seiten- und
+Befehlsformulare. Lesen, Anzeigen und Öffnen verändern das JSON nicht.
+Vorher-/Nachher-Snapshots unterscheiden unberührte Werte von echten
+Eingaben; `event_batch_prepare` validiert eine Kombination der drei
+Formulare auf einer Kopie. Die Win32-Oberfläche übernimmt sie erst nach allen
+Prüfungen und gegebenenfalls Bestätigung. Ein Fehler rollt die gesamte
+Kombination zurück. Unveränderte große Integer-Tokens, präzise Floats, fehlende Felder,
+fremde Metadaten und verschachtelte Zweige bleiben erhalten. Nicht
+vollständig in Win32 darstellbare Felder sind geschützt; sie dürfen auch
+nicht still als Eingabe für einen neu eingefügten/umgewandelten Befehl
+dienen. Für editierte Zahlen und Texte gelten explizite Validierungen.
+
+Events ohne gültige nichtleere `pages`-Liste zeigen wie die Ruby-Laufzeit
+eine implizite Seite. Trigger- und Befehlsänderungen bleiben zunächst im
+Altformat. Neue Bedingungen oder Seiten materialisieren die alte Seite auf
+einer Kopie; alte Top-Level-`trigger`/`commands` bleiben erhalten, die
+Laufzeit verwendet bei vorhandenen Seiten die Seitenwerte. Nichtlistenförmige
+oder doppelte `pages` und semantisch nicht äquivalente Alttrigger/-befehle
+verhindern eine Migration, statt Daten zu überschreiben. Doppelte relevante
+Schlüssel werden nicht mehrdeutig bearbeitet (Ruby/Parser haben verschiedene
+Trefferregeln). Fehlende Zweige entstehen erst beim Einfügen; falsche Zweige
+bleiben erhalten. Ein Typwechsel und das Entfernen von Daten werden
+bestätigt. Wahlzweige bleiben nach Index erhalten, auch überzählige Zweige;
+Änderungen an Optionen lösen eine Zuordnungswarnung aus.
+
+F6 hält keine langlebigen JSON-Befehlszeiger mehr: `EventCommandPath`
+adressiert Zweig und Index auf der jeweils aktuellen Kopie. ListBox-
+Auswahlmeldungen werden nach dem Callback abgeglichen; Button-Aktionen und
+Aktionen des Hauptfensters klären noch gepostete Auswahlwechsel. Bei Pending-Eingaben fragt
+`resolve_event_edits()` vor Auswahl, Schließen, strukturellen Aktionen,
+Speichern und Karten-/Projektwechsel. Nein verwirft nur den Entwurf,
+Abbrechen erhält ihn und die alte Auswahl. `data_prompt` sperrt andere
+Editorfenster und verschiebt reentrante Auswahlmeldungen. Die Karte wird
+erst bei tatsächlicher Änderung `dirty`.
+
+Neue Events und Kopien erhalten positive freie IDs und eindeutige Namen
+gegenüber darstellbaren Event-/NPC-Namen (Self-Switch-/Spielstandschlüssel);
+geänderte kollidierende Namen werden abgelehnt. Auch eine kollisionsfreie
+Umbenennung braucht Bestätigung, weil alte Spielstände und Self-Switches nicht
+auf den neuen Schlüssel migriert werden. Die ID-Suche berücksichtigt
+doppelte Schlüssel und arbeitet auch bei vielen Events effizient. Kopien
+inkrementieren ganzzahlige Koordinaten exakt; fehlende, ungültige oder nicht
+verschiebbare Koordinaten bleiben erhalten und werden gemeldet. Bei neu
+eingegebenem `input_number` muss `initial` zur Ziffernzahl passen, damit
+Ruby den Wert nicht still klemmt; unveränderte historische Werte bleiben.
+F2/F5 erfordern weiterhin ein geschlossenes F6-Fenster, Event-Undo fehlt.
+
+`tools/json_test.cpp` prüft alle 26 Typen, Migration, Batch-Rollback,
+Duplikate, große Zahlen, Schutz und echte Karten. `event_bridge_check.rb`
+lädt C++-Ergebnisse mit Ruby `Event`/`Interpreter` (einschließlich Choices,
+Self-Switch-Isolation und Zahleneingabe); `sync_test.rb` liest Modell und
+Win32-Typ-/Trigger-Listen. Lokal 577 portable Checks/0 Fehler, Sanitizer,
+Win64-Cross-Kompilierung und 17/0 Event-Brückenchecks via Ruby-WASM-Fixture;
+native Open3-Ausführung und vollständigen Windows-Link prüft CI. Die GUI,
+Auswahl-/MessageBox-Abläufe und das DPI-Layout benötigen einen echten
+Windows-Live-Test. Das feste 1000×730-Fenster ist auf kleinen Bildschirmen
+möglicherweise nicht vollständig erreichbar (offen im Backlog).
+
 ## Datentreue im Objektformular (Etappe 19o.4)
 
 `object_props_form.h` liest X/Z, Rotation (Grad) und Material als
@@ -1825,8 +1884,8 @@ bzw. im Windows-Editfeld nicht darstellbare Listen werden gesperrt.
 `blocked_form_prepare` baut einen validierten Entwurf ohne Schreibzugriff.
 Erst nach allen Block-/Encounter-Prüfungen und Bestätigungen übernimmt
 `map_props_apply` die F2-Felder; bei Fehler bleibt die gesamte Karte
-unverändert. F6 muss vor F2 geschlossen sein, da eine Wurzeländerung seine
-Event-Zeiger ungültig machen könnte. `json_test.cpp` prüft u. a. gleiche
+unverändert. F6 muss vor F2 für konsistente Karten-/Formularentwürfe
+geschlossen sein. `json_test.cpp` prüft u. a. gleiche
 Geometrien mit verschiedenen Zusatzdaten, Umordnung, Zahlenpräzision,
 Lösch-/Ersetzungswarnungen, fehlerhafte Daten und atomare Übernahme.
 Grafischer F2-Live-Test auf Windows steht weiterhin aus.
@@ -1839,7 +1898,7 @@ ausgegeben (auch außerhalb des double-Bereichs). `number()` liefert für
 Berechnungen weiterhin nur die Näherung; der Wert ist privat, Ersetzen
 erfolgt über `make_num`/`make_integer`, `increment()` arbeitet für gelesene
 Ganzzahlen exakt. Das sichere Inkrement nutzen Objekt-/Event-Duplizieren;
-F6 kann vorher aber noch die gerundete Formularanzeige zurückschreiben.
+seit 19o.5 schreibt F6 unveränderte Formularwerte nicht mehr zurück.
 Für neue `make_num(..., true)`-Werte schreibt der Generator die ganzzahlige
 double-Näherung ohne int64-Cast. JSON-Zahlen werden streng nach Grammatik
 eingelesen; `-0` als Ganzzahl wird wie in Ruby zu `0` normalisiert.
@@ -1847,8 +1906,8 @@ eingelesen; `-0` als Ganzzahl wird wie in Ruby zu `0` normalisiert.
 Tests decken 2^53, 2^63, negative und 400-stellige Werte, Kopien, Änderungen,
 Inkremente und ungültige Tokens ab. Die Ruby-JSON-Brücke vergleicht außerdem
 Typen und synthetische große Zahlen. Grenzen: Kommazahlen/Rechenoperationen
-bleiben double-basiert; F6 kann bei Übernahme weiterhin unberührte
-angezeigte Felder runden (siehe Backlog); das Objektformular ist seit 19o.4 geschützt.
+bleiben double-basiert; F6 und das Objektformular schützen seit 19o.5 bzw.
+19o.4 unberührte Formularfelder.
 
 ## NPCs, Schilder und Objekte im Platzier-Editor (Etappe 19n)
 
@@ -1869,7 +1928,8 @@ nicht überschrieben. Mehrseitige Schilder werden in F6 weiterbearbeitet;
 komplexe NPC-Kommandos sind im Formular nur eingeschränkt editierbar. Der
 Dialog sammelt Änderungen auf einer Kartenkopie (OK übernimmt, Abbrechen
 verwirft, Strg+S speichert), deaktiviert die übrigen Fenster und verlangt
-einen geschlossenen Event-Editor, damit dessen JSON-Zeiger nicht veralten.
+einen geschlossenen Event-Editor, damit dessen Formularzustand und die
+bearbeitete Kartenkopie nicht auseinanderlaufen.
 NPCs und Schilder samt Wegpunkten werden im Standalone-Editor angezeigt.
 Objektänderungen aus F5 werden im vorhandenen Objekt-Undo abgelegt; NPC-/
 Schildänderungen sind noch nicht rückholbar. Der Undo-Stapel wird bei jedem
