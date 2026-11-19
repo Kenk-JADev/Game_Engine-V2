@@ -2822,7 +2822,7 @@ LRESULT CALLBACK view_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 pt.x = 0; pt.y = 0;
                 ClientToScreen(h, &pt);
             }
-            TrackPopupMenuW(g.ctx_obj, TPM_RIGHTBUTTON, pt.x, pt.y, 0, g.main, nullptr);
+            TrackPopupMenu(g.ctx_obj, TPM_RIGHTBUTTON, pt.x, pt.y, 0, g.main, nullptr);
             return 0;
         }
         case WM_MOUSEWHEEL: {
@@ -3579,7 +3579,7 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                     // der angeklickten Stelle, Default-Karten sind flach
                     // (Amplitude 0) - Erhöhen/Lesen ohne Seed-Fummelei.
                     set_mode(5);
-                    status_mode((L"Höhe malen: + + std::to_wstring(static_cast<int>(height_step())) +
+                    status_mode((L"Höhe malen: +" + std::to_wstring(static_cast<int>(height_step())) +
                                  L" m pro Klick | +/- Grösse | Shift = Senke").c_str());
                     core::log_info("H\xC3\xB6hen-Malwerkzeug aktiviert (Schritt " +
                                    std::to_string(height_step()) + " m, Grösse " +
@@ -3677,7 +3677,7 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 if (nm->code == NM_RCLICK) {
                     POINT pt{};
                     GetCursorPos(&pt);
-                    TrackPopupMenuW(g.ctx_obj, TPM_RIGHTBUTTON, pt.x, pt.y, 0, g.main, nullptr);
+                    TrackPopupMenu(g.ctx_obj, TPM_RIGHTBUTTON, pt.x, pt.y, 0, g.main, nullptr);
                     return 0;
                 }
                 return 0;
@@ -7211,17 +7211,17 @@ int main(int argc, char** argv) {
     // der Objekt-Typ (Prefab-Liste füllt den Rest), dann die Aktionen.
     make_control(L"Button", L"Werkzeug (Modus)", BS_GROUPBOX,
                  4, 168, 206, 156, IDC_GRP_TOOL);
-    make_control(L"Button", L"Setzen", BS_AUTORADIO | WS_GROUP,
+    make_control(L"Button", L"Setzen", BS_AUTORADIOBUTTON | WS_GROUP,
                  14, 186, 186, 24, IDC_BTN_PLACE);
-    make_control(L"Button", L"Auswählen", BS_AUTORADIO,
+    make_control(L"Button", L"Auswählen", BS_AUTORADIOBUTTON,
                  14, 212, 186, 24, IDC_BTN_SELECT);
-    make_control(L"Button", L"Verschieben", BS_AUTORADIO,
+    make_control(L"Button", L"Verschieben", BS_AUTORADIOBUTTON,
                  14, 238, 186, 24, IDC_BTN_MOVE);
-    make_control(L"Button", L"Boden malen", BS_AUTORADIO,
+    make_control(L"Button", L"Boden malen", BS_AUTORADIOBUTTON,
                  14, 264, 186, 24, IDC_BTN_PAINT);
     // Etappe 18l: Berge/Senken direkt an der Stelle malen (Default flach, da
     // neue Karten Amplitude 0 haben); Shift+Klick trägt ab.
-    make_control(L"Button", L"Höhe malen", BS_AUTORADIO,
+    make_control(L"Button", L"Höhe malen", BS_AUTORADIOBUTTON,
                  14, 290, 186, 24, IDC_BTN_HEIGHT);
     make_control(L"Button", L"Objekt-Typ (Prefab)", BS_GROUPBOX | WS_GROUP,
                  4, 330, 206, 300, IDC_GRP_PREFAB);
