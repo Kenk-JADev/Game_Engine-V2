@@ -401,6 +401,43 @@ check('kaputte Zone zählt nicht für die Lage-Prüfung') do
   !hat?(MapCheck.scan(k, **OPTS), 'Block-Zone (Spieler steckt fest)', MapCheck::WARNUNG)
 end
 
+puts '== MapCheck: Zufallskämpfe (19l) =='
+check('gültige encounters: keine Funde') do
+  k = saubere_karte
+  k['encounters'] = { 'troops' => %w[waldweg banditen], 'steps' => 30 }
+  MapCheck.scan(k, **OPTS).empty?
+end
+check('encounters ohne steps: keine Funde') do
+  k = saubere_karte
+  k['encounters'] = { 'troops' => ['waldweg'] }
+  MapCheck.scan(k, **OPTS).empty?
+end
+check('encounters als Liste statt Objekt -> Fehler') do
+  k = saubere_karte
+  k['encounters'] = ['waldweg']
+  hat?(MapCheck.scan(k, **OPTS), 'ist kein Objekt', MapCheck::FEHLER)
+end
+check('troops als String statt Liste -> Fehler') do
+  k = saubere_karte
+  k['encounters'] = { 'troops' => 'waldweg' }
+  hat?(MapCheck.scan(k, **OPTS), "'troops' ist keine Liste", MapCheck::FEHLER)
+end
+check('Truppen-Eintrag ohne Text -> Fehler') do
+  k = saubere_karte
+  k['encounters'] = { 'troops' => ['waldweg', 42] }
+  hat?(MapCheck.scan(k, **OPTS), 'ist keine Truppen-ID (Text)', MapCheck::FEHLER)
+end
+check('steps <= 0 -> Warnung') do
+  k = saubere_karte
+  k['encounters'] = { 'troops' => ['waldweg'], 'steps' => 0 }
+  hat?(MapCheck.scan(k, **OPTS), "'steps' muss eine Zahl > 0 sein", MapCheck::WARNUNG)
+end
+check('steps als Text -> Warnung') do
+  k = saubere_karte
+  k['encounters'] = { 'troops' => ['waldweg'], 'steps' => 'viel' }
+  hat?(MapCheck.scan(k, **OPTS), "'steps' muss eine Zahl > 0 sein", MapCheck::WARNUNG)
+end
+
 puts '== MapCheck: NPCs =='
 check('NPC ohne name -> Warnung') do
   k = saubere_karte

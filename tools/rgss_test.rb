@@ -308,6 +308,51 @@ check('ohne Hindernisse wieder passierbar') { $game_player.passable?(30.0, 30.0)
 $game_temp.passable = false
 check('passable? abgeschaltet -> immer true') { $game_player.passable?(999.0, 999.0) }
 $game_temp.passable = true
+
+# Etappe 19l: Zufallskämpfe (XP Game_Map/Game_Player, 016/022).
+check('ohne encounters: leere Truppenliste, Schrittzahl 30') do
+  $game_map.encounter_list.empty? && $game_map.encounter_step == 30
+end
+Game.map['encounters'] = { 'troops' => ['waldweg', 'banditen'], 'steps' => 10 }
+check('encounter_list aus dem Karten-JSON') do
+  $game_map.encounter_list == %w[waldweg banditen]
+end
+check('encounter_step aus dem Karten-JSON') { $game_map.encounter_step == 10 }
+check('make_encounter_count: XP-Formel rand(n)+rand(n)+1 (1..2n-1)') do
+  ok = true
+  200.times do
+    $game_player.make_encounter_count
+    c = $game_player.encounter_count
+    ok &&= (c >= 1 && c <= 19)
+  end
+  ok
+end
+check('decrease_encounter_count: zählt bis 0, dann bleibt er (kein Reset)') do
+  $game_player.instance_variable_set(:@encounter_count, 3)
+  $game_player.decrease_encounter_count
+  a = $game_player.encounter_count
+  $game_player.decrease_encounter_count
+  b = $game_player.encounter_count
+  $game_player.decrease_encounter_count
+  c = $game_player.encounter_count
+  $game_player.decrease_encounter_count
+  a == 2 && b == 1 && c == 0 && $game_player.encounter_count == 0
+end
+Game.map['encounters'] = { 'troops' => ['waldweg'], 'steps' => 0 }
+check('steps <= 0 -> Default 30') { $game_map.encounter_step == 30 }
+Game.map['encounters'] = { 'troops' => 'waldweg', 'steps' => 'viel' }
+check('kaputte encounters: Liste leer, Schrittzahl 30') do
+  $game_map.encounter_list.empty? && $game_map.encounter_step == 30
+end
+Game.map['encounters'] = ['waldweg']
+check('encounters als Liste (kein Objekt) -> leer/Default') do
+  $game_map.encounter_list.empty? && $game_map.encounter_step == 30
+end
+Game.map.delete('encounters')
+check('encounter_count-Default 0') do
+  $game_player.instance_variable_set(:@encounter_count, nil)
+  $game_player.encounter_count == 0
+end
 RGSS.reset!
 check('RGSS.reset!: $game_temp frisch, $scene nil') do
   $game_temp.is_a?(RGSS::GameTemp) && $scene.nil?

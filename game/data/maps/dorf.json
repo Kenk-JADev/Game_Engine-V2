@@ -1,5 +1,9 @@
 {
   "name": "Dorf",
+  "encounters": {
+    "troops": ["waldweg", "banditen"],
+    "steps": 30
+  },
   "terrain": {
     "size": 240,
     "resolution": 192,

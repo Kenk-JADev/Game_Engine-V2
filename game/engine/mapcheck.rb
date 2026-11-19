@@ -220,6 +220,7 @@ module MapCheck
       pruefe_events(map['events'])
       pruefe_npcs(map['npcs'])
       pruefe_blocked(map['blocked'])
+      pruefe_encounters(map['encounters'])   # Etappe 19l: Zufallskämpfe
       pruefe_atmosphaere(map)
     end
 
@@ -347,6 +348,37 @@ module MapCheck
         %w[w h].each do |k|
           melde(WARNUNG, w, "'#{k}' muss > 0 sein") if zahl?(b[k]) && b[k] <= 0
         end
+      end
+    end
+
+    # Zufallskämpfe (Etappe 19l): { "troops": ["waldweg", ...],
+    # "steps": 30 } - Truppen-IDs aus database.json, mittlere Schrittzahl
+    # zwischen Kämpfen. Ob die Truppen existieren, prüft erst der Kampf
+    # (Battle.start warnt) - MapCheck kennt die Datenbank nicht (wie beim
+    # battle-Befehl, der nur 'name' als Text verlangt).
+    def pruefe_encounters(enc)
+      return if enc.nil?
+
+      wo = "#{@karte_name} encounters"
+      unless enc.is_a?(Hash)
+        melde(FEHLER, wo, 'ist kein Objekt')
+        return
+      end
+
+      troops = enc['troops']
+      unless troops.nil?
+        unless troops.is_a?(Array)
+          melde(FEHLER, wo, "'troops' ist keine Liste")
+        else
+          troops.each_with_index do |t, i|
+            melde(FEHLER, "#{wo} troops ##{i + 1}", 'ist keine Truppen-ID (Text)') unless text?(t)
+          end
+        end
+      end
+
+      steps = enc['steps']
+      if !steps.nil? && !(zahl?(steps) && steps > 0)
+        melde(WARNUNG, wo, "'steps' muss eine Zahl > 0 sein")
       end
     end
 

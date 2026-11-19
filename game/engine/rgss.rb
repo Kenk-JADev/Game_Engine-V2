@@ -329,15 +329,22 @@ module RGSS
       @steps = (@steps || 0) + 1
     end
 
+    # XP Game_Player#make_encounter_count (022): rand(n) + rand(n) + 1 mit
+    # n = encounter_step der Karte (Default 30) - im Mittel n Schritte bis
+    # zum nächsten Zufallskampf. Wird beim Kartenbetreten und beim
+    # Kampfstart neu gewürfelt (Game.enter_map / Game.update).
     def make_encounter_count
-      @encounter_count = rand(20..40)   # XP: 20..40 Schritte zwischen Kämpfen
+      n = ($game_map && $game_map.encounter_step) || 30
+      n = 30 if n <= 0
+      @encounter_count = rand(n) + rand(n) + 1
     end
 
+    # XP: nur herunterzählen, nie unter 0 - das Neu-Würfeln übernimmt
+    # make_encounter_count, wenn der Kampf wirklich startet (Game.update).
     def decrease_encounter_count
-      return unless @encounter_count
+      return if @encounter_count.nil? || @encounter_count <= 0
 
       @encounter_count -= 1
-      make_encounter_count if @encounter_count <= 0
     end
 
     # Passierbar (Etappe 19h, seit 19k.3 vollständig): innerhalb der Karten-
@@ -436,6 +443,30 @@ module RGSS
 
     # Etappe 19k.3: zusätzlich die Objekt-Hindernisse (nur mit Engine).
     def hindernis?(x, z) = Passage.hindernis?(x, z)
+
+    # Etappe 19l: Zufallskämpfe der Karte (XP Game_Map#encounter_list/
+    # #encounter_step, 016). Karten-JSON:
+    #   "encounters": { "troops": ["waldweg", "banditen"], "steps": 30 }
+    # troops: Truppen-IDs aus database.json (Zufallswahl pro Kampf);
+    # steps:  mittlere Schrittzahl zwischen Kämpfen (XP-Default 30).
+    # Ohne Schlüssel oder mit kaputten Werten: keine Kämpfe (leere Liste).
+    def encounter_list
+      enc = (Game.map || {})['encounters']
+      return [] unless enc.is_a?(Hash)
+
+      troops = enc['troops']
+      return [] unless troops.is_a?(Array)
+
+      troops.map(&:to_s).reject(&:empty?)
+    end
+
+    def encounter_step
+      enc = (Game.map || {})['encounters']
+      return 30 unless enc.is_a?(Hash)
+
+      n = enc['steps']
+      n.is_a?(Numeric) && n > 0 ? n.to_i : 30
+    end
   end
 
   # ---------------------------------------------------------- $game_screen

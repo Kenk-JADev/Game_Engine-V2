@@ -1628,6 +1628,46 @@ Pfadfindung um die Wand herum), Bewegungs-Routen kennen kein „Wand
 entlang rutschen", `hindernis?` tastet zwei feste Höhen (keine exakte
 Körperbox).
 
+## Zufallskämpfe beim Laufen (Etappe 19l)
+
+Die letzte Lücke des Kampf-Grundgerüsts (19i): Kämpfe gab es nur per
+Event-Befehl. Seit 19l lösen Karten selbst Kämpfe aus - wie XP
+(`016 - Game_Map.rb`, `022 - Game_Player.rb`, `071 - Scene_Map.rb`).
+
+- **Karten-JSON**: optionaler Schlüssel `"encounters"`:
+  `{ "troops": ["waldweg", "banditen"], "steps": 30 }` - `troops` sind
+  Truppen-IDs aus `database.json` (Zufallswahl pro Kampf), `steps` die
+  mittlere Schrittzahl zwischen Kämpfen (XP-Default 30). Ohne Schlüssel
+  oder mit leerer Liste: keine Zufallskämpfe.
+- **RGSS**: `$game_map.encounter_list` / `encounter_step` lesen dieselben
+  Werte (kaputte Einträge → leere Liste / 30); `$game_player.
+  make_encounter_count` würfelt nach XP-Formel `rand(n) + rand(n) + 1`
+  (im Mittel n Schritte), `decrease_encounter_count` zählt nur bis 0
+  herunter (kein Auto-Reset mehr).
+- **Spiel** (`main.rb`): Das Schritt-Event (alle 0,6 m, wie der
+  Schritt-Sound) zählt den Zähler herunter; bei 0, nicht-leerer Liste,
+  laufendem Event ausgenommen und `$game_system.encounter_disabled`
+  aus, startet `battle_start` (Flucht erlaubt, Niederlage = gameover
+  wie XP) und würfelt den Zähler neu (XP `call_battle`). Schlägt der
+  Start fehl (unbekannte Truppe), bleibt der Zähler auf 0 und der
+  nächste Schritt versucht es erneut. `enter_map` würfelt beim
+  Kartenbetreten neu (XP `refresh`).
+- **MapCheck + Editor**: `pruefe_encounters` bzw. der C++-Issues-Scan
+  prüfen die Struktur (Objekt, `troops` = Liste aus Text-IDs, `steps`
+  = Zahl > 0). Ob die Truppen existieren, prüft erst `Battle.start`
+  (warnt) - wie beim `battle`-Befehl kennt die Prüfung die Datenbank
+  nicht.
+- **Demo**: `game/data/maps/dorf.json` hat `encounters` mit den
+  Truppen `waldweg`/`banditen` aus `game/data/database.json` - der
+  CI-Karten-Scan prüft sie gleich mit.
+
+Tests: `rgss_test.rb` (Liste/Schrittzahl, XP-Formel 1..2n-1, Zähler
+bleibt bei 0, kaputte Werte) und `mapcheck_test.rb` (7 Checks).
+
+Grenzen (Backlog): kein F2-Editorfeld für `encounters` (JSON von Hand
+editieren), keine Kampf-Hintergrundmusik/-bilder, keine
+Gebiets-/Schritt-abhängigen Encounter-Tabellen wie XP.
+
 ## Ruby-API (Stand Etappe 2)
 
 | API | Bedeutung |

@@ -123,6 +123,9 @@ end
     end
 
     @interpreter = Interpreter.new
+    # Etappe 19l: Zufallskampf-Zähler der neuen Karte würfeln (XP
+    # Game_Player#refresh beim Transfer).
+    $game_player.make_encounter_count if $game_player
     @scene = build
     @scene.refresh_solids
     @npcs = (@map['npcs'] || []).map { |h| Npc.new(h, @scene) }
@@ -511,7 +514,22 @@ end
     Mover.update(dt)  # Etappe 19g: Bewegungsrouten laufen IMMER (auch bei Text)
     Graphics.update         # Etappe 19h.2: RGSS-Frame-Zähler (frame_count)
     $game_system.update(dt) if $game_system   # 19h.2: XP-Timer tickt
-    $game_player.increase_steps if $game_player && @step_event
+    if $game_player && @step_event
+      $game_player.increase_steps
+      $game_player.decrease_encounter_count
+      # Etappe 19l: Zufallskampf (XP Scene_Map): Zähler auf 0, Truppenliste
+      # der Karte nicht leer, kein Event läuft, nicht verboten -> Kampf
+      # starten (Flucht erlaubt, Niederlage = gameover wie XP) und den
+      # Zähler neu würfeln (XP call_battle). Schlägt der Start fehl
+      # (unbekannte Truppe), bleibt der Zähler auf 0 und der nächste
+      # Schritt versucht es erneut - wie XP bei ungültiger Truppe.
+      if $game_player.encounter_count == 0 && $game_map &&
+         !($game_system && $game_system.encounter_disabled) &&
+         !@interpreter.running? && !$game_map.encounter_list.empty?
+        troop = $game_map.encounter_list.sample
+        $game_player.make_encounter_count if battle_start(troop)
+      end
+    end
     @step_event = nil
     Graphics.scene_update   # Etappe 19h: $scene.main (RGSS-Szenen-Schleife)
 

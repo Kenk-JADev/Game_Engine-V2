@@ -65,7 +65,7 @@ $game_map/$game_screen/$game_temp`, `Graphics`, `Input`, `Audio`,
 | Script-Editor (Ruby) | `Scripts`-Sandbox + Editor | ✅ |
 | Playtest | F4 | ✅ |
 | Nebel / Panorama / Wetter | Karten-JSON + Interpreter | ✅ |
-| Kampfsystem | Rundenkampf-Grundgerüst (`battle.rb`): Angriff/Item/Flucht, Exp/Gold/Drops; keine Skills/Zustände | ✅ teilweise |
+| Kampfsystem | Rundenkampf-Grundgerüst (`battle.rb`): Angriff/Item/Flucht, Exp/Gold/Drops; Zufallskämpfe beim Laufen per Karten-JSON (`encounters`); keine Skills/Zustände | ✅ teilweise |
 | Bewegungsfolgen (Move Routes) | `mover.rb`, XP-Schrittnamen + Codes, Routen im Event-Befehl | ✅ |
 | Self-Switches | A-D, Seiten-Bedingung + Befehle | ✅ |
 | Zahleneingabe (Input Number) | `input_number`-Befehl, Ziffernfeld 1-6 Stellen | ✅ |

@@ -27,8 +27,8 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Es fehlen u. a.: Skills/Magie (MP bleibt ungenutzt), Zustände (Vergiftung,
   Schlaf ...), Gegner-KI jenseits „Angriff auf zufälligen Helden",
   Formationen/Positionen, Kampf-Hintergrundmusik/-Hintergrundbild,
-  Zufallskämpfe beim Laufen (encounter_count/$game_system.encounter_disabled
-  liegen bereit), Kampftagebuch-Fenster zum Wegklicken.
+  Kampftagebuch-Fenster zum Wegklicken. Zufallskämpfe beim Laufen sind
+  seit 19l erledigt (siehe Erledigt-Eintrag 19l).
 - Betroffene Stellen: `game/engine/battle.rb`, `docs/architecture.md` (19i).
 - Gefunden in: Etappe 19i (Roadmap aus 19e, XP-Defaultscript als Referenz).
 ### [Engine] RGSS-Schicht deckt noch nicht alles ab — offen (Feature-Fehlend)
@@ -182,6 +182,26 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Etappe 19a.
 
 ## Erledigt
+### [Engine] Zufallskämpfe beim Laufen — erledigt (19l)
+- Wunsch: die letzte Lücke des Kampf-Grundgerüsts (19i) schließen - Kämpfe
+  gab es nur per Event-Befehl, Karten konnten keine Kämpfe auslösen.
+- Umsetzung: Karten-JSON `"encounters": {"troops": [...], "steps": 30}`
+  (XP encounter_list/encounter_step); `$game_map.encounter_list/
+  encounter_step` + XP-Formel `rand(n)+rand(n)+1` in
+  `$game_player.make_encounter_count`; Trigger im Schritt-Event von
+  `Game.update` (Zähler 0, Liste nicht leer, kein Event läuft,
+  `encounter_disabled` aus) → `battle_start` + Neu-Würfeln; `enter_map`
+  würfelt beim Betreten neu; MapCheck `pruefe_encounters` + C++
+  Issues-Parität; Demo-Karte `dorf.json` mit Truppen aus
+  `game/data/database.json`.
+- Tests: rgss_test (8 Checks: Liste/Schrittzahl, Formel, Zähler bleibt
+  bei 0, kaputte Werte), mapcheck_test (7 Checks).
+- Grenzen: kein F2-Editorfeld für `encounters` (JSON von Hand), keine
+  Kampf-BGM/-Bilder, keine Gebiets-Tabellen wie XP.
+- Betroffene Stellen: `game/engine/{rgss,mapcheck}.rb`, `game/main.rb`,
+  `src/editor/editor_main.cpp`, `game/data/maps/dorf.json`,
+  `tools/{rgss_test,mapcheck_test}.rb`.
+
 ### [Engine/Editor] Passierbarkeit rund gemacht — erledigt (19k.3)
 - Wunsch: die 19k.2-Restlücken schließen (NPCs/Routen liefen durch Zonen,
   `passable?` kannte keine Objekt-Kollision) - eine Quelle statt drei
