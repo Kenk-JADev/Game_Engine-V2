@@ -12,7 +12,7 @@
 #    - Interpreter: move_route startet, wait blockiert bis zum Ende,
 #      repeat+wait blockiert NICHT (Warnung), ohne wait läuft er weiter
 #    - MapCheck: target/steps-Pflicht, unbekannter Schritt, speed,
-#      SCHRITTE-Sync mit Mover und die 24 Befehlstypen
+#      SCHRITTE-Sync mit Mover und die 26 Befehlstypen
 # ============================================================================
 
 # --- Minimal-Attrappe der Engine-Schnittstelle -----------------------------
@@ -457,7 +457,7 @@ check("switch_on ohne 'code' -> Warnung") do
                                   'steps' => %w[switch_on] }]), **OPTS),
        "brauchen 'code'", MapCheck::WARNUNG)
 end
-check('CMD_TYPES zählen 24') { MapCheck::CMD_TYPES.size == 24 }
+check('CMD_TYPES zählen 26') { MapCheck::CMD_TYPES.size == 26 }
 
 puts($fail.zero? ? 'MOVE-ROUTE-TEST OK (0 Fehler)' : "MOVE-ROUTE-TEST FEHLGESCHLAGEN (#{$fail} Fehler)")
 exit($fail.zero? ? 0 : 1)

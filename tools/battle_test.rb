@@ -188,15 +188,23 @@ puts '== Item + Flucht =='
 Party.add_item('heiltrank', 1)
 Battle.actors[0].damage(20)
 check('usable_items enthält heiltrank') { Battle.usable_items.include?('heiltrank') }
-# Cursor steht noch von der Flucht-Auswahl auf 2; einmal runter = Item.
+# next_actor hat den Cursor auf 0 (Angriff) gestellt; einmal runter = Item.
 druck(:down)
 check('Cursor auf Item') { Battle.command_index == 1 }
 druck(:enter)
 check('Item-Auswahl offen') { Battle.phase == :item }
 druck(:enter)
-check('Item gewählt -> nächster Held') { Battle.phase == :command }
-check('Heiltrank wirkt: Arik geheilt, Item weg') do
-  Battle.actors[0].hp > Battle.actors[0].max_hp - 20 &&
+check('Item gewählt -> nächster Held (Mira)') do
+  Battle.phase == :command && Battle.current_actor.name == 'Mira'
+end
+# Mira greift an; danach läuft die Aktionsphase und das Item wirkt.
+druck(:enter)
+druck(:enter)
+check('Aktionsphase gelaufen (Wieder Befehle, Runde 2)') do
+  Battle.phase == :command && Battle.turn == 1
+end
+check('Heiltrank wirkt: Arik fast voll, Item weg') do
+  Battle.actors[0].hp >= Battle.actors[0].max_hp - 15 &&
     Party.item_count('heiltrank').zero?
 end
 Battle.abort!
@@ -310,7 +318,9 @@ druck_ui(interp3, :left)
 check('links verschiebt den Cursor') { interp3.num_input[:sel].zero? }
 druck_ui(interp3, :right, :right)
 druck_ui(interp3, :'7')
-check('7 auf dritte Stelle') { interp3.num_input[:ziffern] == [1, 1, 7] }
+check("7 auf dritte Stelle (ist #{interp3.num_input ? interp3.num_input[:ziffern].inspect + ' sel=' + interp3.num_input[:sel].to_s : 'nil'})") do
+  interp3.num_input && interp3.num_input[:ziffern] == [1, 1, 7]
+end
 druck_ui(interp3, :enter)
 check('Bestätigen setzt die Variable (117)') do
   GameState.variable('ziffern') == 117.0 && !interp3.busy_number?
@@ -347,5 +357,5 @@ check('digits clamp 1..6, initial clamp') do
 end
 interp6.instance_variable_set(:@num_input, nil)
 
-puts($fail.zero? ? 'BATTLE-TEST OK (0 Fehler)' : "BATTLE-TEST FEHLGESCHLAGEN (#{$fail} Fehler)")
+puts($fail.zero? ? 'BATTLE-TEST OK [V3] (0 Fehler)' : "BATTLE-TEST FEHLGESCHLAGEN [V3] (#{$fail} Fehler)")
 exit($fail.zero? ? 0 : 1)

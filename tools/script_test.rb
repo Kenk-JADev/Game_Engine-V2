@@ -195,12 +195,16 @@ begin
   check('move_route-Helfer startet Route') { Mover.active? }
   Mover.reset!
 
-  # 8) Context-Helfer (Etappe 19i): battle startet einen Kampf.
+  # 8) Context-Helfer (Etappe 19i): battle startet einen Kampf. run_code
+  # liefert true/false (Ausnahme = false), den Script-Wert fangen wir per
+  # Global ein.
   Party.setup(Database.database)
-  ok = Scripts.run_code('kampf_unbekannt', "battle 'gibt_es_nicht'", interp, ev)
-  check('battle-Helfer: unbekannte Truppe -> false') { ok == false }
-  ok = Scripts.run_code('kampf', "battle 'waldweg'", interp, ev)
-  check('battle-Helfer startet echten Kampf') { ok == true && Battle.active? }
+  Scripts.run_code('kampf_unbekannt', "$rgss_kampf1 = battle 'gibt_es_nicht'", interp, ev)
+  check('battle-Helfer: unbekannte Truppe -> false') { $rgss_kampf1 == false }
+  ok = Scripts.run_code('kampf', "$rgss_kampf2 = battle 'waldweg'", interp, ev)
+  check('battle-Helfer startet echten Kampf') do
+    ok == true && $rgss_kampf2 == true && Battle.active?
+  end
   Battle.abort!
 ensure
   FileUtils.remove_entry(tmp)
