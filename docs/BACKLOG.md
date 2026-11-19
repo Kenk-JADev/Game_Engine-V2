@@ -21,28 +21,60 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 ---
 
 ## Offen
-### [Editor] F6 und Objektformular schreiben unberührte Felder um — offen (Daten-Treue)
-- Symptom: Event- und Objektformulare schreiben bei Übernahme/Selektion
-  auch unveränderte, gerundet angezeigte Felder zurück. Genaue Koordinaten
-  und große Ganzzahlen können dadurch verändert werden; F6 migriert
-  außerdem alte Event-Seiten und kann vor dem Duplizieren Werte runden.
-- Analyse: `ev_num_str`-Endnullenverlust ist seit 19o.1 behoben; F2/F5 und
-  F9 (19o.3) übernehmen nur geänderte Felder. F6 und das alte Objektformular
-  brauchen denselben Schutz.
+### [Editor] F6 schreibt unberührte Felder um — offen (Daten-Treue)
+- Symptom: Event-/Seitenformulare schreiben bei Übernahme/Selektion auch
+  unveränderte, gerundet angezeigte Felder zurück. Genaue Koordinaten und
+  große Ganzzahlen können verändert werden; F6 migriert alte Event-Seiten
+  und kann vor dem Duplizieren Werte runden.
+- Analyse: `ev_num_str`-Endnullenverlust ist seit 19o.1 behoben; F2/F5/F9
+  und das Hauptfenster-Objektformular (19o.4) schützen unberührte Werte.
+  F6 braucht denselben Schutz, inklusive Seitenmigration und Duplizieren.
 - Betroffene Stellen: `src/editor/editor_main.cpp` (`ev_apply_event_fields`,
-  `ev_apply_page_fields`, `apply_property_fields`).
-- Gefunden in: Etappe 19o.1.
+  `ev_apply_page_fields`, `ev_ensure_pages` und Event-Duplizieren).
+- Gefunden in: Etappe 19o.1; F6 weiterhin offen nach 19o.4.
 
-### [Editor] F9-Dateikonfliktprüfung ist nicht atomar — offen (Daten-Treue)
-- Symptom: Ändert ein anderes Programm `database.json` genau zwischen der
-  F9-Konfliktprüfung und dem Ersetzen der Datei, kann seine Änderung
-  überschrieben werden, ohne dass der Vergleich sie gesehen hat.
-- Analyse: Seit 19o.3 vergleicht F9 vor dem Schreiben die Originalbytes
-  und fragt bei Änderungen; das anschließende Ersetzen ist aber kein
-  atomarer dateiübergreifender Compare-and-Swap und sperrt andere Prozesse
-  nicht für die gesamte Dauer.
-- Betroffene Stellen: `src/editor/editor_main.cpp` (`db_save`, `db_write_file`).
-- Gefunden in: Etappe 19o.3.
+### [Editor/Engine] Extreme Terrain-/Atmosphärenwerte sind nicht vollständig abgesichert — offen
+- Symptom: Wohlgeformtes JSON mit extrem großen Ganzzahlen/Kommazahlen oder
+  ungünstigen Terrain-Abmessungen/Auflösungen kann vor der Objektvorschau
+  zu ungültigen Casts, übergroßen Allokationen oder fehlerhafter Darstellung
+  führen. Der sichere Objektpfad allein schützt diese Kartenteile nicht.
+- Analyse: `map_parse_document` prüft Serialisierbarkeit, aber keine
+  vollständigen semantischen Bereiche. `regen_terrain`, Atmosphären- und
+  weitere Viewport-Pfade konvertieren Altwerte teils ungeprüft nach float/int;
+  `Terrain::generate` und Höhenpinsel erwarten realistische Parameter.
+  Nur mit gesicherten Testkarten reproduzieren; Grenzen zentral prüfen,
+  Altdaten im JSON erhalten und unbrauchbare Vorschau sicher umgehen.
+- Betroffene Stellen: `src/editor/editor_main.cpp` (`regen_terrain`,
+  `apply_map_atmosphere_editor`, weitere Viewport-Pfade), `src/world/terrain.cpp`.
+- Gefunden in: Prüfung zu Etappe 19o.4.
+
+### [Editor] Projekt-Dateipfade mischen System-Codepage und UTF-8 — offen
+- Symptom: Bei nicht-ASCII-Zeichen in Engine-Wurzel oder fremd angelegten
+  Projekt-/Kartendateinamen können Dateizugriffe oder Anzeigen scheitern
+  bzw. verstümmelt sein, insbesondere im F9-Dateidialog.
+- Analyse: `find_root`/Projekt- und Kartenscan verwenden Win32-A-Pfade;
+  F9 wandelt seinen gemischten Pfad mit `utf8_to_wide` als UTF-8 um.
+  19o.4 konvertiert Kartenpfade für die sichere Dateiersetzung bewusst aus
+  der bestehenden System-Codepage, löst aber die grundsätzliche Mischung
+  nicht. Pfade künftig Ende-zu-Ende als UTF-16 führen und auf Windows mit
+  Umlauten sowie Zeichen außerhalb der System-Codepage testen.
+- Betroffene Stellen: `src/editor/editor_main.cpp` (`find_root`, `scan_maps`,
+  `scan_projects`, `db_path`/`db_load`/`db_save`, `file_path_to_wide`).
+- Gefunden in: Prüfung zu Etappe 19o.4.
+
+### [Editor] F9-/Karten-Dateikonfliktprüfung ist nicht atomar — offen (Daten-Treue)
+- Symptom: Ändert ein anderes Programm eine Datei genau zwischen der
+  Konfliktprüfung und dem Ersetzen bzw. Karten-Löschen, können seine
+  Änderungen überschrieben oder gelöscht werden, ohne dass der Vergleich
+  sie gesehen hat.
+- Analyse: F9 (19o.3) und Karten (19o.4) vergleichen Originalbytes und
+  fragen bei Abweichungen; vor dem Ersetzen wird eine temporäre Datei
+  vollständig geschrieben. Vergleich und Ersetzen/Löschen sind aber kein
+  atomarer Compare-and-Swap und sperren andere Prozesse nicht durchgehend.
+  Neue Karten überschreiben keine bereits vorhandene Datei. Backups nutzen.
+- Betroffene Stellen: `src/editor/editor_main.cpp` (`db_save`, `save_map`,
+  `delete_current_map`), `src/editor/atomic_file_win.h`.
+- Gefunden in: Etappe 19o.3 (F9), 19o.4 (Karten).
 
 ### [Engine] Kampf-Grundgerüst deckt noch nicht alles ab — offen (Feature-Fehlend)
 - Stand 19i: Rundenkampf mit Angriff/Item/Flucht, Sieg/Niederlage/Exp/
@@ -207,6 +239,32 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Etappe 19a.
 
 ## Erledigt
+### [Editor] Objektformular schreibt unberührte Felder um — erledigt (19o.4)
+- Das portable `object_props_form.h` bereitet X/Z, Grad-Drehung und
+  Material transaktional vor. Unveränderte Integer-/Floatwerte, Y, fehlende
+  Felder und Zusatzdaten bleiben erhalten; ungültige Eingaben blockieren
+  alles. Doppelte/nicht darstellbare Felder sind gesperrt, problematische
+  Ersetzungen verlangen Zustimmung. Kein Undo bei unverändertem Formular.
+- Ausstehende Eingaben werden vor Auswahl-/Karten-/Projektwechsel und
+  Objektaktionen geklärt; Strg+S bezieht sie ein. ListView/TreeView-
+  Aktionen und Rückfragen werden gegen Reentranz abgesichert. F3/F5 und
+  Drag berücksichtigen das Formular; Drag behält unberührte Achsen und
+  stellt beim Zurückziehen den ursprünglichen Zahlentyp wieder her.
+- Sicheres Kartenladen prüft JSON/Unicode, Serialisierbarkeit und das
+  `objects`-Array, ohne andere doppelte Schlüssel zu entfernen. Ungültige
+  oder extreme Objektkoordinaten werden nicht gerendert/gepickt.
+- Kartenspeichern vergleicht Dateibytes und ersetzt das Ziel erst nach
+  vollständigem Schreiben einer temporären Datei. Bei externer Änderung
+  oder Löschung wird gefragt; Karten-Löschen prüft externe Änderungen,
+  Neuanlage überschreibt keine zwischenzeitlich angelegte Datei. Der
+  Vergleich ist keine durchgehende Sperre (separater Backlog-Eintrag).
+- Tests: `tools/json_test.cpp`, ASan/UBSan und Win64-Cross-Kompilierung;
+  Windows-CI prüft die gemeinsame Dateihilfe kopflos. Der grafische
+  Windows-Live-Test steht aus. F6 und extreme Terrain-/Atmosphärenwerte
+  bleiben eigene offene Einträge.
+- Betroffene Stellen: `src/editor/{object_props_form,map_document,json_validation,text_validation,atomic_file_win}.h`,
+  `src/editor/editor_main.cpp`, `src/editor/placement_dialog.h`.
+
 ### [Editor] F9 schreibt unberührte Werte und verliert Gold — erledigt (19o.3)
 - Das portable `database_form.h` übernimmt nur geänderte Felder; große
   Ganzzahlen, präzise Floats, optionale und unbekannte Werte bleiben

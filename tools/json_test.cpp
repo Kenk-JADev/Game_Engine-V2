@@ -17,11 +17,14 @@
 // ============================================================================
 
 #include "editor/json.h"
+#include "editor/atomic_file_win.h"
 #include "editor/database_form.h"
 #include "editor/encounter_check.h"
 #include "editor/encounter_form.h"
+#include "editor/map_document.h"
 #include "editor/map_props_form.h"
 #include "editor/number_format.h"
+#include "editor/object_props_form.h"
 #include "editor/placement_form.h"
 
 #include <cmath>
@@ -869,6 +872,342 @@ void database_form_tests(const std::string& wurzel) {
     }
 }
 
+void object_props_tests(const std::string& wurzel) {
+    using namespace rune::editor;
+    std::printf("== Editor: Objekt-Eigenschaften datentreu ==\n");
+    const JsonValue object = json_parse(R"({"type":"haus","x":9007199254740993,
+      "z":1.2345678901234567,"rot":1.234567890123,"tex":"altes Material",
+      "y":2.75,"extra":{"farbe":"blau"}})");
+    const std::string original = json_write(object);
+    const ObjectPropsForm before = object_props_read(object);
+    check("Objektformular zeigt große Ganzzahl und präzise Kommazahl", before.x == "9007199254740993" &&
+          before.z == placement_num_text(object.find("z")->number()));
+    check("Material und Drehung werden geladen", before.material == "altes Material" && !before.rotation.empty());
+    check("Snapshot-Gleichheit erkennt unveränderte Eingaben", object_props_equal(before, before));
+    ObjectPropsForm pending = before; pending.material += "x";
+    check("Snapshot-Gleichheit erkennt unübernommene Eingaben", !object_props_equal(before, pending));
+    ObjectPropsEdit edit = object_props_prepare(object, before, before);
+    check("unverändertes Formular erzeugt keine Mutation und keinen Undo-Bedarf",
+          edit.ok && !edit.changed && json_write(edit.value) == original);
+
+    ObjectPropsForm after = before;
+    after.material = "  neues Material  ";
+    edit = object_props_prepare(object, before, after);
+    check("Materialänderung wird getrimmt und vorbereitet", edit.ok && edit.changed && !edit.replaces_invalid &&
+          edit.value.find("tex")->str == "neues Material" && json_write(object) == original);
+    check("nur Material ändern bewahrt exakte Koordinaten, Rotation, Höhe und Zusatzdaten",
+          json_write(*edit.value.find("x")) == json_write(*object.find("x")) &&
+          json_write(*edit.value.find("z")) == json_write(*object.find("z")) &&
+          json_write(*edit.value.find("rot")) == json_write(*object.find("rot")) &&
+          edit.value.find("y")->number() == 2.75 && edit.value.find("extra")->find("farbe")->str == "blau");
+    JsonValue items = JsonValue::make_arr(); items.arr.push_back(object);
+    const std::string undo = json_write(items);
+    items.arr[0] = edit.value;
+    const JsonValue restored = json_parse(undo);
+    check("Objekt-Schnappschuss stellt bei Materialänderung alle Werte wieder her",
+          json_write(restored.arr[0]) == original && json_write(items.arr[0]) != original);
+
+    after = before; after.material.clear();
+    edit = object_props_prepare(object, before, after);
+    check("leeres Material entfernt nur tex", edit.ok && edit.changed && !edit.value.find("tex") &&
+          json_write(*edit.value.find("x")) == json_write(*object.find("x")) && edit.value.find("y"));
+    after = before; after.x = "2,75";
+    edit = object_props_prepare(object, before, after);
+    check("geändertes X akzeptiert Dezimalkomma, Z/Rotation bleiben exakt",
+          edit.ok && edit.changed && edit.value.find("x")->number() == 2.75 &&
+          json_write(*edit.value.find("z")) == json_write(*object.find("z")) &&
+          json_write(*edit.value.find("rot")) == json_write(*object.find("rot")));
+    after = before; after.rotation = "90";
+    edit = object_props_prepare(object, before, after);
+    check("Grad-Drehung wird als Radiant gespeichert und X bleibt als Integer erhalten",
+          edit.ok && edit.changed && std::fabs(edit.value.find("rot")->number() - 1.5707963267948966) < 1e-14 &&
+          json_write(*edit.value.find("x")) == "9007199254740993\n");
+    after = before; after.x = "12xyz"; after.z = "4"; after.material = "wichtig";
+    edit = object_props_prepare(object, before, after);
+    check("ungültige Zahl blockiert sämtliche Änderungen", !edit.ok && !edit.changed && edit.field == "x" &&
+          json_write(object) == original);
+    after = before; after.x = "4"; after.rotation = "inf";
+    edit = object_props_prepare(object, before, after);
+    check("späterer Fehler verhindert auch vorher gültiges X", !edit.ok && !edit.changed && edit.field == "rotation" &&
+          json_write(object) == original && json_write(edit.value) == original);
+    for (const char* invalid : {"", "NaN", "1e999", "1000001", "-1000001", "2,3,4"}) {
+        after = before; after.z = invalid;
+        const std::string label = std::string("ungültige oder zu große Objektzahl abgelehnt: ") + invalid;
+        check(label.c_str(), !object_props_prepare(object, before, after).ok);
+    }
+    after = before; after.x = std::string("1\0anderes", 9);
+    check("NUL in Zahl wird nicht still abgeschnitten", !object_props_prepare(object, before, after).ok);
+    after = before; after.x = "1\t";
+    check("Steuerzeichen in Zahl werden abgelehnt", !object_props_prepare(object, before, after).ok);
+    after = before; after.x = "1000000";
+    check("erlaubter Zahlen-Grenzwert wird übernommen", object_props_prepare(object, before, after).ok);
+    after = before; after.material = "Zeile\nneu";
+    check("Zeilenumbruch in Material wird abgelehnt", !object_props_prepare(object, before, after).ok);
+    after.material = std::string("a\0b", 3);
+    check("NUL in Material wird abgelehnt", !object_props_prepare(object, before, after).ok);
+    after.material = std::string("\xed\xa0\x80", 3);
+    check("ungültiges UTF-8 in Material wird abgelehnt", !object_props_prepare(object, before, after).ok);
+
+    const JsonValue empty = json_parse(R"({"type":"baum","extra":true})");
+    const ObjectPropsForm empty_form = object_props_read(empty);
+    edit = object_props_prepare(empty, empty_form, empty_form);
+    check("fehlende x/z/rot/tex bleiben beim Übernehmen fehlend", edit.ok && !edit.changed &&
+          !edit.value.find("x") && !edit.value.find("z") && !edit.value.find("rot") && !edit.value.find("tex"));
+    after = empty_form; after.material = "  ";
+    edit = object_props_prepare(empty, empty_form, after);
+    check("nur Leerzeichen im bereits leeren Material erzeugen keinen Undo-Bedarf", edit.ok && !edit.changed);
+
+    const JsonValue damaged = json_parse(R"({"x":{"sicher":true},"z":2,"tex":["alt"],"extra":5})");
+    const ObjectPropsForm broken_form = object_props_read(damaged);
+    after = broken_form; after.z = "3";
+    edit = object_props_prepare(damaged, broken_form, after);
+    check("andere Änderung erhält ungültige Altwerte ohne Rückfrage", edit.ok && !edit.replaces_invalid &&
+          json_write(*edit.value.find("x")) == json_write(*damaged.find("x")) &&
+          json_write(*edit.value.find("tex")) == json_write(*damaged.find("tex")));
+    after = broken_form; after.x = "0";
+    check("kaputte Koordinate ersetzen erfordert Bestätigung", object_props_prepare(damaged, broken_form, after).replaces_invalid);
+    after = broken_form; after.material = "stein";
+    check("kaputtes Material ersetzen erfordert Bestätigung", object_props_prepare(damaged, broken_form, after).replaces_invalid);
+    after = broken_form; after.material.clear();
+    check("kaputtes Material entfernen erfordert Bestätigung", object_props_prepare(damaged, broken_form, after).replaces_invalid);
+
+    const JsonValue duplicates = json_parse(R"({"x":1,"x":2,"z":7,"tex":"a","tex":"b"})");
+    const ObjectPropsForm duplicate_form = object_props_read(duplicates);
+    check("doppelte editierbare Schlüssel werden erkannt", !object_props_field_unique(duplicates, "x") &&
+          !object_props_field_unique(duplicates, "tex") && object_props_field_unique(duplicates, "z"));
+    after = duplicate_form; after.x = "4";
+    check("doppeltes X darf nicht mehrdeutig überschrieben werden",
+          !object_props_prepare(duplicates, duplicate_form, after).ok);
+    after = duplicate_form; after.material = "neu";
+    check("doppeltes Material darf nicht mehrdeutig überschrieben werden",
+          !object_props_prepare(duplicates, duplicate_form, after).ok);
+    after = duplicate_form; after.z = "8";
+    edit = object_props_prepare(duplicates, duplicate_form, after);
+    check("andere Felder ändern erhält doppelte Altdaten", edit.ok && edit.changed &&
+          edit.value.obj.size() == duplicates.obj.size() && edit.value.find("z")->number() == 8);
+
+    const std::string huge(400, '9');
+    const JsonValue huge_object = json_parse("{\"x\":" + huge + ",\"z\":0,\"tex\":\"alt\"}");
+    const ObjectPropsForm huge_form = object_props_read(huge_object);
+    after = huge_form; after.material = "neu";
+    edit = object_props_prepare(huge_object, huge_form, after);
+    check("400-stellige Altkoordinate bleibt bei Materialänderung exakt",
+          huge_form.x == huge && edit.ok && json_write(*edit.value.find("x")) == huge + "\n");
+    const JsonValue huge_rotation = json_parse(R"({"rot":1e308,"tex":"alt"})");
+    const ObjectPropsForm rotation_form = object_props_read(huge_rotation);
+    after = rotation_form; after.material = "neu";
+    edit = object_props_prepare(huge_rotation, rotation_form, after);
+    check("nicht darstellbare Grad-Anzeige verändert alte Radiant-Zahl nicht", rotation_form.rotation == "ungültig" &&
+          edit.ok && edit.value.find("rot")->number() == huge_rotation.find("rot")->number());
+    after = rotation_form; after.rotation = "30";
+    check("nicht darstellbare Drehungsanzeige ersetzen erfordert Bestätigung",
+          object_props_prepare(huge_rotation, rotation_form, after).replaces_invalid);
+    const JsonValue broken_text = json_parse(R"({"tex":"A\nB","x":1})");
+    const ObjectPropsForm text_form = object_props_read(broken_text);
+    after = text_form; after.material = "neu";
+    check("nicht einzeiligen Alt-Materialnamen ersetzen erfordert Bestätigung",
+          object_props_prepare(broken_text, text_form, after).replaces_invalid);
+    JsonValue long_material = json_parse(R"({"x":1,"z":2})");
+    long_material.set("tex", JsonValue::make_str(std::string(9000, 'a')));
+    const ObjectPropsForm long_form = object_props_read(long_material);
+    after = long_form; after.x = "5";
+    edit = object_props_prepare(long_material, long_form, after);
+    check("langes unverändertes Material wird nicht abgeschnitten", long_form.material.size() == 9000 &&
+          edit.ok && edit.value.find("tex")->str.size() == 9000);
+    const JsonValue invalid = json_parse("42");
+    check("Nicht-Objekt wird nicht still ersetzt", !object_props_prepare(invalid, ObjectPropsForm{}, ObjectPropsForm{}).ok);
+
+    const JsonValue movable = json_parse(R"({"x":1,"z":2,"rot":0,"y":0.25})");
+    check("normales Objekt ist für Vorschau und Picking geeignet", object_props_viewable(movable));
+    check("extreme Ganzzahl, kaputter Typ und doppelte Koordinate bleiben aus der Vorschau",
+          !object_props_viewable(object) && !object_props_viewable(huge_object) &&
+          !object_props_viewable(damaged) && !object_props_viewable(duplicates));
+    check("fehlende oder null-Koordinaten sind als Standardposition darstellbar",
+          object_props_viewable(empty) && object_props_viewable(json_parse(R"({"x":null,"z":0})")));
+    ObjectDragEdit drag = object_drag_prepare(movable, movable, 0.0, 0.0, 1.0);
+    check("Klick ohne Bewegung erzeugt keinen Drag und keinen Undo-Bedarf",
+          drag.ok && !drag.changed && json_write(drag.value) == json_write(movable));
+    drag = object_drag_prepare(movable, movable, 0.3, -0.2, 1.0);
+    check("Bewegung innerhalb einer halben Rasterzelle erzeugt keine Änderung", drag.ok && !drag.changed);
+    drag = object_drag_prepare(movable, movable, 2.0, 0.0, 1.0);
+    check("Drag auf einer Achse bewahrt den Integer-Token der anderen Achse",
+          drag.ok && drag.changed && drag.value.find("x")->number() == 3.0 &&
+          drag.value.find("z")->is_int && json_write(*drag.value.find("z")) == "2\n" &&
+          json_write(*drag.value.find("y")) == json_write(*movable.find("y")));
+    drag = object_drag_prepare(drag.value, movable, 0.0, 0.0, 1.0);
+    check("Zurückziehen stellt ursprünglichen Zahlentyp und Position wieder her",
+          drag.ok && drag.changed && json_write(drag.value) == json_write(movable));
+    const JsonValue precise = json_parse(R"({"x":1.2345678901234567,"z":2.345678901234567,"y":1})");
+    drag = object_drag_prepare(precise, precise, 1.0, 0.0, 1.0);
+    check("Drag in X lässt präzises Z unverändert", drag.ok && drag.changed &&
+          json_write(*drag.value.find("z")) == json_write(*precise.find("z")));
+    drag = object_drag_prepare(drag.value, precise, 0.0, 0.0, 1.0);
+    check("Zurückziehen erhält ursprüngliche präzise Zahl bitgenau",
+          drag.ok && json_write(drag.value) == json_write(precise));
+    drag = object_drag_prepare(empty, empty, 1.0, 0.0, 1.0);
+    check("Drag legt nur die tatsächlich bewegte fehlende Achse an",
+          drag.ok && drag.changed && drag.value.find("x") && !drag.value.find("z"));
+    drag = object_drag_prepare(drag.value, empty, 0.0, 0.0, 1.0);
+    check("Zurückziehen entfernt die ursprünglich fehlende Achse wieder",
+          drag.ok && drag.changed && json_write(drag.value) == json_write(empty));
+    const JsonValue null_axis = json_parse(R"({"x":null,"z":0})");
+    drag = object_drag_prepare(null_axis, null_axis, 1.0, 0.0, 1.0);
+    drag = object_drag_prepare(drag.value, null_axis, 0.0, 0.0, 1.0);
+    check("Zurückziehen stellt ursprüngliches null wieder her",
+          drag.ok && drag.changed && drag.value.find("x")->is_null());
+    drag = object_drag_prepare(movable, movable, 2.0, 2000000.0, 1.0);
+    check("ungültiges Drag-Ziel verwirft beide Achsen ohne Teiländerung",
+          !drag.ok && !drag.changed && json_write(drag.value) == json_write(movable));
+    check("ungültiges Raster wird abgelehnt", !object_drag_prepare(movable, movable, 1.0, 1.0, 0.0).ok);
+
+    for (const char* path : {"game/data/maps/dorf.json", "projekte/dorf/data/maps/dorf.json"}) {
+        std::string text;
+        bool ok = datei_lesen(wurzel + "/" + path, text);
+        JsonValue map;
+        if (ok) ok = map_parse_document(text, map) == MapParseStatus::Ok;
+        const JsonValue* objects = ok ? map.find("objects") : nullptr;
+        ok = objects && objects->is_arr() && !objects->arr.empty();
+        if (ok) {
+            const std::string map_before = json_write(map);
+            for (size_t i = 0; i < objects->arr.size(); ++i) {
+                const JsonValue& item = objects->arr[i];
+                if (!item.is_obj()) continue;
+                const ObjectPropsForm form = object_props_read(item);
+                const ObjectPropsEdit unchanged = object_props_prepare(item, form, form);
+                if (!unchanged.ok || unchanged.changed || json_write(unchanged.value) != json_write(item)) ok = false;
+            }
+            ok = ok && json_write(map) == map_before;
+        }
+        const std::string label = std::string("Objekte echter Karte bleiben unverändert: ") + path;
+        check(label.c_str(), ok);
+    }
+}
+
+void map_document_tests(const std::string& wurzel) {
+    using namespace rune::editor;
+    std::printf("== Editor: sichere Karten-Dokumente ==\n");
+    JsonValue loaded = json_parse(R"({"alt":true})");
+    const std::string old = json_write(loaded);
+    const std::string huge(400, '9');
+    check("Karten-Dateischnappschuss: unveränderte Bytes sind kein Konflikt",
+          !editor_disk_changed(true, "alt", true, "alt"));
+    check("Karten-Dateischnappschuss: externe Änderung wird erkannt",
+          editor_disk_changed(true, "alt", true, "neu"));
+    check("Karten-Dateischnappschuss: externe Löschung wird erkannt",
+          editor_disk_changed(true, "alt", false, ""));
+    check("Karten-Dateischnappschuss: Neuanlage wird erkannt",
+          editor_disk_changed(false, "", true, "neu"));
+    check("Karten-Dateischnappschuss: zwei fehlende Dateien sind gleich",
+          !editor_disk_changed(false, "", false, ""));
+    const std::vector<std::pair<std::string, MapParseStatus>> invalid = {
+        {"{", MapParseStatus::InvalidJson},
+        {"[]", MapParseStatus::InvalidRoot},
+        {"{\"name\":\"Zeile\nnein\"}", MapParseStatus::InvalidJson},
+        {R"({"name":"\ud800\u0041"})", MapParseStatus::InvalidUtf8},
+        {std::string("{\"name\":\"") + std::string("\xc0\x80", 2) + "\"}", MapParseStatus::InvalidUtf8},
+        {R"({"objects":[{"x":1e999}]})", MapParseStatus::Nonfinite},
+        {R"({"objects":[],"objects":[]})", MapParseStatus::DuplicateObjects},
+        {R"({"objects":{"wert":42}})", MapParseStatus::InvalidObjects},
+        {R"({"objects":null})", MapParseStatus::InvalidObjects}
+    };
+    for (const auto& [text, expected] : invalid) {
+        check("nicht sicher ladbare Karte erhält bisherigen Baum",
+              map_parse_document(text, loaded) == expected && json_write(loaded) == old);
+    }
+    const std::string valid = "{\"objects\":[{\"x\":" + huge +
+                              ",\"z\":2,\"z\":3,\"tex\":\"Äpfel 🍎\"}]}";
+    check("große Integer und doppelte Objekt-Felder werden datentreu geladen",
+          map_parse_document(valid, loaded) == MapParseStatus::Ok &&
+          json_write(*loaded.find("objects")->arr[0].find("x")) == huge + "\n" &&
+          !object_props_field_unique(loaded.find("objects")->arr[0], "z"));
+    check("fehlende Objektliste darf weiterhin als leer angelegt werden",
+          map_parse_document(R"({"name":"Leer"})", loaded) == MapParseStatus::Ok && !loaded.find("objects"));
+    check("gültiges Surrogatpaar und maskiertes NUL werden erhalten",
+          map_parse_document(R"({"name":"\ud83c\udf4e","note":"a\u0000b"})", loaded) == MapParseStatus::Ok &&
+          loaded.find("name")->str == "🍎" && loaded.find("note")->str == std::string("a\0b", 3));
+    for (const char* path : {"game/data/maps/dorf.json", "projekte/dorf/data/maps/dorf.json"}) {
+        std::string text;
+        const bool ok = datei_lesen(wurzel + "/" + path, text) && map_parse_document(text, loaded) == MapParseStatus::Ok;
+        const std::string label = std::string("mitgelieferte Karte lässt sich sicher laden: ") + path;
+        check(label.c_str(), ok);
+    }
+}
+
+#ifdef _WIN32
+// Echter Dateitest ohne GUI: Die gemeinsame Karte/F9-Schreibfunktion arbeitet
+// mit Unicode-Pfaden und darf bestehende Daten bei Fehlern nicht beschädigen.
+bool win_test_read(const std::wstring& path, std::string& out) {
+    HANDLE file = CreateFileW(path.c_str(), GENERIC_READ,
+                              FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                              nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE) return false;
+    std::string result;
+    char buffer[8192];
+    bool ok = true;
+    for (;;) {
+        DWORD count = 0;
+        if (!ReadFile(file, buffer, sizeof(buffer), &count, nullptr)) { ok = false; break; }
+        if (!count) break;
+        result.append(buffer, count);
+    }
+    if (!CloseHandle(file)) ok = false;
+    if (ok) out = std::move(result);
+    return ok;
+}
+
+void atomic_file_windows_tests() {
+    using namespace rune::editor;
+    std::printf("== Windows: sicheres Datei-Ersetzen ==\n");
+    wchar_t base[MAX_PATH + 1]{};
+    const DWORD length = GetTempPathW(MAX_PATH, base);
+    if (!length || length >= MAX_PATH) {
+        check("temporäres Testverzeichnis verfügbar", false);
+        return;
+    }
+    std::wstring dir;
+    bool created = false;
+    for (int i = 0; i < 100; ++i) {
+        dir = std::wstring(base, length) + L"rune-dateitest-" +
+              std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(i);
+        if (CreateDirectoryW(dir.c_str(), nullptr)) { created = true; break; }
+        if (GetLastError() != ERROR_ALREADY_EXISTS) break;
+    }
+    check("temporäres Testverzeichnis verfügbar", created);
+    if (!created) return;
+    const std::wstring path = dir + L"\\karte-\u00c4.json";
+    const std::string original("alt\0wert", 8);
+    std::string read;
+    const bool first = editor_write_file_atomic(path, original, false);
+    check("neue Datei unter Unicode-Pfad wird vollständig erstellt",
+          first && win_test_read(path, read) && read == original);
+    const bool existing = editor_write_file_atomic(path, "nicht überschreiben", false);
+    check("Neuanlage überschreibt keine inzwischen vorhandene Datei",
+          !existing && win_test_read(path, read) && read == original);
+
+    // Eine offene Datei ohne FILE_SHARE_DELETE erzwingt einen Fehlschlag beim
+    // Ersetzen, nachdem die temporäre Datei bereits geschrieben wurde.
+    HANDLE lock = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+                              OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    const bool blocked = lock != INVALID_HANDLE_VALUE && !editor_write_file_atomic(path, "neu");
+    if (lock != INVALID_HANDLE_VALUE) CloseHandle(lock);
+    check("fehlgeschlagenes Ersetzen erhält ursprüngliche Dateibytes",
+          blocked && win_test_read(path, read) && read == original);
+    WIN32_FIND_DATAW found{};
+    HANDLE search = FindFirstFileW((dir + L"\\*.tmp").c_str(), &found);
+    const bool no_temporary = search == INVALID_HANDLE_VALUE && GetLastError() == ERROR_FILE_NOT_FOUND;
+    if (search != INVALID_HANDLE_VALUE) FindClose(search);
+    check("fehlgeschlagenes Ersetzen räumt die temporäre Datei auf", no_temporary);
+
+    std::string large(1024 * 1024 + 17, 'x');
+    large[10] = '\0';
+    large.back() = 'z';
+    check("Ersetzen schreibt auch mehrere Blöcke vollständig",
+          editor_write_file_atomic(path, large) && win_test_read(path, read) && read == large);
+    DeleteFileW(path.c_str());
+    check("Testverzeichnis nach Dateioperationen entfernbar", RemoveDirectoryW(dir.c_str()) != 0);
+}
+#endif
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1150,6 +1489,11 @@ int main(int argc, char** argv) {
     map_props_form_tests();
     placement_form_tests();
     database_form_tests(wurzel);
+    map_document_tests(wurzel);
+    object_props_tests(wurzel);
+#ifdef _WIN32
+    atomic_file_windows_tests();
+#endif
 
     std::printf("== JSON: Grosse/tiefe Dokumente ==\n");
     {

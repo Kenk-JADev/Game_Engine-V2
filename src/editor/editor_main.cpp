@@ -31,6 +31,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <climits>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>   // Etappe 19k.2: std::atof (Block-Zonen-Feld)
@@ -43,11 +44,14 @@
 #include "core/log.h"
 #include "core/sound.h"
 #include "editor/json.h"
+#include "editor/atomic_file_win.h"
 #include "editor/database_form.h"
 #include "editor/encounter_check.h"
 #include "editor/encounter_form.h"
+#include "editor/map_document.h"
 #include "editor/map_props_form.h"
 #include "editor/number_format.h"
+#include "editor/object_props_form.h"
 #include "editor/placement_form.h"
 #include "gfx/camera.h"      // nur fuer Kamera-Konstanten, falls noetig
 #include "gfx/renderer.h"
@@ -116,6 +120,7 @@ enum {
     IDC_GRP_TOOL      = 3030,
     IDC_GRP_PREFAB    = 3031,
     IDC_GRP_ACT       = 3032,
+    IDC_LBL_PROPS_HINT = 3033,
     ID_CTX_PLACE      = 3120,
     ID_CTX_FOCUS      = 3121,
     ID_CTX_DUP        = 3122,
@@ -279,12 +284,25 @@ struct Editor {
     int cur_map = -1;
 
     JsonValue  map_root;              // ganze Karte (events/npcs bleiben drin)
+    bool map_disk_present = false;
+    std::string map_disk_text;        // gelesene/zuletzt gespeicherte Dateibytes
     JsonValue* objects = nullptr;     // zeigt in map_root
 
     std::vector<Prefab> prefabs;
     std::vector<std::string> tex_names;   // Texturnamen der Prefabs (+gras)
     int  sel_prefab = 0;
     int  sel_obj = -1;
+    ObjectPropsForm object_form;
+    bool object_field_editable[4] = {};
+    bool syncing_object_list = false;
+    bool object_selection_queued = false;
+    bool object_selection_resolving = false;
+    bool map_selection_queued = false;
+    bool map_selection_resolving = false;
+    bool data_prompt_active = false;
+    bool object_selection_delayed = false;
+    bool map_selection_delayed = false;
+    bool map_menu_delayed = false;
     bool place_mode = true;
     bool move_mode = false;        // Verschieben-Werkzeug (Drag im Viewport)
     bool paint_mode = false;       // Etappe 18e: Boden-Malwerkzeug (Splats)
@@ -297,8 +315,13 @@ struct Editor {
     float paint_size = 8.0f;       // Brush-Grösse in Metern (Kantenlänge)
     std::string paint_tex = "weg"; // Textur des Pinsels
     bool dragging = false;         // gerade Objekt per Maus verschieben
+    bool drag_undo_pushed = false; // erst bei der ersten echten Bewegung
+    bool drag_pointer_moved = false;
     int  obj_drag = -1;            // Index des gezogenen Objekts
+    int  drag_mouse_x = 0, drag_mouse_y = 0;
     float drag_y = 0.0f;           // Höhenebene des gezogenen Objekts
+    float drag_anchor_x = 0.0f, drag_anchor_z = 0.0f, drag_grid = 1.0f;
+    JsonValue drag_original;       // Werte vor dem ersten Drag-Schritt
     std::vector<std::string> undo_stack;   // JSON-Schnappschüsse (vor Aktion)
     std::vector<std::string> redo_stack;
     float grid = 1.0f;
@@ -323,6 +346,72 @@ struct Editor {
 
 static Editor g;
 
+// Benachrichtigungen von ListView/TreeView zunächst beenden; Rückfragen und
+// komplette Listen-Neubauten dürfen nicht innerhalb ihrer Callbacks laufen.
+constexpr UINT WM_RECONCILE_OBJECT_SELECTION = WM_APP + 41;
+constexpr UINT WM_OBJECT_LIST_FOCUS = WM_APP + 42;
+constexpr UINT WM_OBJECT_LIST_CONTEXT = WM_APP + 43;
+constexpr UINT WM_RECONCILE_MAP_SELECTION = WM_APP + 44;
+constexpr UINT WM_REBUILD_MAP_MENU = WM_APP + 45;
+constexpr UINT WM_TREE_OPEN_PROPS = WM_APP + 46;
+constexpr UINT WM_TREE_CONTEXT = WM_APP + 47;
+constexpr UINT WM_OBJECT_LIST_SORT = WM_APP + 48;
+constexpr UINT WM_TREE_RENAME_WARNING = WM_APP + 49;
+
+void cancel_object_drag() {
+    const bool had_capture = g.dragging;
+    g.dragging = false;
+    g.drag_undo_pushed = false;
+    g.drag_pointer_moved = false;
+    g.obj_drag = -1;
+    g.drag_original = JsonValue{};
+    if (had_capture && GetCapture() == g.view) ReleaseCapture();
+}
+
+struct DataPromptWindows {
+    HWND owner = nullptr;
+    std::vector<HWND> disabled;
+};
+
+BOOL CALLBACK collect_data_prompt_windows(HWND window, LPARAM param) {
+    auto& state = *reinterpret_cast<DataPromptWindows*>(param);
+    if (window != state.owner && IsWindowEnabled(window) &&
+        (window == g.main || GetWindow(window, GW_OWNER) == g.main))
+        state.disabled.push_back(window);
+    return TRUE;
+}
+
+// F3, Projektfenster usw. sind moduslos. Eine Daten-Rückfrage muss deshalb
+// auch diese Fenster sperren, nicht nur ihren jeweiligen MessageBox-Owner.
+// Zuvor gesperrte Fenster bleiben gesperrt (z. B. beim modalen F5-Dialog).
+int data_prompt(HWND owner, const wchar_t* text, const wchar_t* title, UINT flags) {
+    if (g.data_prompt_active) return IDCANCEL;
+    if (!owner || !IsWindow(owner) || !IsWindowEnabled(owner)) owner = g.main;
+    DataPromptWindows windows;
+    windows.owner = owner;
+    g.data_prompt_active = true;
+    EnumThreadWindows(GetCurrentThreadId(), collect_data_prompt_windows, reinterpret_cast<LPARAM>(&windows));
+    for (HWND window : windows.disabled) EnableWindow(window, FALSE);
+    const int result = MessageBoxW(owner, text, title, flags);
+    for (HWND window : windows.disabled) if (IsWindow(window)) EnableWindow(window, TRUE);
+    g.data_prompt_active = false;
+    if (g.object_selection_delayed) {
+        g.object_selection_delayed = false;
+        if (!g.object_selection_queued)
+            g.object_selection_queued = PostMessageW(g.main, WM_RECONCILE_OBJECT_SELECTION, 0, 0) != 0;
+    }
+    if (g.map_selection_delayed) {
+        g.map_selection_delayed = false;
+        if (!g.map_selection_queued)
+            g.map_selection_queued = PostMessageW(g.main, WM_RECONCILE_MAP_SELECTION, 0, 0) != 0;
+    }
+    if (g.map_menu_delayed) {
+        g.map_menu_delayed = false;
+        PostMessageW(g.main, WM_REBUILD_MAP_MENU, 0, 0);
+    }
+    return result;
+}
+
 // Vorwärtsdeklarationen (Definitionen weiter unten)
 void apply_map_atmosphere_editor();
 void rebuild_map_menu();
@@ -330,7 +419,7 @@ void open_map_props();
 void open_map_new();
 void delete_current_map();
 bool apply_props_from_dlg();
-void apply_new_from_dlg();
+bool apply_new_from_dlg();
 void push_undo();
 void undo_action();
 void redo_action();
@@ -338,9 +427,13 @@ void restore_objects(const std::string& text);
 void update_title();
 void sync_object_list();
 void sync_property_fields();
+bool object_form_pending();
+bool apply_property_fields(bool refresh_list = true);
+bool resolve_object_edits(bool refresh_list = true);
+bool prepare_map_departure();
 
 // Etappe 18b: Projekt-Auswahl im Editor (bisher fix auf "dorf").
-bool switch_project(const std::string& name);
+bool switch_project(const std::string& name, bool departure_checked = false);
 void open_project_dialog();
 void scan_maps();
 void rebuild_map_menu();
@@ -415,6 +508,51 @@ std::string wide_to_utf8(const std::wstring& w) {
     return s;
 }
 
+// Ein Editfeld vollständig auslesen; feste 64-/128-Zeichen-Puffer würden
+// lange bestehende Daten beim Übernehmen still abschneiden.
+std::string control_text(HWND control) {
+    if (!control) return {};
+    const int length = GetWindowTextLengthW(control);
+    std::wstring text(static_cast<size_t>(std::max(0, length)) + 1, L'\0');
+    const int copied = GetWindowTextW(control, text.data(), static_cast<int>(text.size()));
+    text.resize(static_cast<size_t>(std::max(0, copied)));
+    return wide_to_utf8(text);
+}
+
+// Für Objekt-Eingaben zusätzlich ungültige UTF-16-Surrogate ablehnen statt
+// sie beim Konvertieren unbemerkt durch ein Ersatzzeichen zu verändern.
+bool control_text_strict(HWND control, std::string& result) {
+    if (!control) return false;
+    const int length = GetWindowTextLengthW(control);
+    if (length < 0 || length == INT_MAX) return false;
+    std::wstring text(static_cast<size_t>(length) + 1, L'\0');
+    const int copied = GetWindowTextW(control, text.data(), length + 1);
+    if (copied != length) return false;
+    if (copied == 0) { result.clear(); return true; }
+    const int bytes = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, text.data(), copied,
+                                          nullptr, 0, nullptr, nullptr);
+    if (bytes <= 0) return false;
+    std::string out(static_cast<size_t>(bytes), '\0');
+    if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, text.data(), copied,
+                            out.data(), bytes, nullptr, nullptr) != bytes) return false;
+    result = std::move(out);
+    return true;
+}
+
+// Die vorhandene Projekt-/Kartenverwaltung benutzt für Dateinamen Win32s
+// System-Codepage (GetModuleFileNameA/FindFirstFileA/fopen_s). Für die neue
+// Wide-Dateiersetzung denselben Pfad konvertieren, nicht als UTF-8 deuten.
+bool file_path_to_wide(const std::string& path, std::wstring& out) {
+    if (path.empty() || path.size() > static_cast<size_t>(INT_MAX)) return false;
+    const int length = static_cast<int>(path.size());
+    const int count = MultiByteToWideChar(CP_ACP, 0, path.data(), length, nullptr, 0);
+    if (count <= 0) return false;
+    std::wstring result(static_cast<size_t>(count), L'\0');
+    if (MultiByteToWideChar(CP_ACP, 0, path.data(), length, result.data(), count) != count) return false;
+    out = std::move(result);
+    return true;
+}
+
 bool read_file(const std::string& path, std::string& out) {
     FILE* f = nullptr;
     if (fopen_s(&f, path.c_str(), "rb") != 0 || !f) return false;
@@ -422,16 +560,41 @@ bool read_file(const std::string& path, std::string& out) {
     char buf[65536];
     size_t n;
     while ((n = std::fread(buf, 1, sizeof(buf), f)) > 0) out.append(buf, n);
-    std::fclose(f);
-    return true;
+    const bool read_ok = std::ferror(f) == 0;
+    const bool close_ok = std::fclose(f) == 0;
+    if (!read_ok || !close_ok) out.clear();
+    return read_ok && close_ok;
+}
+
+bool file_path_exists(const std::string& path) {
+    std::wstring wide_path;
+    return file_path_to_wide(path, wide_path) &&
+           GetFileAttributesW(wide_path.c_str()) != INVALID_FILE_ATTRIBUTES;
+}
+
+enum class FileDiskState { Missing, Ready, Error };
+
+// Für Karten dieselben Pfad-Bytes wie beim Laden/Datei-Scan verwenden.
+FileDiskState file_disk_state(const std::string& path, std::string& out) {
+    std::wstring wide_path;
+    if (!file_path_to_wide(path, wide_path)) return FileDiskState::Error;
+    const DWORD attributes = GetFileAttributesW(wide_path.c_str());
+    if (attributes == INVALID_FILE_ATTRIBUTES) {
+        const DWORD error = GetLastError();
+        if (error != ERROR_FILE_NOT_FOUND) return FileDiskState::Error;
+        out.clear();
+        return FileDiskState::Missing;
+    }
+    if ((attributes & FILE_ATTRIBUTE_DIRECTORY) || !read_file(path, out)) return FileDiskState::Error;
+    return FileDiskState::Ready;
 }
 
 bool write_file(const std::string& path, const std::string& data) {
     FILE* f = nullptr;
     if (fopen_s(&f, path.c_str(), "wb") != 0 || !f) return false;
     const size_t n = std::fwrite(data.data(), 1, data.size(), f);
-    std::fclose(f);
-    return n == data.size();
+    const bool close_ok = std::fclose(f) == 0;
+    return n == data.size() && close_ok;
 }
 
 // Engine-Wurzel finden (Editor exe liegt in build/, Wurzel ist der Parent).
@@ -862,6 +1025,8 @@ void issues_scan_map() {
             const JsonValue& o = objs->arr[i];
             const std::string w = mapname + " Objekt #" + std::to_string(i + 1);
             if (!o.is_obj()) { issue_report(2, w, "ist kein Objekt"); continue; }
+            if (!object_props_viewable(o))
+                issue_report(1, w, "Position/Drehung ungültig, mehrfach oder extrem; keine Vorschau");
             const JsonValue* type = o.find("type");
             if (!type || !type->is_str() || type->str.empty()) {
                 issue_report(2, w, "ohne 'type'");
@@ -1100,23 +1265,41 @@ void open_problems_dialog() {
     SetForegroundWindow(g_pb.win);
 }
 
-bool load_map(int index) {
+bool load_map(int index, bool departure_checked = false) {
     if (index < 0 || index >= static_cast<int>(g.map_files.size())) return false;
-    close_event_editor();   // Zeiger in map_root werden ungültig
+    if (!departure_checked && g.cur_map >= 0 && !prepare_map_departure()) return false;
     const std::string path = g.project_dir + "\\maps\\" + g.map_files[index];
     std::string text;
     if (!read_file(path, text)) {
         issue_report(2, "Karte", "nicht lesbar: " + path);
         core::log_error("Karte nicht lesbar: " + path);
+        data_prompt(GetActiveWindow(), L"Die Karte konnte nicht vollständig gelesen werden. "
+                                       L"Die Datei wurde nicht als Karte übernommen.",
+                    L"Karte nicht geladen", MB_OK | MB_ICONERROR);
         return false;
     }
-    try {
-        g.map_root = json_parse(text);
-    } catch (const std::exception& e) {
-        issue_report(2, "Karte", std::string("ungültiges JSON: ") + e.what());
-        core::log_error(std::string("Karte ungültig: ") + e.what());
+    JsonValue loaded;
+    const MapParseStatus parsed = map_parse_document(text, loaded);
+    if (parsed != MapParseStatus::Ok) {
+        const wchar_t* reason = L"Ungültiges JSON.";
+        switch (parsed) {
+            case MapParseStatus::InvalidRoot: reason = L"Die Kartenwurzel ist kein Objekt."; break;
+            case MapParseStatus::InvalidUtf8: reason = L"Die Karte enthält ungültiges UTF-8 oder Unicode."; break;
+            case MapParseStatus::Nonfinite: reason = L"Eine Kommazahl ist nicht darstellbar und würde zu null werden."; break;
+            case MapParseStatus::DuplicateObjects: reason = L"Der objects-Schlüssel ist mehrfach vorhanden."; break;
+            case MapParseStatus::InvalidObjects: reason = L"objects ist keine Liste und würde sonst überschrieben."; break;
+            default: break;
+        }
+        const std::wstring message = std::wstring(reason) +
+            L"\r\nDie Karte wurde nicht geladen oder überschrieben. Bitte die Datei extern prüfen.";
+        data_prompt(GetActiveWindow(), message.c_str(), L"Karte nicht geladen", MB_OK | MB_ICONERROR);
+        issue_report(2, "Karte", "nicht sicher lesbar: " + path);
+        core::log_error("Karte nicht sicher lesbar: " + path);
         return false;
     }
+    cancel_object_drag();
+    close_event_editor();   // Zeiger in map_root werden ungültig
+    g.map_root = std::move(loaded);
     g.objects = g.map_root.find("objects");
     if (!g.objects || !g.objects->is_arr()) {
         // Karte ohne Objekte: leeres Array anlegen.
@@ -1125,6 +1308,8 @@ bool load_map(int index) {
     g.cur_map = index;
     g.sel_obj = -1;
     g.dirty = false;
+    g.map_disk_present = true;
+    g.map_disk_text = std::move(text);
     // Schnappschüsse gehören zur vorherigen Karte und dürfen deren Objekte
     // niemals in die neu geladene Karte zurückschreiben.
     g.undo_stack.clear();
@@ -1156,16 +1341,98 @@ bool load_map(int index) {
 }
 
 bool save_map() {
-    if (g.cur_map < 0) return false;
-    const std::string path = g.project_dir + "\\maps\\" + g.map_files[g.cur_map];
-    if (!write_file(path, json_write(g.map_root))) {
-        issue_report(2, "Karte", "nicht schreibbar: " + path);
-        core::log_error("Karte nicht schreibbar: " + path);
+    if (g.cur_map < 0 || g.cur_map >= static_cast<int>(g.map_files.size())) return false;
+    cancel_object_drag();
+    // Strg+S darf ein noch aktives Formular nicht einfach auslassen.
+    if (object_form_pending() && !apply_property_fields()) return false;
+    if (!editor_json_utf8(g.map_root) || !editor_json_serializable(g.map_root)) {
+        data_prompt(GetActiveWindow(), L"Die Karte enthält ungültiges Unicode oder eine nicht darstellbare Kommazahl. "
+                                       L"Sie wird nicht überschrieben.",
+                    L"Karte nicht gespeichert", MB_OK | MB_ICONERROR);
         return false;
     }
+    const std::string path = g.project_dir + "\\maps\\" + g.map_files[g.cur_map];
+    std::string disk_text;
+    const FileDiskState state = file_disk_state(path, disk_text);
+    if (state == FileDiskState::Error) {
+        data_prompt(GetActiveWindow(), L"Die Kartendatei kann vor dem Speichern nicht gelesen werden. "
+                                       L"Sie wurde nicht überschrieben.",
+                    L"Karte nicht gespeichert", MB_OK | MB_ICONERROR);
+        return false;
+    }
+    if (editor_disk_changed(g.map_disk_present, g.map_disk_text, state == FileDiskState::Ready, disk_text) &&
+        data_prompt(GetActiveWindow(),
+                    L"Die Kartendatei wurde seit dem Laden oder Speichern extern geändert oder entfernt. "
+                    L"Trotzdem mit dem Editorstand überschreiben?",
+                    L"Karten-Dateikonflikt", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES)
+        return false;
+
+    // Zuerst im selben Verzeichnis eine vollständige Datei schreiben und nur
+    // bei Erfolg ersetzen. Die Konfliktprüfung davor ist keine Dateisperre.
+    std::wstring wide_path;
+    std::string output = json_write(g.map_root);
+    if (!file_path_to_wide(path, wide_path) || !editor_write_file_atomic(wide_path, output)) {
+        issue_report(2, "Karte", "nicht schreibbar: " + path);
+        core::log_error("Karte nicht schreibbar: " + path);
+        data_prompt(GetActiveWindow(), L"Die Karte konnte nicht gespeichert werden. "
+                                       L"Die bestehende Datei wurde vom Editor nicht ersetzt.",
+                    L"Karte nicht gespeichert", MB_OK | MB_ICONERROR);
+        return false;
+    }
+    g.map_disk_present = true;
+    g.map_disk_text = std::move(output);
     g.dirty = false;
     core::log_info("Karte gespeichert: " + path);
     return true;
+}
+
+// Vor Karten-/Projektwechsel zuerst das Formular klären, danach den
+// gespeicherten Kartenstand. Auch bei fehlgeschlagenem Speichern wird nicht
+// einfach die nächste Karte geladen.
+bool prepare_map_departure() {
+    cancel_object_drag();
+    if (!resolve_object_edits()) return false;
+    if (!g.dirty) return true;
+    HWND owner = GetActiveWindow();
+    if (!owner) owner = g.main;
+    const int choice = data_prompt(owner,
+        L"Änderungen an der aktuellen Karte speichern?\r\n\r\n"
+        L"Ja: speichern   Nein: verwerfen   Abbrechen: zurück",
+        L"Karte wechseln", MB_YESNOCANCEL | MB_ICONQUESTION | MB_DEFBUTTON3);
+    if (choice == IDNO) return true;
+    if (choice != IDYES) return false;
+    if (save_map()) return true;
+    data_prompt(owner, L"Die Karte konnte nicht gespeichert werden. Der Wechsel wurde abgebrochen.",
+                L"Karte wechseln", MB_OK | MB_ICONERROR);
+    return false;
+}
+
+// terrain an der Wurzel nur eindeutig und als Objekt bearbeiten. Das erstmalige
+// Anhängen kann sowohl den Objektzeiger als auch F6-Befehlszeiger invalidieren.
+JsonValue* writable_terrain() {
+    HWND owner = GetActiveWindow();
+    if (!owner) owner = g.main;
+    if (!object_props_field_unique(g.map_root, "terrain")) {
+        MessageBoxW(owner, L"terrain ist im Karten-JSON mehrfach vorhanden und kann hier nicht eindeutig geändert werden.",
+                    L"Terrain", MB_OK | MB_ICONWARNING);
+        return nullptr;
+    }
+    JsonValue* terrain = g.map_root.find("terrain");
+    if (terrain && !terrain->is_obj()) {
+        MessageBoxW(owner, L"terrain ist kein Objekt. Die Altdaten bleiben erhalten; bitte die Karte extern prüfen.",
+                    L"Terrain", MB_OK | MB_ICONWARNING);
+        return nullptr;
+    }
+    if (!terrain) {
+        if (event_editor_open()) {
+            MessageBoxW(owner, L"Bitte zuerst den Event-Editor schließen, bevor terrain angelegt wird.",
+                        L"Terrain", MB_OK | MB_ICONINFORMATION);
+            return nullptr;
+        }
+        terrain = &g.map_root.set("terrain", JsonValue::make_obj());
+        g.objects = g.map_root.find("objects");
+    }
+    return terrain;
 }
 
 // ----------------------------------------------------------------------------
@@ -1366,8 +1633,8 @@ LRESULT CALLBACK tileset_dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             }
             if (id == IDTS_APPLY) {
                 if (!g_ts.sel.empty() && g.cur_map >= 0) {
-                    JsonValue* ter = g.map_root.find("terrain");
-                    if (!ter) ter = &g.map_root.set("terrain", JsonValue::make_obj());
+                    JsonValue* ter = writable_terrain();
+                    if (!ter) return 0;
                     ter->set("texture", JsonValue::make_str(g_ts.sel));
                     const float tile = std::max(0.25f,
                         static_cast<float>(std::atof(ts_text(IDTS_TILE).c_str())));
@@ -1402,10 +1669,15 @@ LRESULT CALLBACK tileset_dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                     status_mode(L"Breite/Tiefe ungültig");
                     return 0;
                 }
-                JsonValue* ter = g.map_root.find("terrain");
-                if (!ter) ter = &g.map_root.set("terrain", JsonValue::make_obj());
+                JsonValue* ter = writable_terrain();
+                if (!ter) return 0;
                 JsonValue* arr = ter->find("splats");
-                if (!arr || !arr->is_arr()) arr = &ter->set("splats", JsonValue::make_arr());
+                if (arr && !arr->is_arr()) {
+                    MessageBoxW(g_ts.win, L"terrain.splats ist keine Liste; die Altdaten bleiben erhalten.",
+                                L"Terrain", MB_OK | MB_ICONWARNING);
+                    return 0;
+                }
+                if (!arr) arr = &ter->set("splats", JsonValue::make_arr());
                 JsonValue e = JsonValue::make_obj();
                 e.set("tex", JsonValue::make_str(g_ts.sel));
                 e.set("x", JsonValue::make_num(static_cast<double>(x)));
@@ -1745,7 +2017,7 @@ bool create_project(const std::string& name) {
 }
 
 // Auf ein Projekt umschalten (Karten/Texturen/Menüs/Listen komplett neu).
-bool switch_project(const std::string& name) {
+bool switch_project(const std::string& name, bool departure_checked) {
     // F9 hält eine eigene Kopie der Datenbank. Ein Projektwechsel bei
     // offenem F9 würde diese sonst unter dem Pfad des neuen Projekts speichern.
     if (database_editor_open()) return false;
@@ -1754,6 +2026,9 @@ bool switch_project(const std::string& name) {
         core::log_error("Projekt nicht gefunden: " + name);
         return false;
     }
+    if (name == g.project_name && g.cur_map >= 0) return true;
+    if (!departure_checked && g.cur_map >= 0 && !prepare_map_departure()) return false;
+    cancel_object_drag();
     // Offene Dialoge schliessen (Zeiger werden ungültig).
     if (g.props_dlg) { DestroyWindow(g.props_dlg); g.props_dlg = nullptr; }
     close_event_editor();
@@ -1765,9 +2040,11 @@ bool switch_project(const std::string& name) {
     g.undo_stack.clear();
     g.redo_stack.clear();
 
-    // Objekt-/Eigenschaftsfelder und Terrain leeren.
+    // Objekt-/Eigenschaftsfelder, Dateischnappschuss und Terrain leeren.
     g.objects = nullptr;
     g.map_root = JsonValue{};
+    g.map_disk_present = false;
+    g.map_disk_text.clear();
     g.cur_map = -1;
     g.renderer->clear_terrain();
 
@@ -1833,11 +2110,11 @@ LRESULT CALLBACK project_dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                     wchar_t buf[128];
                     SendMessageW(g_prj.list, LB_GETTEXT, sel, reinterpret_cast<LPARAM>(buf));
                     const std::string name = wide_to_utf8(buf);
-                    DestroyWindow(h);
                     if (switch_project(name)) {
+                        DestroyWindow(h);
                         status_mode((L"Projekt: " + utf8_to_wide(name)).c_str());
                     } else {
-                        status_mode(L"Projektwechsel fehlgeschlagen");
+                        status_mode(L"Projektwechsel abgebrochen oder fehlgeschlagen");
                     }
                 }
                 return 0;
@@ -1848,10 +2125,15 @@ LRESULT CALLBACK project_dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 const std::string name = wide_to_utf8(wbuf);
                 if (name.empty()) { MessageBoxW(h, L"Bitte einen Namen eingeben.",
                                                L"Neues Projekt", MB_OK); return 0; }
+                if (g.cur_map >= 0 && !prepare_map_departure()) return 0;
                 if (create_project(name)) {
-                    DestroyWindow(h);
-                    switch_project(name);
-                    status_mode((L"Neues Projekt: " + utf8_to_wide(name)).c_str());
+                    if (switch_project(name, true)) {
+                        DestroyWindow(h);
+                        status_mode((L"Neues Projekt: " + utf8_to_wide(name)).c_str());
+                    } else {
+                        MessageBoxW(h, L"Projekt wurde angelegt, konnte aber nicht geöffnet werden.",
+                                    L"Neues Projekt", MB_OK | MB_ICONWARNING);
+                    }
                 } else {
                     MessageBoxW(h, L"Projekt konnte nicht angelegt werden (Name ungültig\n"
                                    L"oder bereits vorhanden?).", L"Neues Projekt", MB_OK);
@@ -2013,7 +2295,10 @@ void maptree_fill() {
     ins.hParent = TVI_ROOT;
     ins.item.mask = TVIF_TEXT | TVIF_CHILDREN;
     ins.hInsertAfter = TVI_FIRST;
-    ins.item.pszText = const_cast<LPWSTR>(utf8_to_wide(g.project_name).c_str());
+    // Die Zeichenkette muss bis nach TreeView_InsertItem leben: ein direktes
+    // utf8_to_wide(...).c_str() wäre bereits am Semikolon freigegeben.
+    std::wstring project_label = utf8_to_wide(g.project_name);
+    ins.item.pszText = project_label.data();
     ins.item.cChildren = 1;
     const HTREEITEM root = TreeView_InsertItem(g.map_tree, &ins);
     for (int i = 0; i < static_cast<int>(g.map_names.size()); ++i) {
@@ -2021,7 +2306,8 @@ void maptree_fill() {
         mi.hParent = root;
         mi.hInsertAfter = TVI_LAST;
         mi.item.mask = TVIF_TEXT | TVIF_PARAM;
-        mi.item.pszText = const_cast<LPWSTR>(utf8_to_wide(g.map_names[i]).c_str());
+        std::wstring label = utf8_to_wide(g.map_names[i]);
+        mi.item.pszText = label.data();
         mi.item.lParam = i;
         TreeView_InsertItem(g.map_tree, &mi);
     }
@@ -2066,25 +2352,43 @@ int maptree_selected() {
 
 // Umbenennen: Namen der Karte in map_root + Liste aktualisieren
 // (gespeichert wie üblich per Strg+S, g.dirty markiert die Karte).
-void maptree_apply_rename(int index, const std::string& new_name) {
-    if (index < 0 || index >= static_cast<int>(g.map_files.size())) return;
-    if (new_name.empty()) return;
-    if (index == g.cur_map) {
-        g.map_root.set("name", JsonValue::make_str(new_name));
-        g.dirty = true;
-        update_title();
+bool maptree_apply_rename(int index, const std::string& new_name) {
+    if (index < 0 || index >= static_cast<int>(g.map_files.size()) ||
+        index != g.cur_map || new_name.empty()) return false;
+    if (!object_props_field_unique(g.map_root, "name")) {
+        // Keine modale Nachrichtenschleife innerhalb von TVN_ENDLABELEDIT.
+        PostMessageW(g.main, WM_TREE_RENAME_WARNING, 1, 0);
+        return false;
     }
+    if (!g.map_root.find("name") && event_editor_open()) {
+        PostMessageW(g.main, WM_TREE_RENAME_WARNING, 2, 0);
+        return false;
+    }
+    g.map_root.set("name", JsonValue::make_str(new_name));
+    // Ein fehlendes name kann die Wurzel-Paarliste umallozieren.
+    g.objects = g.map_root.find("objects");
+    g.dirty = true;
+    update_title();
     g.map_names[index] = new_name;
-    rebuild_map_menu();
+    // Nicht den Baum mitten in TVN_ENDLABELEDIT löschen und neu aufbauen.
+    PostMessageW(g.main, WM_REBUILD_MAP_MENU, 0, 0);
     core::log_info("Karte umbenannt: " + g.map_files[index] + " -> '" +
                    new_name + "' (Strg+S speichert)");
+    return true;
 }
 
 // ------------------------------------------------------------
 //  Objekt-Operationen (arbeiten NUR auf den Kartendaten)
 // ------------------------------------------------------------
 float base_y_at(float x, float z) {
-    return g.terrain->height_at(x, z);
+    if (!g.terrain || !std::isfinite(x) || !std::isfinite(z)) return 0.0f;
+    const float half_w = g.terrain->width() * 0.5f, half_h = g.terrain->height() * 0.5f;
+    if (!std::isfinite(half_w) || !std::isfinite(half_h) || half_w <= 0.0f || half_h <= 0.0f)
+        return 0.0f;
+    // Terrain::height_at klemmt zwar Indizes, castet aber vorher nach int.
+    // Positionen vorher auf die Kartengrenze begrenzen, um auch große
+    // unveränderte Altkoordinaten sicher zu behandeln.
+    return g.terrain->height_at(std::clamp(x, -half_w, half_w), std::clamp(z, -half_h, half_h));
 }
 
 const Prefab* prefab_of(const std::string& type) {
@@ -2103,19 +2407,21 @@ std::string obj_type(int i) {
 float obj_number(int i, const char* key, float fallback) {
     if (!g.objects || i < 0 || i >= static_cast<int>(g.objects->arr.size())) return fallback;
     const JsonValue* v = g.objects->arr[i].find(key);
-    return v ? static_cast<float>(v->number(fallback)) : fallback;
+    if (!v || !v->is_num() || !std::isfinite(v->number()) || std::fabs(v->number()) > 1000000.0)
+        return fallback;
+    return static_cast<float>(v->number());
 }
 
-void set_obj_number(int i, const char* key, float value) {
-    if (!g.objects || i < 0 || i >= static_cast<int>(g.objects->arr.size())) return;
-    g.objects->arr[i].set(key, JsonValue::make_num(value, false));
-    g.dirty = true;
+bool object_viewable(int i) {
+    return g.objects && i >= 0 && static_cast<size_t>(i) < g.objects->arr.size() &&
+           object_props_viewable(g.objects->arr[static_cast<size_t>(i)]);
 }
 
 // Etappe 19c: zentrales Umschalten der fünf Modi. Die Knöpfe sind Radios
 // (BS_AUTORADIOBUTTON); Prefab-Liste und Kontextmenü wechseln den Modus aber auch,
 // deshalb wird der Haken hier gesetzt - genau einer ist immer aktiv.
 void set_mode(int mode) {
+    cancel_object_drag();
     g.place_mode  = (mode == 1);
     g.move_mode   = (mode == 3);
     g.paint_mode  = (mode == 4);
@@ -2140,13 +2446,22 @@ std::string obj_material(int i) {
     return (t && t->is_str()) ? t->str : std::string();
 }
 
+// Sortiert nach der double-Näherung, auch außerhalb des Viewport-Bereichs.
+// NaN darf die strikte Ordnung von stable_sort nicht verletzen.
+double obj_sort_number(int i, const char* key) {
+    if (!g.objects || i < 0 || static_cast<size_t>(i) >= g.objects->arr.size()) return 0.0;
+    const JsonValue* v = g.objects->arr[static_cast<size_t>(i)].find(key);
+    const double n = v ? v->number(0.0) : 0.0;
+    return std::isnan(n) ? 0.0 : n;
+}
+
 // Sortierschluessel der Objektliste (Spalte in g.obj_sort_col).
 bool obj_sort_less(int a, int b) {
     switch (g.obj_sort_col) {
         case 1:  return obj_display_name(a) < obj_display_name(b);
-        case 2:  return obj_number(a, "x", 0) < obj_number(b, "x", 0);
-        case 3:  return obj_number(a, "z", 0) < obj_number(b, "z", 0);
-        case 4:  return obj_number(a, "rot", 0) < obj_number(b, "rot", 0);
+        case 2:  return obj_sort_number(a, "x") < obj_sort_number(b, "x");
+        case 3:  return obj_sort_number(a, "z") < obj_sort_number(b, "z");
+        case 4:  return obj_sort_number(a, "rot") < obj_sort_number(b, "rot");
         case 5:  return obj_material(a) < obj_material(b);
         default: return a < b;
     }
@@ -2158,25 +2473,37 @@ int obj_row_of(int index) {
     return -1;
 }
 
+int object_list_selected() {
+    if (!g.list_objs) return -1;
+    const int row = ListView_GetNextItem(g.list_objs, -1, LVNI_SELECTED);
+    if (row < 0) return -1;
+    LVITEMW item{};
+    item.mask = LVIF_PARAM;
+    item.iItem = row;
+    return ListView_GetItem(g.list_objs, &item) ? static_cast<int>(item.lParam) : -1;
+}
+
 // Etappe 19c: Objektliste als JSON-Schnappschuss nach log/editor_objects.json.
 // Texte lassen sich prozessfremd nicht per SendMessage lesen (siehe BACKLOG);
 // eine Datei im Log-Verzeichnis kann jedes Werkzeug - und hilft beim Debuggen.
 void write_objects_introspection() {
-    if (!g.objects) return;
-    const int n = static_cast<int>(g.objects->arr.size());
-    std::string js = "[\n";
-    for (int i = 0; i < n; ++i) {
-        char line[512];
-        std::snprintf(line, sizeof(line),
-                      "  {\"i\": %d, \"type\": \"%s\", \"name\": \"%s\", "
-                      "\"x\": %.3f, \"z\": %.3f, \"rot\": %.4f, \"tex\": \"%s\"}%s\n",
-                      i, obj_type(i).c_str(), obj_display_name(i).c_str(),
-                      obj_number(i, "x", 0), obj_number(i, "z", 0),
-                      obj_number(i, "rot", 0), obj_material(i).c_str(),
-                      (i + 1 < n) ? "," : "");
-        js += line;
+    JsonValue list = JsonValue::make_arr();
+    const size_t count = g.objects ? g.objects->arr.size() : 0;
+    for (size_t i = 0; i < count; ++i) {
+        const int index = static_cast<int>(i);
+        const JsonValue& object = g.objects->arr[i];
+        JsonValue entry = JsonValue::make_obj();
+        entry.set("i", JsonValue::make_integer(std::to_string(i)));
+        entry.set("type", JsonValue::make_str(obj_type(index)));
+        entry.set("name", JsonValue::make_str(obj_display_name(index)));
+        for (const char* key : {"x", "z", "rot"}) {
+            const JsonValue* v = object.find(key);
+            entry.set(key, v && v->is_num() ? *v : JsonValue::make_num(0.0));
+        }
+        entry.set("tex", JsonValue::make_str(obj_material(index)));
+        list.arr.push_back(std::move(entry));
     }
-    js += "]\n";
+    const std::string js = json_write(list);
     static std::string cache;
     if (js == cache) return;
     cache = js;
@@ -2184,7 +2511,16 @@ void write_objects_introspection() {
 }
 
 void sync_object_list() {
-    if (!g.list_objs || !g.objects) return;
+    if (!g.list_objs) return;
+    const bool was_syncing = g.syncing_object_list;
+    g.syncing_object_list = true;
+    if (!g.objects) {
+        ListView_DeleteAllItems(g.list_objs);
+        g.obj_order.clear();
+        g.syncing_object_list = was_syncing;
+        write_objects_introspection();
+        return;
+    }
     // Etappe 19b: durchgehend W-Varianten - die Namen kommen als UTF-8 aus
     // dem Karten-JSON und dürfen nicht durch die ANSI-Codepage (CP1252)
     // laufen, sonst erscheint "Hütte" in der Liste doppelt kodiert (Ã-Form).
@@ -2211,12 +2547,12 @@ void sync_object_list() {
         const int idx = ListView_InsertItem(g.list_objs, &it);
         const std::wstring name = utf8_to_wide(obj_display_name(i));
         ListView_SetItemText(g.list_objs, idx, 1, const_cast<wchar_t*>(name.c_str()));
-        std::swprintf(buf, 160, L"%.1f", obj_number(i, "x", 0));
-        ListView_SetItemText(g.list_objs, idx, 2, buf);
-        std::swprintf(buf, 160, L"%.1f", obj_number(i, "z", 0));
-        ListView_SetItemText(g.list_objs, idx, 3, buf);
-        std::swprintf(buf, 160, L"%.0f\u00b0", obj_number(i, "rot", 0) * 180.0f / 3.14159265f);
-        ListView_SetItemText(g.list_objs, idx, 4, buf);
+        const ObjectPropsForm values = object_props_read(g.objects->arr[static_cast<size_t>(i)]);
+        const std::wstring x = utf8_to_wide(values.x), z = utf8_to_wide(values.z);
+        const std::wstring rotation = utf8_to_wide(values.rotation) + L"°";
+        ListView_SetItemText(g.list_objs, idx, 2, const_cast<wchar_t*>(x.c_str()));
+        ListView_SetItemText(g.list_objs, idx, 3, const_cast<wchar_t*>(z.c_str()));
+        ListView_SetItemText(g.list_objs, idx, 4, const_cast<wchar_t*>(rotation.c_str()));
         const std::wstring mat = utf8_to_wide(obj_material(i));
         ListView_SetItemText(g.list_objs, idx, 5, const_cast<wchar_t*>(mat.c_str()));
     }
@@ -2224,6 +2560,7 @@ void sync_object_list() {
     if (sel_row >= 0)
         ListView_SetItemState(g.list_objs, sel_row, LVIS_SELECTED | LVIS_FOCUSED,
                               LVIS_SELECTED | LVIS_FOCUSED);
+    g.syncing_object_list = was_syncing;
     write_objects_introspection();
 }
 
@@ -2234,29 +2571,95 @@ void json_remove_key(JsonValue& v, const std::string& key) {
 }
 
 void sync_property_fields() {
-    if (g.sel_obj < 0) {
-        SetWindowTextW(g.ed_x, L"");
-        SetWindowTextW(g.ed_z, L"");
-        SetWindowTextW(g.ed_rot, L"");
-        SetWindowTextW(g.ed_tex, L"");
-        return;
+    const JsonValue* object = nullptr;
+    if (g.objects && g.sel_obj >= 0 && static_cast<size_t>(g.sel_obj) < g.objects->arr.size())
+        object = &g.objects->arr[static_cast<size_t>(g.sel_obj)];
+    const bool valid = object && object->is_obj();
+    g.object_form = valid ? object_props_read(*object) : ObjectPropsForm{};
+    const HWND controls[4] = {g.ed_x, g.ed_z, g.ed_rot, g.ed_tex};
+    const char* keys[4] = {"x", "z", "rot", "tex"};
+    const std::string values[4] = {g.object_form.x, g.object_form.z,
+                                    g.object_form.rotation, g.object_form.material};
+    bool protected_field = false;
+    for (int i = 0; i < 4; ++i) {
+        SetWindowTextW(controls[i], utf8_to_wide(values[i]).c_str());
+        // Nur Felder freigeben, die das Win32-Control unverändert zurückgeben
+        // kann. Alte Texte mit NUL/Zeilenumbruch oder Überlänge bleiben so
+        // auch bei Änderungen an anderen Feldern unangetastet.
+        std::string returned;
+        g.object_field_editable[i] = valid && controls[i] && object_props_field_unique(*object, keys[i]) &&
+                                     editor_single_line(values[i]) && control_text_strict(controls[i], returned) &&
+                                     returned == values[i];
+        if (valid && !g.object_field_editable[i]) protected_field = true;
+        EnableWindow(controls[i], g.object_field_editable[i] ? TRUE : FALSE);
     }
-    wchar_t buf[32];
-    std::swprintf(buf, 32, L"%.2f", obj_number(g.sel_obj, "x", 0));
-    SetWindowTextW(g.ed_x, buf);
-    std::swprintf(buf, 32, L"%.2f", obj_number(g.sel_obj, "z", 0));
-    SetWindowTextW(g.ed_z, buf);
-    std::swprintf(buf, 32, L"%.1f", obj_number(g.sel_obj, "rot", 0) * 180.0f / 3.14159265f);
-    SetWindowTextW(g.ed_rot, buf);
-    const JsonValue* tex = g.objects->arr[g.sel_obj].find("tex");
-    SetWindowTextW(g.ed_tex, (tex && tex->is_str()) ? utf8_to_wide(tex->str).c_str() : L"");
+    EnableWindow(GetDlgItem(g.main, IDC_BTN_APPLY), valid ? TRUE : FALSE);
+    const wchar_t* hint = !object ? L"Objekt auswählen."
+        : !valid ? L"Ungültiger Eintrag: Eigenschaften gesperrt."
+        : protected_field ? L"Feld gesperrt: mehrfach oder nicht darstellbar."
+        : !object_props_viewable(*object) ? L"Ungültige/extreme Position: keine Vorschau."
+        : L"Änderungen übernehmen, dann mit Strg+S speichern.";
+    SetWindowTextW(GetDlgItem(g.main, IDC_LBL_PROPS_HINT), hint);
 }
 
-void select_object(int i, bool from_list) {
-    const int count = g.objects ? static_cast<int>(g.objects->arr.size()) : 0;
-    g.sel_obj = (i >= 0 && i < count) ? i : -1;
-    if (!from_list) sync_object_list();
+bool object_current_form(ObjectPropsForm& form, HWND* invalid = nullptr) {
+    form = g.object_form;
+    const HWND controls[4] = {g.ed_x, g.ed_z, g.ed_rot, g.ed_tex};
+    std::string* values[4] = {&form.x, &form.z, &form.rotation, &form.material};
+    for (int i = 0; i < 4; ++i) {
+        if (g.object_field_editable[i] && !control_text_strict(controls[i], *values[i])) {
+            if (invalid) *invalid = controls[i];
+            return false;
+        }
+    }
+    return true;
+}
+
+bool object_form_pending() {
+    if (!g.objects || g.sel_obj < 0 || static_cast<size_t>(g.sel_obj) >= g.objects->arr.size() ||
+        !g.objects->arr[static_cast<size_t>(g.sel_obj)].is_obj()) return false;
+    ObjectPropsForm current;
+    return !object_current_form(current) || !object_props_equal(current, g.object_form);
+}
+
+// Bei Aktionen, die die Felder ersetzen, darf nichts still verschwinden.
+// Ja übernimmt, Nein verwirft nur die Formulareingaben, Abbrechen bleibt hier.
+bool resolve_object_edits(bool refresh_list) {
+    if (!object_form_pending()) return true;
+    HWND owner = GetActiveWindow();
+    if (!owner) owner = g.main;
+    const int choice = data_prompt(owner,
+        L"Nicht übernommene Objekt-Eingaben übernehmen?\r\n\r\n"
+        L"Ja: übernehmen   Nein: verwerfen   Abbrechen: zurück",
+        L"Objekteigenschaften", MB_YESNOCANCEL | MB_ICONQUESTION | MB_DEFBUTTON3);
+    if (choice == IDYES) return apply_property_fields(refresh_list);
+    if (choice != IDNO) return false;
     sync_property_fields();
+    return true;
+}
+
+void restore_object_list_selection() {
+    if (!g.list_objs) return;
+    const bool was_syncing = g.syncing_object_list;
+    g.syncing_object_list = true;
+    ListView_SetItemState(g.list_objs, -1, 0, LVIS_SELECTED | LVIS_FOCUSED);
+    const int row = obj_row_of(g.sel_obj);
+    if (row >= 0)
+        ListView_SetItemState(g.list_objs, row, LVIS_SELECTED | LVIS_FOCUSED,
+                              LVIS_SELECTED | LVIS_FOCUSED);
+    g.syncing_object_list = was_syncing;
+}
+
+bool select_object(int i) {
+    const int count = g.objects ? static_cast<int>(g.objects->arr.size()) : 0;
+    const int next = (i >= 0 && i < count) ? i : -1;
+    if (next == g.sel_obj) return true;
+    if (!resolve_object_edits(false)) return false;
+    cancel_object_drag();
+    g.sel_obj = next;
+    sync_object_list();
+    sync_property_fields();
+    return true;
 }
 
 void status_mode(const wchar_t* text) {
@@ -2275,6 +2678,7 @@ void push_undo() {
 }
 
 void restore_objects(const std::string& text) {
+    cancel_object_drag();
     try {
         JsonValue v = json_parse(text);
         g.map_root.set("objects", v);
@@ -2291,6 +2695,8 @@ void restore_objects(const std::string& text) {
 }
 
 void undo_action() {
+    cancel_object_drag();
+    if (!resolve_object_edits()) return;
     if (g.undo_stack.empty()) { status_mode(L"Nichts rückgängig"); return; }
     if (g.objects) g.redo_stack.push_back(json_write(*g.objects));
     const std::string text = g.undo_stack.back();
@@ -2300,6 +2706,8 @@ void undo_action() {
 }
 
 void redo_action() {
+    cancel_object_drag();
+    if (!resolve_object_edits()) return;
     if (g.redo_stack.empty()) { status_mode(L"Nichts wiederholen"); return; }
     if (g.objects) g.undo_stack.push_back(json_write(*g.objects));
     const std::string text = g.redo_stack.back();
@@ -2309,7 +2717,9 @@ void redo_action() {
 }
 
 void place_object(float x, float z) {
-    if (g.sel_prefab < 0 || g.sel_prefab >= static_cast<int>(g.prefabs.size())) return;
+    if (!g.objects || !g.objects->is_arr() || g.cur_map < 0 ||
+        g.sel_prefab < 0 || g.sel_prefab >= static_cast<int>(g.prefabs.size())) return;
+    cancel_object_drag();
     push_undo();
     // Raster-Rasten (Shift-lose Standardbedienung, wie im alten Editor)
     x = std::round(x / g.grid) * g.grid;
@@ -2332,25 +2742,56 @@ void place_object(float x, float z) {
 }
 
 void delete_selected() {
-    if (g.sel_obj < 0 || !g.objects) return;
+    if (g.sel_obj < 0 || !g.objects || static_cast<size_t>(g.sel_obj) >= g.objects->arr.size()) return;
+    if (!resolve_object_edits()) return;
+    cancel_object_drag();
     push_undo();
     g.objects->arr.erase(g.objects->arr.begin() + g.sel_obj);
     g.dirty = true;
     core::log_info("Objekt gelöscht");
-    select_object(-1, false);
+    select_object(-1);
 }
 
 void rotate_selected(float delta_rad) {
-    if (g.sel_obj < 0) return;
-    const float rot = obj_number(g.sel_obj, "rot", 0) + delta_rad;
-    set_obj_number(g.sel_obj, "rot", rot);
+    if (!g.objects || g.sel_obj < 0 || static_cast<size_t>(g.sel_obj) >= g.objects->arr.size()) return;
+    if (!resolve_object_edits()) return;
+    const JsonValue& object = g.objects->arr[static_cast<size_t>(g.sel_obj)];
+    const JsonValue* old = object.find("rot");
+    if (!object.is_obj() || !object_props_field_unique(object, "rot") ||
+        (old && !old->is_null() && (!old->is_num() || !std::isfinite(old->number()) ||
+                                    std::fabs(old->number()) > 1000000.0))) {
+        MessageBoxW(g.main, L"Die vorhandene Drehung ist ungültig oder mehrdeutig. "
+                            L"Bitte zuerst im Formular prüfen.",
+                    L"Objekt drehen", MB_OK | MB_ICONWARNING);
+        return;
+    }
+    const double rot = (old ? old->number(0.0) : 0.0) + static_cast<double>(delta_rad);
+    if (!std::isfinite(rot) || std::fabs(rot) > 1000000.0) {
+        MessageBoxW(g.main, L"Die Drehung liegt außerhalb des darstellbaren Bereichs.",
+                    L"Objekt drehen", MB_OK | MB_ICONWARNING);
+        return;
+    }
+    cancel_object_drag();
+    push_undo();
+    g.objects->arr[static_cast<size_t>(g.sel_obj)].set("rot", JsonValue::make_num(rot, false));
+    g.dirty = true;
+    sync_object_list();
     sync_property_fields();
+    update_title();
 }
 
 void duplicate_selected() {
-    if (g.sel_obj < 0 || !g.objects) return;
+    if (g.sel_obj < 0 || !g.objects || static_cast<size_t>(g.sel_obj) >= g.objects->arr.size()) return;
+    if (!resolve_object_edits()) return;
+    const JsonValue& original = g.objects->arr[static_cast<size_t>(g.sel_obj)];
+    if (!object_props_field_unique(original, "x") || !object_props_field_unique(original, "z")) {
+        MessageBoxW(g.main, L"Mehrfach vorhandene X-/Z-Schlüssel verhindern eindeutiges Duplizieren.",
+                    L"Objekt duplizieren", MB_OK | MB_ICONWARNING);
+        return;
+    }
+    cancel_object_drag();
     push_undo();
-    JsonValue copy = g.objects->arr[g.sel_obj];
+    JsonValue copy = original;
     JsonValue* x = copy.find("x");
     JsonValue* z = copy.find("z");
     if (x) x->increment();
@@ -2358,35 +2799,44 @@ void duplicate_selected() {
     g.objects->arr.push_back(std::move(copy));
     g.dirty = true;
     core::log_info("Objekt dupliziert");
-    select_object(static_cast<int>(g.objects->arr.size()) - 1, false);
+    select_object(static_cast<int>(g.objects->arr.size()) - 1);
 }
 
-void apply_property_fields() {
-    if (g.sel_obj < 0) return;
-    push_undo();
-    wchar_t buf[64];
-    auto get = [&](HWND h) {
-        GetWindowTextW(h, buf, 64);
-        std::string s = wide_to_utf8(buf);
-        std::replace(s.begin(), s.end(), ',', '.');   // deutsches Komma erlauben
-        return static_cast<float>(std::atof(s.c_str()));
-    };
-    set_obj_number(g.sel_obj, "x", get(g.ed_x));
-    set_obj_number(g.sel_obj, "z", get(g.ed_z));
-    set_obj_number(g.sel_obj, "rot", get(g.ed_rot) * 3.14159265f / 180.0f);
-
-    // Etappe 17f: Materialname (leer = Prefab-Texturen behalten).
-    wchar_t tbuf[128];
-    GetWindowTextW(g.ed_tex, tbuf, 128);
-    std::string tex = wide_to_utf8(tbuf);
-    tex.erase(tex.begin(), std::find_if(tex.begin(), tex.end(),
-              [](unsigned char c) { return !std::isspace(c); }));
-    while (!tex.empty() && std::isspace(static_cast<unsigned char>(tex.back()))) tex.pop_back();
-    JsonValue& obj = g.objects->arr[g.sel_obj];
-    if (tex.empty()) json_remove_key(obj, "tex");
-    else obj.set("tex", JsonValue::make_str(tex));
-
-    sync_object_list();
+bool apply_property_fields(bool refresh_list) {
+    if (!g.objects || g.sel_obj < 0 || static_cast<size_t>(g.sel_obj) >= g.objects->arr.size()) return false;
+    HWND owner = GetActiveWindow();
+    if (!owner) owner = g.main;
+    const JsonValue& object = g.objects->arr[static_cast<size_t>(g.sel_obj)];
+    ObjectPropsForm after;
+    HWND invalid = nullptr;
+    if (!object_current_form(after, &invalid)) {
+        data_prompt(owner, L"Das Feld enthält ungültiges Unicode oder konnte nicht vollständig gelesen werden.",
+                    L"Objekteigenschaften", MB_OK | MB_ICONWARNING);
+        if (invalid) { SetForegroundWindow(g.main); SetFocus(invalid); }
+        return false;
+    }
+    ObjectPropsEdit edit = object_props_prepare(object, g.object_form, after);
+    if (!edit.ok) {
+        const std::string message = (edit.field.empty() ? std::string() : edit.field + ": ") + edit.error;
+        data_prompt(owner, utf8_to_wide(message).c_str(), L"Objekteigenschaften", MB_OK | MB_ICONWARNING);
+        HWND field = edit.field == "x" ? g.ed_x : edit.field == "z" ? g.ed_z
+                   : edit.field == "rotation" ? g.ed_rot : edit.field == "material" ? g.ed_tex : nullptr;
+        if (field) { SetForegroundWindow(g.main); SetFocus(field); }
+        return false;
+    }
+    if (edit.changed && edit.replaces_invalid && data_prompt(
+            owner, L"Diese Änderung ersetzt fehlerhafte oder nicht darstellbare Altdaten. Fortfahren?",
+            L"Objekteigenschaften", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) return false;
+    if (edit.changed) {
+        cancel_object_drag();
+        push_undo();
+        g.objects->arr[static_cast<size_t>(g.sel_obj)] = std::move(edit.value);
+        g.dirty = true;
+        if (refresh_list) sync_object_list();
+        update_title();
+    }
+    sync_property_fields();
+    return true;
 }
 
 // ------------------------------------------------------------
@@ -2412,17 +2862,17 @@ math::Vec3 ray_dir(float ndc_x, float ndc_y, float aspect) {
 bool terrain_hit(const math::Vec3& eye, const math::Vec3& dir, math::Vec3& out) {
     const float max_t = 400.0f;
     float t_prev = 0.0f;
-    float d_prev = eye.y - g.terrain->height_at(eye.x, eye.z);
+    float d_prev = eye.y - base_y_at(eye.x, eye.z);
     for (float t = 0.5f; t < max_t; t += 0.5f) {
         const math::Vec3 p = math::add(eye, math::scale(dir, t));
-        const float d = p.y - g.terrain->height_at(p.x, p.z);
+        const float d = p.y - base_y_at(p.x, p.z);
         if (d <= 0.0f) {
             // Halbiere das Intervall für eine genaue Trefferstelle.
             float lo = t_prev, hi = t;
             for (int i = 0; i < 12; ++i) {
                 const float mid = (lo + hi) * 0.5f;
                 const math::Vec3 pm = math::add(eye, math::scale(dir, mid));
-                if (pm.y - g.terrain->height_at(pm.x, pm.z) <= 0.0f) hi = mid; else lo = mid;
+                if (pm.y - base_y_at(pm.x, pm.z) <= 0.0f) hi = mid; else lo = mid;
             }
             out = math::add(eye, math::scale(dir, hi));
             return true;
@@ -2471,6 +2921,7 @@ int object_hit(const math::Vec3& eye, const math::Vec3& dir, float& out_t) {
     float best_t = 1e9f;
     if (!g.objects) return -1;
     for (int i = 0; i < static_cast<int>(g.objects->arr.size()); ++i) {
+        if (!object_viewable(i)) continue;
         const Prefab* pre = prefab_of(obj_type(i));
         if (!pre) continue;
         const float x = obj_number(i, "x", 0);
@@ -2856,6 +3307,8 @@ void layout_children() {
     move_child(g.ed_tex, rx + 80, py + 120, right_w - 100, 24);
     move_child(GetDlgItem(g.main, IDC_BTN_APPLY), rx + 14, py + 158,
                right_w - 28, 30);
+    move_child(GetDlgItem(g.main, IDC_LBL_PROPS_HINT), rx + 14, py + 192,
+               right_w - 28, 36);
 
     // Renderer auf die neue Viewport-Grösse bringen.
     renderer_resize(view_w, view_h);
@@ -2910,6 +3363,7 @@ LRESULT CALLBACK view_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_SIZE:
             return 0;
         case WM_RBUTTONDOWN:
+            cancel_object_drag();
             g.look_drag = true;
             g.last_mouse.x = GET_X_LPARAM(lp);
             g.last_mouse.y = GET_Y_LPARAM(lp);
@@ -2931,9 +3385,14 @@ LRESULT CALLBACK view_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             g.last_mouse.y = my;
             g.mouse_x = static_cast<float>(mx);
             g.mouse_y = static_cast<float>(my);
-            if (g.dragging && g.obj_drag >= 0 && g.obj_drag < static_cast<int>(g.objects->arr.size())) {
-                // Ray aus NDC (fov 60 Grad, Seitenverhältnis beachten) und
-                // Schnitt mit der horizontalen Ebene y = drag_y.
+            if (g.dragging && g.objects && g.obj_drag >= 0 && g.sel_obj == g.obj_drag &&
+                g.obj_drag < static_cast<int>(g.objects->arr.size())) {
+                // Ein künstliches WM_MOUSEMOVE an der Klickposition darf das
+                // Objekt noch nicht verschieben (auch nicht ans Raster).
+                if (!g.drag_pointer_moved && mx == g.drag_mouse_x && my == g.drag_mouse_y) return 0;
+                g.drag_pointer_moved = true;
+                // Ray-Schnitt auf der ursprünglichen horizontalen Ebene. Der
+                // Versatz zum Griffpunkt verhindert ein Springen beim Klick.
                 RECT rc;
                 GetClientRect(h, &rc);
                 const float vw = static_cast<float>(std::max(1, static_cast<int>(rc.right)));
@@ -2943,17 +3402,20 @@ LRESULT CALLBACK view_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 const math::Vec3 dir = ray_dir(ndc_x, ndc_y, vw / vh);
                 if (std::fabs(dir.y) > 1e-4f) {
                     const float t = (g.drag_y - g.cam_pos.y) / dir.y;
-                    if (t > 0.0f) {
+                    if (t > 0.0f && std::isfinite(t)) {
                         const math::Vec3 hit = math::add(g.cam_pos, math::scale(dir, t));
-                        const float nx = std::round(hit.x / g.grid) * g.grid;
-                        const float nz = std::round(hit.z / g.grid) * g.grid;
-                        g.sel_obj = g.obj_drag;
-                        set_obj_number(g.obj_drag, "x", nx);
-                        set_obj_number(g.obj_drag, "z", nz);
-                        g.dirty = true;
-                        sync_property_fields();
-                        sync_object_list();
-                        update_title();
+                        JsonValue& object = g.objects->arr[static_cast<size_t>(g.obj_drag)];
+                        ObjectDragEdit edit = object_drag_prepare(object, g.drag_original,
+                            static_cast<double>(hit.x) - g.drag_anchor_x,
+                            static_cast<double>(hit.z) - g.drag_anchor_z, g.drag_grid);
+                        if (edit.ok && edit.changed) {
+                            if (!g.drag_undo_pushed) { push_undo(); g.drag_undo_pushed = true; }
+                            object = std::move(edit.value);
+                            g.dirty = true;
+                            sync_property_fields();
+                            sync_object_list();
+                            update_title();
+                        }
                     }
                 }
             }
@@ -2970,6 +3432,7 @@ LRESULT CALLBACK view_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
         case WM_MOUSEWHEEL: {
+            cancel_object_drag();
             // Mausrad = Zoom: Dolly entlang der Blickrichtung (Etappe 17h).
             // Shift zusätzlich = nur die Hohe ändern (alte Schnellübersicht).
             const float delta = static_cast<short>(GET_WHEEL_DELTA_WPARAM(wp)) / 120.0f;
@@ -2985,6 +3448,9 @@ LRESULT CALLBACK view_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
         case WM_LBUTTONDOWN: {
+            // Nach einem Viewport-Klick landen Tastatureingaben nicht weiter
+            // im zuvor aktiven Eigenschaftenfeld.
+            SetFocus(h);
             // Strahl aus Kamera und Pixel (Koordinaten direkt vom Ereignis).
             const float mx = static_cast<float>(GET_X_LPARAM(lp));
             const float my = static_cast<float>(GET_Y_LPARAM(lp));
@@ -3051,16 +3517,33 @@ LRESULT CALLBACK view_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             } else {
                 float t = 0.0f;
                 const int idx = object_hit(g.cam_pos, dir, t);
-                select_object(idx, false);
+                if (!select_object(idx)) return 0;
                 status_mode(idx >= 0 ? L"Ausgewählt" : L"Kein Treffer");
                 if (g.move_mode && idx >= 0) {
-                    // Drag-Start: Undo-Schnappschuss genau einmal, dann Capture.
-                    push_undo();
+                    // Auch bei erneutem Klick auf dasselbe Objekt dürfen nicht
+                    // übernommene Felder beim ersten Drag-Schritt nicht verschwinden.
+                    if (!resolve_object_edits() || !object_viewable(idx)) return 0;
+                    const float drag_y = base_y_at(obj_number(idx, "x", 0), obj_number(idx, "z", 0)) +
+                                         obj_number(idx, "y", 0);
+                    if (!std::isfinite(drag_y) || std::fabs(dir.y) <= 1e-4f) return 0;
+                    const float t_plane = (drag_y - g.cam_pos.y) / dir.y;
+                    if (!std::isfinite(t_plane) || t_plane <= 0.0f) return 0;
+                    const math::Vec3 anchor = math::add(g.cam_pos, math::scale(dir, t_plane));
+                    if (!std::isfinite(anchor.x) || !std::isfinite(anchor.z)) return 0;
+                    // Capture sofort; Undo erst beim ersten Positionswechsel.
                     g.obj_drag = idx;
+                    g.drag_undo_pushed = false;
+                    g.drag_pointer_moved = false;
+                    g.drag_mouse_x = GET_X_LPARAM(lp);
+                    g.drag_mouse_y = GET_Y_LPARAM(lp);
+                    g.drag_y = drag_y;
+                    g.drag_anchor_x = anchor.x;
+                    g.drag_anchor_z = anchor.z;
+                    g.drag_grid = g.grid;
+                    g.drag_original = g.objects->arr[static_cast<size_t>(idx)];
                     g.dragging = true;
-                    g.drag_y = base_y_at(obj_number(idx, "x", 0), obj_number(idx, "z", 0)) +
-                               obj_number(idx, "y", 0);
                     SetCapture(h);
+                    if (GetCapture() != h) { cancel_object_drag(); return 0; }
                     status_mode(L"Ziehen ...");
                 }
             }
@@ -3068,16 +3551,19 @@ LRESULT CALLBACK view_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         }
         case WM_LBUTTONUP:
             if (g.dragging) {
-                g.dragging = false;
-                ReleaseCapture();
+                const bool moved = g.drag_undo_pushed;
                 if (g.obj_drag >= 0 && g.objects) {
                     core::log_info("Drag-Ende: idx=" + std::to_string(g.obj_drag) +
                                    " x=" + std::to_string(obj_number(g.obj_drag, "x", 0)) +
                                    " z=" + std::to_string(obj_number(g.obj_drag, "z", 0)));
                 }
-                g.obj_drag = -1;
-                status_mode(L"Verschoben");
+                cancel_object_drag();
+                status_mode(moved ? L"Verschoben" : L"Ausgewählt");
             }
+            return 0;
+        case WM_CAPTURECHANGED:
+            if (g.dragging) cancel_object_drag();
+            g.look_drag = false;
             return 0;
         case WM_SETCURSOR:
             SetCursor(LoadCursorW(nullptr, IDC_ARROW));
@@ -3090,6 +3576,7 @@ LRESULT CALLBACK view_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
 //  Rendering: Objekte + Auswahl-Rahmen + Platzier-Geist
 // ------------------------------------------------------------
 void push_object(int i) {
+    if (!object_viewable(i)) return;
     const Prefab* pre = prefab_of(obj_type(i));
     if (!pre) return;
     const float x = obj_number(i, "x", 0);
@@ -3119,6 +3606,7 @@ void push_object(int i) {
 
 // Gelber Rahmen um das ausgewählte Objekt (12 dünne Kästen).
 void push_selection_frame(int i) {
+    if (!object_viewable(i)) return;
     const Prefab* pre = prefab_of(obj_type(i));
     if (!pre) return;
     const float x = obj_number(i, "x", 0);
@@ -3323,7 +3811,15 @@ double qpc_now() {
     return static_cast<double>(now.QuadPart) / static_cast<double>(freq.QuadPart);
 }
 
+bool object_field_focused() {
+    const HWND focus = GetFocus();
+    return focus && (focus == g.ed_x || focus == g.ed_z || focus == g.ed_rot || focus == g.ed_tex);
+}
+
 void update_camera(float dt) {
+    // Eingaben in anderen Programmen oder moduslosen Editorfenstern gehören
+    // nicht zur Kamera. Auch Objektfelder und ein Drag halten sie still.
+    if (GetForegroundWindow() != g.main || object_field_focused() || g.dragging) return;
     const bool fast = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
     const float speed = fast ? 30.0f : 10.0f;
     const math::Vec3 fwd{ std::sin(g.cam_yaw), 0.0f, std::cos(g.cam_yaw) };
@@ -3340,7 +3836,7 @@ void update_camera(float dt) {
         g.cam_pos = math::add(g.cam_pos, move);
     }
     // Nie unter dem Gelände stecken.
-    const float ground = g.terrain->ready() ? g.terrain->height_at(g.cam_pos.x, g.cam_pos.z) : 0.0f;
+    const float ground = base_y_at(g.cam_pos.x, g.cam_pos.z);
     g.cam_pos.y = std::max(g.cam_pos.y, ground + 1.5f);
 }
 
@@ -3358,6 +3854,9 @@ void update_hover() {
 }
 
 void handle_shortcuts() {
+    // GetAsyncKeyState sieht systemweite Tasten. Projekt-/Tileset-Dialoge und
+    // andere Programme dürfen damit nicht versehentlich Objekte verändern.
+    if (GetForegroundWindow() != g.main) return;
     if (g.props_dlg) return;   // kein Editieren hinter einem offenen Dialog
     if (event_editor_focused()) return;   // Tippen im Event-Editor soll nichts auslösen
     if (script_editor_focused()) return;  // dito für den Script-Editor
@@ -3366,6 +3865,7 @@ void handle_shortcuts() {
     if (soundtest_focused()) return;
     // Etappe 18k: Umbenennen im Kartenbaum - Edit-Control im TreeView aktiv?
     if (g.map_tree && TreeView_GetEditControl(g.map_tree)) return;
+    const bool object_editing = object_field_focused();
     // F12: Screenshot für Tests/Doku (einmal pro Tastendruck)
     {
         static bool f12_was = false;
@@ -3378,17 +3878,17 @@ void handle_shortcuts() {
         }
         f12_was = f12_now;
     }
-    // Strg+S: Karte speichern
-    if ((GetAsyncKeyState(VK_CONTROL) & 0x8000) && (GetAsyncKeyState('S') & 0x8000)) {
-        static double last_save = 0.0;
-        const double now = qpc_now();
-        if (now - last_save > 0.5) {
-            last_save = now;
-            if (save_map()) {
-                status_mode(L"Gespeichert");
-                update_title();
-            }
+    // Strg+S auch im Objektfeld; bei Fehler nicht mehrfach pro gehaltenem
+    // Tastendruck denselben Validierungsdialog öffnen.
+    {
+        static bool save_was = false;
+        const bool save_now = (GetAsyncKeyState(VK_CONTROL) & 0x8000) &&
+                              (GetAsyncKeyState('S') & 0x8000);
+        if (save_now && !save_was && save_map()) {
+            status_mode(L"Gespeichert");
+            update_title();
         }
+        save_was = save_now;
     }
     // Strg+Z / Strg+Y: Rückgängig und Wiederholen
     {
@@ -3396,15 +3896,16 @@ void handle_shortcuts() {
         static bool z_was = false, y_was = false;
         const bool z_now = ctrl && (GetAsyncKeyState('Z') & 0x8000) != 0;
         const bool y_now = ctrl && (GetAsyncKeyState('Y') & 0x8000) != 0;
-        if (z_now && !z_was) undo_action();
-        if (y_now && !y_was) redo_action();
+        // Im Editfeld gehört Strg+Z/Y dem Text-Control, nicht der Karte.
+        if (!object_editing && z_now && !z_was) undo_action();
+        if (!object_editing && y_now && !y_was) redo_action();
         z_was = z_now;
         y_was = y_now;
     }
 
     // Etappe 18e: Pinselgrösse im Mal-Modus mit +/- (auch Zehnertastatur).
     // Etappe 18l: auch im Höhen-Modus (Pinsel ist dort der Berg-Radius).
-    if (g.paint_mode || g.height_mode) {
+    if ((g.paint_mode || g.height_mode) && !object_editing) {
         static bool plus_was = false, minus_was = false;
         const bool plus_now  = (GetAsyncKeyState(VK_ADD) & 0x8000) ||
                                (GetAsyncKeyState(VK_OEM_PLUS) & 0x8000);
@@ -3477,7 +3978,7 @@ void handle_shortcuts() {
     {
         static bool r_was = false;
         const bool r_now = (GetAsyncKeyState('R') & 0x8000) != 0;
-        if (r_now && !r_was) {
+        if (!object_editing && r_now && !r_was) {
             if (g.place_mode && g.sel_obj < 0) {
                 g.place_rot += math::PI / 12.0f;
                 if (g.place_rot >= 2.0f * math::PI) g.place_rot -= 2.0f * math::PI;
@@ -3494,7 +3995,7 @@ void handle_shortcuts() {
     if (g.sel_obj >= 0) {
         static bool del_was = false;
         const bool del_now = (GetAsyncKeyState(VK_DELETE) & 0x8000) != 0;
-        if (del_now && !del_was) delete_selected();
+        if (!object_editing && del_now && !del_was) delete_selected();
         del_was = del_now;
     }
 
@@ -3503,13 +4004,12 @@ void handle_shortcuts() {
         static bool esc_was = false, ent_was = false;
         const bool esc_now = (GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0;
         const bool ent_now = (GetAsyncKeyState(VK_RETURN) & 0x8000) != 0;
-        if (esc_now && !esc_was && g.sel_obj >= 0) {
-            select_object(-1, false);
+        if (esc_now && !esc_was && g.sel_obj >= 0 && select_object(-1)) {
             status_mode(L"Auswahl aufgehoben");
             core::log_info("Auswahl aufgehoben (Esc)");
         }
-        if (ent_now && !ent_was && g.sel_obj >= 0) {
-            apply_property_fields();
+        if (ent_now && !ent_was && g.sel_obj >= 0 && apply_property_fields()) {
+            update_title();
             status_mode(L"Eigenschaften übernommen");
             core::log_info("Eigenschaften übernommen (Enter)");
         }
@@ -3521,7 +4021,7 @@ void handle_shortcuts() {
     {
         static bool g_was = false;
         const bool g_now = (GetAsyncKeyState('G') & 0x8000) != 0;
-        if (g_now && !g_was) {
+        if (!object_editing && g_now && !g_was) {
             const float steps[4] = { 1.0f, 0.5f, 0.25f, 0.01f };
             int idx = 3;
             for (int i = 0; i < 4; ++i) {
@@ -3542,7 +4042,98 @@ void handle_shortcuts() {
 //  Hauptfenster
 // ------------------------------------------------------------
 LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
+    // MessageBox pumpt eine verschachtelte Nachrichtenschleife. Bereits
+    // gepostete Auswahl-/Menüaktionen dürfen während der Datenentscheidung
+    // weder die Karte wechseln noch das vorbereitete Objekt ersetzen.
+    if (g.data_prompt_active) {
+        switch (msg) {
+            case WM_RECONCILE_OBJECT_SELECTION:
+                g.object_selection_queued = false;
+                g.object_selection_delayed = true;
+                return 0;
+            case WM_RECONCILE_MAP_SELECTION:
+                g.map_selection_queued = false;
+                g.map_selection_delayed = true;
+                return 0;
+            case WM_REBUILD_MAP_MENU:
+                g.map_menu_delayed = true;
+                return 0;
+            case WM_OBJECT_LIST_FOCUS: case WM_OBJECT_LIST_CONTEXT: case WM_OBJECT_LIST_SORT:
+            case WM_TREE_OPEN_PROPS: case WM_TREE_CONTEXT: case WM_TREE_RENAME_WARNING:
+            case WM_COMMAND: case WM_NOTIFY: case WM_CONTEXTMENU: case WM_CLOSE:
+                return 0;
+            default: break;
+        }
+    }
     switch (msg) {
+        case WM_TREE_RENAME_WARNING:
+            if (wp == 1)
+                data_prompt(g.main, L"Der Kartenname ist im JSON mehrfach vorhanden und kann hier nicht eindeutig geändert werden.",
+                            L"Karte umbenennen", MB_OK | MB_ICONWARNING);
+            else if (wp == 2)
+                data_prompt(g.main, L"Bitte zuerst den Event-Editor schließen; der Kartenname fehlt im JSON.",
+                            L"Karte umbenennen", MB_OK | MB_ICONINFORMATION);
+            return 0;
+        case WM_RECONCILE_OBJECT_SELECTION: {
+            g.object_selection_queued = false;
+            if (g.syncing_object_list || g.object_selection_resolving) return 0;
+            // Alle LVN_ITEMCHANGED-Meldungen derselben Geste sind vorbei.
+            // Auch MessageBox und Listen-Neubau laufen erst jetzt, außerhalb
+            // des ListView-Callbacks. Bei Abbruch die alte Auswahl herstellen.
+            g.object_selection_resolving = true;
+            const int next = object_list_selected();
+            if (next != g.sel_obj) {
+                if (select_object(next)) status_mode(next >= 0 ? L"Ausgewählt (Liste)" : L"Auswahl aufgehoben");
+                else restore_object_list_selection();
+            }
+            g.object_selection_resolving = false;
+            return 0;
+        }
+        case WM_OBJECT_LIST_FOCUS:
+            if (static_cast<int>(wp) - 1 == g.sel_obj && g.sel_obj >= 0)
+                SendMessageW(h, WM_COMMAND, ID_CTX_FOCUS, 0);
+            return 0;
+        case WM_OBJECT_LIST_CONTEXT:
+            if (static_cast<int>(wp) - 1 == g.sel_obj)
+                TrackPopupMenu(g.ctx_obj, TPM_RIGHTBUTTON, GET_X_LPARAM(lp), GET_Y_LPARAM(lp), 0, h, nullptr);
+            return 0;
+        case WM_OBJECT_LIST_SORT: {
+            const int column = static_cast<int>(wp);
+            if (column < 0 || column > 5) return 0;
+            if (g.obj_sort_col == column) g.obj_sort_asc = !g.obj_sort_asc;
+            else { g.obj_sort_col = column; g.obj_sort_asc = true; }
+            sync_object_list();
+            status_mode(g.obj_sort_asc ? L"Objektliste aufsteigend sortiert"
+                                       : L"Objektliste absteigend sortiert");
+            return 0;
+        }
+        case WM_RECONCILE_MAP_SELECTION: {
+            g.map_selection_queued = false;
+            if (g.map_selection_resolving) return 0;
+            if (g.props_dlg) { maptree_select_current(); return 0; }
+            const int next = maptree_selected();
+            if (next < 0 || next == g.cur_map) return 0;
+            g.map_selection_resolving = true;
+            if (load_map(next)) {
+                sync_object_list();
+                sync_property_fields();
+                update_title();
+                status_mode(L"Karte geladen");
+            } else {
+                maptree_select_current();
+            }
+            g.map_selection_resolving = false;
+            return 0;
+        }
+        case WM_REBUILD_MAP_MENU:
+            rebuild_map_menu();
+            return 0;
+        case WM_TREE_OPEN_PROPS: {
+            const int expected = static_cast<int>(wp) - 1;
+            if (expected >= 0 && g.cur_map == expected && maptree_selected() == expected)
+                open_map_props();
+            return 0;
+        }
         case WM_GETMINMAXINFO: {
             // Etappe 18a: Mindestgrösse, damit das Layout nicht bricht.
             MINMAXINFO* mmi = reinterpret_cast<MINMAXINFO*>(lp);
@@ -3750,8 +4341,8 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                     }
                     return 0;
                 case ID_CTX_FOCUS:
-                    if (g.sel_obj >= 0 && g.objects &&
-                        g.sel_obj < static_cast<int>(g.objects->arr.size())) {
+                    if (object_viewable(g.sel_obj)) {
+                        cancel_object_drag();
                         const float ox = obj_number(g.sel_obj, "x", 0);
                         const float oz = obj_number(g.sel_obj, "z", 0);
                         g.cam_pos = math::Vec3{ ox, base_y_at(ox, oz) + obj_number(g.sel_obj, "y", 0) + 12.0f, oz + 18.0f };
@@ -3824,12 +4415,12 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                     update_title();
                     return 0;
                 case IDC_BTN_APPLY:
-                    apply_property_fields();
-                    update_title();
+                    if (apply_property_fields()) update_title();
                     return 0;
                 default:
                     if (id >= ID_MENU_MAP_BASE &&
                         id < ID_MENU_MAP_BASE + static_cast<int>(g.map_files.size())) {
+                        if (id - ID_MENU_MAP_BASE == g.cur_map) return 0;
                         if (load_map(id - ID_MENU_MAP_BASE)) {
                             sync_object_list();
                             sync_property_fields();
@@ -3846,9 +4437,11 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 SetForegroundWindow(g.props_dlg);
                 return 0;   // erst den offenen Dialog bestätigen oder abbrechen
             }
+            cancel_object_drag();
+            if (!resolve_object_edits()) return 0;
             if (g.dirty) {
-                const int r = MessageBoxW(h, L"Ungespeicherte Änderungen verwerfen?",
-                                          L"RuneEditor", MB_YESNO | MB_ICONQUESTION);
+                const int r = data_prompt(h, L"Ungespeicherte Änderungen verwerfen?",
+                                          L"RuneEditor", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2);
                 if (r != IDYES) return 0;
             }
             if (database_editor_open() && !database_request_close()) return 0;
@@ -3863,46 +4456,30 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             // Doppelklick (Kamera) und Rechtsklick (Kontextmenü).
             if (nm->idFrom == IDC_OBJ_LIST && nm->hwndFrom) {
                 if (nm->code == LVN_ITEMCHANGED) {
+                    if (g.syncing_object_list) return 0;
                     const NMLISTVIEW* lv = reinterpret_cast<const NMLISTVIEW*>(lp);
-                    if ((lv->uNewState & LVIS_SELECTED) &&
-                        !(lv->uOldState & LVIS_SELECTED) && lv->iItem >= 0) {
-                        LVITEMW it{};
-                        it.mask = LVIF_PARAM;
-                        it.iItem = lv->iItem;
-                        if (ListView_GetItem(g.list_objs, &it)) {
-                            select_object(static_cast<int>(it.lParam), true);
-                            status_mode(L"Ausgewählt (Liste)");
-                        }
+                    if (((lv->uNewState ^ lv->uOldState) & LVIS_SELECTED) && !g.object_selection_queued) {
+                        g.object_selection_queued = PostMessageW(h, WM_RECONCILE_OBJECT_SELECTION, 0, 0) != 0;
                     }
                     return 0;
                 }
                 if (nm->code == LVN_COLUMNCLICK) {
                     const NMLISTVIEW* lv = reinterpret_cast<const NMLISTVIEW*>(lp);
-                    if (g.obj_sort_col == lv->iSubItem) g.obj_sort_asc = !g.obj_sort_asc;
-                    else { g.obj_sort_col = lv->iSubItem; g.obj_sort_asc = true; }
-                    sync_object_list();
-                    status_mode(g.obj_sort_asc ? L"Objektliste aufsteigend sortiert"
-                                               : L"Objektliste absteigend sortiert");
+                    PostMessageW(h, WM_OBJECT_LIST_SORT, static_cast<WPARAM>(lv->iSubItem), 0);
                     return 0;
                 }
                 if (nm->code == NM_DBLCLK) {
-                    // Doppelklick = Kamera auf das Objekt richten (wie 18a).
-                    const int i = g.sel_obj;
-                    if (i >= 0 && g.objects &&
-                        i < static_cast<int>(g.objects->arr.size())) {
-                        const float ox = obj_number(i, "x", 0);
-                        const float oz = obj_number(i, "z", 0);
-                        g.cam_pos = math::Vec3{ ox, base_y_at(ox, oz) + obj_number(i, "y", 0) + 12.0f, oz + 18.0f };
-                        g.cam_yaw = math::PI;
-                        g.cam_pitch = -0.45f;
-                        status_mode(L"Kamera auf Objekt gerichtet");
-                    }
+                    // Nach dem Auswahlabgleich fokussieren, nicht versehentlich
+                    // das vorherige Objekt, falls die Rückfrage abgebrochen wird.
+                    const int selected = object_list_selected();
+                    if (selected >= 0) PostMessageW(h, WM_OBJECT_LIST_FOCUS, static_cast<WPARAM>(selected + 1), 0);
                     return 0;
                 }
                 if (nm->code == NM_RCLICK) {
                     POINT pt{};
                     GetCursorPos(&pt);
-                    TrackPopupMenu(g.ctx_obj, TPM_RIGHTBUTTON, pt.x, pt.y, 0, g.main, nullptr);
+                    PostMessageW(h, WM_OBJECT_LIST_CONTEXT, static_cast<WPARAM>(object_list_selected() + 1),
+                                 MAKELPARAM(pt.x, pt.y));
                     return 0;
                 }
                 return 0;
@@ -3920,33 +4497,19 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 }
                 case TVN_SELCHANGED: {
                     const NMTREEVIEWW* tv = reinterpret_cast<const NMTREEVIEWW*>(lp);
-                    if (tv->action == TVC_BYMOUSE || tv->action == TVC_BYKEYBOARD) {
-                        TVITEMEXW it{};
-                        it.hItem = tv->itemNew.hItem;
-                        it.mask = TVIF_PARAM | TVIF_CHILDREN;
-                        if (TreeView_GetItem(g.map_tree, &it) && !it.cChildren &&
-                            it.lParam >= 0 &&
-                            static_cast<int>(it.lParam) < static_cast<int>(g.map_files.size()) &&
-                            static_cast<int>(it.lParam) != g.cur_map) {
-                            // Unspeichere-Karte vorher sichern (wie Kartenwechsel
-                            // im Menü 17b: change_map sichert schmutzig).
-                            if (g.dirty) save_map();
-                            if (load_map(static_cast<int>(it.lParam))) {
-                                sync_object_list();
-                                sync_property_fields();
-                                update_title();
-                                status_mode(L"Karte geladen");
-                            }
-                        }
+                    if ((tv->action == TVC_BYMOUSE || tv->action == TVC_BYKEYBOARD) &&
+                        !g.map_selection_queued) {
+                        g.map_selection_queued = PostMessageW(h, WM_RECONCILE_MAP_SELECTION, 0, 0) != 0;
                     }
                     return 0;
                 }
-                case NM_DBLCLK:
-                    // Doppelklick auf eine Karte = Eigenschaften öffnen (F2).
-                    if (maptree_selected() >= 0) {
-                        PostMessageW(h, WM_COMMAND, ID_MENU_MAPPROPS, 0);
-                    }
+                case NM_DBLCLK: {
+                    // Erst den Kartenwechsel abgleichen; nach Abbruch nicht
+                    // versehentlich Eigenschaften der alten Karte öffnen.
+                    const int selected = maptree_selected();
+                    if (selected >= 0) PostMessageW(h, WM_TREE_OPEN_PROPS, static_cast<WPARAM>(selected + 1), 0);
                     return 0;
+                }
                 case TVN_BEGINLABELEDIT: {
                     if (g.props_dlg) return TRUE;
                     // Nur Karten (nicht die Wurzel) sind umbenennbar.
@@ -3954,9 +4517,9 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                         reinterpret_cast<const NMTVDISPINFOW*>(lp);
                     TVITEMEXW it{};
                     it.hItem = di->item.hItem;
-                    it.mask = TVIF_CHILDREN;
+                    it.mask = TVIF_CHILDREN | TVIF_PARAM;
                     TreeView_GetItem(g.map_tree, &it);
-                    if (it.cChildren) return TRUE;   // Wurzel: kein Edit
+                    if (it.cChildren || static_cast<int>(it.lParam) != g.cur_map) return TRUE;
                     return FALSE;
                 }
                 case TVN_ENDLABELEDIT: {
@@ -3968,9 +4531,8 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                         it.hItem = di->item.hItem;
                         it.mask = TVIF_PARAM;
                         TreeView_GetItem(g.map_tree, &it);
-                        maptree_apply_rename(static_cast<int>(it.lParam),
-                                             wide_to_utf8(di->item.pszText));
-                        return TRUE;   // Text übernehmen
+                        return maptree_apply_rename(static_cast<int>(it.lParam),
+                                                    wide_to_utf8(di->item.pszText)) ? TRUE : FALSE;
                     }
                     return FALSE;      // leer: Edit verwerfen
                 }
@@ -3979,15 +4541,23 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             break;
         }
 
-        // Etappe 18k: Rechtsklick auf eine Karte = Kontextmenü.
-        case WM_CONTEXTMENU: {
+        // Kontextmenü erst nach einem evtl. noch ausstehenden Kartenwechsel
+        // öffnen; andernfalls könnte Abbrechen Aktionen auf die alte Karte richten.
+        case WM_CONTEXTMENU:
             if (reinterpret_cast<HWND>(wp) != g.map_tree) break;
-            if (g.props_dlg) {
-                SetForegroundWindow(g.props_dlg);
-                return 0;   // Kontextmenü lädt sonst trotz Dialog eine andere Karte
-            }
-            const int idx = maptree_selected();
+            PostMessageW(h, WM_TREE_CONTEXT, static_cast<WPARAM>(maptree_selected() + 1), lp);
+            return 0;
+        case WM_TREE_CONTEXT: {
+            if (g.props_dlg) { SetForegroundWindow(g.props_dlg); return 0; }
+            const int idx = static_cast<int>(wp) - 1;
+            if (maptree_selected() != idx || (idx >= 0 && idx != g.cur_map)) return 0;
             POINT pt{ GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
+            if (pt.x == -1 && pt.y == -1) {
+                RECT rect{};
+                GetWindowRect(g.map_tree, &rect);
+                pt.x = rect.left + 16;
+                pt.y = rect.top + 16;
+            }
             HMENU popup = CreatePopupMenu();
             AppendMenuW(popup, MF_STRING | (idx >= 0 ? MF_ENABLED : MF_GRAYED),
                         IDM_TREE_PROPS, L"Eigenschaften...\tF2");
@@ -4000,32 +4570,17 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             const int cmd = TrackPopupMenu(popup, TPM_RIGHTBUTTON | TPM_RETURNCMD,
                                            pt.x, pt.y, 0, h, nullptr);
             DestroyMenu(popup);
+            if (idx >= 0 && (idx != g.cur_map || maptree_selected() != idx)) return 0;
             switch (cmd) {
-                case IDM_TREE_PROPS:
-                    if (idx >= 0) PostMessageW(h, WM_COMMAND, ID_MENU_MAPPROPS, 0);
-                    break;
+                case IDM_TREE_PROPS:  if (idx >= 0) open_map_props(); break;
                 case IDM_TREE_RENAME:
                     if (idx >= 0) {
-                        // Karte laden, falls noch nicht aktuell (Rename wirkt
-                        // sonst auf die falsche Karte).
-                        if (idx != g.cur_map) {
-                            if (g.dirty) save_map();
-                            load_map(idx);
-                        }
                         HTREEITEM sel = TreeView_GetSelection(g.map_tree);
                         if (sel) TreeView_EditLabel(g.map_tree, sel);
                     }
                     break;
-                case IDM_TREE_NEW:   PostMessageW(h, WM_COMMAND, ID_MENU_MAPNEW, 0); break;
-                case IDM_TREE_DELETE:
-                    if (idx >= 0) {
-                        if (idx != g.cur_map) {
-                            if (g.dirty) save_map();
-                            load_map(idx);
-                        }
-                        PostMessageW(h, WM_COMMAND, ID_MENU_MAPDEL, 0);
-                    }
-                    break;
+                case IDM_TREE_NEW:    open_map_new(); break;
+                case IDM_TREE_DELETE: if (idx >= 0) delete_current_map(); break;
                 default: break;
             }
             return 0;
@@ -4243,7 +4798,7 @@ LRESULT CALLBACK dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             }
             if (id == IDLG_OK || id == IDOK) {
                 if (g.dlg_mode == 1 && !apply_props_from_dlg()) return 0;
-                if (g.dlg_mode == 2) apply_new_from_dlg();
+                if (g.dlg_mode == 2 && !apply_new_from_dlg()) return 0;
                 DestroyWindow(h);
                 return 0;
             }
@@ -4317,10 +4872,17 @@ bool splat_edit(float cx, float cz, float sw, float sh,
         sw = std::max(g.grid, std::round(sw / g.grid) * g.grid);
         sh = std::max(g.grid, std::round(sh / g.grid) * g.grid);
     }
-    JsonValue* ter = g.map_root.find("terrain");
-    if (!ter) ter = &g.map_root.set("terrain", JsonValue::make_obj());
+    if (erase && !g.map_root.find("terrain")) return false;
+    JsonValue* ter = writable_terrain();
+    if (!ter) return false;
     JsonValue* arr = ter->find("splats");
-    if (!arr || !arr->is_arr()) arr = &ter->set("splats", JsonValue::make_arr());
+    if (erase && (!arr || !arr->is_arr())) return false;
+    if (arr && !arr->is_arr()) {
+        MessageBoxW(g.main, L"terrain.splats ist keine Liste; die Altdaten bleiben erhalten.",
+                    L"Terrain", MB_OK | MB_ICONWARNING);
+        return false;
+    }
+    if (!arr) arr = &ter->set("splats", JsonValue::make_arr());
 
     if (!erase) {
         JsonValue e = JsonValue::make_obj();
@@ -4367,10 +4929,15 @@ int height_edit(float cx, float cz, bool sink) {
     const float r = std::max(g.grid, g.paint_size * 0.5f);
     const float hgt = sink ? -height_step() : height_step();
 
-    JsonValue* ter = g.map_root.find("terrain");
-    if (!ter) ter = &g.map_root.set("terrain", JsonValue::make_obj());
+    JsonValue* ter = writable_terrain();
+    if (!ter) return 0;
     JsonValue* arr = ter->find("heights");
-    if (!arr || !arr->is_arr()) arr = &ter->set("heights", JsonValue::make_arr());
+    if (arr && !arr->is_arr()) {
+        MessageBoxW(g.main, L"terrain.heights ist keine Liste; die Altdaten bleiben erhalten.",
+                    L"Terrain", MB_OK | MB_ICONWARNING);
+        return 0;
+    }
+    if (!arr) arr = &ter->set("heights", JsonValue::make_arr());
 
     // Aufeinanderfolgende Klicks an derselben Stelle (gleiche Kachel) zum
     // selben Pinsel addieren, damit die JSON-Liste beim "Höhen-Stapeln"
@@ -4485,6 +5052,7 @@ void open_map_props() {
                     L"Karten-Eigenschaften", MB_OK | MB_ICONINFORMATION);
         return;
     }
+    cancel_object_drag();
 
     g_enc_dlg = EncounterDlgState{};
     g_enc_dlg.syncing = true;
@@ -4809,6 +5377,8 @@ bool apply_props_from_dlg() {
 // Neue Karte: kleiner Dialog (Name, Breite, Höhe, Berge) -> JSON-Datei.
 void open_map_new() {
     if (g.props_dlg) { SetForegroundWindow(g.props_dlg); return; }   // schon offen
+    cancel_object_drag();
+    if (!resolve_object_edits()) return;
 
     WNDCLASSW wc{};
     wc.lpfnWndProc = dlg_proc;
@@ -4846,7 +5416,10 @@ void open_map_new() {
 }
 
 // Neue Karte aus dem Dialog anlegen (OK).
-void apply_new_from_dlg() {
+bool apply_new_from_dlg() {
+    if (g.cur_map >= 0 && !prepare_map_departure()) return false;
+    const std::string previous = g.cur_map >= 0 && g.cur_map < static_cast<int>(g.map_files.size())
+                                     ? g.map_files[static_cast<size_t>(g.cur_map)] : std::string();
     // nächste freie ID: welt01, welt02, ...
     int n = 1;
     std::string id;
@@ -4854,76 +5427,120 @@ void apply_new_from_dlg() {
     do {
         std::snprintf(buf, sizeof(buf), "welt%02d", n++);
         id = buf;
-    } while (std::find(g.map_files.begin(), g.map_files.end(), id + ".json") != g.map_files.end());
+    } while (std::find(g.map_files.begin(), g.map_files.end(), id + ".json") != g.map_files.end() ||
+             file_path_exists(g.project_dir + "\\maps\\" + id + ".json"));
 
     const float w = static_cast<float>(std::max(60.0, std::atof(dlg_text(IDLG_WIDTH).c_str())));
     const float h = static_cast<float>(std::max(60.0, std::atof(dlg_text(IDLG_HEIGHT).c_str())));
     const bool berge = IsDlgButtonChecked(g_dlg, IDLG_BERGE) == BST_CHECKED;
 
-        JsonValue map = JsonValue::make_obj();
-        map.set("name", JsonValue::make_str(dlg_text(IDLG_NAME).empty() ? "Neue Welt" : dlg_text(IDLG_NAME)));
-        JsonValue ter = JsonValue::make_obj();
-        ter.set("width", JsonValue::make_num(w, false));
-        ter.set("height", JsonValue::make_num(h, false));
-        ter.set("resolution", JsonValue::make_num(192, true));
-        ter.set("seed", JsonValue::make_num(static_cast<double>(GetTickCount() % 9999 + 1), true));
-        ter.set("amplitude", JsonValue::make_num(berge ? 18.0 : 0.0, false));
-        map.set("terrain", ter);
-        map.set("objects", JsonValue::make_arr());
-        map.set("events", JsonValue::make_arr());
-        JsonValue start = JsonValue::make_obj();
-        start.set("x", JsonValue::make_num(0.0, false));
-        start.set("z", JsonValue::make_num(0.0, false));
-        map.set("start", start);
-        JsonValue fog = JsonValue::make_obj();
-        fog.set("on", JsonValue::make_bool(false));
-        fog.set("far", JsonValue::make_num(180.0, false));
-        fog.set("color", JsonValue::make_num(0xBFD8EC, true));
-        map.set("fog", fog);
-        JsonValue pan = JsonValue::make_obj();
-        pan.set("color", JsonValue::make_num(0x3D6FB5, true));
-        map.set("panorama", pan);
-        map.set("note", JsonValue::make_str(""));
+    JsonValue map = JsonValue::make_obj();
+    map.set("name", JsonValue::make_str(dlg_text(IDLG_NAME).empty() ? "Neue Welt" : dlg_text(IDLG_NAME)));
+    JsonValue ter = JsonValue::make_obj();
+    ter.set("width", JsonValue::make_num(w, false));
+    ter.set("height", JsonValue::make_num(h, false));
+    ter.set("resolution", JsonValue::make_num(192, true));
+    ter.set("seed", JsonValue::make_num(static_cast<double>(GetTickCount() % 9999 + 1), true));
+    ter.set("amplitude", JsonValue::make_num(berge ? 18.0 : 0.0, false));
+    map.set("terrain", ter);
+    map.set("objects", JsonValue::make_arr());
+    map.set("events", JsonValue::make_arr());
+    JsonValue start = JsonValue::make_obj();
+    start.set("x", JsonValue::make_num(0.0, false));
+    start.set("z", JsonValue::make_num(0.0, false));
+    map.set("start", start);
+    JsonValue fog = JsonValue::make_obj();
+    fog.set("on", JsonValue::make_bool(false));
+    fog.set("far", JsonValue::make_num(180.0, false));
+    fog.set("color", JsonValue::make_num(0xBFD8EC, true));
+    map.set("fog", fog);
+    JsonValue pan = JsonValue::make_obj();
+    pan.set("color", JsonValue::make_num(0x3D6FB5, true));
+    map.set("panorama", pan);
+    map.set("note", JsonValue::make_str(""));
 
-        const std::string path = g.project_dir + "\\maps\\" + id + ".json";
-        if (write_file(path, json_write(map))) {
-            core::log_info("Neue Karte angelegt: " + id);
-            scan_maps();
-            rebuild_map_menu();
-            // geladen wird gleich - Index der neuen Karte suchen
-            for (int i = 0; i < static_cast<int>(g.map_files.size()); ++i) {
-                if (g.map_files[i] == id + ".json") { load_map(i); break; }
-            }
-            sync_object_list();
-            sync_property_fields();
-            update_title();
-            status_mode(L"Neue Karte angelegt");
-        } else {
-            core::log_error("Neue Karte nicht schreibbar: " + path);
-        }
+    if (!editor_json_utf8(map) || !editor_json_serializable(map)) {
+        data_prompt(g_dlg, L"Die neue Karte enthält ungültiges Unicode oder eine nicht darstellbare Zahl.",
+                    L"Neue Karte", MB_OK | MB_ICONERROR);
+        return false;
+    }
+    const std::string path = g.project_dir + "\\maps\\" + id + ".json";
+    std::wstring wide_path;
+    // Ohne REPLACE_EXISTING: eine seit dem letzten Scan neu angelegte Karte
+    // mit derselben ID darf beim Erstellen nicht überschrieben werden.
+    if (!file_path_to_wide(path, wide_path) || !editor_write_file_atomic(wide_path, json_write(map), false)) {
+        core::log_error("Neue Karte nicht schreibbar oder bereits vorhanden: " + path);
+        data_prompt(g_dlg, L"Die neue Karte konnte nicht angelegt werden. "
+                           L"Eine bestehende Datei mit dieser ID wird nicht überschrieben.",
+                    L"Neue Karte", MB_OK | MB_ICONERROR);
+        return false;
+    }
+    core::log_info("Neue Karte angelegt: " + id);
+    scan_maps();
+    const auto old = std::find(g.map_files.begin(), g.map_files.end(), previous);
+    g.cur_map = old == g.map_files.end() ? -1 : static_cast<int>(old - g.map_files.begin());
+    rebuild_map_menu();
+    const auto created = std::find(g.map_files.begin(), g.map_files.end(), id + ".json");
+    if (created == g.map_files.end() ||
+        !load_map(static_cast<int>(created - g.map_files.begin()), true)) {
+        MessageBoxW(g_dlg, L"Die Karte wurde angelegt, konnte aber nicht geladen werden.",
+                    L"Neue Karte", MB_OK | MB_ICONERROR);
+        maptree_select_current();
+        return false;
+    }
+    sync_object_list();
+    sync_property_fields();
+    update_title();
+    status_mode(L"Neue Karte angelegt");
+    return true;
 }
 
 void delete_current_map() {
-    if (g.cur_map < 0) return;
+    if (g.cur_map < 0 || g.cur_map >= static_cast<int>(g.map_files.size())) return;
     const std::string name = g.cur_map < static_cast<int>(g.map_names.size())
                                  ? g.map_names[g.cur_map] : "?";
-    const std::wstring text = L"Karte \"" + utf8_to_wide(name) +
-                              L"\" wirklich löschen?";
-    const int r = MessageBoxW(g.main, text.c_str(), L"Karte löschen",
-                              MB_YESNO | MB_ICONWARNING);
+    std::wstring text = L"Karte \"" + utf8_to_wide(name) + L"\" wirklich löschen?";
+    if (g.dirty || object_form_pending())
+        text += L"\r\nAuch ungespeicherte Änderungen und Formulareingaben gehen verloren.";
+    const int r = data_prompt(g.main, text.c_str(), L"Karte löschen",
+                              MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
     if (r != IDYES) return;
     const std::string path = g.project_dir + "\\maps\\" + g.map_files[g.cur_map];
-    DeleteFileA(path.c_str());
+    std::string disk_text;
+    const FileDiskState state = file_disk_state(path, disk_text);
+    if (state != FileDiskState::Ready) {
+        data_prompt(g.main, L"Die Kartendatei ist nicht lesbar oder wurde bereits entfernt. "
+                            L"Die Karte bleibt im Editor geöffnet.",
+                    L"Karte löschen", MB_OK | MB_ICONERROR);
+        return;
+    }
+    if (editor_disk_changed(g.map_disk_present, g.map_disk_text, true, disk_text) &&
+        data_prompt(g.main, L"Die Kartendatei wurde seit dem Laden oder Speichern extern geändert. "
+                            L"Auch die externen Änderungen wirklich löschen?",
+                    L"Karten-Dateikonflikt", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES)
+        return;
+    std::wstring wide_path;
+    if (!file_path_to_wide(path, wide_path) || !DeleteFileW(wide_path.c_str())) {
+        data_prompt(g.main, L"Die Karte konnte nicht gelöscht werden. Sie bleibt geöffnet.",
+                    L"Karte löschen", MB_OK | MB_ICONERROR);
+        return;
+    }
     core::log_info("Karte gelöscht: " + path);
+    cancel_object_drag();
+    close_event_editor();
+    g.cur_map = -1;
+    g.sel_obj = -1;
+    g.dirty = false;
+    g.undo_stack.clear();
+    g.redo_stack.clear();
+    g.objects = nullptr;
+    g.map_root = JsonValue{};
+    g.map_disk_present = false;
+    g.map_disk_text.clear();
+    g.renderer->clear_terrain();
     scan_maps();
     rebuild_map_menu();
-    if (!g.map_files.empty()) {
-        load_map(0);
-    } else {
-        g.cur_map = -1;
-        g.objects = nullptr;
-        g.renderer->clear_terrain();
-    }
+    if (!g.map_files.empty()) load_map(0, true);
     sync_object_list();
     sync_property_fields();
     update_title();
@@ -6385,6 +7002,7 @@ void open_event_editor() {
         return;
     }
     if (g.cur_map < 0) return;
+    cancel_object_drag();
 
     WNDCLASSW wc{};
     wc.lpfnWndProc = event_proc;
@@ -6985,25 +7603,42 @@ void ma_apply_tile() {
     ma_status("Kachel gespeichert: " + g_md.sel);
 }
 
-void ma_apply_to_object() {
-    if (g_md.sel.empty() || g.sel_obj < 0 || !g.objects) return;
-    push_undo();
-    g.objects->arr[g.sel_obj].set("tex", JsonValue::make_str(g_md.sel));
-    g.dirty = true;
-    sync_property_fields();
-    update_title();
-    ma_status("Objekt " + std::to_string(g.sel_obj + 1) + " -> " + g_md.sel);
+void ma_set_object_material(const std::string& material) {
+    if (!g.objects || g.sel_obj < 0 || static_cast<size_t>(g.sel_obj) >= g.objects->arr.size()) return;
+    if (!resolve_object_edits()) return;
+    const JsonValue& object = g.objects->arr[static_cast<size_t>(g.sel_obj)];
+    const ObjectPropsForm before = object_props_read(object);
+    ObjectPropsForm after = before;
+    after.material = material;
+    ObjectPropsEdit edit = object_props_prepare(object, before, after);
+    if (!edit.ok) {
+        data_prompt(g_md.win, utf8_to_wide(edit.error).c_str(), L"Objekt-Material", MB_OK | MB_ICONWARNING);
+        return;
+    }
+    const JsonValue* old = object.find("tex");
+    const bool protected_old = old && old->is_str() && !g.object_field_editable[3];
+    if (edit.changed && (edit.replaces_invalid || protected_old) && data_prompt(
+            g_md.win, L"Das vorhandene Material ist fehlerhaft oder nicht vollständig darstellbar. "
+                      L"Trotzdem ersetzen?",
+            L"Objekt-Material", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) return;
+    if (edit.changed) {
+        cancel_object_drag();
+        push_undo();
+        g.objects->arr[static_cast<size_t>(g.sel_obj)] = std::move(edit.value);
+        g.dirty = true;
+        sync_object_list();
+        sync_property_fields();
+        update_title();
+    }
+    ma_status(edit.changed ? "Objekt-Material geändert (Strg+S speichert)"
+                           : "Objekt-Material unverändert");
 }
 
-void ma_clear_object() {
-    if (g.sel_obj < 0 || !g.objects) return;
-    push_undo();
-    json_remove_key(g.objects->arr[g.sel_obj], "tex");
-    g.dirty = true;
-    sync_property_fields();
-    update_title();
-    ma_status("Objekt-Material entfernt (Prefab-Texturen gelten wieder)");
+void ma_apply_to_object() {
+    if (!g_md.sel.empty()) ma_set_object_material(g_md.sel);
 }
+
+void ma_clear_object() { ma_set_object_material(""); }
 
 void ma_delete() {
     const MaterialInfo* m = mat_find(g_md.sel);
@@ -7323,13 +7958,7 @@ std::vector<DatabaseFieldSpec> db_specs() {
     return result;
 }
 
-std::string db_text(HWND control) {
-    const int length = GetWindowTextLengthW(control);
-    std::wstring text(static_cast<size_t>(std::max(0, length)) + 1, L'\0');
-    const int copied = GetWindowTextW(control, text.data(), static_cast<int>(text.size()));
-    text.resize(static_cast<size_t>(std::max(0, copied)));
-    return wide_to_utf8(text);
-}
+std::string db_text(HWND control) { return control_text(control); }
 
 void db_status(const std::string& text) {
     if (g_db.lbl_status) ev_set_text(g_db.lbl_status, text);
@@ -7626,38 +8255,6 @@ void db_delete() {
     if (!g_db.hint_active) db_status("Eintrag gelöscht - Speichern nicht vergessen");
 }
 
-// Erst vollständig in eine neue Datei im selben Verzeichnis schreiben, dann
-// ersetzen. Ein fehlgeschlagenes Schreiben zerstört nicht die alte Datenbank.
-bool db_write_file(const std::wstring& path, const std::string& data) {
-    static unsigned serial = 0;
-    HANDLE file = INVALID_HANDLE_VALUE;
-    std::wstring temp;
-    for (int attempt = 0; attempt < 100; ++attempt) {
-        temp = path + L".rune-" + std::to_wstring(GetCurrentProcessId()) +
-               L"-" + std::to_wstring(++serial) + L".tmp";
-        file = CreateFileW(temp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
-                           FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (file != INVALID_HANDLE_VALUE) break;
-        const DWORD error = GetLastError();
-        if (error != ERROR_FILE_EXISTS && error != ERROR_ALREADY_EXISTS) return false;
-    }
-    if (file == INVALID_HANDLE_VALUE) return false;
-    bool ok = true;
-    size_t written = 0;
-    while (written < data.size()) {
-        const DWORD part = static_cast<DWORD>(std::min<size_t>(data.size() - written, 1024 * 1024));
-        DWORD n = 0;
-        if (!WriteFile(file, data.data() + written, part, &n, nullptr) || n == 0) { ok = false; break; }
-        written += n;
-    }
-    if (ok && !FlushFileBuffers(file)) ok = false;
-    if (!CloseHandle(file)) ok = false;
-    if (ok && !MoveFileExW(temp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
-        ok = false;
-    if (!ok) DeleteFileW(temp.c_str());
-    return ok;
-}
-
 bool db_save() {
     if (!db_apply()) return false;
     const std::wstring path = utf8_to_wide(db_path());
@@ -7673,7 +8270,7 @@ bool db_save() {
             L"database.json wurde außerhalb dieses Dialogs geändert, angelegt oder entfernt. Trotzdem überschreiben?",
             L"Datenbank-Konflikt", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) return false;
     const std::string output = json_write(g_db.root);
-    if (!db_write_file(path, output)) {
+    if (!editor_write_file_atomic(path, output)) {
         db_status("FEHLER: database.json konnte nicht geschrieben werden");
         MessageBoxW(g_db.win, L"database.json konnte nicht gespeichert werden. Die alte Datei bleibt erhalten.",
                     L"Datenbank", MB_OK | MB_ICONERROR);
@@ -8311,19 +8908,23 @@ int main(int argc, char** argv) {
     make_control(L"Button", L"Eigenschaften", BS_GROUPBOX,
                  1184, 613, 250, 238, IDC_GRP_PROPS);
     make_control(L"Static", L"X", 0, 1194, 648, 60, 20, IDC_LBL_X);
-    g.ed_x = make_control(L"Edit", nullptr, WS_BORDER | ES_RIGHT,
+    g.ed_x = make_control(L"Edit", nullptr, WS_BORDER | ES_RIGHT | ES_AUTOHSCROLL,
                           1264, 644, 158, 24, IDC_ED_X);
     make_control(L"Static", L"Z", 0, 1194, 680, 60, 20, IDC_LBL_Z);
-    g.ed_z = make_control(L"Edit", nullptr, WS_BORDER | ES_RIGHT,
+    g.ed_z = make_control(L"Edit", nullptr, WS_BORDER | ES_RIGHT | ES_AUTOHSCROLL,
                           1264, 676, 158, 24, IDC_ED_Z);
     make_control(L"Static", L"Drehung", 0, 1194, 712, 60, 20, IDC_LBL_ROT);
-    g.ed_rot = make_control(L"Edit", nullptr, WS_BORDER | ES_RIGHT,
+    g.ed_rot = make_control(L"Edit", nullptr, WS_BORDER | ES_RIGHT | ES_AUTOHSCROLL,
                             1264, 708, 158, 24, IDC_ED_ROT);
     make_control(L"Static", L"Material", 0, 1194, 744, 60, 20, IDC_LBL_TEX);
-    g.ed_tex = make_control(L"Edit", nullptr, WS_BORDER | ES_LEFT,
+    g.ed_tex = make_control(L"Edit", nullptr, WS_BORDER | ES_LEFT | ES_AUTOHSCROLL,
                             1264, 740, 158, 24, IDC_ED_TEX);
+    for (HWND field : {g.ed_x, g.ed_z, g.ed_rot, g.ed_tex})
+        SendMessageW(field, EM_SETLIMITTEXT, 1000000, 0);
     make_control(L"Button", L"Übernehmen", BS_PUSHBUTTON,
                  1194, 774, 228, 30, IDC_BTN_APPLY);
+    make_control(L"Static", L"Objekt auswählen.", 0,
+                 1194, 808, 228, 36, IDC_LBL_PROPS_HINT);
 
     // Viewport + Statusleiste
     g.view = CreateWindowExW(WS_EX_CLIENTEDGE, L"RuneEditorView", nullptr,

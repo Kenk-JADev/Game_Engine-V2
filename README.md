@@ -215,6 +215,27 @@ Karten sind JSON unter `projekte/<name>/data/maps/<id>.json`:
 }
 ```
 
+### Objekt-Eigenschaften im Hauptfenster
+
+Objekt in der Liste oder im Viewport auswählen. X/Z sind Weltkoordinaten,
+die Drehung wird in Grad eingegeben; ein leeres Material nutzt die Prefab-
+Texturen. Geänderte Zahlen müssen endlich und zwischen −1.000.000 und
+1.000.000 liegen (Dezimalpunkt oder -komma); Materialnamen sind einzeilig.
+**Übernehmen** oder Enter übernimmt das Formular, **Strg+S** übernimmt
+offene Eingaben und speichert anschließend die Karte. Ungültige Eingaben
+verhindern die Übernahme. Beim Auswahl-, Karten- oder Projektwechsel sowie
+anderen Aktionen werden noch offene Formulareingaben zum Übernehmen oder
+Verwerfen angeboten; Abbrechen behält die Eingaben und die alte Auswahl.
+
+Unveränderte Zahlen, Y-Versatz und unbekannte Zusatzfelder bleiben erhalten.
+Mehrfach vorhandene oder nicht vollständig darstellbare Objektfelder sind
+gesperrt; fehlerhafte Altdaten werden nur nach Bestätigung ersetzt. Bei
+ungültiger oder extremer Position/Drehung bleibt der Eintrag in der Liste,
+wird aber nicht im Viewport dargestellt. Ziehen verändert nur bewegte
+Achsen; Undo entsteht erst bei einer tatsächlichen Positionsänderung. Beim
+Zurückziehen an den Ausgangspunkt werden die ursprünglichen Achsenwerte
+wiederhergestellt. Objekt-Undo gilt weiterhin nur für Objekte.
+
 **NPCs, Schilder und Objekte:** Karte wählen, ggf. den Event-Editor F6
 schließen, dann **F5** oder „Events → NPCs, Schilder und Objekte“ öffnen.
 Kategorie und Eintrag wählen oder mit „Neu“ anlegen. X/Z sind Weltpositionen;
@@ -278,11 +299,25 @@ Diese Konfliktprüfung ist keine atomare Sperre gegen gleichzeitiges Schreiben.
 Ungültiges JSON, doppelte Schlüssel, ungültiges Unicode und nicht endliche
 Kommazahlen verhindern das Laden, statt eine leere Datenbank zu überschreiben.
 
+Das Kartenladen lehnt ungültiges JSON/Unicode, nicht darstellbare
+Kommazahlen sowie ein mehrfaches oder nicht listenförmiges `objects` ab.
+Andere doppelte JSON-Schlüssel bleiben erhalten; das ist keine vollständige
+Validierung aller Kartenwerte. Besonders extreme Terrain-/Atmosphärenwerte
+sind weiterhin nicht vollständig abgesichert (siehe Backlog).
+
+Vor dem Speichern vergleicht der Editor die Datei mit dem zuletzt geladenen
+oder gespeicherten Stand und fragt bei externen Änderungen oder Löschung.
+Er schreibt zunächst eine temporäre Datei und ersetzt das Ziel erst danach;
+ein Schreibfehler verkürzt die alte Datei nicht. Vor dem Löschen gibt es bei
+externen Änderungen ebenfalls eine Warnung. Diese Prüfungen sind keine
+atomare Sperre: Änderungen anderer Programme zwischen Prüfung und Ersetzen
+bzw. Löschen können verloren gehen. Sicherungskopien bleiben wichtig.
+
 Regeln: Editor und Spiel schreiben beide `JSON.pretty_generate`-Format (LF,
 2 Leerzeichen, kürzeste exakte Zahlendarstellung) — deshalb wirft Speichern
 keine Diff-Flut. Unbekannte Schlüssel und große vorhandene JSON-Ganzzahlen
 bleiben beim reinen Laden/Speichern erhalten. Numerische Berechnungen nutzen
-weiterhin double; einige ältere Formulare können bei Bearbeitung andere
+weiterhin double; der Event-Editor F6 kann bei Bearbeitung noch andere
 angezeigte Felder runden (siehe Backlog).
 Spielstände liegen in `projekte/<name>/saves/slot1..3.json`.
 

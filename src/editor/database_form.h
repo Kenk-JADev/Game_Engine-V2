@@ -6,6 +6,8 @@
 // ============================================================================
 
 #include "editor/json.h"
+#include "editor/json_validation.h"
+#include "editor/text_validation.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -13,7 +15,6 @@
 #include <cmath>
 #include <cstdlib>
 #include <string>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -51,15 +52,9 @@ inline std::string database_trim(const std::string& text) {
     return text.substr(first, last - first);
 }
 
-inline bool database_valid_utf8(const std::string& text);
-
 // Einzeilige Win32-Editfelder können Steuerzeichen und ungültiges UTF-8
 // nicht verlässlich anzeigen oder verlustfrei zurückgeben.
-inline bool database_single_line(const std::string& text) {
-    return database_valid_utf8(text) && std::none_of(text.begin(), text.end(), [](unsigned char c) {
-        return c < 0x20 || c == 0x7f;
-    });
-}
+inline bool database_single_line(const std::string& text) { return editor_single_line(text); }
 
 inline std::string database_number_text(const JsonValue* value) {
     if (!value || value->is_null()) return "0";
@@ -252,85 +247,13 @@ inline bool database_form_commit(JsonValue& root, const char* key, int index, co
     return true;
 }
 
-// Nicht endliche Kommazahlen würden vom JSON-Schreiber zu null werden.
-// Große Integer mit Originaltoken sind dagegen verlustfrei speicherbar.
-inline bool database_document_serializable(const JsonValue& value) {
-    if (value.is_num())
-        return (value.is_int && !value.integer_text().empty()) || std::isfinite(value.number());
-    if (value.is_arr()) {
-        for (const JsonValue& item : value.arr)
-            if (!database_document_serializable(item)) return false;
-    }
-    if (value.is_obj()) {
-        for (const auto& pair : value.obj)
-            if (!database_document_serializable(pair.second)) return false;
-    }
-    return true;
-}
-
-inline bool database_valid_utf8(const std::string& text) {
-    for (size_t i = 0; i < text.size();) {
-        const auto first = static_cast<unsigned char>(text[i]);
-        if (first < 0x80) { ++i; continue; }
-        size_t count = 0;
-        unsigned codepoint = 0, minimum = 0;
-        if (first >= 0xc2 && first <= 0xdf) { count = 2; codepoint = first & 0x1f; minimum = 0x80; }
-        else if (first >= 0xe0 && first <= 0xef) { count = 3; codepoint = first & 0x0f; minimum = 0x800; }
-        else if (first >= 0xf0 && first <= 0xf4) { count = 4; codepoint = first & 0x07; minimum = 0x10000; }
-        else return false;
-        if (text.size() - i < count) return false;
-        for (size_t j = 1; j < count; ++j) {
-            const auto c = static_cast<unsigned char>(text[i + j]);
-            if ((c & 0xc0) != 0x80) return false;
-            codepoint = (codepoint << 6) | (c & 0x3f);
-        }
-        if (codepoint < minimum || codepoint > 0x10ffff ||
-            (codepoint >= 0xd800 && codepoint <= 0xdfff)) return false;
-        i += count;
-    }
-    return true;
-}
-
-inline bool database_document_utf8(const JsonValue& value) {
-    if (value.is_str()) return database_valid_utf8(value.str);
-    if (value.is_arr()) {
-        for (const JsonValue& item : value.arr)
-            if (!database_document_utf8(item)) return false;
-    }
-    if (value.is_obj()) {
-        for (const auto& pair : value.obj)
-            if (!database_valid_utf8(pair.first) || !database_document_utf8(pair.second)) return false;
-    }
-    return true;
-}
-
-inline bool database_document_duplicates(const JsonValue& value) {
-    if (value.is_arr()) {
-        for (const JsonValue& item : value.arr)
-            if (database_document_duplicates(item)) return true;
-    }
-    if (value.is_obj()) {
-        std::unordered_set<std::string> keys;
-        for (const auto& pair : value.obj) {
-            if (!keys.insert(pair.first).second || database_document_duplicates(pair.second)) return true;
-        }
-    }
-    return false;
-}
-
-// json_parse erhält alte Daten großzügig, nimmt aber rohe Steuerzeichen in
-// Strings an. In F9 wäre das keine gültige JSON-Datei: lieber nicht laden.
-inline bool database_raw_strings_valid(const std::string& text) {
-    bool inside = false, escape = false;
-    for (const unsigned char c : text) {
-        if (!inside) { if (c == '"') inside = true; continue; }
-        if (escape) { escape = false; continue; }
-        if (c == '\\') escape = true;
-        else if (c == '"') inside = false;
-        else if (c < 0x20) return false;
-    }
-    return !inside && !escape;
-}
+// F9 benutzt dieselben UTF-8-/Serialisierbarkeitsprüfungen wie Karten;
+// doppelte Schlüssel sind in Datenbanken darüber hinaus generell verboten.
+inline bool database_valid_utf8(const std::string& text) { return editor_valid_utf8(text); }
+inline bool database_document_serializable(const JsonValue& value) { return editor_json_serializable(value); }
+inline bool database_document_utf8(const JsonValue& value) { return editor_json_utf8(value); }
+inline bool database_document_duplicates(const JsonValue& value) { return editor_json_duplicates(value); }
+inline bool database_raw_strings_valid(const std::string& text) { return editor_json_raw_strings_valid(text); }
 
 enum class DatabaseParseStatus { Ok, InvalidJson, InvalidRoot, InvalidUtf8, DuplicateKey, Nonfinite };
 
@@ -338,7 +261,7 @@ enum class DatabaseParseStatus { Ok, InvalidJson, InvalidRoot, InvalidUtf8, Dupl
 // Neuanlage und Löschung der Datei zählen als externe Änderung.
 inline bool database_disk_changed(bool was_present, const std::string& was,
                                   bool is_present, const std::string& now) {
-    return was_present != is_present || (was_present && was != now);
+    return editor_disk_changed(was_present, was, is_present, now);
 }
 
 // Bei jedem Fehler bleibt der bisherige Ausgabebaum unangetastet. Das gilt

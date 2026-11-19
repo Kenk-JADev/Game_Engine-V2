@@ -286,6 +286,7 @@ void pl_accept(HWND h) {
         if (g.objects && new_objects && json_write(*g.objects) != json_write(*new_objects)) push_undo();
         // F6 muss vor dem Öffnen geschlossen sein: seine Befehlszeiger würden
         // beim Ersetzen der Wurzel ungültig. Alle anderen Fenster sind gesperrt.
+        cancel_object_drag();
         g.map_root = std::move(g_pl.work);
         g.objects = g.map_root.find("objects");
         g.sel_obj = -1;
@@ -365,6 +366,10 @@ void open_placement_dialog() {
                     L"Platzier-Editor", MB_OK | MB_ICONINFORMATION);
         return;
     }
+    // F5 arbeitet auf einer Kartenkopie und kann beim Übernehmen die alte
+    // Objektauswahl ersetzen. Drag beenden und Eingaben zuerst klären.
+    cancel_object_drag();
+    if (!resolve_object_edits()) return;
     g_pl = PlacementDlgState{};
     g_pl.work = g.map_root;
     WNDCLASSW wc{};

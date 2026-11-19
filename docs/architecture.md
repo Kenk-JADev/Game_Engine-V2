@@ -1713,6 +1713,64 @@ Demo-Datenbank, JSON-Roundtrips und unberührte allgemeine Eigenschaften.
 CI baut/linkt den Win32-Editor, hat aber keine GPU/Fenster für einen echten
 grafischen Live-Test (siehe Backlog und Handoff).
 
+## Datentreue im Objektformular (Etappe 19o.4)
+
+`object_props_form.h` liest X/Z, Rotation (Grad) und Material als
+Formular-Snapshot. `object_props_prepare` prüft Änderungen vollständig auf
+einer Kopie; nur tatsächlich veränderte Felder werden ersetzt. Unberührte
+Integer-Tokens und Kommazahlen, Y-Versatz, fehlende Felder und unbekannte
+Eigenschaften bleiben erhalten. Neue Zahlen sind endlich, maximal ±1 Mio.
+und erlauben Dezimalkomma; Material ist einzeiliges UTF-8. Ungültige
+Eingaben verhindern die gesamte Übernahme; fehlerhafte oder nicht
+darstellbare Altdaten erfordern vor dem Ersetzen Zustimmung. Doppelte
+Eigenschaften und Texte, die ein Win32-Editfeld nicht verlustfrei
+zurückgibt, sind für die jeweilige Eingabe gesperrt. F3 nutzt dieselbe
+Vorbereitung und schützt ein nicht darstellbares altes Material.
+
+Auswahl, Undo/Redo, Duplizieren, Drehen, Löschen, F3-Materialaktionen,
+F5, Karten- und Projektwechsel sowie Schließen klären offene Formulareingaben;
+Strg+S übernimmt sie vor dem Speichern. Ein unverändertes Formular erzeugt
+keinen Undo-Schnappschuss. Win32-Listen-/Baumauswahl wird nach Abschluss
+ihrer Benachrichtigungen abgeglichen; bei Abbruch wird die alte Auswahl
+wiederhergestellt. Daten-Rückfragen sperren auch moduslose Nebenfenster.
+Objekt-Feldfokus unterdrückt Kamera-/Bearbeitungskürzel, nicht aber Strg+S.
+Tasten anderer Fenster oder Programme steuern weder Kamera noch Objekte.
+Die Kartenbaum-Einfügetexte bleiben bis zum jeweiligen Win32-Aufruf gültig.
+
+Ein Drag speichert den Griffpunkt und den ursprünglichen Objektwert. Erst
+nach Bewegung über eine halbe Rasterzelle ändert sich eine Achse; nur
+bewegte Achsen werden eingerastet. Beim Zurückziehen zum Anfang werden
+ursprüngliche Zahlentypen, Präzision und fehlende/null-Felder restauriert.
+Undo wird beim ersten tatsächlichen Positionswechsel angelegt, und Capture
+endet bei Zustandswechsel oder Verlust. Die Viewport-Höhenabfrage klemmt
+Positionen vor dem Terrain-Index-Cast auf die Kartengrenzen. Objekte mit
+ungültigen, mehrfachen oder extremen X/Y/Z-/Drehungswerten bleiben im
+JSON und in der Liste, werden aber nicht gerendert oder gepickt.
+
+`map_document.h` prüft transaktional vor dem Laden: gültige JSON-Wurzel,
+UTF-8/Unicode, keine nicht darstellbaren Kommazahlen und höchstens ein
+`objects`, das, falls vorhanden, eine Liste sein muss. Andere doppelte
+Schlüssel bleiben erhalten; Objektfelder mit Duplikaten sind gesperrt.
+`json_validation.h` und `text_validation.h` sind gemeinsame Prüfer für
+Karte und F9. Die Prüfung deckt nicht alle semantischen Extremwerte ab;
+Terrain-/Atmosphären-Casts bleiben im Backlog dokumentiert. Karten behalten
+die Originalbytes ihres letzten Ladens/Speicherns: Vor Speichern oder
+Löschen wird bei externen Änderungen gefragt. `atomic_file_win.h` schreibt
+erst eine temporäre Datei, ersetzt danach das Ziel und sichert neue Karten
+gegen Überschreiben einer vorhandenen Datei. Ein fehlgeschlagener Schreib-/
+Flush-Vorgang verkürzt die vorhandene Datei nicht. Vergleich und Ersetzen/
+Löschen sind keine durchgehende Prozesssperre (Race im Backlog).
+
+`tools/json_test.cpp` testet u. a. 400-stellige Integer, präzise Werte,
+ungültige und doppelte Felder, Preview-/Drag-Schutz, Rückstellen und die
+echten Dorfkarten sowie Dateischnappschüsse. Lokal: 390 portable Checks/0
+Fehler, ASan/UBSan/float-cast-overflow, Win64-Cross-Kompilierung und 25
+Ruby-WASM-Tests (ein EXE-Skip); die Ruby/C++-Brücke prüfte 14 Dateien/0
+Fehler. Die Windows-CI führt zusätzliche kopflose Tests der gemeinsamen
+Dateihilfe aus (Unicode-Pfad, gesperrtes Ziel, kein Überschreiben bei
+Neuanlage, mehrere Blöcke). Ein echter Windows-GUI- und End-to-End-Test
+der Dateikonflikt-Dialoge steht aus.
+
 ## Datentreue im F9-Datenbankdialog (Etappe 19o.3)
 
 `database_form.h` liest Text, Integer, Float und Gegnerlisten als portable
@@ -1789,8 +1847,8 @@ eingelesen; `-0` als Ganzzahl wird wie in Ruby zu `0` normalisiert.
 Tests decken 2^53, 2^63, negative und 400-stellige Werte, Kopien, Änderungen,
 Inkremente und ungültige Tokens ab. Die Ruby-JSON-Brücke vergleicht außerdem
 Typen und synthetische große Zahlen. Grenzen: Kommazahlen/Rechenoperationen
-bleiben double-basiert; F6 und das alte Objektformular können aktuell
-bei Übernahme unberührte angezeigte Felder runden (siehe Backlog).
+bleiben double-basiert; F6 kann bei Übernahme weiterhin unberührte
+angezeigte Felder runden (siehe Backlog); das Objektformular ist seit 19o.4 geschützt.
 
 ## NPCs, Schilder und Objekte im Platzier-Editor (Etappe 19n)
 
