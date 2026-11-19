@@ -134,31 +134,27 @@ check('$data_system = system.json') { $data_system.is_a?(Hash) && !$data_system.
 check('$scene startet leer') { $scene.nil? }
 
 puts '== $game_player.passable? (Etappe 19h: echt) =='
-check('in der Karte, flach -> passierbar') { $game_player.passable?(5.0, 5.0) }
+# Die Stufe misst von der SPIELERPOSITION zum Ziel - der Spieler wird für
+# die Checks explizit gestellt (moveto setzt ihn auf Game.gy + 0.2).
+# Gelände-Mock: flach (0 m) bis x = 10, dahinter „Wand" (5 m).
+$game_player.moveto(5.0, 5.0)
+check('in der Karte, flach -> passierbar') { $game_player.passable?(6.0, 5.0) }
 check('Richtung 6 (rechts) in die Wand -> false') do
   !$game_player.passable?(10.0, 5.0, 6)
 end
-# Die Stufe misst von der SPIELERPOSITION zum Ziel (siehe passable?).
-# Diagnose im Check-Namen: die CI-Annotation zeigt nur FAIL-Zeilen.
-pos = Rune::Player.position
-check("Richtung 4 (links) von der Wand hinunter -> false " \
-      "[pos=#{pos.inspect} gy(10)=#{Game.gy(10.0, 5.0)} " \
-      "gy(pos)=#{Game.gy(pos[0], pos[2])}]") do
+check('Stufe hoch vom flachen Boden (delta 5 m > 1.2 m) -> false') do
+  !$game_player.passable?(12.0, 5.0)
+end
+$game_player.moveto(12.0, 5.0)   # auf die Wand (gy 5.0)
+check('auf der Wand nach links hinunter -> false (Stufe 5 m)') do
   !$game_player.passable?(11.0, 5.0, 4)
 end
-check('auf der Wand nach links (flach weiter) -> true') do
-  $game_player.moveto(12.0, 5.0)
-  ok = $game_player.passable?(12.0, 5.0, 4)
-  $game_player.moveto(2.0, 3.0)
-  ok
+check('auf der Wand flach weiter (rechts) -> true') do
+  $game_player.passable?(13.0, 5.0, 6)
 end
+$game_player.moveto(5.0, 5.0)    # zurück ins Flache
 check('hinter der Kartengrenze (x > width) -> false') do
   !$game_player.passable?(125.0, 5.0)
-end
-pos = Rune::Player.position
-check("Stufe hoch vom flachen Boden (delta 5 m > 1.2 m) -> false " \
-      "[pos=#{pos.inspect} gy(12)=#{Game.gy(12.0, 5.0)}]") do
-  !$game_player.passable?(12.0, 5.0)
 end
 $game_temp.player_passable = false
 check('player_passable? aus -> immer true (XP-Debug-Verhalten)') do
