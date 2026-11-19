@@ -1376,6 +1376,11 @@ Richtungen wie XP (2=+z, 4=-x, 6=+x, 8=-z, 0/nil = Stelle selbst).
 `$game_temp.player_passable = false` schaltet die Prüfung ab (XP-Debug).
 Objekt-/Hindernis-Kollision fehlt weiter (keine blocked?-Abfrage, Backlog).
 
+**Referenz (User-Upload `d90c4cd`):** `XP-Defaultscript/` = die 90 originalen
+RGSS1-Default-Scripts (Game_Battler, Scene_Battle, Window_InputNumber, ...) -
+Referenzmaterial für 19i (Zahleneingabe + Kampf) und spätere RGSS-Arbeit.
+Liegt außerhalb der Quellverzeichnisse, kein Test/Lint lädt sie.
+
 **Tests:** `tools/graphics_test.rb` (kopflos: Bitmap, Sprite-Sortierung/
 Viewport/dispose, Window-Cursor/-Zeichnen, $scene, reset!, passable?) +
 19h-Abschnitt in `rgss_test.rb` ($game_temp/$data_* gegen die echte
