@@ -35,6 +35,15 @@ module Rune
   end
 end
 
+module Rune
+  module Camera
+    @yaw = 0.0
+    class << self
+      attr_accessor :yaw
+    end
+  end
+end
+
 module Game
   @npcs = []
   class << self

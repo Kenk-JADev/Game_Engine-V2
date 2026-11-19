@@ -68,6 +68,13 @@ module Rune
       attr_accessor :yaw
     end
   end
+
+  module Camera
+    @yaw = 0.0
+    class << self
+      attr_accessor :yaw
+    end
+  end
 end
 
 # UI-Attrappe: Window/Sprite zeichnen über UI.panel/UI.text (ui.rb selbst

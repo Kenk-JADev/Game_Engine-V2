@@ -45,6 +45,13 @@ module Rune
     end
   end
 
+  module Camera
+    @yaw = 0.0
+    class << self
+      attr_accessor :yaw
+    end
+  end
+
   module Sound
     CALLS = []
     def self.play(name, volume = 1.0) = (CALLS << [:play, name, volume])

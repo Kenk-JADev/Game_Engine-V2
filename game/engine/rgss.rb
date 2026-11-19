@@ -308,7 +308,13 @@ module RGSS
     # XP Game_Character: Blickrichtung 2/4/6/8, Schrittzähler und
     # Encounter-Zähler (022 - Game_Player.rb). increase_steps wird von der
     # Schritt-Sound-Logik in Game.update gerufen.
-    attr_reader :steps, :encounter_count
+    def steps
+      @steps ||= 0
+    end
+
+    def encounter_count
+      @encounter_count ||= 0
+    end
 
     def direction
       @direction ||= 2
