@@ -20,6 +20,7 @@
 #include "editor/encounter_check.h"
 #include "editor/encounter_form.h"
 #include "editor/map_props_form.h"
+#include "editor/number_format.h"
 #include "editor/placement_form.h"
 
 #include <cmath>
@@ -139,11 +140,11 @@ void placement_form_tests() {
     const PlacementEdit edit = placement_form_prepare(original, PlacementKind::Npc, before, changed);
     const JsonValue* commands = edit.value.find("commands");
     check("NPC-Höhe, Dezimalkomma und Wegpunkte validiert", edit.ok && edit.changed &&
-          edit.value.find("y")->num == 1.75 && edit.value.find("path")->arr.size() == 2 &&
-          edit.value.find("path")->arr[0].arr[0].num == 1.5 &&
-          edit.value.find("path")->arr[0].arr[1].num == -2.25);
+          edit.value.find("y")->number() == 1.75 && edit.value.find("path")->arr.size() == 2 &&
+          edit.value.find("path")->arr[0].arr[0].number() == 1.5 &&
+          edit.value.find("path")->arr[0].arr[1].number() == -2.25);
     check("Textänderung erhält Leerzeilen, Zusatzfelder und weitere Befehle",
-          commands && commands->arr.size() == 2 && commands->arr[0].find("extra")->num == 42 &&
+          commands && commands->arr.size() == 2 && commands->arr[0].find("extra")->number() == 42 &&
           commands->arr[0].find("lines")->arr.size() == 3 &&
           commands->arr[0].find("lines")->arr[1].str.empty() &&
           commands->arr[1].find("cmd")->str == "switch");
@@ -196,18 +197,28 @@ void placement_form_tests() {
     check("neuer NPC bekommt eindeutigen Namen und bleibt ohne Wegpunkte stehen",
           npc.find("name")->str == "NPC 2" && npc.find("path")->arr.empty());
     check("Schild bekommt freie Event-ID, eigenen Namen und Textbefehl",
-          sign.find("id")->num == 2 && sign.find("name")->str == "Schild 2" &&
+          sign.find("id")->number() == 2 && sign.find("name")->str == "Schild 2" &&
           sign.find("visual")->str == "schild" && sign.find("trigger")->str == "action" &&
           sign.find("commands")->arr[0].find("cmd")->str == "text");
     check("Namenskollisionen zwischen Events und NPCs erkennbar",
           placement_name_used(map, "NPC 1", PlacementKind::Npc, 0) &&
           !placement_name_used(map, "Mara", PlacementKind::Npc, 0));
+    const JsonValue grosse_ids = json_parse(R"({"events":[{"id":9223372036854775808},{"id":1}]})");
+    check("Event-ID-Vergabe überläuft nicht bei grossen Alt-IDs",
+          placement_next_event_id(grosse_ids) == 2);
+    const JsonValue grosse_position = json_parse(R"({"name":"Test","x":9007199254740993,"z":0})");
+    const PlacementForm grosse_form = placement_form_read(grosse_position, PlacementKind::Npc);
+    changed = grosse_form; changed.name = "Neu";
+    const PlacementEdit grosse_edit = placement_form_prepare(grosse_position, PlacementKind::Npc, grosse_form, changed);
+    check("F5 zeigt Ganzzahl exakt und bewahrt sie bei Namensänderung",
+          grosse_form.x == "9007199254740993" && grosse_edit.ok &&
+          json_write(grosse_edit.value).find("\"x\": 9007199254740993") != std::string::npos);
     check("neues Prefab-Objekt hat den gewählten Typ", object.find("type")->str == "baum");
     const PlacementForm so = placement_form_read(object, PlacementKind::Object);
     changed = so; changed.y = "4"; changed.rotation = "90"; changed.type = "haus";
     const PlacementEdit eo = placement_form_prepare(object, PlacementKind::Object, so, changed);
-    check("Objekt mit Höhe und Grad-Drehung gespeichert", eo.ok && eo.value.find("y")->num == 4 &&
-          std::fabs(eo.value.find("rot")->num - 1.5707963267948966) < 1e-14 &&
+    check("Objekt mit Höhe und Grad-Drehung gespeichert", eo.ok && eo.value.find("y")->number() == 4 &&
+          std::fabs(eo.value.find("rot")->number() - 1.5707963267948966) < 1e-14 &&
           eo.value.find("type")->str == "haus");
     const JsonValue pages = json_parse(R"({"name":"Schild","x":0,"z":0,"visual":"schild",
        "pages":[{"commands":[{"cmd":"text","lines":["A"]}]},
@@ -224,7 +235,7 @@ void placement_form_tests() {
     check("alle drei Platzierungsarten überleben einen Karten-Roundtrip",
           roundtrip.find("npcs")->arr[0].find("commands")->arr.size() == 2 &&
           roundtrip.find("events")->arr[2].find("visual")->str == "schild" &&
-          roundtrip.find("objects")->arr[1].find("y")->num == 4);
+          roundtrip.find("objects")->arr[1].find("y")->number() == 4);
     const JsonValue bad_heights = json_parse(R"({"objects":[{"y":"hoch"}],
         "events":[{"y":null},{"y":[]}],"npcs":[{"y":1},{"y":false}]})");
     std::vector<EncounterFinding> heights;
@@ -272,7 +283,7 @@ void encounter_form_tests(const std::string& wurzel) {
         const EncounterEdit step = encounter_form_prepare(old, form, form.troops, "45", false, true);
         check("nur Schrittzahl ändern bewahrt Liste und unbekannte Eigenschaften",
               step.ok && step.changed && !step.troops_changed && !step.replaces_invalid &&
-              step.value.find("steps")->is_int && step.value.find("steps")->num == 45 &&
+              step.value.find("steps")->is_int && step.value.find("steps")->number() == 45 &&
               json_write(*step.value.find("troops")) == json_write(*old->find("troops")) &&
               step.value.find("extra")->find("wetter")->str == "Regen");
         check("Vorbereitung verändert die Karte nicht", json_write(root) == before_json);
@@ -285,7 +296,7 @@ void encounter_form_tests(const std::string& wurzel) {
               ids->arr[0].str == "waldweg" && ids->arr[1].str == " banditen " &&
               ids->arr[2].str == "waldweg" && ids->arr[3].str == "trupp_ä");
         check("nur Liste ändern bewahrt 30.0 und Zusatzfelder",
-              list.value.find("steps")->num == 30 && !list.value.find("steps")->is_int &&
+              list.value.find("steps")->number() == 30 && !list.value.find("steps")->is_int &&
               list.value.find("extra")->find("wetter")->str == "Regen");
         root.set("encounters", list.value);
         const JsonValue saved = json_parse(json_write(root));
@@ -293,14 +304,14 @@ void encounter_form_tests(const std::string& wurzel) {
               saved.find("encounters")->find("troops")->arr.size() == 4 &&
               saved.find("encounters")->find("extra")->find("wetter")->str == "Regen" &&
               saved.find("objects")->arr[0].find("type")->str == "haus" &&
-              saved.find("events")->arr[0].find("id")->num == 1);
+              saved.find("events")->arr[0].find("id")->number() == 1);
 
         const EncounterForm again = encounter_form_read(root.find("encounters"));
         const EncounterEdit empty = encounter_form_prepare(root.find("encounters"), again,
                                                             "\r\n  \t\n", again.steps, true, false);
         check("leere Liste deaktiviert Kämpfe ohne Zusatzdaten zu entfernen",
               empty.ok && empty.changed && empty.value.find("troops")->is_arr() &&
-              empty.value.find("troops")->arr.empty() && empty.value.find("steps")->num == 30 &&
+              empty.value.find("troops")->arr.empty() && empty.value.find("steps")->number() == 30 &&
               empty.value.find("extra") != nullptr);
     }
     {
@@ -318,7 +329,7 @@ void encounter_form_tests(const std::string& wurzel) {
               json_parse(json_write(root)).find("objects")->arr.size() == 1);
         const EncounterEdit step = encounter_form_prepare(nullptr, form, "", "21", false, true);
         check("Schrittzahl allein anlegen aktiviert keine Begegnungen",
-              step.ok && step.changed && step.value.find("steps")->num == 21 &&
+              step.ok && step.changed && step.value.find("steps")->number() == 21 &&
               step.value.find("troops") == nullptr);
     }
     {
@@ -358,7 +369,7 @@ void encounter_form_tests(const std::string& wurzel) {
               !invalid.ok && !invalid.changed && json_write(original) == snapshot);
         const EncounterEdit defaults = encounter_form_prepare(&original, form, form.troops, "", false, true);
         check("Schrittzahl leeren setzt Default 30",
-              defaults.ok && defaults.value.find("steps")->num == 30);
+              defaults.ok && defaults.value.find("steps")->number() == 30);
         const EncounterEdit maximum = encounter_form_prepare(&original, form, form.troops,
                                                                "9007199254740991", false, true);
         check("Grenzwert bleibt beim JSON-Speichern exakt",
@@ -393,12 +404,12 @@ void encounter_form_tests(const std::string& wurzel) {
                                                                 true, false);
         check("ungültige steps bleiben bei Listenänderung erhalten",
               fs.bad_steps && list_only.ok && !list_only.replaces_invalid &&
-              list_only.value.find("steps")->num == -5);
+              list_only.value.find("steps")->number() == -5);
         const EncounterEdit replace_steps = encounter_form_prepare(&invalid_steps, fs, fs.troops, "30",
                                                                     false, true);
         check("ungültige steps nur nach Bestätigung ersetzen",
               replace_steps.ok && replace_steps.replaces_invalid &&
-              replace_steps.value.find("steps")->num == 30);
+              replace_steps.value.find("steps")->number() == 30);
         const JsonValue too_large = json_parse(R"({"steps":9007199254740992})");
         check("bestehende zu große Zahl wird als nicht darstellbar markiert",
               encounter_form_read(&too_large).bad_steps);
@@ -441,7 +452,7 @@ void encounter_form_tests(const std::string& wurzel) {
             const JsonValue roundtrip = json_parse(json_write(map));
             const auto validation = encounter_funde(json_write(roundtrip));
             check("F2-Daten der Demo bestehen JSON-Roundtrip und Editorprüfung",
-                  validation.empty() && roundtrip.find("encounters")->find("steps")->num == 12 &&
+                  validation.empty() && roundtrip.find("encounters")->find("steps")->number() == 12 &&
                   roundtrip.find("encounters")->find("troops")->arr[2].str == "brunnen");
         }
     }
@@ -477,11 +488,11 @@ void map_props_form_tests() {
     root.set("encounters", only_enc.value);
     const JsonValue saved = json_parse(json_write(root));
     check("nur Begegnungen ändern bewahrt Gelände, Nebel, Wetter und Zonen exakt",
-          saved.find("terrain")->find("width")->num == 240.25 &&
+          saved.find("terrain")->find("width")->number() == 240.25 &&
           saved.find("terrain")->find("resolution")->is_int == false &&
-          saved.find("fog")->find("far")->num == 123.456 &&
-          saved.find("weather")->find("intensity")->num == 0.55 &&
-          saved.find("blocked")->arr[0].find("x")->num == 1.234567890123 &&
+          saved.find("fog")->find("far")->number() == 123.456 &&
+          saved.find("weather")->find("intensity")->number() == 0.55 &&
+          saved.find("blocked")->arr[0].find("x")->number() == 1.234567890123 &&
           saved.find("blocked")->arr[0].find("extra")->str == "Wand");
 
     const std::string original_terrain = json_write(*root.find("terrain"));
@@ -498,8 +509,8 @@ void map_props_form_tests() {
     changes = map_props_apply(root, before, after);
     const JsonValue* terrain = root.find("terrain");
     check("Terrain nur gezielt ändern und übrige Präzision erhalten",
-          changes.changed && changes.terrain && !changes.atmosphere && terrain->find("width")->num == 300 &&
-          terrain->find("height")->num == 120.75 && terrain->find("amplitude")->num == 2.345 &&
+          changes.changed && changes.terrain && !changes.atmosphere && terrain->find("width")->number() == 300 &&
+          terrain->find("height")->number() == 120.75 && terrain->find("amplitude")->number() == 2.345 &&
           !terrain->find("resolution")->is_int && terrain->find("extra")->str == "Berg");
 
     after = before;
@@ -508,12 +519,12 @@ void map_props_form_tests() {
     changes = map_props_apply(root, before, after);
     check("Atmosphäre/Wetter behalten nicht bearbeitete Schlüssel",
           changes.changed && changes.atmosphere && root.find("fog")->find("on")->b &&
-          root.find("fog")->find("color")->num == 0xBFD8EC &&
-          root.find("fog")->find("far")->num == 123.456 && root.find("fog")->find("extra")->str == "Nebel" &&
-          root.find("panorama")->find("color")->num == 0x123456 &&
+          root.find("fog")->find("color")->number() == 0xBFD8EC &&
+          root.find("fog")->find("far")->number() == 123.456 && root.find("fog")->find("extra")->str == "Nebel" &&
+          root.find("panorama")->find("color")->number() == 0x123456 &&
           root.find("panorama")->find("extra")->str == "Himmel" &&
           root.find("weather")->find("type")->str == "schnee" &&
-          root.find("weather")->find("intensity")->num == 0.55 &&
+          root.find("weather")->find("intensity")->number() == 0.55 &&
           root.find("weather")->find("extra")->str == "Wolken" && root.find("note")->str == "Hallo");
     check("Farbparser wie im übrigen Editor",
           parse_hex_color("0X12Ab56") == 0x12AB56 && parse_hex_color("kaputt") == 0);
@@ -523,7 +534,7 @@ void map_props_form_tests() {
     changes = map_props_apply(root, before, after);
     check("nur explizit bearbeitete Block-Zonen neu parsen",
           changes.changed && root.find("blocked")->arr.size() == 1 &&
-          root.find("blocked")->arr[0].find("x")->num == 3);
+          root.find("blocked")->arr[0].find("x")->number() == 3);
     before.blocked = after.blocked;
     after.blocked.clear();
     changes = map_props_apply(root, before, after);
@@ -622,6 +633,10 @@ int main(int argc, char** argv) {
     check("null-Fragment wirft", wirft("nul"));
     check("Müll wirft", wirft("json"));
     check("Zeichen hinter dem Wert wirft", wirft("1 2"));
+    for (const char* text : {"+1", "01", "-01", "-", ".1", "1.", "1e", "1e+", "1e-", "1.2.3"}) {
+        const std::string name = std::string("ungültiger Zahlentoken wird abgelehnt: ") + text;
+        check(name.c_str(), wirft(text));
+    }
     check("gültige Werte werfen nicht", !wirft("{}") && !wirft("[]") && !wirft("0") &&
                                          !wirft("-1.5e3") && !wirft("true") && !wirft("null"));
     {
@@ -713,6 +728,67 @@ int main(int argc, char** argv) {
         check("NaN wird zu null (Datei bleibt lesbar)",
               out.find("\"kaputt\": null") != std::string::npos);
         check("NaN-Ausgabe ist parsebar", json_parse(out).find("ok")->number() == 1.5);
+    }
+
+    std::printf("== JSON: exakte Ganzzahlen und Zahlenanzeige (19o.1) ==\n");
+    {
+        const std::vector<std::string> tokens = {
+            "0", "1", "-1", "9007199254740991", "9007199254740992", "9007199254740993",
+            "-9007199254740993", "9223372036854775807", "9223372036854775808",
+            "-9223372036854775808", "-9223372036854775809", "18446744073709551615",
+            "123456789012345678901234567890123456789012345678901234567890",
+            std::string(400, '9'), "-" + std::string(400, '9')
+        };
+        for (const std::string& token : tokens) {
+            const JsonValue value = json_parse(token);
+            const std::string out = json_write(value);
+            const std::string name = "Ganzzahl exakt und idempotent: " +
+                                     (token.size() > 65 ? token.substr(0, 30) + "..." : token);
+            check(name.c_str(), value.is_int && value.integer_text() == token &&
+                  out == token + "\n" && json_write(json_parse(out)) == out);
+        }
+        check("negative ganzzahlige Null wie Ruby normalisiert", json_write(json_parse("-0")) == "0\n");
+        check("sehr grosse Ganzzahl bleibt trotz double-Unendlich erhalten",
+              !std::isfinite(json_parse(std::string(400, '9')).number()) &&
+              json_write(json_parse(std::string(400, '9'))) == std::string(400, '9') + "\n");
+        JsonValue root = json_parse(R"({"a":9007199254740993,"nested":[-9223372036854775809,{"n":42}]})");
+        JsonValue copy = root;
+        root.set("andere_aenderung", JsonValue::make_str("neu"));
+        root.find("nested")->arr[1].set("n", JsonValue::make_num(0.5));
+        const std::string out = json_write(root);
+        check("Kopie und unberührte verschachtelte Zahlen bleiben exakt",
+              out.find("9007199254740993") != std::string::npos &&
+              out.find("-9223372036854775809") != std::string::npos &&
+              json_write(copy).find("\"n\": 42") != std::string::npos);
+        root.set("a", JsonValue::make_num(3, true));
+        check("expliziter Ersatz verwirft den ursprünglichen Token",
+              json_write(root).find("\"a\": 3,") != std::string::npos);
+        check("neu erzeugtes 2^63 wird ohne undefinierten int-Cast geschrieben",
+              json_write(JsonValue::make_num(9223372036854775808.0, true)) == "9223372036854775808\n");
+        check("negatives neues 2^63 bleibt Ganzzahl",
+              json_write(JsonValue::make_num(-9223372036854775808.0, true)) == "-9223372036854775808\n");
+        const std::vector<std::pair<std::string, std::string>> increment = {
+            {"0", "1"}, {"-1", "0"}, {"-10", "-9"}, {"99", "100"},
+            {"9007199254740993", "9007199254740994"},
+            {"-9007199254740993", "-9007199254740992"},
+            {std::string(400, '9'), "1" + std::string(400, '0')}
+        };
+        for (const auto& [before, after] : increment) {
+            JsonValue n = json_parse(before);
+            n.increment();
+            const std::string name = "exaktes Inkrement: " +
+                                     (before.size() > 65 ? before.substr(0, 30) + "..." : before);
+            check(name.c_str(), json_write(n) == after + "\n");
+        }
+        JsonValue kommazahl = json_parse("1.5");
+        kommazahl.increment();
+        check("Kommazahl-Inkrement bleibt Kommazahl", json_write(kommazahl) == "2.5\n");
+        check("Integeranzeige bewahrt Endnullen",
+              rune::editor::editor_number_text(100, 0) == "100" &&
+              rune::editor::editor_number_text(-20, 0) == "-20");
+        check("Anzeige kürzt nur Kommanullen",
+              rune::editor::editor_number_text(10.5, 2) == "10.5" &&
+              rune::editor::editor_number_text(10, 2) == "10");
     }
 
     std::printf("== Editor: Zufallskampf-Prüfung ==\n");

@@ -258,7 +258,10 @@ Bedarf eigene Gegner und Truppen in ihrer Datenbank.
 
 Regeln: Editor und Spiel schreiben beide `JSON.pretty_generate`-Format (LF,
 2 Leerzeichen, kürzeste exakte Zahlendarstellung) — deshalb wirft Speichern
-keine Diff-Flut. Unbekannte Schlüssel bleiben beim Speichern erhalten.
+keine Diff-Flut. Unbekannte Schlüssel und große vorhandene JSON-Ganzzahlen
+bleiben beim reinen Laden/Speichern erhalten. Numerische Berechnungen nutzen
+weiterhin double; einige ältere Formulare können bei Bearbeitung andere
+angezeigte Felder runden (siehe Backlog).
 Spielstände liegen in `projekte/<name>/saves/slot1..3.json`.
 
 ## Dokumentation

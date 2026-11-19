@@ -21,17 +21,18 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 ---
 
 ## Offen
-### [Editor] Große JSON-Ganzzahlen können beim Laden gerundet werden — offen (Daten-Treue)
-- Symptom: Der C++-JSON-Parser speichert Zahlen als `double`; z. B. kann
-  `9007199254740993` schon beim Laden zu `9007199254740992` werden und beim
-  Speichern geändert zurückkommen, auch ohne absichtliche Feldänderung.
-- Analyse: Dies betrifft grundsätzlich Karten/JSON, nicht nur Encounters.
-  19m begrenzt neu eingegebene Encounter-Schrittzahlen auf 2^53−1 und
-  überschreibt unberührte Werte nicht zusätzlich; der Parser selbst kann
-  bestehende übergroße Ganzzahlen aber noch nicht verlustfrei halten.
-- Betroffene Stellen: `src/editor/json.{h,cpp}`, `src/editor/encounter_form.h`,
-  `tools/json_test.cpp`, `tools/json_bridge_check.rb`.
-- Gefunden in: Etappe 19m.
+### [Editor] F6/F9 und Objektformular schreiben unberührte Felder um — offen (Daten-Treue)
+- Symptom: Event- und Datenbankformulare sowie das Objekt-Eigenschaftsfeld
+  schreiben bei Übernahme/Selektion auch unveränderte, gerundet angezeigte
+  Felder zurück. So können genaue Koordinaten und große Ganzzahlen trotz
+  verlustfreiem JSON-Baum verändert werden. F9 kann Goldänderungen ohne
+  ausgewählten Eintrag verlieren. F6 migriert außerdem alte Event-Seiten.
+- Analyse: Ursprünglich beschnitt `ev_num_str` bei Präzision 0 sogar die
+  Endnullen (100 → 1); dies ist in 19o.1 behoben. F5/F2 ändern bereits nur
+  berührte Felder; F6/F9 und das Objektformular brauchen denselben Schutz.
+- Betroffene Stellen: `src/editor/editor_main.cpp` (`ev_apply_event_fields`,
+  `ev_apply_page_fields`, `db_apply`, `apply_property_fields`).
+- Gefunden in: Etappe 19o.1.
 
 ### [Editor] Bearbeitete Block-Zonen verlieren Zusatzfelder — offen (Daten-Treue)
 - Symptom: Beim tatsächlichen Editieren der F2-Blockzonenliste werden
@@ -206,6 +207,20 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Etappe 19a.
 
 ## Erledigt
+### [Editor] Große JSON-Ganzzahlen beim Laden und Speichern gerundet — erledigt (19o.1)
+- `JsonValue` bewahrt Dezimalstellen beliebig großer Integer-Tokens,
+  einschließlich negativer Zahlen und solcher außerhalb des double-Bereichs.
+  Geänderte Werte ersetzen ihren Token, Duplizieren inkrementiert ganze
+  Koordinaten exakt; die numerische Rechensicht bleibt eine double-Näherung.
+  F6 kann allerdings vor dem Duplizieren noch die Formularanzeige zurück-
+  schreiben (siehe offener Formulareintrag).
+- JSON-Zahlengrammatik wird strikt geprüft; neue numerische Ganzzahlen werden
+  ohne überlaufenden long-long-Cast geschrieben. Ruby-Brücke prüft Typ und
+  Inhalt mit großen synthetischen Integern. Rundende GUI-Formulare bleiben
+  ein eigener offener Eintrag; Encounter-Eingabe weiterhin auf 2^53−1 begrenzt.
+- Betroffene Stellen: `src/editor/json.{h,cpp}`, `number_format.h`,
+  `tools/json_test.cpp`, `tools/json_bridge_check.rb`.
+
 ### [Editor] NPC-Editor / Platzier-Tool mit X/Y/Z und Text — erledigt (19n)
 - F5: NPCs, Schild-Events und Prefab-Objekte anlegen, bearbeiten und
   löschen; Wegpunkte, Text, Bodenversatz, letzte Cursorposition und

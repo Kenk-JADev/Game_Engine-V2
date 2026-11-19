@@ -12,7 +12,9 @@
 #  Reihenfolge kippt, Umlaute werden zu Escapes).
 #
 #  Prüft für jede JSON-Datei des Repos:
-#    1. SEMANTIK (hart): JSON.parse(original) == JSON.parse(vom C++ geschrieben)
+#    1. SEMANTIK (hart): Inhalt UND Typen aus Ruby JSON.parse sind identisch.
+#       Auch generierte Beispiele mit Ganzzahlen weit jenseits von 2^53 sind
+#       dabei; Ruby-Integer sind beliebig groß (anders als C++-double).
 #    2. FORMAT   (Info): bytegleich zu JSON.pretty_generate + Zeilenumbruch?
 #                        Mit --strict-format wird auch das zum Fehlschlag.
 #
@@ -97,8 +99,15 @@ format_abweichung = 0
 laufzeit_fehler   = 0
 
 Dir.mktmpdir('rune_json_bruecke') do |tmp|
-  dateien.each_with_index do |pfad, i|
-    rel = pfad.sub(ROOT + File::SEPARATOR, '').gsub(File::SEPARATOR, '/')
+  beispiel = File.join(tmp, 'grosse_ganzzahlen.json')
+  zahlen = { 'int53' => 9_007_199_254_740_993, 'grenze64' => 9_223_372_036_854_775_808,
+             'negativ' => -18_446_744_073_709_551_615,
+             'sehr_gross' => 10**399 + 12345, 'null' => 0,
+             'float' => 42.0, 'geschachtelt' => [{ 'extra' => -(10**399 + 7) }] }
+  File.write(beispiel, JSON.pretty_generate(zahlen) + "\n", encoding: 'utf-8')
+  (dateien + [beispiel]).each_with_index do |pfad, i|
+    rel = pfad == beispiel ? '[synthetische grosse Ganzzahlen]' :
+          pfad.sub(ROOT + File::SEPARATOR, '').gsub(File::SEPARATOR, '/')
     neu = File.join(tmp, format('%03d_%s', i, File.basename(rel)))
     out, status = Open3.capture2e(binary, '--roundtrip', pfad, neu)
 
@@ -117,10 +126,10 @@ Dir.mktmpdir('rune_json_bruecke') do |tmp|
       next
     end
 
-    if links != rechts
+    if (abweichung = erste_abweichung(links, rechts))
       semantik_fehler += 1
-      puts "  FAIL #{rel}: Inhalt nach C++-Roundtrip anders"
-      puts "    #{erste_abweichung(links, rechts)}"
+      puts "  FAIL #{rel}: Inhalt oder Typ nach C++-Roundtrip anders"
+      puts "    #{abweichung}"
       next
     end
 
@@ -138,7 +147,7 @@ end
 
 puts '-' * 68
 puts format('Ergebnis: %d Datei(en), %d Semantik-Fehler, %d Format-Abweichung(en), %d Laufzeit-Fehler',
-            dateien.size, semantik_fehler, format_abweichung, laufzeit_fehler)
+            dateien.size + 1, semantik_fehler, format_abweichung, laufzeit_fehler)
 
 fehlschlag = semantik_fehler.positive? || laufzeit_fehler.positive? ||
              (strict_format && format_abweichung.positive?)

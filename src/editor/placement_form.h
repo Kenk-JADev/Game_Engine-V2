@@ -56,8 +56,10 @@ inline std::string placement_num_text(double n) {
 inline std::string placement_number_field(const JsonValue& o, const char* key, double fallback) {
     const JsonValue* v = o.find(key);
     if (!v || v->is_null()) return placement_num_text(fallback);
-    if (!v->is_num() || !std::isfinite(v->num)) return "ungültig";
-    return placement_num_text(v->num);
+    if (!v->is_num()) return "ungültig";
+    if (v->is_int && !v->integer_text().empty()) return v->integer_text();
+    if (!std::isfinite(v->number())) return "ungültig";
+    return placement_num_text(v->number());
 }
 
 // Ein Zahlenfeld darf Dezimalkomma oder Dezimalpunkt benutzen. Es muss
@@ -129,8 +131,8 @@ inline JsonValue placement_path_merge(const JsonValue* old, JsonValue parsed) {
             const JsonValue& previous = old->arr[i];
             if (used[i] || !previous.is_arr() || previous.arr.size() != 2 ||
                 !previous.arr[0].is_num() || !previous.arr[1].is_num()) continue;
-            if (same(previous.arr[0].num, point.arr[0].num) &&
-                same(previous.arr[1].num, point.arr[1].num)) {
+            if (same(previous.arr[0].number(), point.arr[0].number()) &&
+                same(previous.arr[1].number(), point.arr[1].number())) {
                 point = previous;
                 used[i] = true;
                 break;
@@ -149,12 +151,12 @@ inline std::string placement_path_text(const JsonValue* path, bool& valid) {
         if (i) result += "\r\n";
         const JsonValue& p = path->arr[i];
         if (!p.is_arr() || p.arr.size() != 2 || !p.arr[0].is_num() ||
-            !p.arr[1].is_num() || !std::isfinite(p.arr[0].num) ||
-            !std::isfinite(p.arr[1].num)) {
+            !p.arr[1].is_num() || !std::isfinite(p.arr[0].number()) ||
+            !std::isfinite(p.arr[1].number())) {
             valid = false;
             result += "[ungültiger Wegpunkt]";
         } else {
-            result += placement_num_text(p.arr[0].num) + "; " + placement_num_text(p.arr[1].num);
+            result += placement_num_text(p.arr[0].number()) + "; " + placement_num_text(p.arr[1].number());
         }
     }
     return result;
@@ -229,8 +231,8 @@ inline PlacementForm placement_form_read(const JsonValue& o, PlacementKind kind)
     const JsonValue* rot = o.find("rot");
     constexpr double to_degrees = 180.0 / 3.14159265358979323846;
     if (!rot || rot->is_null()) f.rotation = "0";
-    else if (!rot->is_num() || !std::isfinite(rot->num)) f.rotation = "ungültig";
-    else f.rotation = placement_num_text(rot->num * to_degrees);
+    else if (!rot->is_num() || !std::isfinite(rot->number())) f.rotation = "ungültig";
+    else f.rotation = placement_num_text(rot->number() * to_degrees);
     f.path = placement_path_text(o.find("path"), f.path_valid);
     if (kind != PlacementKind::Object) f.text = placement_text_read(o, kind, f.text_editable);
     return f;
@@ -333,7 +335,7 @@ inline int placement_next_event_id(const JsonValue& root) {
         if (events && events->is_arr()) {
             for (const JsonValue& e : events->arr) {
                 const JsonValue* id = e.is_obj() ? e.find("id") : nullptr;
-                if (id && id->is_num() && id->num == static_cast<double>(candidate)) {
+                if (id && id->is_num() && id->number() == static_cast<double>(candidate)) {
                     used = true;
                     break;
                 }
@@ -372,7 +374,7 @@ inline void issue_scan_placement_heights(const JsonValue& root, const std::strin
         for (size_t i = 0; i < list->arr.size(); ++i) {
             const JsonValue& item = list->arr[i];
             const JsonValue* y = item.is_obj() ? item.find("y") : nullptr;
-            if (y && !y->is_null() && (!y->is_num() || !std::isfinite(y->num))) {
+            if (y && !y->is_null() && (!y->is_num() || !std::isfinite(y->number()))) {
                 report(1, map_name + " " + key + " #" + std::to_string(i + 1),
                        "'y' muss eine endliche Zahl sein (Versatz zum Gelände)");
             }

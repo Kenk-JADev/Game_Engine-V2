@@ -166,28 +166,38 @@ struct Parser {
         if (eat('f')) { if (p + 3 < end && p[0] == 'a' && p[1] == 'l' && p[2] == 's' && p[3] == 'e') { p += 4; return JsonValue::make_bool(false); } fail("bad false"); }
         if (eat('n')) { if (p + 2 < end && p[0] == 'u' && p[1] == 'l' && p[2] == 'l') { p += 3; return JsonValue{}; } fail("bad null"); }
 
-        // Zahl
+        // JSON-Zahlengrammatik strikt prüfen. Sonst würde der gespeicherte
+        // Ganzzahl-Token z. B. '+1' oder '01' als ungültiges JSON ausgeben.
         {
-            const char* start = p;
-            if (p < end && (*p == '-' || *p == '+')) ++p;
-            bool is_int = true;
-            while (p < end) {
-                const char c = *p;
-                if (std::isdigit(static_cast<unsigned char>(c))) { ++p; continue; }
-                if (c == '.' || c == 'e' || c == 'E' ||
-                    ((c == '-' || c == '+') && p > start &&
-                     (p[-1] == 'e' || p[-1] == 'E'))) {
-                    is_int = false;
-                    ++p;
-                    continue;
-                }
-                break;
+            const char* first = p;
+            eat('-');
+            if (p >= end) fail("Zahl ohne Ziffern");
+            if (eat('0')) {
+                if (p < end && std::isdigit(static_cast<unsigned char>(*p)))
+                    fail("führende Null in Zahl");
+            } else if (*p >= '1' && *p <= '9') {
+                while (p < end && std::isdigit(static_cast<unsigned char>(*p))) ++p;
+            } else {
+                fail("ungültige Zahl");
             }
-            if (p == start) fail("ungültiges Zeichen");
-            JsonValue v; v.type = JsonValue::Type::Num;
-            v.is_int = is_int;
-            v.num = std::strtod(std::string(start, p).c_str(), nullptr);
-            return v;
+            bool is_int = true;
+            if (eat('.')) {
+                is_int = false;
+                if (p >= end || !std::isdigit(static_cast<unsigned char>(*p)))
+                    fail("Nachkommaziffer fehlt");
+                while (p < end && std::isdigit(static_cast<unsigned char>(*p))) ++p;
+            }
+            if (p < end && (*p == 'e' || *p == 'E')) {
+                is_int = false;
+                ++p;
+                if (p < end && (*p == '+' || *p == '-')) ++p;
+                if (p >= end || !std::isdigit(static_cast<unsigned char>(*p)))
+                    fail("Exponentenziffer fehlt");
+                while (p < end && std::isdigit(static_cast<unsigned char>(*p))) ++p;
+            }
+            const std::string token(first, p);
+            if (is_int) return JsonValue::make_integer(token);
+            return JsonValue::make_num(std::strtod(token.c_str(), nullptr), false);
         }
     }
 };
@@ -217,7 +227,10 @@ void write_string(const std::string& s, std::string& out) {
 }
 
 // Zahl schreiben.
-//  - Ganzzahlen ohne Nachkomma (1 statt 1.0), solange sie in long long passen.
+//  - Ursprüngliche Ganzzahlen einschließlich sehr grosser Zahlen werden aus
+//    ihrem Originaltoken geschrieben, nicht aus der double-Näherung.
+//  - Neu als Ganzzahl erzeugte double-Werte werden ohne begrenzenden oder
+//    undefinierten long-long-Cast in Festkomma geschrieben.
 //  - Kommazahlen in der KÜRZESTEN Form, die den Wert exakt wiederherstellt
 //    (1..17 signifikante Stellen, Vergleich per strtod). Damit schreibt der
 //    Editor dieselben Bytes wie Ruby (JSON.pretty_generate). Der alte feste
@@ -229,24 +242,26 @@ void write_string(const std::string& s, std::string& out) {
 //    Datei lesbar bleibt und der Karten-Scan (MapCheck/Probleme-Dialog) den
 //    kaputten Wert meldet statt ihn zu verschlucken.
 void write_number(const JsonValue& v, std::string& out) {
-    if (!std::isfinite(v.num)) {
+    if (v.is_int && !v.integer_text().empty()) {
+        out += v.integer_text();
+        return;
+    }
+    const double number = v.number();
+    if (!std::isfinite(number)) {
         out += "null";
         return;
     }
     if (v.is_int) {
-        constexpr double ll_min = static_cast<double>(std::numeric_limits<long long>::min());
-        constexpr double ll_max = static_cast<double>(std::numeric_limits<long long>::max());
-        if (v.num >= ll_min && v.num <= ll_max) {
-            char buf[32];
-            std::snprintf(buf, sizeof(buf), "%lld", static_cast<long long>(v.num));
-            out += buf;
-            return;
-        }
-        // Zu gross für long long: als Kommazahl schreiben (Wert bleibt erhalten).
+        if (number == 0.0) { out += "0"; return; }
+        // DBL_MAX braucht höchstens 309 Stellen, plus Vorzeichen und NUL.
+        char buf[std::numeric_limits<double>::max_exponent10 + 32];
+        std::snprintf(buf, sizeof(buf), "%.0f", std::trunc(number));
+        out += buf;
+        return;
     }
 
-    if (v.num == 0.0) {
-        out += std::signbit(v.num) ? "-0.0" : "0.0";
+    if (number == 0.0) {
+        out += std::signbit(number) ? "-0.0" : "0.0";
         return;
     }
 
@@ -254,8 +269,8 @@ void write_number(const JsonValue& v, std::string& out) {
     char buf[64];
     int prec = 17;
     for (int p = 1; p <= 17; ++p) {
-        std::snprintf(buf, sizeof(buf), "%.*g", p, v.num);
-        if (std::strtod(buf, nullptr) == v.num) { prec = p; break; }
+        std::snprintf(buf, sizeof(buf), "%.*g", p, number);
+        if (std::strtod(buf, nullptr) == number) { prec = p; break; }
     }
     std::string text(buf);
 
@@ -264,12 +279,12 @@ void write_number(const JsonValue& v, std::string& out) {
     //    Festkomma (240.0). Für Karten- und Systemdaten ist Festkomma das,
     //    was beide Seiten schreiben — also bei Exponent [-4, 16) umformatieren,
     //    aber nur, wenn der Wert dabei exakt bleibt.
-    const int exp10 = static_cast<int>(std::floor(std::log10(std::fabs(v.num))));
+    const int exp10 = static_cast<int>(std::floor(std::log10(std::fabs(number))));
     if (exp10 >= -4 && exp10 < 16) {
         char fest[64];
         const int decimals = prec - 1 - exp10;
-        std::snprintf(fest, sizeof(fest), "%.*f", decimals > 0 ? decimals : 0, v.num);
-        if (std::strtod(fest, nullptr) == v.num) text = fest;
+        std::snprintf(fest, sizeof(fest), "%.*f", decimals > 0 ? decimals : 0, number);
+        if (std::strtod(fest, nullptr) == number) text = fest;
     }
 
     // Kommazahlen optisch als solche kennzeichnen (wie Ruby: 0.0 statt 0).
@@ -323,6 +338,44 @@ void write_value(const JsonValue& v, int indent, std::string& out) {
 }
 
 } // namespace
+
+JsonValue JsonValue::make_integer(std::string decimal) {
+    const size_t first = !decimal.empty() && decimal[0] == '-' ? 1 : 0;
+    if (first == decimal.size() || (decimal[first] == '0' && first + 1 != decimal.size()))
+        throw std::runtime_error("ungültiger JSON-Ganzzahl-Token");
+    for (size_t i = first; i < decimal.size(); ++i) {
+        if (decimal[i] < '0' || decimal[i] > '9')
+            throw std::runtime_error("ungültiger JSON-Ganzzahl-Token");
+    }
+    // Ruby JSON.parse('-0') liefert die Ganzzahl 0, nicht negative Null.
+    if (decimal == "-0") decimal = "0";
+    JsonValue value = make_num(std::strtod(decimal.c_str(), nullptr), true);
+    value.integer_text_ = std::move(decimal);
+    return value;
+}
+
+void JsonValue::increment() {
+    if (!is_num()) return;
+    if (!is_int || integer_text_.empty()) {
+        *this = make_num(num_ + 1.0, is_int);
+        return;
+    }
+    std::string text = integer_text_;
+    if (text[0] != '-') {
+        size_t i = text.size();
+        while (i > 0 && text[i - 1] == '9') text[--i] = '0';
+        if (i == 0) text.insert(text.begin(), '1');
+        else ++text[i - 1];
+    } else {
+        // -N + 1 = -(N-1), danach ggf. eine führende Null entfernen.
+        size_t i = text.size();
+        while (i > 1 && text[i - 1] == '0') text[--i] = '9';
+        --text[i - 1];
+        if (text[1] == '0' && text.size() > 2) text.erase(1, 1);
+        if (text == "-0") text = "0";
+    }
+    *this = make_integer(std::move(text));
+}
 
 JsonValue json_parse(const std::string& text) {
     Parser ps;

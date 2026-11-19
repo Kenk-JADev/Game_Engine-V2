@@ -1711,6 +1711,25 @@ Demo-Datenbank, JSON-Roundtrips und unberührte allgemeine Eigenschaften.
 CI baut/linkt den Win32-Editor, hat aber keine GPU/Fenster für einen echten
 grafischen Live-Test (siehe Backlog und Handoff).
 
+## Exakte JSON-Ganzzahlen (Etappe 19o.1)
+
+Ganzzahlige JSON-Tokens werden in `JsonValue` zusätzlich zur double-Näherung
+als validierte Dezimalzeichenfolge gehalten und beim Schreiben unverändert
+ausgegeben (auch außerhalb des double-Bereichs). `number()` liefert für
+Berechnungen weiterhin nur die Näherung; der Wert ist privat, Ersetzen
+erfolgt über `make_num`/`make_integer`, `increment()` arbeitet für gelesene
+Ganzzahlen exakt. Das sichere Inkrement nutzen Objekt-/Event-Duplizieren;
+F6 kann vorher aber noch die gerundete Formularanzeige zurückschreiben.
+Für neue `make_num(..., true)`-Werte schreibt der Generator die ganzzahlige
+double-Näherung ohne int64-Cast. JSON-Zahlen werden streng nach Grammatik
+eingelesen; `-0` als Ganzzahl wird wie in Ruby zu `0` normalisiert.
+
+Tests decken 2^53, 2^63, negative und 400-stellige Werte, Kopien, Änderungen,
+Inkremente und ungültige Tokens ab. Die Ruby-JSON-Brücke vergleicht außerdem
+Typen und synthetische große Zahlen. Grenzen: Kommazahlen/Rechenoperationen
+bleiben double-basiert; F6/F9 und das alte Objektformular können aktuell
+bei Übernahme unberührte angezeigte Felder runden (siehe Backlog).
+
 ## NPCs, Schilder und Objekte im Platzier-Editor (Etappe 19n)
 
 F5 bzw. „Events → NPCs, Schilder und Objekte“ öffnet einen modalen Dialog

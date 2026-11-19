@@ -46,6 +46,7 @@
 #include "editor/encounter_check.h"
 #include "editor/encounter_form.h"
 #include "editor/map_props_form.h"
+#include "editor/number_format.h"
 #include "editor/placement_form.h"
 #include "gfx/camera.h"      // nur fuer Kamera-Konstanten, falls noetig
 #include "gfx/renderer.h"
@@ -2350,8 +2351,8 @@ void duplicate_selected() {
     JsonValue copy = g.objects->arr[g.sel_obj];
     JsonValue* x = copy.find("x");
     JsonValue* z = copy.find("z");
-    if (x) x->num += 1.0;
-    if (z) z->num += 1.0;
+    if (x) x->increment();
+    if (z) z->increment();
     g.objects->arr.push_back(std::move(copy));
     g.dirty = true;
     core::log_info("Objekt dupliziert");
@@ -3241,9 +3242,9 @@ void push_blocked_zones() {
 void push_placements() {
     auto number = [](const JsonValue& o, const char* key, float fallback = 0.0f) {
         const JsonValue* v = o.find(key);
-        if (!v || !v->is_num() || !std::isfinite(v->num) || std::fabs(v->num) > 1000000.0)
+        if (!v || !v->is_num() || !std::isfinite(v->number()) || std::fabs(v->number()) > 1000000.0)
             return fallback;
-        return static_cast<float>(v->num);
+        return static_cast<float>(v->number());
     };
     const JsonValue* npcs = g.map_root.find("npcs");
     if (npcs && npcs->is_arr()) {
@@ -3252,17 +3253,17 @@ void push_placements() {
             const float x = number(npc, "x"), z = number(npc, "z"), y = number(npc, "y");
             uint32_t color = 0xC49A6C;
             if (const JsonValue* c = npc.find("color"); c && c->is_num() &&
-                std::isfinite(c->num) && c->num >= 0.0 && c->num <= 0xFFFFFF)
-                color = static_cast<uint32_t>(c->num);
+                std::isfinite(c->number()) && c->number() >= 0.0 && c->number() <= 0xFFFFFF)
+                color = static_cast<uint32_t>(c->number());
             g.renderer->push_box(math::Vec3{x, base_y_at(x, z) + y + 0.9f, z},
                                  math::Vec3{0.7f, 1.8f, 0.7f}, math::Vec3{}, color);
             const JsonValue* path = npc.find("path");
             if (!path || !path->is_arr()) continue;
             for (const JsonValue& p : path->arr) {
                 if (!p.is_arr() || p.arr.size() != 2 || !p.arr[0].is_num() || !p.arr[1].is_num() ||
-                    !std::isfinite(p.arr[0].num) || !std::isfinite(p.arr[1].num) ||
-                    std::fabs(p.arr[0].num) > 1000000.0 || std::fabs(p.arr[1].num) > 1000000.0) continue;
-                const float px = static_cast<float>(p.arr[0].num), pz = static_cast<float>(p.arr[1].num);
+                    !std::isfinite(p.arr[0].number()) || !std::isfinite(p.arr[1].number()) ||
+                    std::fabs(p.arr[0].number()) > 1000000.0 || std::fabs(p.arr[1].number()) > 1000000.0) continue;
+                const float px = static_cast<float>(p.arr[0].number()), pz = static_cast<float>(p.arr[1].number());
                 g.renderer->push_box(math::Vec3{px, base_y_at(px, pz) + y + 0.12f, pz},
                                      math::Vec3{0.35f, 0.24f, 0.35f}, math::Vec3{}, 0x45B7F3);
             }
@@ -5064,13 +5065,7 @@ const wchar_t* const EV_TRIGGERS[4] = { L"action", L"touch", L"auto", L"parallel
 const wchar_t* const EV_OPS[6] = { L"==", L"!=", L"<", L"<=", L">", L">=" };
 
 std::string ev_num_str(double v, int prec = 2) {
-    char buf[64];
-    std::snprintf(buf, sizeof(buf), "%.*f", prec, v);
-    std::string s = buf;
-    while (!s.empty() && s.back() == '0') s.pop_back();
-    if (!s.empty() && s.back() == '.') s.pop_back();
-    if (s.empty() || s == "-") s = "0";
-    return s;
+    return editor_number_text(v, prec);
 }
 
 std::string ev_text(HWND h) {
@@ -5098,7 +5093,7 @@ std::string ev_str_of(const JsonValue& o, const char* key, const std::string& de
 
 double ev_num_of(const JsonValue& o, const char* key, double def = 0.0) {
     const JsonValue* v = o.find(key);
-    return (v && v->is_num()) ? v->num : def;
+    return (v && v->is_num()) ? v->number() : def;
 }
 
 bool ev_bool_of(const JsonValue& o, const char* key, bool def = false) {
@@ -5108,7 +5103,11 @@ bool ev_bool_of(const JsonValue& o, const char* key, bool def = false) {
 
 JsonValue* ev_events() {
     JsonValue* e = g.map_root.find("events");
-    if (!e || !e->is_arr()) e = &g.map_root.set("events", JsonValue::make_arr());
+    if (!e || !e->is_arr()) {
+        e = &g.map_root.set("events", JsonValue::make_arr());
+        // set() kann beim Anhängen die Wurzel-Paarliste umallozieren.
+        g.objects = g.map_root.find("objects");
+    }
     return e;
 }
 
@@ -5203,7 +5202,7 @@ std::string ev_cmd_label(const JsonValue& c) {
     if (type == "variable") {
         const JsonValue* add = c.find("add");
         if (add && (add->is_num())) {
-            return "Variable \"" + ev_str_of(c, "name") + "\" += " + ev_num_str(add->num, 2);
+            return "Variable \"" + ev_str_of(c, "name") + "\" += " + ev_num_str(add->number(), 2);
         }
         return "Variable \"" + ev_str_of(c, "name") + "\" = " +
                ev_num_str(ev_num_of(c, "value"), 2);
@@ -5263,7 +5262,7 @@ std::string ev_cmd_label(const JsonValue& c) {
     if (type == "item") {
         const JsonValue* take = c.find("take");
         if (take && take->is_num()) {
-            return "Item \"" + ev_str_of(c, "name") + "\" -" + ev_num_str(take->num, 0);
+            return "Item \"" + ev_str_of(c, "name") + "\" -" + ev_num_str(take->number(), 0);
         }
         return "Item \"" + ev_str_of(c, "name") + "\" +" +
                ev_num_str(ev_num_of(c, "count", 1.0), 0);
@@ -5275,7 +5274,7 @@ std::string ev_cmd_label(const JsonValue& c) {
     }
     if (type == "heal") {
         const JsonValue* amt = c.find("amount");
-        return amt ? "Heilen +" + ev_num_str(amt->num, 0) : "Heilen (voll)";
+        return amt ? "Heilen +" + ev_num_str(amt->number(), 0) : "Heilen (voll)";
     }
     if (type == "choices") {
         const JsonValue* opts = c.find("options");
@@ -5375,7 +5374,8 @@ void ev_refresh_events() {
         const JsonValue& e = evs->arr[i];
         const JsonValue* id = e.find("id");
         std::string id_s;
-        if (id && id->is_num()) id_s = ev_num_str(id->num, 0);
+        if (id && id->is_num()) id_s = id->is_int && !id->integer_text().empty()
+            ? id->integer_text() : ev_num_str(id->number(), 0);
         else if (id && id->is_str()) id_s = id->str;
         else id_s = "?";
         const std::string line = id_s + ". " + ev_str_of(e, "name", "Event") + "  (" +
@@ -5417,7 +5417,8 @@ void ev_refresh_fields() {
     const JsonValue& e = evs->arr[g_ev.sel_event];
     const JsonValue* id = e.find("id");
     std::string id_s;
-    if (id && id->is_num()) id_s = ev_num_str(id->num, 0);
+    if (id && id->is_num()) id_s = id->is_int && !id->integer_text().empty()
+            ? id->integer_text() : ev_num_str(id->number(), 0);
     else if (id && id->is_str()) id_s = id->str;
     ev_set_text(g_ev.ed_id, id_s);
     ev_set_text(g_ev.ed_name, ev_str_of(e, "name", "Event"));
@@ -5770,8 +5771,8 @@ void ev_load_cmd_form() {
     } else if (type == "item") {
         const JsonValue* take = c.find("take");
         const JsonValue* count = c.find("count");
-        if (count) ev_set_text(g_ev.ed_ce_val2, ev_num_str(count->num, 0));
-        if (take)  ev_set_text(g_ev.ed_ce_val2, ev_num_str(-take->num, 0));
+        if (count) ev_set_text(g_ev.ed_ce_val2, ev_num_str(count->number(), 0));
+        if (take)  ev_set_text(g_ev.ed_ce_val2, ev_num_str(-take->number(), 0));
     } else if (type == "gold") {
         ev_set_text(g_ev.ed_ce_val1, ev_num_str(ev_num_of(c, "amount"), 0));
     } else if (type == "heal") {
@@ -5955,12 +5956,9 @@ void ev_delete_page() {
 
 void ev_new_event() {
     JsonValue* evs = ev_events();
-    int max_id = 0;
-    for (const JsonValue& e : evs->arr) {
-        const JsonValue* id = e.find("id");
-        if (id && id->is_num()) max_id = std::max(max_id, static_cast<int>(id->num));
-    }
-    const int id = max_id + 1;
+    // Auch grosse oder ungültige alte IDs dürfen keinen int-Überlauf
+    // auslösen. Dieselbe lückenfüllende Vergabe wie beim Schild-Editor.
+    const int id = placement_next_event_id(g.map_root);
     JsonValue e = JsonValue::make_obj();
     e.set("id", JsonValue::make_num(id, true));
     e.set("name", JsonValue::make_str("Event " + std::to_string(id)));
@@ -6004,18 +6002,14 @@ void ev_duplicate_event() {
     JsonValue* evs = ev_events();
     if (g_ev.sel_event < 0 || g_ev.sel_event >= static_cast<int>(evs->arr.size())) return;
     ev_apply_event_fields(true);
-    int max_id = 0;
-    for (const JsonValue& e : evs->arr) {
-        const JsonValue* id = e.find("id");
-        if (id && id->is_num()) max_id = std::max(max_id, static_cast<int>(id->num));
-    }
+    const int id = placement_next_event_id(g.map_root);
     JsonValue copy = evs->arr[g_ev.sel_event];
-    copy.set("id", JsonValue::make_num(max_id + 1, true));
+    copy.set("id", JsonValue::make_num(id, true));
     copy.set("name", JsonValue::make_str(ev_str_of(copy, "name", "Event") + " (Kopie)"));
     JsonValue* x = copy.find("x");
     JsonValue* z = copy.find("z");
-    if (x) x->num += 1.0;
-    if (z) z->num += 1.0;
+    if (x) x->increment();
+    if (z) z->increment();
     evs->arr.push_back(std::move(copy));
     g_ev.sel_event = static_cast<int>(evs->arr.size()) - 1;
     g_ev.sel_page = 0;

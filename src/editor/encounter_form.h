@@ -18,9 +18,9 @@
 
 namespace rune::editor {
 
-// Der JSON-Editor speichert Zahlen als double; bis hier sind ganze Zahlen
-// exakt. So geht eine im Dialog eingegebene Schrittzahl nicht beim Speichern
-// oder beim Ruby-Roundtrip verloren.
+// Die Laufzeit-/Formularberechnungen verwenden double; bis hier sind ganze
+// Zahlen exakt darstellbar. Größere vorhandene JSON-Ganzzahlen bleiben beim
+// Speichern zwar erhalten, neue Schritte sind dennoch auf diese Grenze begrenzt.
 inline constexpr std::uint64_t ENCOUNTER_MAX_STEPS = 9007199254740991ULL;
 
 inline bool encounter_text_present(const std::string& text) {
