@@ -94,6 +94,14 @@ class Npc
     @node.position = [@event.x, Game.gy(@event.x, @event.z) + 0.9, @event.z]
   end
 
+  # Blickrichtung drehen (Bewegungsrouten turn_*, Etappe 19h.2): yaw in
+  # Radiant um die Hochachse - dieselbe Konvention wie die Spielerkamera.
+  def turn_to(yaw)
+    rot = @node.rotation
+    rot[1] = yaw.to_f
+    @node.rotation = rot
+  end
+
   # --- Speichern/Laden (Etappe 15) ------------------------------------------
 
   # Zustand für das Savegame: Position und Wegpunkt-Index.

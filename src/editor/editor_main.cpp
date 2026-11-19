@@ -5054,7 +5054,7 @@ void ev_cmd_visibility() {
                           t == ET_FADE || t == ET_MOVE_ROUTE);
     const bool has_val2 = (t == ET_VARIABLE || t == ET_TELEPORT || t == ET_MOVE_PLAYER ||
                           t == ET_EFFECT || t == ET_ITEM || t == ET_MOVE_ROUTE);
-    const bool has_val3 = (t == ET_TELEPORT);
+    const bool has_val3 = (t == ET_TELEPORT || t == ET_MOVE_ROUTE);
     const bool has_op = (t == ET_IF_VARIABLE);
     const bool has_bool = (t == ET_SWITCH || t == ET_IF_SWITCH ||
                           t == ET_SELF_SWITCH || t == ET_IF_SELF_SWITCH ||
@@ -5089,8 +5089,9 @@ void ev_cmd_visibility() {
         SetWindowTextW(g_ev.lbl_name, L"Ziel (NPC-Name oder 'spieler')");
         SetWindowTextW(g_ev.lbl_val1, L"Tempo m/s (leer = Standard)");
         SetWindowTextW(g_ev.lbl_val2, L"Warten bis fertig (1 = ja)");
-        // Ganze Schrittliste: up down left right zufall spieler_nah
-        // spieler_weg warte - steht in Doku und mover.rb-Kopf.
+        // Etappe 19h.2: Schritte = XP-Vokabular (move_up, turn_left, wait,
+        // XP-Codes 11..57, deutsche Kurznamen gehen weiter) - mover.rb-Kopf.
+        SetWindowTextW(g_ev.lbl_val3, L"Code-Parameter (switch_on/change_speed/script)");
         SetWindowTextW(g_ev.lbl_text, L"Schritte, einer pro Zeile (an/aus = wiederholen)");
     }
     if (t == ET_VARIABLE) { SetWindowTextW(g_ev.lbl_name, L"Variable");
@@ -5202,6 +5203,7 @@ void ev_load_cmd_form() {
         if (c.find("speed"))
             ev_set_text(g_ev.ed_ce_val1, ev_num_str(ev_num_of(c, "speed"), 2));
         if (ev_bool_of(c, "wait")) ev_set_text(g_ev.ed_ce_val2, "1");
+        if (c.find("code")) ev_set_text(g_ev.ed_ce_val3, ev_str_of(c, "code"));
         SendMessageW(g_ev.cb_ce_bool, CB_SETCURSEL, ev_bool_of(c, "repeat") ? 0 : 1, 0);
     } else if (type == "variable") {
         if (c.find("value")) ev_set_text(g_ev.ed_ce_val1, ev_num_str(ev_num_of(c, "value"), 2));
@@ -5555,6 +5557,9 @@ JsonValue ev_build_command(const JsonValue* existing) {
         }
         if (ev_number(g_ev.ed_ce_val2, 0.0) != 0.0) {
             cmd.set("wait", JsonValue::make_bool(true));
+        }
+        if (!ev_text(g_ev.ed_ce_val3).empty()) {
+            cmd.set("code", JsonValue::make_str(ev_text(g_ev.ed_ce_val3)));
         }
         const int b = static_cast<int>(SendMessageW(g_ev.cb_ce_bool, CB_GETCURSEL, 0, 0));
         if (b == 0) cmd.set("repeat", JsonValue::make_bool(true));

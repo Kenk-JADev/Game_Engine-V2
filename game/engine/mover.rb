@@ -1,56 +1,137 @@
 #encoding: utf-8
 # ============================================================================
-#  Bewegungsrouten (Etappe 19g, RPG Maker XP: "Bewegungsroute festlegen").
+#  Bewegungsrouten (Etappe 19g, XP-Vokabular seit 19h.2).
 #
-#  Eine Route ist eine Folge von Schritten, die ein Ziel (NPC oder Spieler)
-#  abläuft - unabhängig vom Interpreter (wie bei XP laufen Routen auch,
-#  während ein Textfenster offen ist). Schritte:
+#  Vorbild ist "Bewegungsroute festlegen" aus RPG Maker XP - die Schritt-
+#  Namen und Codes stammen 1:1 aus den Default-Scripts (XP-Defaultscript/
+#  019 - Game_Character 2.rb, move_type_custom):
 #
-#    up / down / left / right  - 1 Meter in die Richtung (3D: -z/+z/-x/+x)
-#    zufall                    - 1 Meter in eine Zufallsrichtung
-#    spieler_nah               - 1 Meter auf den Spieler zu
-#    spieler_weg               - 1 Meter vom Spieler weg
-#    warte                     - 0.5 s stehenbleiben
+#    11 move_down          12 move_left          13 move_right
+#    14 move_up            15 move_lower_left    16 move_lower_right
+#    17 move_upper_left    18 move_upper_right   19 move_random
+#    20 move_toward_player 21 move_away_from_player
+#    22 move_forward       23 move_backward      24 jump
+#    25 wait               26 turn_down          27 turn_left
+#    28 turn_right         29 turn_up            30 turn_90d_right
+#    31 turn_90d_left      32 turn_180d          33 turn_90d_right_or_left
+#    34 turn_random        35 turn_toward_player 36 turn_away_from_player
+#    37 switch_on          38 switch_off         39 change_speed
+#    40 change_freq        41 move_animation_on  42 move_animation_off
+#    43 stop_animation_on  44 stop_animation_off 45 direction_fix_on
+#    46 direction_fix_off  47 through_on         48 through_off
+#    49 always_on_top_on   50 always_on_top_off  51 change_graphic
+#    52 change_opacity     53 change_blending    57 script
+#
+#  (Die Nummern sind die Rune3D-Reihenfolge dieser Liste; XP-Codes 11..46
+#  werden als Schritt-Strings ebenfalls verstanden - "11" = move_down usw.,
+#  dazu die deutschen Kurznamen aus 19g: up/down/left/right/zufall/
+#  spieler_nah/spieler_weg/warte.)
+#
+#  Nicht umsetzbar in der 3D-Engine (dokumentierte No-Ops mit Warnung beim
+#  ersten Auftreten): change_graphic/opacity/blending (NPCs sind Boxen),
+#  stop_animation_*/direction_fix_*/through_*/always_on_top_* (2D-Schalter),
+#  change_freq (Bewegungsfrequenz gibt es hier nicht - Tempo ist speed).
+#  jump = Hüpfer-Partikel statt Sprungphysik; script führt Ruby-Code im
+#  Scripts-Context aus.
 #
 #  Event-Befehl:
-#    {"cmd":"move_route","target":"Wanderer","steps":["up","up","warte"],
+#    {"cmd":"move_route","target":"Wanderer","steps":["move_up","wait"],
 #     "repeat":false,"wait":false,"speed":2.0}
 #  target = NPC-Name oder "spieler"; wait = Interpreter wartet, bis die
-#  Route fertig ist (mit repeat sinnlos - dann Warnung, kein Warten);
-#  speed leer = NPC-Tempo bzw. 2.0 m/s für den Spieler.
+#  Route fertig ist (mit repeat sinnlos - dann Warnung, kein Warten).
 #
-#  Aus Ruby-Scripts (RGSS-Leitlinie 19e): Mover.start('Wanderer', %w[up up])
-#  oder der Context-Helfer move_route('Wanderer', %w[up up]).
-#
-#  Grenzen (dokumentiert, Backlog): sichtbare Events ohne Node können keine
-#  Route laufen (nur NPCs haben Körper), Dreh-Schritte (turn_*) fehlen, und
-#  gespeicherte Spielstände nehmen Routen nicht mit (wie XP: flüchtig).
+#  Aus Ruby-Scripts: Mover.start('Wanderer', %w[move_up move_up]) oder der
+#  Context-Helfer move_route('Wanderer', %w[turn_toward_player move_forward]).
 #
 #  Kopflos testbar: ruby -I game/engine tools/move_route_test.rb
 # ============================================================================
 
 module Mover
-  SCHRITTE = %w[up down left right zufall spieler_nah spieler_weg warte].freeze
+  # Kanonische Schritte (XP-Namen). MapCheck::MOVER_SCHRITTE muss dazu passen
+  # (move_route_test assertet den Sync; mapcheck.rb lädt vor mover.rb).
+  SCHRITTE = %w[
+    move_down move_left move_right move_up
+    move_lower_left move_lower_right move_upper_left move_upper_right
+    move_random move_toward_player move_away_from_player
+    move_forward move_backward jump wait
+    turn_down turn_left turn_right turn_up
+    turn_90d_right turn_90d_left turn_180d turn_90d_right_or_left
+    turn_random turn_toward_player turn_away_from_player
+    switch_on switch_off change_speed change_freq
+    move_animation_on move_animation_off
+    stop_animation_on stop_animation_off
+    direction_fix_on direction_fix_off through_on through_off
+    always_on_top_on always_on_top_off
+    change_graphic change_opacity change_blending script
+  ].freeze
+
+  # XP-Befehls-Codes (019 - Game_Character 2.rb) als Schritt-String.
+  XP_CODES = {
+    '11' => 'move_down', '12' => 'move_left', '13' => 'move_right',
+    '14' => 'move_up', '15' => 'move_lower_left', '16' => 'move_lower_right',
+    '17' => 'move_upper_left', '18' => 'move_upper_right',
+    '19' => 'move_random', '20' => 'move_toward_player',
+    '21' => 'move_away_from_player', '22' => 'move_forward',
+    '23' => 'move_backward', '24' => 'jump', '25' => 'wait',
+    '26' => 'turn_down', '27' => 'turn_left', '28' => 'turn_right',
+    '29' => 'turn_up', '30' => 'turn_90d_right', '31' => 'turn_90d_left',
+    '32' => 'turn_180d', '33' => 'turn_90d_right_or_left',
+    '34' => 'turn_random', '35' => 'turn_toward_player',
+    '36' => 'turn_away_from_player', '37' => 'switch_on',
+    '38' => 'switch_off', '39' => 'change_speed', '40' => 'change_freq',
+    '41' => 'move_animation_on', '42' => 'move_animation_off',
+    '43' => 'stop_animation_on', '44' => 'stop_animation_off',
+    '45' => 'direction_fix_on', '46' => 'direction_fix_off',
+    '47' => 'through_on', '48' => 'through_off',
+    '49' => 'always_on_top_on', '50' => 'always_on_top_off',
+    '51' => 'change_graphic', '52' => 'change_opacity',
+    '53' => 'change_blending', '57' => 'script',
+  }.freeze
+
+  # Deutsche Kurznamen aus Etappe 19g (bestehende Karten bleiben gültig).
+  ALIASE = {
+    'down' => 'move_down', 'left' => 'move_left', 'right' => 'move_right',
+    'up' => 'move_up', 'zufall' => 'move_random',
+    'spieler_nah' => 'move_toward_player', 'spieler_weg' => 'move_away_from_player',
+    'warte' => 'wait',
+    'vor' => 'move_forward', 'zurueck' => 'move_backward',
+    'runter' => 'turn_down', 'rauf' => 'turn_up',
+  }.freeze
+
+  # Schritt-Normalisierung: XP-Code, deutscher Alias oder XP-Name.
+  def self.normalize(schritt)
+    s = schritt.to_s.strip
+    XP_CODES[s] || ALIASE[s] || s
+  end
 
   SCHRITT_WEITE = 1.0   # Meter pro Schritt
-  WARTE_DAUER   = 0.5   # Sekunden für 'warte'
+  WARTE_DAUER   = 0.5   # Sekunden für 'wait'
   SPIELER_TEMPO = 2.0   # Standard m/s, falls die Route kein speed angibt
 
-  # Eine laufende Route. distanz = Restmeter des aktuellen Schritts.
+  # XP-Richtungen: 2=unten(+z), 4=links(-x), 6=rechts(+x), 8=oben(-z).
+  RICHTUNGEN = [2, 4, 6, 8].freeze
+  # Blickwinkel (Yaw) je Richtung - Spielerkamera und NPC-Node drehen gleich.
+  YAW = { 2 => 0.0, 4 => Math::PI / 2, 6 => -Math::PI / 2, 8 => Math::PI }.freeze
+
+  # Eine laufende Route. distanz = Restmeter des aktuellen Schritts,
+  # richtung = aktuelle Blickrichtung (XP 2/4/6/8).
   Route = Struct.new(:objekt, :spieler, :schritte, :index, :rest, :distanz,
-                     :dx, :dz, :wiederholen, :speed, keyword_init: true)
+                     :dx, :dz, :wiederholen, :speed, :richtung, :code,
+                     keyword_init: true)
 
   @routes = []
+  @gewarnt = {}   # No-Op-Schritte nur einmal melden
 
   class << self
     attr_reader :routes
   end
 
   # Route starten. target: 'spieler'/'player' oder NPC-Name. Eine alte Route
-  # desselben Ziels wird ersetzt (wie XP force_move_route). Rückgabe: die
-  # Route (für Mover.running?) oder nil bei Unsinn.
-  def self.start(target, steps, repeat: false, speed: nil)
-    schritte = Array(steps).map { |s| s.to_s.strip }.reject(&:empty?)
+  # desselben Ziels wird ersetzt (wie XP force_move_route). code = Zusatzwert
+  # für Schritte mit Parameter (switch_on/off: Schaltername, change_speed:
+  # m/s, script: Ruby-Code). Rückgabe: die Route oder nil bei Unsinn.
+  def self.start(target, steps, repeat: false, speed: nil, code: nil)
+    schritte = Array(steps).map { |s| normalize(s) }.reject(&:empty?)
     if schritte.empty?
       Rune::Log.warn('Mover: leere Bewegungsroute ignoriert')
       return nil
@@ -74,7 +155,8 @@ module Mover
 
     route = Route.new(objekt: objekt, spieler: spieler, schritte: schritte,
                       index: 0, rest: 0.0, distanz: 0.0, dx: 0.0, dz: 0.0,
-                      wiederholen: !!repeat, speed: tempo)
+                      wiederholen: !!repeat, speed: tempo, richtung: 2,
+                      code: code)
 
     # Alte Route desselben Ziels ersetzen.
     @routes.reject! do |r|
@@ -110,6 +192,7 @@ module Mover
   # Kartenwechsel/Neustart: Routen sind flüchtig (Ziel-NPCs sind neu).
   def self.reset!
     @routes = []
+    @gewarnt = {}
   end
 
   # Ein Frame für alle Routen. Fertig-Routen fliegen raus.
@@ -145,36 +228,128 @@ module Mover
       end
     end
 
-    # 4) Nächsten Schritt starten.
+    # 4) Nächsten Schritt ausführen.
     befehl = r.schritte[r.index].to_s
     r.index += 1
-    if befehl == 'warte'
-      r.rest = WARTE_DAUER
-      return true
-    end
-
-    vec = richtung(befehl, r)
-    if vec.nil?
-      Rune::Log.warn("Mover: Schritt '#{befehl}' nicht ausführbar (übersprungen)")
-      return true
-    end
-    r.dx, r.dz = vec
-    r.distanz = SCHRITT_WEITE
-    bewege(r, dt)
+    ausfuehren(r, befehl, dt)
     true
   end
 
-  # Einheitsvektor für einen Schritt; nil = unbekannt/unmöglich.
-  def self.richtung(befehl, r)
+  # Einen normalisierten Schritt ausführen (Bewegung setzt r.distanz und
+  # läuft über die folgenden Frames; der Rest ist sofort fertig).
+  def self.ausfuehren(r, befehl, dt)
     case befehl
-    when 'up'    then [0.0, -1.0]
-    when 'down'  then [0.0, 1.0]
-    when 'left'  then [-1.0, 0.0]
-    when 'right' then [1.0, 0.0]
-    when 'zufall'
-      winkel = rand * 2 * Math::PI
-      [Math.cos(winkel), Math.sin(winkel)]
-    when 'spieler_nah', 'spieler_weg'
+    when 'wait'
+      r.rest = WARTE_DAUER
+
+    when 'move_down', 'move_left', 'move_right', 'move_up',
+         'move_lower_left', 'move_lower_right', 'move_upper_left',
+         'move_upper_right', 'move_random', 'move_toward_player',
+         'move_away_from_player', 'move_forward', 'move_backward'
+      vec = richtung(befehl, r)
+      if vec.nil?
+        warn_once("Mover: Schritt '#{befehl}' nicht ausführbar (übersprungen)")
+      else
+        r.dx, r.dz = vec
+        r.richtung = vektor_richtung(r.dx, r.dz) || r.richtung
+        drehen(r)
+        r.distanz = SCHRITT_WEITE
+        bewege(r, dt)
+      end
+
+    when 'turn_down'  then r.richtung = 2; drehen(r)
+    when 'turn_left'  then r.richtung = 4; drehen(r)
+    when 'turn_right' then r.richtung = 6; drehen(r)
+    when 'turn_up'    then r.richtung = 8; drehen(r)
+    when 'turn_90d_right'
+      r.richtung = { 2 => 4, 4 => 8, 8 => 6, 6 => 2 }[r.richtung] || 2
+      drehen(r)
+    when 'turn_90d_left'
+      r.richtung = { 2 => 6, 6 => 8, 8 => 4, 4 => 2 }[r.richtung] || 2
+      drehen(r)
+    when 'turn_180d'
+      r.richtung = { 2 => 8, 8 => 2, 4 => 6, 6 => 4 }[r.richtung] || 2
+      drehen(r)
+    when 'turn_90d_right_or_left'
+      r.richtung = { 2 => [4, 6], 4 => [2, 8], 6 => [2, 8], 8 => [4, 6] }[r.richtung].sample
+      drehen(r)
+    when 'turn_random'
+      r.richtung = RICHTUNGEN.sample
+      drehen(r)
+    when 'turn_toward_player'
+      r.richtung = blick_zum_spieler(r, weg: false) || r.richtung
+      drehen(r)
+    when 'turn_away_from_player'
+      r.richtung = blick_zum_spieler(r, weg: true) || r.richtung
+      drehen(r)
+
+    when 'jump'
+      # Kein Sprungsystem für Events: sichtbarer Hüpfer-Effekt am Ziel.
+      if defined?(Effects)
+        x, z = ziel_position(r)
+        Effects.burst(x, Game.gy(x, z) + 1.0, z, count: 8)
+      end
+
+    when 'switch_on', 'switch_off'
+      name = r.code.to_s
+      if name.empty?
+        warn_once('Mover: switch_on/off ohne Schaltername im Route-Feld code')
+      else
+        GameState.set_switch(name, befehl == 'switch_on')
+      end
+
+    when 'change_speed'
+      r.speed = r.code.to_f if r.code && r.code.to_f > 0
+
+    when 'script'
+      code = r.code.to_s
+      if code.empty?
+        warn_once('Mover: script ohne Code im Route-Feld code')
+      elsif defined?(Scripts)
+        Scripts.run_code('move_route', code)
+      end
+
+    when 'move_animation_on'
+      # Sichtbares Feedback: einmalig Partikel am Ziel (Laufstaub).
+      if defined?(Effects)
+        x, z = ziel_position(r)
+        Effects.dust(x, Game.gy(x, z) + 0.1, z)
+      end
+
+    when 'change_freq', 'move_animation_off',
+         'stop_animation_on', 'stop_animation_off',
+         'direction_fix_on', 'direction_fix_off',
+         'through_on', 'through_off',
+         'always_on_top_on', 'always_on_top_off',
+         'change_graphic', 'change_opacity', 'change_blending'
+      warn_once("Mover: Schritt '#{befehl}' hat in Rune3D keine Wirkung (übersprungen)")
+
+    else
+      warn_once("Mover: unbekannter Schritt '#{befehl}' (übersprungen)")
+    end
+  end
+
+  # Einheitsvektor für einen Bewegungsschritt; nil = unmöglich.
+  def self.richtung(befehl, r)
+    d = Math.sqrt(0.5)   # Diagonalen normiert
+    case befehl
+    when 'move_down'  then [0.0, 1.0]
+    when 'move_up'    then [0.0, -1.0]
+    when 'move_left'  then [-1.0, 0.0]
+    when 'move_right' then [1.0, 0.0]
+    when 'move_lower_left'  then [-d, d]
+    when 'move_lower_right' then [d, d]
+    when 'move_upper_left'  then [-d, -d]
+    when 'move_upper_right' then [d, -d]
+    when 'move_random'
+      s = RICHTUNGEN.sample
+      vektor_fuer(s)
+    when 'move_forward'
+      vektor_fuer(r.richtung)
+    when 'move_backward'
+      v = vektor_fuer(r.richtung)
+      v && [-v[0], -v[1]]
+    when 'move_toward_player', 'move_away_from_player'
       px, _py, pz = Rune::Player.position
       ox, oz = r.spieler ? [px, pz] : r.objekt.position
       dx = px - ox
@@ -183,8 +358,64 @@ module Mover
       return nil if len < 0.001   # steht schon auf dem Spieler
       dx /= len
       dz /= len
-      befehl == 'spieler_weg' ? [-dx, -dz] : [dx, dz]
+      befehl == 'move_away_from_player' ? [-dx, -dz] : [dx, dz]
     end
+  end
+
+  def self.vektor_fuer(richtung)
+    case richtung.to_i
+    when 2 then [0.0, 1.0]
+    when 4 then [-1.0, 0.0]
+    when 6 then [1.0, 0.0]
+    when 8 then [0.0, -1.0]
+    end
+  end
+
+  # Nächste XP-Richtung (2/4/6/8) für einen Bewegungsvektor; Diagonalen
+  # behalten die alte Blickrichtung (nil).
+  def self.vektor_richtung(dx, dz)
+    return 2 if dz > 0 && dx.zero?
+    return 8 if dz < 0 && dx.zero?
+    return 4 if dx < 0 && dz.zero?
+    return 6 if dx > 0 && dz.zero?
+
+    nil
+  end
+
+  # XP-Richtung zum/​vom Spieler (größerer Achsenanteil gewinnt, wie
+  # move_type_toward_player in Game_Character 2).
+  def self.blick_zum_spieler(r, weg: false)
+    px, _py, pz = Rune::Player.position
+    ox, oz = r.spieler ? [px, pz] : r.objekt.position
+    dx = px - ox
+    dz = pz - oz
+    return nil if dx.abs < 0.001 && dz.abs < 0.001
+
+    richtung = if dx.abs > dz.abs
+                 dx > 0 ? 6 : 4
+               else
+                 dz > 0 ? 2 : 8
+               end
+    weg ? { 2 => 8, 8 => 2, 4 => 6, 6 => 4 }[richtung] : richtung
+  end
+
+  # Blickrichtung sichtbar machen: Spieler = Kamera-Yaw, NPC = Node-Yaw.
+  def self.drehen(r)
+    yaw = YAW[r.richtung] || 0.0
+    if r.spieler
+      Rune::Camera.yaw = yaw if defined?(Rune::Camera)
+    elsif r.objekt.respond_to?(:turn_to)
+      r.objekt.turn_to(yaw)
+    elsif r.objekt.respond_to?(:node) && r.objekt.node
+      rot = r.objekt.node.rotation
+      rot[1] = yaw
+      r.objekt.node.rotation = rot
+    end
+  end
+
+  # Position des Routenziels (Effekte/Sound).
+  def self.ziel_position(r)
+    r.spieler ? [Rune::Player.position[0], Rune::Player.position[2]] : r.objekt.position
   end
 
   # Restmeter des aktuellen Schritts ablaufen (Spieler: gleiten per
@@ -203,5 +434,12 @@ module Mover
       x, z = r.objekt.position
       r.objekt.move_to(x + r.dx * weg, z + r.dz * weg)
     end
+  end
+
+  def self.warn_once(text)
+    return if @gewarnt[text]
+
+    @gewarnt[text] = true
+    Rune::Log.warn(text)
   end
 end

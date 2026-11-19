@@ -139,8 +139,8 @@ module Scripts
 
     # Bewegungsroute starten (Etappe 19g): Ziel 'spieler' oder NPC-Name,
     # Schritte z.B. %w[up up warte zufall]. Läuft nebenher (Mover).
-    def move_route(target, steps, repeat: false, speed: nil)
-      Mover.start(target, Array(steps), repeat: repeat, speed: speed)
+    def move_route(target, steps, repeat: false, speed: nil, code: nil)
+      Mover.start(target, Array(steps), repeat: repeat, speed: speed, code: code)
     end
 
     # Self-Switch des Besitzer-Events: ohne Argument lesen, mit Argument

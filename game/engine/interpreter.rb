@@ -193,8 +193,8 @@ class Interpreter
       when 'fade'   # {"cmd":"fade","direction":"aus","seconds":0.5} (Etappe 19d)
         Fade.start(cmd['direction'] || 'aus', cmd['seconds'] || 0.5)
       when 'move_route'   # Bewegungsroute (Etappe 19g, RPG Maker XP)
-        route = Mover.start(cmd['target'], cmd['steps'],
-                            repeat: cmd['repeat'], speed: cmd['speed'])
+        route = Mover.start(cmd['target'], cmd['steps'], repeat: cmd['repeat'],
+                            speed: cmd['speed'], code: cmd['code'])
         if route && cmd['wait']
           if cmd['repeat']
             Rune::Log.warn('Interpreter: move_route wait+repeat - Warten ' \

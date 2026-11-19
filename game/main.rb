@@ -209,6 +209,14 @@ end
     false
   end
 
+  # Zurück zum Titelbildschirm (19h.2: $game_temp.to_title/gameover wie XP).
+  def self.to_title!
+    @menu = nil
+    @mode = :launcher
+    Launcher.activate
+    Rune::Log.info('Zurück zum Titelbildschirm ($game_temp)')
+  end
+
   # ------------------------------------------------------------- Menü (Esc)
 
   def self.menu_items
@@ -436,6 +444,7 @@ end
             @step_count = (@step_count || 0) + 1
             Rune::Log.info('Erster Schritt-Sound abgespielt') if @step_count == 1
             Rune::Sound.play('schritt', rennt ? 0.55 : 0.40)
+            @step_event = true   # 19h.2: $game_player.increase_steps
           end
         end
       end
@@ -449,7 +458,25 @@ end
     Effects.update(dt)
     Fade.update(dt)   # Etappe 19d: Bildschirmblende (XP-Fade) weiterdrehen
     Mover.update(dt)  # Etappe 19g: Bewegungsrouten laufen IMMER (auch bei Text)
+    Graphics.update         # Etappe 19h.2: RGSS-Frame-Zähler (frame_count)
+    $game_system.update(dt) if $game_system   # 19h.2: XP-Timer tickt
+    $game_player.increase_steps if $game_player && @step_event
+    @step_event = nil
     Graphics.scene_update   # Etappe 19h: $scene.main (RGSS-Szenen-Schleife)
+
+    # 19h.2: XP-Flags aus $game_temp beachten (Scene_Gameover/Title-Abruf).
+    if $game_temp
+      if $game_temp.gameover
+        $game_temp.gameover = false
+        to_title!
+        return
+      end
+      if $game_temp.to_title
+        $game_temp.to_title = false
+        to_title!
+        return
+      end
+    end
     px, py, pz = Rune::Player.position
     Weather.update(dt, px, py, pz)   # Etappe 17h: Regen/Schnee um den Spieler
 

@@ -118,9 +118,11 @@ end
 puts '== RGSS.setup: $game_temp und $data_* =='
 RGSS.setup
 check('$game_temp besetzt') { $game_temp.is_a?(RGSS::GameTemp) }
-check('$game_temp: Standardwerte') do
+check('$game_temp: XP-Standardwerte (000 - Game_Temp.rb)') do
   $game_temp.message_text.nil? && $game_temp.common_event_id.zero? &&
-    $game_temp.player_passable?
+    $game_temp.player_passable? && $game_temp.choice_start == 99 &&
+    $game_temp.num_input_digits_max.zero? && $game_temp.in_battle == false &&
+    $game_temp.gameover == false && $game_temp.to_title == false
 end
 check('$data_actors aus database.json (Hash mit String-IDs)') do
   $data_actors.key?('arik') && $data_actors['arik']['name'] == 'Arik' &&
@@ -156,11 +158,11 @@ $game_player.moveto(5.0, 5.0)    # zurück ins Flache
 check('hinter der Kartengrenze (x > width) -> false') do
   !$game_player.passable?(125.0, 5.0)
 end
-$game_temp.player_passable = false
-check('player_passable? aus -> immer true (XP-Debug-Verhalten)') do
+$game_temp.passable = false
+check('passable aus -> immer true (XP-Debug-Verhalten)') do
   $game_player.passable?(125.0, 5.0)
 end
-$game_temp.player_passable = true
+$game_temp.passable = true
 
 puts '== Bitmap =='
 bmp = Bitmap.new(100, 40, 0xFF0000)
@@ -291,6 +293,28 @@ UI::CALLS.clear
 Graphics.draw
 check('visible=false -> Fenster zeichnet nicht') { UI::CALLS.empty? }
 fenster.visible = true
+
+puts '== Window_Selectable (030 - Window_Selectable.rb) =='
+hilfe = Window.new(40, 300, 420, 60)
+auswahl = Window_Selectable.new(40, 40, 420, 200)
+auswahl.lines = %w[Angriff Magie Flucht]
+auswahl.help_window = hilfe
+auswahl.index = 0
+check('index= setzt Cursor + Hilfefenster') do
+  auswahl.index.zero? && hilfe.help == 'Angriff'
+end
+auswahl.cursor_down
+check('cursor_down') { auswahl.index == 1 }
+auswahl.cursor_down
+auswahl.cursor_down
+check('cursor_down wrappt auf 0') { auswahl.index.zero? }
+auswahl.cursor_up
+check('cursor_up wrappt auf row_max-1') { auswahl.index == 2 }
+check('row_max/page_row_max') { auswahl.row_max == 3 && auswahl.page_row_max >= 1 }
+auswahl.index = 99
+check('index= clamped auf row_max-1') { auswahl.index == 2 }
+auswahl.dispose
+hilfe.dispose
 
 puts '== $scene und Graphics.scene_update =='
 class TestSzene

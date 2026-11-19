@@ -53,16 +53,74 @@ module RGSS
 
   # System-Schalter, die die Engine beachtet: Menü (Esc) und Speichern lassen
   # sich aus Scripts heraus sperren, wie bei XP.
+  # Nach XP-Defaultscript/001 - Game_System.rb: Timer, Audio-Delegation
+  # (Rune3D-Audio-Objekte sind Hashes {'name','volume','pitch'} statt
+  # RPG::BGM), Message-Optionen und Save-Zähler. update(dt) tickt den Timer
+  # und wird von Game.update gerufen.
   class GameSystem
     attr_accessor :menu_disabled, :save_disabled, :encounter_disabled
+    attr_accessor :timer, :timer_working
+    attr_accessor :message_position, :message_frame, :save_count
+    attr_accessor :windowskin_name, :battle_bgm, :battle_end_me
+    attr_accessor :menu_bgm
 
     def initialize
-      @menu_disabled     = false
-      @save_disabled     = false
-      @encounter_disabled = false   # Platzhalter: Kampfsystem kommt später
+      @menu_disabled      = false
+      @save_disabled      = false
+      @encounter_disabled = false
+      @timer              = 0
+      @timer_working      = false
+      @message_position   = 2     # XP-Default: unten
+      @message_frame      = 1     # XP-Default: Rahmen an
+      @save_count         = 0
+      @windowskin_name    = 'Default'
+      @battle_bgm         = { 'name' => '', 'volume' => 100, 'pitch' => 100 }
+      @battle_end_me      = { 'name' => '', 'volume' => 100, 'pitch' => 100 }
+      @menu_bgm           = { 'name' => '', 'volume' => 100, 'pitch' => 100 }
     end
 
+    # Timer in Frames (XP zählt 60er-Frames); Rune3D tickt in Sekunden.
+    def update(dt)
+      return unless @timer_working
+
+      @timer -= dt.to_f * Graphics.frame_rate
+      if @timer <= 0
+        @timer = 0
+        @timer_working = false
+      end
+    end
+
+    def timer_start(seconds)
+      @timer = seconds.to_f * Graphics.frame_rate
+      @timer_working = true
+    end
+
+    def timer_seconds
+      @timer / Graphics.frame_rate.to_f
+    end
+
+    # Audio-Delegation: Argument ist XP-gewohnt Hash/RPG::AudioFile-ähnlich
+    # oder ein nackter Name.
+    def bgm_play(audio) = Audio.bgm_play(*audio_args(audio))
+    def bgm_stop        = Audio.bgm_stop
+    def bgm_fade(time)  = Audio.bgm_fade(time)
+    def bgs_play(audio) = Audio.bgs_play(*audio_args(audio))
+    def bgs_stop        = Audio.bgs_stop
+    def bgs_fade(time)  = Audio.bgs_fade(time)
+    def me_play(audio)  = Audio.me_play(*audio_args(audio))
+    def se_play(audio)  = Audio.se_play(*audio_args(audio))
+    def se_stop         = Audio.se_stop
+
     def rgss_version = VERSION
+
+    private
+
+    def audio_args(audio)
+      return [audio] if audio.is_a?(String) || audio.is_a?(Symbol)
+      h = audio.respond_to?(:to_h) ? audio.to_h : audio
+      h = h.transform_keys(&:to_s) if h.is_a?(Hash)
+      [h['name'].to_s, h['volume'] || 100, h['pitch'] || 100]
+    end
   end
 
   # ------------------------------------------------------------ $game_temp
@@ -71,22 +129,79 @@ module RGSS
   # RGSS.reset! (Kartenwechsel/F5). message_text/message_proc sind Ablage
   # für eigene Dialog-Scripts; player_passable? steuert, ob passable?
   # überhaupt prüft (XP: im Debug-Modus false).
+  # Feldliste 1:1 aus XP-Defaultscript/000 - Game_Temp.rb (Defaultwerte
+  # inklusive). Rune3D-Erweiterung: passable (XP hat das nicht - dort ist
+  # Passierbarkeit reine Kartensache; hier schaltet es die Geländeprüfung
+  # von $game_player.passable? ab, Default true).
   class GameTemp
-    attr_accessor :message_text, :message_proc, :common_event_id
-    attr_accessor :player_passable, :transition_processing
-    attr_accessor :map_transition_name, :battle_transition_name
+    attr_accessor :map_bgm, :message_text, :message_proc
+    attr_accessor :choice_start, :choice_max, :choice_cancel_type, :choice_proc
+    attr_accessor :num_input_start, :num_input_variable_id, :num_input_digits_max
+    attr_accessor :message_window_showing, :common_event_id
+    attr_accessor :in_battle, :battle_calling, :battle_troop_id
+    attr_accessor :battle_can_escape, :battle_can_lose, :battle_proc
+    attr_accessor :battle_turn, :battle_event_flags, :battle_abort
+    attr_accessor :battle_main_phase, :battleback_name, :forcing_battler
+    attr_accessor :shop_calling, :shop_id
+    attr_accessor :name_calling, :name_actor_id, :name_max_char
+    attr_accessor :menu_calling, :menu_beep, :save_calling, :debug_calling
+    attr_accessor :player_transferring, :player_new_map_id
+    attr_accessor :player_new_x, :player_new_y, :player_new_direction
+    attr_accessor :transition_processing, :transition_name
+    attr_accessor :gameover, :to_title, :last_file_index
+    attr_accessor :debug_top_row, :debug_index
+    attr_accessor :passable   # Rune3D-Erweiterung (siehe oben)
 
     def initialize
+      @map_bgm = nil
       @message_text = nil
       @message_proc = nil
+      @choice_start = 99
+      @choice_max = 0
+      @choice_cancel_type = 0
+      @choice_proc = nil
+      @num_input_start = 99
+      @num_input_variable_id = 0
+      @num_input_digits_max = 0
+      @message_window_showing = false
       @common_event_id = 0
-      @player_passable = true
+      @in_battle = false
+      @battle_calling = false
+      @battle_troop_id = 0
+      @battle_can_escape = false
+      @battle_can_lose = false
+      @battle_proc = nil
+      @battle_turn = 0
+      @battle_event_flags = {}
+      @battle_abort = false
+      @battle_main_phase = false
+      @battleback_name = ''
+      @forcing_battler = nil
+      @shop_calling = false
+      @shop_id = 0
+      @name_calling = false
+      @name_actor_id = 0
+      @name_max_char = 0
+      @menu_calling = false
+      @menu_beep = false
+      @save_calling = false
+      @debug_calling = false
+      @player_transferring = false
+      @player_new_map_id = 0
+      @player_new_x = 0
+      @player_new_y = 0
+      @player_new_direction = 0
       @transition_processing = false
-      @map_transition_name = ''
-      @battle_transition_name = ''
+      @transition_name = ''
+      @gameover = false
+      @to_title = false
+      @last_file_index = 0
+      @debug_top_row = 0
+      @debug_index = 0
+      @passable = true
     end
 
-    def player_passable? = @player_passable
+    def player_passable? = @passable
   end
 
   # ---------------------------------------------------------- $game_switches
@@ -190,6 +305,34 @@ module RGSS
       Rune::Camera.yaw = yaw.to_f
     end
 
+    # XP Game_Character: Blickrichtung 2/4/6/8, Schrittzähler und
+    # Encounter-Zähler (022 - Game_Player.rb). increase_steps wird von der
+    # Schritt-Sound-Logik in Game.update gerufen.
+    attr_reader :steps, :encounter_count
+
+    def direction
+      @direction ||= 2
+    end
+
+    def direction=(value)
+      @direction = [2, 4, 6, 8].include?(value.to_i) ? value.to_i : 2
+    end
+
+    def increase_steps
+      @steps = (@steps || 0) + 1
+    end
+
+    def make_encounter_count
+      @encounter_count = rand(20..40)   # XP: 20..40 Schritte zwischen Kämpfen
+    end
+
+    def decrease_encounter_count
+      return unless @encounter_count
+
+      @encounter_count -= 1
+      make_encounter_count if @encounter_count <= 0
+    end
+
     # Passierbar (Etappe 19h, echt soweit möglich): innerhalb der Karten-
     # grenzen und keine zu hohe Geländestufe. Richtungen wie XP: 2=unten
     # (+z), 4=links (-x), 6=rechts (+x), 8=oben (-z) - ohne Richtung wird
@@ -261,6 +404,16 @@ module RGSS
       terrain = (Game.map || {})['terrain'] || {}
       (terrain['height'] || terrain['size'] || 0).to_f
     end
+
+    # XP Game_Map#valid?: liegt (x, z) innerhalb der Karte?
+    def valid?(x, z)
+      w = width
+      h = height
+      return false if (w > 0 && (x.to_f < 0 || x.to_f > w)) ||
+                      (h > 0 && (z.to_f < 0 || z.to_f > h))
+
+      true
+    end
   end
 
   # ---------------------------------------------------------- $game_screen
@@ -269,6 +422,39 @@ module RGSS
   # 2=Schnee, 3=Sturm) und Rune3D-Namen (kein/regen/schnee, auch englisch)
   # werden beide verstanden; Sturm gibt es noch nicht -> dichter Schnee.
   class GameScreen
+    # XP-Zustände (005 - Game_Screen.rb): tone/flash/shake werden als Werte
+    # geführt, aber (noch) nicht gemalt - Rune3D hat keinen Tonwert-/Shake-
+    # Renderer (Backlog). pictures: Platzhalter-Hash, Bild-Objekte fehlen.
+    attr_reader :tone, :flash_color, :shake, :pictures, :weather_max
+
+    def initialize
+      @tone = [0.0, 0.0, 0.0, 0.0]
+      @flash_color = [0.0, 0.0, 0.0, 0.0]
+      @shake_power = 0
+      @shake_speed = 0
+      @shake_duration = 0
+      @shake = 0
+      @pictures = {}
+      @weather_type = 0
+      @weather_max = 0.0
+    end
+
+    def start_tone_change(tone, duration = 0)
+      @tone = Array(tone).map(&:to_f)
+      @tone_duration = duration.to_i   # Verlauf: Backlog (Wert gilt sofort)
+    end
+
+    def start_flash(color, duration)
+      @flash_color = Array(color).map(&:to_f)
+      @flash_duration = duration.to_i
+    end
+
+    def start_shake(power, speed, duration)
+      @shake_power = power.to_i
+      @shake_speed = speed.to_i
+      @shake_duration = duration.to_i
+    end
+
     def weather(type = 'kein', power = 1.0)
       name = case type
              when 0, nil, 'kein', 'none'    then 'kein'
@@ -278,9 +464,19 @@ module RGSS
              else type.to_s
              end
       Weather.set(name, power.to_f)
+      @weather_type = type.is_a?(Integer) ? type : 0
+      @weather_max = power.to_f
     end
 
-    def weather_type = Weather.type
+    # XP liefert die RGSS-Zahl (0/1/2/3) - Rune3D-Namen werden zurückgemappt.
+    def weather_type
+      case Weather.type
+      when 'regen'  then 1
+      when 'schnee' then 2
+      else 0
+      end
+    end
+
     def weather_intensity = Weather.intensity
   end
 

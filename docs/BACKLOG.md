@@ -30,7 +30,9 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
   Bitmap aus Dateien laden (nur Farbe/Text-Merker), Viewport-Clipping,
   Sprite-Tonwerte (tone), Marshal-Format (bleibt JSON), Audio-Pitch,
   visuelle `Graphics.freeze/transition`, Hindernis-Kollision in `passable?`
-  (keine blocked?-Abfrage - hängt am Passierbarkeitsthema insgesamt).
+  (keine blocked?-Abfrage - hängt am Passierbarkeitsthema insgesamt);
+  seit 19h.2 zusätzlich: Screen-Tonwerte/Flash/Shake ohne Renderer, Timer
+  ohne HUD-Anzeige, change_graphic/opacity/blending-Schritte wirkungslos.
 - Betroffene Stellen: `game/engine/rgss.rb`, `game/engine/graphics.rb`,
   `docs/architecture.md` (19e/19h).
 - Gefunden in: Etappe 19e (User-Vorgabe „RGSS wie RPG Maker XP Online-Hilfe").
@@ -171,6 +173,23 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Etappe 19a.
 
 ## Erledigt
+### [Engine] RGSS an XP-Defaultscripts ausgerichtet — erledigt (19h.2)
+- Wunsch (User): „XP-Defaultscript hochgeladen, dies sind die default codes,
+  damit kannst du es vielleicht umstellen, besser für das RGSS-Coding."
+- Umsetzung: $game_temp komplette XP-Feldliste, $game_system Timer +
+  Audio-Delegation + Message-Optionen, $game_screen tone/flash/shake-Zustände
+  + weather_type als XP-Zahl, $game_map.valid?, $game_player direction/steps/
+  encounter_count, Window_Selectable, Mover mit XP-Schrittnamen/-Codes
+  (Aliase für die 19g-Namen), turn_*-Schritte drehen NPC/Kamera echt,
+  code-Parameter (switch_on/change_speed/script) inkl. Editor-Wert-3 und
+  MapCheck-Warnung, gameover/to_title-Flags aus Game.update beachtet.
+- Grenzen: tone/flash/shake werden nicht gemalt (kein Renderer dafür),
+  change_graphic/opacity/blending u. a. 2D-Schalter sind No-Ops, Timer hat
+  kein HUD - alles im offenen RGSS-Eintrag ergänzt.
+- Betroffene Stellen: `game/engine/{rgss,graphics,mover,npc,interpreter,
+  scripts,mapcheck}.rb`, `game/main.rb`, `src/editor/editor_main.cpp`,
+  `tools/{move_route_test,rgss_test,graphics_test}.rb`.
+
 ### [Engine] RGSS-Vertiefung: Sprite/Window/$scene/$game_temp/$data_* — erledigt (19h)
 - Wunsch: „Ja alles" auf die Roadmap (19g Bewegungsrouten, 19h RGSS-
   Vertiefung, 19i Zahleneingabe+Kampf); bestätigt per Auswahl „Beides

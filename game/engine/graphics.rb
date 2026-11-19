@@ -62,7 +62,7 @@ end
 
 # ----------------------------------------------------------------------------
 # Bitmap: RGSS kennt Pixel; Rune3D merkt sich Größe + Farbe und malt über
-# Rune::Gfx. Ein Bitmap „zeichnet" nicht selbst - Sprites/Fenster tun das.
+# Rune::Gfx. Ein Bitmap "zeichnet" nicht selbst - Sprites/Fenster tun das.
 # ----------------------------------------------------------------------------
 class Bitmap
   attr_reader :width, :height
@@ -275,6 +275,54 @@ class Window
     end
     UI.text(@x + 16, @y + @height - 20, @help.to_s, UI::TEXT_DIM, 12) if @help
   end
+end
+
+# ----------------------------------------------------------------------------
+# Window_Selectable: XP-Auswahlfenster (030 - Window_Selectable.rb) - Index,
+# Cursor-Bewegung mit Wrap, Seiten/Zeilen. Window erbt das Zeichnen; hier
+# kommen die XP-Methoden dazu, die Default-Scripts überall nutzen.
+# ----------------------------------------------------------------------------
+class Window_Selectable < Window
+  attr_reader :index
+  attr_accessor :help_window
+
+  def initialize(x = 40, y = 40, width = 420, height = 200, viewport = nil)
+    super
+    @index = -1
+    @help_window = nil
+  end
+
+  def row_max = @lines.size
+  def page_row_max = [((@height - 32) / ZEILEN_HOEHE).to_i, 1].max
+  def page_size = page_row_max
+  def top_row = 0   # Scrollen braucht ein Text-Clipping (Backlog)
+  def cursor_width = @width - 16
+  def cursor_rect = [@x + 8, @y + 12 + (@index < 0 ? 0 : @index) * ZEILEN_HOEHE,
+                     cursor_width, ZEILEN_HOEHE]
+
+  # XP: index= clamped auf -1..row_max-1 und aktualisiert das Hilfefenster.
+  def index=(value)
+    @index = [[value.to_i, -1].max, row_max - 1].min
+    update_help
+    @index
+  end
+
+  def update_help
+    @help_window.help = @lines[@index].to_s if @help_window.respond_to?(:help=)
+  end
+
+  def cursor_up(wrap = true)
+    self.index = @index > 0 ? @index - 1 : (wrap ? row_max - 1 : @index)
+  end
+
+  def cursor_down(wrap = true)
+    self.index = @index < row_max - 1 ? @index + 1 : (wrap ? 0 : @index)
+  end
+
+  def cursor_left(wrap = true) = cursor_up(wrap)
+  def cursor_right(wrap = true) = cursor_down(wrap)
+  def cursor_page_up   = self.index = [@index - page_size, 0].max
+  def cursor_page_down = self.index = [@index + page_size, row_max - 1].min
 end
 
 # ----------------------------------------------------------------------------

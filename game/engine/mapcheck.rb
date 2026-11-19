@@ -58,9 +58,28 @@ module MapCheck
   BEDINGUNGEN = %w[switch variable self_switch].freeze
   SELF_SWITCH_BUCHSTABEN = %w[A B C D].freeze     # Etappe 19d (XP: A-D)
   FADE_RICHTUNGEN = %w[ein aus].freeze            # Etappe 19d
-  # Etappe 19g: muss zu Mover::SCHRITTE passen (move_route_test prüft das -
-  # mapcheck.rb wird früher geladen als mover.rb, deshalb keine Referenz).
-  MOVER_SCHRITTE = %w[up down left right zufall spieler_nah spieler_weg warte].freeze
+  # Etappe 19g, XP-Vokabular seit 19h.2: muss zu Mover::SCHRITTE passen
+  # (move_route_test prüft das - mapcheck.rb wird früher geladen als
+  # mover.rb, deshalb keine Referenz). Deutsche Kurznamen (up/down/...) und
+  # XP-Codes ('11'..'57') versteht der Mover zusätzlich als Aliase.
+  MOVER_SCHRITTE = %w[
+    move_down move_left move_right move_up
+    move_lower_left move_lower_right move_upper_left move_upper_right
+    move_random move_toward_player move_away_from_player
+    move_forward move_backward jump wait
+    turn_down turn_left turn_right turn_up
+    turn_90d_right turn_90d_left turn_180d turn_90d_right_or_left
+    turn_random turn_toward_player turn_away_from_player
+    switch_on switch_off change_speed change_freq
+    move_animation_on move_animation_off
+    stop_animation_on stop_animation_off
+    direction_fix_on direction_fix_off through_on through_off
+    always_on_top_on always_on_top_off
+    change_graphic change_opacity change_blending script
+  ].freeze
+
+  # Schritte, die den Route-Parameter 'code' brauchen (19h.2).
+  MOVER_CODE_PFLICHT = %w[switch_on switch_off change_speed script].freeze
   SPEICHER_SLOTS = (1..3).freeze
 
   module_function
@@ -566,6 +585,13 @@ module MapCheck
         end
         if c.key?('speed') && !(zahl?(c['speed']) && c['speed'] > 0)
           melde(WARNUNG, w, "'speed' muss eine Zahl > 0 sein")
+        end
+        # 19h.2: Schritte mit Parameter brauchen 'code' (Schaltername,
+        # Tempo, Ruby-Code) - sonst läuft der Schritt ins Leere.
+        if steps.is_a?(Array) &&
+           steps.any? { |s| MOVER_CODE_PFLICHT.include?(s.to_s) } &&
+           !text?(c['code'])
+          melde(WARNUNG, w, "Schritte #{MOVER_CODE_PFLICHT.join('/')} brauchen 'code'")
         end
       end
     end

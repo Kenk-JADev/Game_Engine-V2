@@ -159,7 +159,7 @@ $game_screen.weather('schnee', 1.5)
 check('Name deutsch = Schnee') { Weather.type == 'schnee' }
 $game_screen.weather('none')
 check('none/0 = kein Wetter') { Weather.type == 'kein' }
-check('weather_type-Leser') { $game_screen.weather_type == 'kein' }
+check('weather_type-Leser (19h.2: XP-Zahl)') { $game_screen.weather_type.zero? }
 
 puts '== Input (RGSS-Konstanten) =='
 check('Konstanten wie RGSS1') { Input::DOWN == 2 && Input::C == 13 && Input::F9 == 29 }
@@ -218,6 +218,32 @@ check('$game_temp besetzt und frisch') do
   $game_temp.is_a?(RGSS::GameTemp) && $game_temp.message_text.nil? &&
     $game_temp.player_passable?
 end
+check('$game_temp: XP-Defaultwerte (000 - Game_Temp.rb)') do
+  $game_temp.choice_start == 99 && $game_temp.num_input_start == 99 &&
+    $game_temp.battle_event_flags == {} && $game_temp.battleback_name == '' &&
+    $game_temp.gameover == false && $game_temp.to_title == false
+end
+check('$game_system: Timer (XP-Frames)') do
+  $game_system.timer_start(2)
+  $game_system.update(1.0)
+  $game_system.timer_working && ($game_system.timer_seconds - 1.0).abs < 0.01
+end
+check('$game_system: se_play delegiert zu Audio') do
+  Rune::Sound::CALLS.clear
+  $game_system.se_play({ 'name' => 'klick', 'volume' => 50 })
+  Rune::Sound::CALLS.last == [:play, 'klick', 0.5]
+end
+check('$game_map.valid? wie XP') do
+  $game_map.valid?(10, 10) && !$game_map.valid?(500, 10) &&
+    !$game_map.valid?(-1, 10)
+end
+check('$game_player: direction/steps wie XP') do
+  $game_player.direction = 6
+  d = $game_player.direction
+  s0 = $game_player.steps
+  $game_player.increase_steps
+  d == 6 && $game_player.steps == s0 + 1
+end
 check('$data_actors: Hash mit String-IDs aus database.json') do
   $data_actors.key?('arik') && $data_actors.size == 2
 end
@@ -228,9 +254,9 @@ check('passable?: flach in der Karte -> true') { $game_player.passable?(5.0, 5.0
 check('passable?: Richtung 6 über die Kartengrenze -> false') do
   !$game_player.passable?($game_map.width, 5.0, 6)
 end
-$game_temp.player_passable = false
+$game_temp.passable = false
 check('passable? abgeschaltet -> immer true') { $game_player.passable?(999.0, 999.0) }
-$game_temp.player_passable = true
+$game_temp.passable = true
 RGSS.reset!
 check('RGSS.reset!: $game_temp frisch, $scene nil') do
   $game_temp.is_a?(RGSS::GameTemp) && $scene.nil?

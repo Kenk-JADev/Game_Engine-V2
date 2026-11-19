@@ -44,6 +44,15 @@ module Game
   def self.gy(_x, _z) = 0.0
 end
 
+# Scripts-Attrappe: script-Schritte landen hier (mover.rb prüft defined?).
+module Scripts
+  CALLS = []
+  def self.run_code(name, code, *args)
+    CALLS << [name, code]
+    true
+  end
+end
+
 $LOAD_PATH.unshift(File.join(Rune::ROOT, 'game', 'engine'))
 require 'state'
 require 'issues'
@@ -79,6 +88,12 @@ class FakeNpc
     @x = x.to_f
     @z = z.to_f
     @spuren << [@x.round(3), @z.round(3)]
+  end
+
+  # Blickrichtung (19h.2): yaw in Radiant, für die Tests gemerkt.
+  attr_reader :yaw
+  def turn_to(y)
+    @yaw = y.to_f
   end
 end
 
@@ -242,6 +257,115 @@ check('ohne wait: Liste läuft sofort weiter') { GameState.variable('sofort') ==
 check('ohne wait: Route läuft trotzdem nebenher') { Mover.active? }
 Mover.reset!
 
+puts '== Mover: XP-Vokabular (19h.2, Game_Character 2) =='
+check('normalize: XP-Code 14 = move_up') { Mover.normalize('14') == 'move_up' }
+check('normalize: deutsche Aliase (19g) bleiben gültig') do
+  Mover.normalize('up') == 'move_up' && Mover.normalize('warte') == 'wait' &&
+    Mover.normalize('spieler_nah') == 'move_toward_player'
+end
+check('normalize: XP-Name bleibt') { Mover.normalize('move_down') == 'move_down' }
+
+Mover.reset!
+xp = FakeNpc.new('Xaver', 0.0, 0.0, 1.0)
+Game.npcs = [xp]
+Mover.start('Xaver', ['14'])   # XP-Code 14 = move_up
+Mover.update(1.0)
+check('XP-Code als Schritt läuft (move_up: z = -1)') { nah?(xp.position, [0.0, -1.0]) }
+
+Mover.reset!
+Mover.start('Xaver', %w[move_lower_left])
+Mover.update(1.0)
+d = Math.sqrt(0.5)
+check('Diagonale: move_lower_left (-0.71/+0.71)') { nah?(xp.position, [-d, -1.0 + d]) }
+check('Blickrichtung bei Diagonale bleibt (hier 2/unten)') { xp.yaw.zero? }
+
+Mover.reset!
+xp2 = FakeNpc.new('Xena', 0.0, 0.0, 1.0)
+Game.npcs = [xp2]
+Mover.start('Xena', %w[turn_left move_forward])
+Mover.update(0.5)
+check('turn_left: yaw = pi/2 (XP-Richtung 4)') { (xp2.yaw - Math::PI / 2).abs < 0.001 }
+check('move_forward läuft in Blickrichtung (x = -0.5)') do
+  nah?(xp2.position, [-0.5, 0.0])
+end
+Mover.update(0.5)
+Mover.update(0.1)
+check('Route fertig nach einem Meter') { Mover.routes.empty? && nah?(xp2.position, [-1.0, 0.0]) }
+
+Mover.reset!
+dreher = FakeNpc.new('Dreh', 0.0, 0.0, 1.0)
+Game.npcs = [dreher]
+r = Mover.start('Dreh', %w[turn_down turn_90d_right turn_180d])
+Mover.update(0.1)
+check('turn_90d_right von unten(2) -> links(4): yaw pi/2') do
+  (dreher.yaw - Math::PI / 2).abs < 0.001
+end
+check('turn_180d von links(4) -> rechts(6): yaw -pi/2') do
+  (dreher.yaw + Math::PI / 2).abs < 0.001 && !Mover.running?(r)
+end
+
+Mover.reset!
+gucker = FakeNpc.new('Guck', 3.0, 4.0, 1.0)
+Game.npcs = [gucker]
+Rune::Player.pos = [0.0, 0.0, 0.0]
+Mover.start('Guck', %w[turn_toward_player])
+Mover.update(0.1)
+check('turn_toward_player: größerer Achsenanteil (dz=4 -> Richtung 8, yaw pi)') do
+  (gucker.yaw - Math::PI).abs < 0.001
+end
+Mover.reset!
+Mover.start('Guck', %w[turn_away_from_player])
+Mover.update(0.1)
+check('turn_away_from_player: Richtung 2 (yaw 0)') { gucker.yaw.abs < 0.001 }
+
+Mover.reset!
+schalter = FakeNpc.new('Schalti', 0.0, 0.0, 1.0)
+Game.npcs = [schalter]
+Mover.start('Schalti', %w[switch_on], code: 'route_lief')
+Mover.update(0.1)
+check('switch_on setzt GameState-Schalter aus code') { GameState.switch('route_lief') }
+Mover.reset!
+Mover.start('Schalti', %w[switch_off], code: 'route_lief')
+Mover.update(0.1)
+check('switch_off löscht ihn wieder') { !GameState.switch('route_lief') }
+
+Mover.reset!
+flitzer = FakeNpc.new('Flitz', 0.0, 0.0, 1.0)
+Game.npcs = [flitzer]
+rr = Mover.start('Flitz', %w[change_speed move_up], code: 3.0)
+check('change_speed: Tempo aus code (3 m/s)') { (rr.speed - 3.0).abs < 0.001 }
+Mover.update(0.5)
+check('change_speed wirkt: 1.5 m in 0.5 s') { nah?(flitzer.position, [0.0, -1.0]) }
+
+Mover.reset!
+Scripte = Scripts
+skriptler = FakeNpc.new('Skript', 0.0, 0.0, 1.0)
+Game.npcs = [skriptler]
+Scripte::CALLS.clear
+Mover.start('Skript', %w[script], code: "log 'aus der Route'")
+Mover.update(0.1)
+check('script-Schritt ruft Scripts.run_code mit dem code') do
+  Scripte::CALLS == [['move_route', "log 'aus der Route'"]]
+end
+
+Mover.reset!
+huepfer = FakeNpc.new('Hüpf', 0.0, 0.0, 1.0)
+Game.npcs = [huepfer]
+Mover.start('Hüpf', %w[jump])
+Mover.update(0.1)
+check('jump: Route endet ohne Bewegung (Effekt ohne Effects-Modul)') do
+  Mover.routes.empty? && nah?(huepfer.position, [0.0, 0.0])
+end
+
+Mover.reset!
+Rune::Player.pos = [0.0, 0.0, 0.0]
+Mover.start('spieler', %w[turn_right])
+Mover.update(0.1)
+check('turn_right beim Spieler dreht die Kamera (yaw -pi/2)') do
+  (Rune::Camera.yaw + Math::PI / 2).abs < 0.001
+end
+Rune::Camera.yaw = 0.0
+
 puts '== MapCheck: move_route =='
 OPTS = { prefabs: %w[haus], materials: %w[weg], scripts: [] }.freeze
 
@@ -286,6 +410,16 @@ check('speed <= 0 -> Warnung') do
   hat?(MapCheck.scan(karte_mit([{ 'cmd' => 'move_route', 'target' => 'x',
                                   'steps' => %w[up], 'speed' => 0 }]), **OPTS),
        "'speed' muss eine Zahl > 0 sein", MapCheck::WARNUNG)
+end
+check('XP-Vokabular gültig (turn_left/jump/script): keine Funde') do
+  MapCheck.scan(karte_mit([{ 'cmd' => 'move_route', 'target' => 'x',
+                             'steps' => %w[turn_left jump script],
+                             'code' => 'log 1' }]), **OPTS).empty?
+end
+check("switch_on ohne 'code' -> Warnung") do
+  hat?(MapCheck.scan(karte_mit([{ 'cmd' => 'move_route', 'target' => 'x',
+                                  'steps' => %w[switch_on] }]), **OPTS),
+       "brauchen 'code'", MapCheck::WARNUNG)
 end
 check('CMD_TYPES zählen 24') { MapCheck::CMD_TYPES.size == 24 }
 

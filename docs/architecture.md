@@ -1381,6 +1381,45 @@ RGSS1-Default-Scripts (Game_Battler, Scene_Battle, Window_InputNumber, ...) -
 Referenzmaterial für 19i (Zahleneingabe + Kampf) und spätere RGSS-Arbeit.
 Liegt außerhalb der Quellverzeichnisse, kein Test/Lint lädt sie.
 
+### RGSS-Ausrichtung an den Default-Scripts (Etappe 19h.2)
+
+Seit dem User-Upload folgt die Schicht den Original-Dateien Feld für Feld:
+
+- **$game_temp** = komplette Feldliste + Defaultwerte aus `000 - Game_Temp.rb`
+  (choice_*, num_input_*, battle_*, shop_*, name_*, player_*, gameover,
+  to_title, ...). Rune3D-Erweiterung: `passable` (schaltet die Geländeprüfung
+  von `$game_player.passable?` ab). `gameover`/`to_title` werden von
+  `Game.update` beachtet (`Game.to_title!`).
+- **$game_system** nach `001 - Game_System.rb`: Timer in XP-Frames
+  (`timer_start/timer_seconds/update(dt)` aus `Game.update`), Audio-Delegation
+  (`bgm_play/se_play/...` mit Hash `{'name','volume','pitch'}` oder String),
+  message_position/message_frame/save_count/windowskin_name/battle_bgm/
+  battle_end_me/menu_bgm.
+- **$game_screen** nach `005 - Game_Screen.rb`: tone/flash_color/shake/
+  pictures als Zustände (Renderer fehlt noch, Backlog), `weather_type`
+  liefert jetzt die XP-Zahl (0/1/2), weather_max.
+- **$game_map.valid?(x, z)** wie XP; **$game_player** mit direction (2/4/6/8),
+  steps/increase_steps (hängt an der Schritt-Sound-Logik in Game.update) und
+  encounter_count/make_encounter_count (Grundlage für Zufallskämpfe, 19i).
+- **Window_Selectable** nach `030 - Window_Selectable.rb`: index=/cursor_up/
+  cursor_down/cursor_page_*/row_max/page_row_max/cursor_rect/help_window.
+- **Mover spricht XP** (`019 - Game_Character 2.rb`, move_type_custom):
+  Schritte sind die Original-Namen (move_down .. move_backward, jump, wait,
+  turn_down .. turn_away_from_player, switch_on/off, change_speed,
+  move_animation_on/off, script, ...), XP-Befehls-Codes ('11'..'57') und die
+  deutschen 19g-Kurznamen (up/down/warte/...) werden als Aliase verstanden.
+  Blickrichtung (2/4/6/8) wird mitgeführt: Bewegungsschritte drehen,
+  turn_*-Schritte drehen nur - NPC per `Npc#turn_to` (Node-Yaw), Spieler per
+  Kamera-Yaw. Schritte mit Parameter tragen den Wert im neuen Route-Feld
+  `code` (switch_on/off: Schaltername, change_speed: m/s, script: Ruby-Code);
+  Event-Befehl und Context-Helfer haben dafür `code`, MapCheck warnt bei
+  switch_on/script ohne `code`. 2D-only-Schritte (change_graphic/opacity/
+  blending, stop_animation_*, direction_fix_*, through_*, always_on_top_*,
+  change_freq) sind dokumentierte No-Ops mit Einmal-Warnung.
+- **Editor:** Bewegungsroute bekommt Wert 3 = Code-Parameter (Laden/Bauen/
+  Label), Schrittfeld bleibt freie Zeilenliste - XP-Namen, Codes und
+  deutsche Kurznamen gehen gleichermaßen.
+
 **Tests:** `tools/graphics_test.rb` (kopflos: Bitmap, Sprite-Sortierung/
 Viewport/dispose, Window-Cursor/-Zeichnen, $scene, reset!, passable?) +
 19h-Abschnitt in `rgss_test.rb` ($game_temp/$data_* gegen die echte
