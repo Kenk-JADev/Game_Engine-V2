@@ -23,6 +23,9 @@
 #    {"cmd":"gold","amount":n}                       (negativ = abziehen)
 #    {"cmd":"heal","amount":n}                       (leer/0 = voll heilen)
 #    {"cmd":"weather","name":"regen","intensity":n}  (kein/regen/schnee, Etappe 17h)
+#    {"cmd":"self_switch","letter":"A","value":true}     (Self-Switch, Etappe 19d)
+#    {"cmd":"if_self_switch","letter":"A","value":b,"then":[...],"else":[...]}  (19d)
+#    {"cmd":"fade","direction":"aus","seconds":0.5}      (Bildschirmblende, 19d)
 #    {"cmd":"save_game","slot":1} / {"cmd":"load_game","slot":1}           (18f)
 #    {"cmd":"script","name":"projekt_script"}  |  {"cmd":"script","code":"..."}
 # ============================================================================
@@ -104,6 +107,10 @@ class Interpreter
       when 'wait'      then @wait_left = (cmd['seconds'] || 0.0).to_f; return
       when 'switch'    then GameState.set_switch(cmd['name'], !!cmd['value'])
       when 'toggle_switch' then GameState.toggle_switch(cmd['name'])
+      when 'self_switch'   then apply_self_switch(cmd)
+      when 'if_self_switch'
+        branch = self_switch_zutrifft?(cmd)
+        @stack.push(list: branch ? (cmd['then'] || []) : (cmd['else'] || []), index: 0)
       when 'variable'  then apply_variable(cmd)
       when 'if_switch'
         branch = GameState.switch(cmd['name']) == !!cmd['value']
@@ -173,6 +180,8 @@ class Interpreter
         Party.heal_all(cmd.key?('amount') ? cmd['amount'].to_i : 0)
       when 'weather'   # {"cmd":"weather","name":"schnee","intensity":1.5} (Etappe 17h)
         Weather.set(cmd['name'] || 'kein', (cmd['intensity'] || 1.0).to_f)
+      when 'fade'   # {"cmd":"fade","direction":"aus","seconds":0.5} (Etappe 19d)
+        Fade.start(cmd['direction'] || 'aus', cmd['seconds'] || 0.5)
       else
         Rune::Log.warn("Interpreter: unbekanntes Kommando '#{cmd['cmd']}' übersprungen")
         Issues.report('Interpreter', "unbekanntes Kommando '#{cmd['cmd']}'")
@@ -189,6 +198,28 @@ class Interpreter
     v = cmd['value'].to_f if cmd.key?('value')
     v = v + cmd['add'].to_f if cmd.key?('add')
     GameState.set_variable(name, v)
+  end
+
+  # Self-Switch (Etappe 19d, RPG Maker XP): Schalter A-D, die nur für das
+  # auslösende Event gelten. Ohne Besitzer (z. B. Intro-Aufruf) sind sie
+  # sinnlos - dann warnen und überspringen bzw. den Sonst-Zweig nehmen.
+  def apply_self_switch(cmd)
+    key = @owner.respond_to?(:self_switch_key) ? @owner.self_switch_key : nil
+    unless key
+      Rune::Log.warn('Interpreter: self_switch ohne Event-Besitzer ignoriert')
+      Issues.report('Interpreter', 'self_switch ohne Besitzer')
+      return
+    end
+    GameState.set_self_switch(key, cmd['letter'], !!cmd['value'])
+  end
+
+  def self_switch_zutrifft?(cmd)
+    key = @owner.respond_to?(:self_switch_key) ? @owner.self_switch_key : nil
+    unless key
+      Rune::Log.warn('Interpreter: if_self_switch ohne Besitzer -> Sonst-Zweig')
+      return false
+    end
+    GameState.self_switch(key, cmd['letter']) == !!cmd['value']
   end
 
   def compare_variable(cmd)

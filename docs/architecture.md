@@ -1170,6 +1170,56 @@ Tastatur/Buttons, über `WM_COMMAND` verteilt.
 Drehung, Material); `tools/edclick.psm1` liest die Liste daraus und liefert
 weiter das alte Zeilenformat, bestehende Live-Skripte laufen also unverändert.
 
+## Self-Switches und Bildschirmblende (Etappe 19d)
+
+Erste Nachschub-Welle der RPG-Maker-XP-Features (User-Wunsch nach 19c):
+Self-Switches und die Bildschirmblende — in XP die Kernwerkzeuge für
+Event-Regie („Schrank öffnet sich nur einmal", „Szene dunkelt ab").
+
+**Self-Switches (A-D pro Event):** `GameState` führt neben globalen Schaltern
+eine zweite Tabelle mit Schlüsseln `"karte|event|buchstabe"`. Der Schlüssel
+kommt vom Event (`Event#self_switch_key`, Karte = `Game.map_id`, Name statt
+ID — wie die Savegames es für Events schon tun). Die Self-Switches wandern
+in `snapshot`/`restore!` mit, Savegames bleiben also vollständig; alte
+Savegames ohne das Feld laden mit leeren Self-Switches.
+
+**Interpreter:** `self_switch` setzt den Buchstaben des Besitzer-Events
+(`@owner`), `if_self_switch` verzweigt Dann/Sonst darauf. Ohne Besitzer
+(Intro-Aufruf) wird gewarnt bzw. der Sonst-Zweig genommen — nie abgestürzt.
+Ungültige Buchstaben (nicht A-D) lehnt `GameState` mit Warnung ab.
+
+**Seiten-Bedingung:** Event-Seiten (18g) können jetzt zusätzlich zu
+`switch`/`variable` ein `"self_switch": {"letter":"A","value":true}`
+tragen; `Event.conditions_met?(c, ev)` bekommt dafür das Event als Kontext.
+`refresh_page!` läuft weiter jeden Frame — Seitenwechsel durch Self-Switches
+passieren damit automatisch (touch/auto feuern auf der neuen Seite erneut).
+
+**Bildschirmblende:** `game/engine/fade.rb` (Modul `Fade`) interpoliert eine
+Vollbild-Abdunklung (Alpha 0..1) mit Ziel und Rate; `Game.update` dreht sie
+weiter, `Game.draw` legt sie über Spiel und UI, aber unter das Menü-Overlay
+(damit ein abgedunkeltes Bild nie die Menü-Bedienung frisst). Kartenwechsel
+und Playtest-Ende rufen `Fade.reset!` — man landet nie mit schwarzem
+Bildschirm in einer Karte. Der Interpreter-Befehl `fade`
+(`direction` ein/aus, `seconds`) ist nicht blockierend, wie bei XP läuft das
+Spiel während der Blende weiter.
+
+**Editor:** Der Event-Dialog kennt die drei neuen Befehlstypen
+(`EV_TYPES`/Labels/`ev_cmd_label`, Formular-Felder: Buchstabe im Namensfeld
++ an/aus-Combo bzw. Richtung + Sekunden). Der Seite-Kasten bekommt rechts
+neben der Schalter-Bedingung zwei Combos: „Self-Switch" (keins/A-D) und
+an/aus — Index 0 („keins") entfernt die Bedingung wieder.
+
+**Sync-Pflicht bleibt:** `MapCheck::CMD_TYPES` (Ruby) = `ISSUE_CMD_TYPES` =
+`EV_TYPES` (C++) — jetzt 23 Befehlstypen; `mapcheck_test.rb` zählt mit,
+damit Auseinanderlaufen auffällt. MapCheck prüft `letter` A-D (Fehler),
+fehlendes `value` (Warnung), Dann-/Sonst-Listen rekursiv und beim `fade`
+Richtung/Dauer.
+
+**Tests:** `tools/self_switch_test.rb` (GameState-Isolation, Savegame-Rundlauf,
+Seitenwahl, Interpreter-Zweige, MapCheck) und `tools/fade_test.rb`
+(Blendenverlauf, Minimaldauer, Reset, draw-Alpha, Interpreter, MapCheck),
+beide kopflos wie die übrigen Engine-Tests.
+
 ## Ruby-API (Stand Etappe 2)
 
 | API | Bedeutung |

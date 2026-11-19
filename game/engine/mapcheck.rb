@@ -47,13 +47,16 @@ module MapCheck
     weather effect sound
     item gold
     save_game load_game
+    self_switch if_self_switch fade
   ].freeze
 
   TRIGGER   = %w[action touch auto parallel].freeze
   WETTER    = %w[kein regen schnee].freeze
   EFFEKTE   = %w[sparkle dust burst].freeze
   VERGLEICH = %w[== != < <= > >=].freeze
-  BEDINGUNGEN = %w[switch variable].freeze
+  BEDINGUNGEN = %w[switch variable self_switch].freeze
+  SELF_SWITCH_BUCHSTABEN = %w[A B C D].freeze     # Etappe 19d (XP: A-D)
+  FADE_RICHTUNGEN = %w[ein aus].freeze            # Etappe 19d
   SPEICHER_SLOTS = (1..3).freeze
 
   module_function
@@ -397,6 +400,14 @@ module MapCheck
           melde(FEHLER, "#{wo} Bedingung #{key}", 'ist kein Objekt')
           next
         end
+        if key.to_s == 'self_switch'
+          # Self-Switch-Bedingung (Etappe 19d): letter + value statt name.
+          unless SELF_SWITCH_BUCHSTABEN.include?(wert['letter'].to_s)
+            melde(FEHLER, "#{wo} Bedingung #{key}", "'letter' muss A, B, C oder D sein")
+          end
+          melde(WARNUNG, "#{wo} Bedingung #{key}", "'value' fehlt") unless wert.key?('value')
+          next
+        end
         unless text?(wert['name'])
           melde(FEHLER, "#{wo} Bedingung #{key}", "'name' fehlt oder ist leer")
         end
@@ -513,6 +524,28 @@ module MapCheck
         end
       when 'log'
         melde(WARNUNG, w, "'text' fehlt oder ist leer") unless text?(c['text'])
+      when 'self_switch'
+        # Etappe 19d: Self-Switch des auslösenden Events setzen (A-D).
+        unless SELF_SWITCH_BUCHSTABEN.include?(c['letter'].to_s)
+          melde(FEHLER, w, "'letter' muss A, B, C oder D sein")
+        end
+        melde(WARNUNG, w, "'value' fehlt") unless c.key?('value')
+      when 'if_self_switch'
+        %w[then else].each do |k|
+          melde(WARNUNG, w, "'#{k}' fehlt/keine Liste") unless c[k].is_a?(Array)
+        end
+        pruefe_befehle(c['then'], "#{w} (Dann)")   if c['then'].is_a?(Array)
+        pruefe_befehle(c['else'], "#{w} (Sonst)")  if c['else'].is_a?(Array)
+        unless SELF_SWITCH_BUCHSTABEN.include?(c['letter'].to_s)
+          melde(FEHLER, w, "'letter' muss A, B, C oder D sein")
+        end
+      when 'fade'
+        if text?(c['direction']) && !FADE_RICHTUNGEN.include?(c['direction'].to_s)
+          melde(WARNUNG, w, "unbekannte Richtung '#{c['direction']}' (ein/aus)")
+        end
+        if c.key?('seconds') && !(zahl?(c['seconds']) && c['seconds'] >= 0)
+          melde(WARNUNG, w, "'seconds' muss eine Zahl >= 0 sein")
+        end
       end
     end
 

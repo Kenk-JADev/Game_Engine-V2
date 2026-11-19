@@ -302,8 +302,8 @@ check('log ohne text -> Warnung') do
   hat?(MapCheck.scan(karte_mit({ 'cmd' => 'log' }), **OPTS),
        "'text' fehlt oder ist leer", MapCheck::WARNUNG)
 end
-check('alle 20 Befehlstypen sind bekannt') do
-  MapCheck::CMD_TYPES.size == 20 &&
+check('alle 23 Befehlstypen sind bekannt') do
+  MapCheck::CMD_TYPES.size == 23 &&
     MapCheck.scan(karte_mit({ 'cmd' => 'heal' }), **OPTS).empty? &&
     MapCheck.scan(karte_mit({ 'cmd' => 'move_player', 'x' => 1.0, 'z' => 1.0 }), **OPTS).empty? &&
     MapCheck.scan(karte_mit({ 'cmd' => 'toggle_switch', 'name' => 's' }), **OPTS).empty? &&

@@ -1,4 +1,4 @@
-# Handoff für die nächste KI - Rune3D, Stand nach Etappe 19c
+# Handoff für die nächste KI - Rune3D, Stand nach Etappe 19d
 
 **Datum des Stands:** HEAD (nach Commit) — Etappe 19a: CI (GitHub Actions), portabler Build, Daten-Validierung
 **Projekt:** `C:/Users/jusagu/Desktop/Engine` — Windows-Only 3D-RPG-Engine (C++20/Win32/D3D11 + echtes CRuby 3.4.11), Editor = eigenes Programm `RuneEditor.exe`.
@@ -33,6 +33,7 @@ Der User beauftragte eine Überarbeitung von Engine und Editor **im Stil von RPG
 | 19a | `0cd940d` + Nacharbeit | GitHub Actions (4 Jobs), `build.ps1` portabel + `-Test`, `tools/test_all.rb`, `tools/json_test.cpp` (88 Checks), `tools/json_bridge_check.rb`, `tools/lint_repo.rb`, `game/engine/mapcheck.rb` + Test, README.md, einheitliche Zeilenenden, **Fix: `json_write` beschnitt Kommazahlen (`%.12g`)** |
 | 19b | `2f589ba` | Echte Umlaute überall: Prosa (Kommentare, UI-/Spieltexte, Doku, Daten-Namen) schreibt ä/ö/ü, Identifier bleiben ASCII; 24 Win32-Textaufrufe von A auf W (`utf8_to_wide`/`wide_to_utf8`); `build.ps1` mit UTF-8-BOM |
 | 19c | `20494e1` + Nacharbeit `ad9ac18`, `3687d3a` (CI-Grün) | Editor-Hauptfenster professionell: linke Spalte als drei Gruppen mit Radio-Modi (`set_mode`), Objektliste als ListView (6 Spalten, sortierbar per Kopflick), Platzier-Vorschau („Geist" folgt dem Cursor, `R` dreht in 15°), Kontextmenü für Viewport und Liste, `log/editor_objects.json` als Leseweg für Live-Tests (edclick) |
+| 19d | HEAD | XP-Features Welle 1: Self-Switches A-D pro Event (GameState, Seiten-Bedingung, `self_switch`/`if_self_switch`, Savegame, Editor-Combos im Seite-Kasten) + Bildschirmblende (`fade.rb`, Befehl `fade`, Reset bei Kartenwechsel); 23 Befehlstypen synchron in CMD_TYPES/ISSUE_CMD_TYPES/EV_TYPES; Tests `self_switch_test.rb`, `fade_test.rb` |
 
 Alle Etappen sind gebaut, live getestet (headless Ruby-Tests + Fenster-Injektion) und committed. Es gibt **keine uncommitteten Quelländerungen**; `opencode.json` ist lokaler Harness-Kram (steht jetzt im .gitignore).
 
@@ -72,6 +73,12 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
   (`R` = Vorschau drehen); Objektliste sortiert per Klick auf den Spaltenkopf;
   Rechtsklick im Viewport/auf der Liste = Kontextmenü. Live-Tests lesen die
   Objektliste aus `log/editor_objects.json` (nicht per SendMessage).
+- **Event-Regie seit 19d:** Self-Switches (A-D) gehören zum auslösenden Event
+  (Schlüssel `karte|name`), Seitenbedingungen können sie prüfen; der Befehl
+  `fade` blendet den Bildschirm nicht-blockierend ab/auf. Neue Befehlstypen
+  immer in ALLEN drei Listen eintragen (`CMD_TYPES` mapcheck.rb,
+  `ISSUE_CMD_TYPES` + `EV_TYPES` editor_main.cpp) und die Zähl-Assertion in
+  `mapcheck_test.rb` anpassen.
 - **CI läuft automatisch** (`.github/workflows/ci.yml`, bei push und pull_request):
   `hygiene` (lint_repo), `engine` (test_all + mapcheck), `cpp-logik` (json_test mit
   `-Werror` + Brücke) auf ubuntu, `windows` (build.ps1 -Clean und -Test, EXEs als

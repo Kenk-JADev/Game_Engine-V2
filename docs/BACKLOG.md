@@ -97,12 +97,6 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Betroffene Stellen: Terrain-Shader, Tileset-Dialog.
 - Gefunden in: Handoff-Kandidatenliste.
 
-### [Editor] Objektliste zeigt nur einzeilige Kurztexte — offen (UX)
-- Symptom: Lange Objektnamen werden in der schmalen Liste abgeschnitten; kein Tooltip, keine Mehrzeiligkeit.
-- Vermutung/Analyse: `LBS_HASSTRINGS`-ListBox ohne `LBS_OWNERDRAWFIXED`/Tooltip; Alternative: eigene Zeichnung (`LBS_OWNERDRAWVARIABLE`) oder Tooltip-Control auf Hover.
-- Betroffene Stellen: `src/editor/editor_main.cpp` (`g.list_objs`, `refresh_object_list`).
-- Gefunden in: Etappe 18i (Screenshot-Review).
-
 ### [Editor] Eigenschaften-Bereich: Leerraum unter „Übernehmen" ungenutzt — offen (UX)
 - Symptom: Unter dem Übernehmen-Button bleiben ~50 px leer, während Objekt-Infos (Typ, Material-Herkunft, Anzahl Splats) fehlen.
 - Vermutung/Analyse: Platz für ein Info-Label (Prefab-Typ + Materialstatus) oder Buttons „Objekt löschen"/„Kopieren".
@@ -164,6 +158,24 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Etappe 19a.
 
 ## Erledigt
+### [Engine/Editor] Self-Switches + Bildschirmblende (XP-Features) — erledigt (19d)
+- Wunsch: RPG-Maker-XP-Funktionen ergänzen (User-Vorgabe nach Etappe 19c).
+- Umsetzung: Self-Switches A-D pro Event (`GameState`, Seiten-Bedingung
+  `self_switch`, Interpreter-Befehle `self_switch`/`if_self_switch`,
+  Savegame-Mitnahme, Editor-Formular und Self-Switch-Combos im Seite-Kasten)
+  sowie Bildschirmblende (`game/engine/fade.rb`, Interpreter-Befehl `fade`,
+  Vollbild-Alpha über die UI-Schicht, Reset bei Kartenwechsel/Playtest-Ende).
+- Betroffene Stellen: `game/engine/{state,event,interpreter,mapcheck,fade}.rb`,
+  `game/main.rb`, `game/engine/boot.rb`, `src/editor/editor_main.cpp`,
+  `tools/{self_switch_test,fade_test,mapcheck_test}.rb`.
+- Folge-Etappen: weitere XP-Features (Bewegungsrouten, Zahleneingabe,
+  Kampf-System …).
+
+### [Editor] Objektliste zeigt nur einzeilige Kurztexte — erledigt (19c)
+- Behoben mit dem ListView-Umbau in Etappe 19c: sechs Spalten (Objekt, X, Z,
+  Drehung, Material) statt einzeiliger ListBox-Kurztexte.
+- Ursprünglich gefunden in: Etappe 18i (Screenshot-Review).
+
 ### [Editor] Objektliste + Platzier-Vorschau — erledigt (19c)
 - Symptom/Wunsch: einzeilige ListBox, Sofort-Einfügen ohne Vorschau; User wollte
   Listen-Auswahl, Geist-Vorschau am Cursor und Klick als Bestätigung.

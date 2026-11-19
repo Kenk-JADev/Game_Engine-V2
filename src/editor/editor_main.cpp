@@ -758,7 +758,8 @@ const char* const ISSUE_CMD_TYPES[] = {
     "teleport", "move_player", "heal",
     "weather", "effect", "sound",
     "item", "gold",
-    "save_game", "load_game"
+    "save_game", "load_game",
+    "self_switch", "if_self_switch", "fade"
 };
 const int ISSUE_CMD_TYPE_COUNT =
     static_cast<int>(sizeof(ISSUE_CMD_TYPES) / sizeof(ISSUE_CMD_TYPES[0]));
@@ -4454,6 +4455,9 @@ enum {
     IDEV_CVAR      = 5052,   // Bedingung: Variablen-Name
     IDEV_CVOP      = 5053,   // Bedingung: Vergleichsoperator
     IDEV_CVVAL     = 5054,   // Bedingung: Variablenwert
+    // Etappe 19d: Self-Switch-Bedingung der Seite (Buchstabe + an/aus)
+    IDEV_CSELF     = 5055,
+    IDEV_CSELFVAL  = 5056,
 };
 
 // Ein Eintrag der flachen Befehlsliste. list/index zeigen in den JSON-Baum;
@@ -4497,6 +4501,9 @@ struct EventDlgState {
     HWND ed_cvar = nullptr;
     HWND cb_cvop = nullptr;
     HWND ed_cvval = nullptr;
+    // Etappe 19d: Self-Switch-Bedingung (RPG Maker XP)
+    HWND cb_cself = nullptr;      // keins/A/B/C/D
+    HWND cb_cselfval = nullptr;   // an/aus
     int sel_event = -1;
     int sel_page = -1;
     int sel_cmd = -1;
@@ -4516,6 +4523,7 @@ enum EvType {
     ET_WEATHER, ET_EFFECT, ET_SOUND,
     ET_ITEM, ET_GOLD,
     ET_SAVE_GAME, ET_LOAD_GAME,
+    ET_SELF_SWITCH, ET_IF_SELF_SWITCH, ET_FADE,   // Etappe 19d (XP-Features)
     ET_COUNT
 };
 const char* const EV_TYPES[ET_COUNT] = {
@@ -4525,7 +4533,8 @@ const char* const EV_TYPES[ET_COUNT] = {
     "teleport", "move_player", "heal",
     "weather", "effect", "sound",
     "item", "gold",
-    "save_game", "load_game"
+    "save_game", "load_game",
+    "self_switch", "if_self_switch", "fade"
 };
 const wchar_t* const EV_TYPE_LABELS[ET_COUNT] = {
     L"[Nachricht] Text", L"[Nachricht] Wahlmöglichkeiten", L"[Nachricht] Log",
@@ -4536,7 +4545,9 @@ const wchar_t* const EV_TYPE_LABELS[ET_COUNT] = {
     L"[Spieler] Teleport", L"[Spieler] Spieler bewegen", L"[Spieler] Heilen",
     L"[Welt] Wetter", L"[Welt] Effekt", L"[Welt] Sound",
     L"[Party] Item geben/nehmen", L"[Party] Gold +/-",
-    L"[Spiel] Spiel speichern", L"[Spiel] Spiel laden"
+    L"[Spiel] Spiel speichern", L"[Spiel] Spiel laden",
+    L"[Steuerung] Self-Switch", L"[Steuerung] Wenn Self-Switch",
+    L"[Welt] Bild aus-/einblenden"
 };
 const wchar_t* const EV_TRIGGERS[4] = { L"action", L"touch", L"auto", L"parallel" };
 const wchar_t* const EV_OPS[6] = { L"==", L"!=", L"<", L"<=", L">", L">=" };
@@ -4694,6 +4705,19 @@ std::string ev_cmd_label(const JsonValue& c) {
         return "Wenn \"" + ev_str_of(c, "name") + "\" " + ev_str_of(c, "op", "==") + " " +
                ev_num_str(ev_num_of(c, "value"), 2);
     }
+    if (type == "self_switch") {
+        return "Self-Switch " + ev_str_of(c, "letter") + " = " +
+               (ev_bool_of(c, "value") ? "an" : "aus");
+    }
+    if (type == "if_self_switch") {
+        return "Wenn Self-Switch " + ev_str_of(c, "letter") + " = " +
+               (ev_bool_of(c, "value") ? "an" : "aus");
+    }
+    if (type == "fade") {
+        const bool ein = ev_str_of(c, "direction", "aus") == "ein";
+        return std::string(ein ? "Bild einblenden (" : "Bild ausblenden (") +
+               ev_num_str(ev_num_of(c, "seconds"), 2) + " s)";
+    }
     if (type == "teleport") {
         return "Teleport nach (" + ev_num_str(ev_num_of(c, "x"), 1) + ", " +
                ev_num_str(ev_num_of(c, "z"), 1) + ")";
@@ -4788,7 +4812,8 @@ void ev_flatten(JsonValue& list, int depth) {
             }
             continue;
         }
-        if (type != "if_switch" && type != "if_variable") continue;
+        if (type != "if_switch" && type != "if_variable" &&
+            type != "if_self_switch") continue;
 
         JsonValue* th = c.find("then");
         if (th && th->is_arr() && !th->arr.empty()) {
@@ -4927,12 +4952,16 @@ void ev_refresh_page_fields() {
         ev_set_text(g_ev.ed_cvval, "");
         SendMessageW(g_ev.cb_cswval, CB_SETCURSEL, 0, 0);
         SendMessageW(g_ev.cb_cvop, CB_SETCURSEL, 0, 0);
+        SendMessageW(g_ev.cb_cself, CB_SETCURSEL, 0, 0);
+        SendMessageW(g_ev.cb_cselfval, CB_SETCURSEL, 0, 0);
         EnableWindow(g_ev.cb_trigger, FALSE);
         EnableWindow(g_ev.ed_cswitch, FALSE);
         EnableWindow(g_ev.cb_cswval, FALSE);
         EnableWindow(g_ev.ed_cvar, FALSE);
         EnableWindow(g_ev.cb_cvop, FALSE);
         EnableWindow(g_ev.ed_cvval, FALSE);
+        EnableWindow(g_ev.cb_cself, FALSE);
+        EnableWindow(g_ev.cb_cselfval, FALSE);
         EnableWindow(GetDlgItem(g_ev.win, IDEV_APPLY_PAGE), FALSE);
         return;
     }
@@ -4942,6 +4971,8 @@ void ev_refresh_page_fields() {
     EnableWindow(g_ev.ed_cvar, TRUE);
     EnableWindow(g_ev.cb_cvop, TRUE);
     EnableWindow(g_ev.ed_cvval, TRUE);
+    EnableWindow(g_ev.cb_cself, TRUE);
+    EnableWindow(g_ev.cb_cselfval, TRUE);
     EnableWindow(GetDlgItem(g_ev.win, IDEV_APPLY_PAGE), TRUE);
 
     const std::string trig = ev_str_of(*pg, "trigger", "action");
@@ -4957,6 +4988,8 @@ void ev_refresh_page_fields() {
     ev_set_text(g_ev.ed_cvval, "");
     SendMessageW(g_ev.cb_cswval, CB_SETCURSEL, 0, 0);
     SendMessageW(g_ev.cb_cvop, CB_SETCURSEL, 0, 0);
+    SendMessageW(g_ev.cb_cself, CB_SETCURSEL, 0, 0);
+    SendMessageW(g_ev.cb_cselfval, CB_SETCURSEL, 0, 0);
     const JsonValue* cond = pg->find("conditions");
     if (cond && cond->is_obj()) {
         const JsonValue* sw = cond->find("switch");
@@ -4973,6 +5006,17 @@ void ev_refresh_page_fields() {
             }
             ev_set_text(g_ev.ed_cvval, ev_num_str(ev_num_of(*va, "value"), 2));
         }
+        const JsonValue* ss = cond->find("self_switch");
+        if (ss && ss->is_obj()) {
+            // Buchstabe A-D -> Combo-Index 1-4 (0 = "keins").
+            const std::string letter = ev_str_of(*ss, "letter");
+            if (!letter.empty() && letter[0] >= 'A' && letter[0] <= 'D') {
+                SendMessageW(g_ev.cb_cself, CB_SETCURSEL,
+                             static_cast<WPARAM>(letter[0] - 'A' + 1), 0);
+            }
+            SendMessageW(g_ev.cb_cselfval, CB_SETCURSEL,
+                         ev_bool_of(*ss, "value") ? 0 : 1, 0);
+        }
     }
 }
 
@@ -4987,16 +5031,19 @@ void ev_cmd_visibility() {
     const bool is_text = (t == ET_TEXT || t == ET_LOG || t == ET_CHOICES);
     const bool has_name = (t == ET_SWITCH || t == ET_TOGGLE_SWITCH || t == ET_VARIABLE ||
                           t == ET_IF_SWITCH || t == ET_IF_VARIABLE || t == ET_SCRIPT ||
-                          t == ET_SOUND || t == ET_EFFECT || t == ET_ITEM || t == ET_WEATHER);
+                          t == ET_SOUND || t == ET_EFFECT || t == ET_ITEM || t == ET_WEATHER ||
+                          t == ET_SELF_SWITCH || t == ET_IF_SELF_SWITCH || t == ET_FADE);
     const bool has_val1 = (t == ET_WAIT || t == ET_VARIABLE || t == ET_IF_VARIABLE ||
                           t == ET_TELEPORT || t == ET_MOVE_PLAYER || t == ET_SOUND ||
                           t == ET_EFFECT || t == ET_GOLD || t == ET_HEAL ||
-                          t == ET_WEATHER || t == ET_SAVE_GAME || t == ET_LOAD_GAME);
+                          t == ET_WEATHER || t == ET_SAVE_GAME || t == ET_LOAD_GAME ||
+                          t == ET_FADE);
     const bool has_val2 = (t == ET_VARIABLE || t == ET_TELEPORT || t == ET_MOVE_PLAYER ||
                           t == ET_EFFECT || t == ET_ITEM);
     const bool has_val3 = (t == ET_TELEPORT);
     const bool has_op = (t == ET_IF_VARIABLE);
-    const bool has_bool = (t == ET_SWITCH || t == ET_IF_SWITCH);
+    const bool has_bool = (t == ET_SWITCH || t == ET_IF_SWITCH ||
+                          t == ET_SELF_SWITCH || t == ET_IF_SELF_SWITCH);
 
     show(g_ev.lbl_name, has_name);
     show(g_ev.ed_ce_name, has_name);
@@ -5019,6 +5066,10 @@ void ev_cmd_visibility() {
 
     if (t == ET_SWITCH || t == ET_TOGGLE_SWITCH || t == ET_IF_SWITCH)
         SetWindowTextW(g_ev.lbl_name, L"Schalter");
+    if (t == ET_SELF_SWITCH || t == ET_IF_SELF_SWITCH)
+        SetWindowTextW(g_ev.lbl_name, L"Self-Switch (A-D)");
+    if (t == ET_FADE) { SetWindowTextW(g_ev.lbl_name, L"Richtung (aus = dunkel, ein = hell)");
+                  SetWindowTextW(g_ev.lbl_val1, L"Sekunden"); }
     if (t == ET_VARIABLE) { SetWindowTextW(g_ev.lbl_name, L"Variable");
                   SetWindowTextW(g_ev.lbl_val1, L"Wert (leer = lassen)");
                   SetWindowTextW(g_ev.lbl_val2, L"Add (optional)"); }
@@ -5106,6 +5157,13 @@ void ev_load_cmd_form() {
         ev_set_text(g_ev.ed_ce_val1, ev_num_str(ev_num_of(c, "seconds"), 2));
     } else if (type == "switch" || type == "if_switch") {
         SendMessageW(g_ev.cb_ce_bool, CB_SETCURSEL, ev_bool_of(c, "value") ? 0 : 1, 0);
+    } else if (type == "self_switch" || type == "if_self_switch") {
+        // Etappe 19d: Buchstabe im Namensfeld, an/aus im Bool-Combo.
+        ev_set_text(g_ev.ed_ce_name, ev_str_of(c, "letter"));
+        SendMessageW(g_ev.cb_ce_bool, CB_SETCURSEL, ev_bool_of(c, "value") ? 0 : 1, 0);
+    } else if (type == "fade") {
+        ev_set_text(g_ev.ed_ce_name, ev_str_of(c, "direction", "aus"));
+        ev_set_text(g_ev.ed_ce_val1, ev_num_str(ev_num_of(c, "seconds"), 2));
     } else if (type == "variable") {
         if (c.find("value")) ev_set_text(g_ev.ed_ce_val1, ev_num_str(ev_num_of(c, "value"), 2));
         if (c.find("add"))   ev_set_text(g_ev.ed_ce_val2, ev_num_str(ev_num_of(c, "add"), 2));
@@ -5226,7 +5284,11 @@ void ev_apply_page_fields(bool mark_dirty) {
 
     const std::string sw_name = ev_text(g_ev.ed_cswitch);
     const std::string va_name = ev_text(g_ev.ed_cvar);
-    if (sw_name.empty() && va_name.empty()) {
+    // Etappe 19d: Self-Switch-Auswahl (Index 0 = "keins" = Bedingung aus).
+    const int self_sel =
+        static_cast<int>(SendMessageW(g_ev.cb_cself, CB_GETCURSEL, 0, 0));
+    const bool has_self = (self_sel >= 1 && self_sel <= 4);
+    if (sw_name.empty() && va_name.empty() && !has_self) {
         json_remove_key(*pg, "conditions");
     } else {
         JsonValue cond = pg->find("conditions") && pg->find("conditions")->is_obj()
@@ -5249,6 +5311,17 @@ void ev_apply_page_fields(bool mark_dirty) {
             va.set("op", JsonValue::make_str(wide_to_utf8(EV_OPS[(op >= 0 && op < 6) ? op : 0])));
             va.set("value", JsonValue::make_num(ev_number(g_ev.ed_cvval, 0.0), false));
             cond.set("variable", std::move(va));
+        }
+        if (!has_self) {
+            json_remove_key(cond, "self_switch");
+        } else {
+            JsonValue ss = JsonValue::make_obj();
+            const char letter = static_cast<char>('A' + self_sel - 1);
+            ss.set("letter", JsonValue::make_str(std::string(1, letter)));
+            const int b =
+                static_cast<int>(SendMessageW(g_ev.cb_cselfval, CB_GETCURSEL, 0, 0));
+            ss.set("value", JsonValue::make_bool(b == 0));
+            cond.set("self_switch", std::move(ss));
         }
         pg->set("conditions", std::move(cond));
     }
@@ -5407,6 +5480,25 @@ JsonValue ev_build_command(const JsonValue* existing) {
         cmd.set("name", JsonValue::make_str(ev_text(g_ev.ed_ce_name)));
         const int b = static_cast<int>(SendMessageW(g_ev.cb_ce_bool, CB_GETCURSEL, 0, 0));
         cmd.set("value", JsonValue::make_bool(b == 0));
+    } else if (ti == ET_SELF_SWITCH || ti == ET_IF_SELF_SWITCH) {
+        // Etappe 19d: Buchstabe A-D; klein wird groß, Ungültiges/Leeres -> A
+        // (wie GameState.set_self_switch bzw. der Interpreter es erwarten).
+        std::string letter = ev_text(g_ev.ed_ce_name);
+        char c0 = letter.empty() ? 'A'
+                                 : static_cast<char>(std::toupper(
+                                       static_cast<unsigned char>(letter[0])));
+        if (c0 < 'A' || c0 > 'D') c0 = 'A';
+        cmd.set("letter", JsonValue::make_str(std::string(1, c0)));
+        const int b = static_cast<int>(SendMessageW(g_ev.cb_ce_bool, CB_GETCURSEL, 0, 0));
+        cmd.set("value", JsonValue::make_bool(b == 0));
+    } else if (ti == ET_FADE) {
+        std::string dir = ev_text(g_ev.ed_ce_name);
+        std::transform(dir.begin(), dir.end(), dir.begin(),
+                       [](unsigned char ch) {
+                           return static_cast<char>(std::tolower(ch));
+                       });
+        cmd.set("direction", JsonValue::make_str(dir == "ein" ? "ein" : "aus"));
+        cmd.set("seconds", JsonValue::make_num(ev_number(g_ev.ed_ce_val1, 0.5), false));
     } else if (ti == ET_TOGGLE_SWITCH) {
         cmd.set("name", JsonValue::make_str(ev_text(g_ev.ed_ce_name)));
     } else if (ti == ET_VARIABLE) {
@@ -5474,10 +5566,11 @@ JsonValue ev_build_command(const JsonValue* existing) {
     }
 
     const std::string type = EV_TYPES[ti];
-    if (type == "if_switch" || type == "if_variable") {
+    if (type == "if_switch" || type == "if_variable" || type == "if_self_switch") {
         // Zweige erhalten, wenn der Befehl schon ein Wenn war.
         const std::string old_type = existing ? ev_str_of(*existing, "cmd") : "";
-        if (existing && (old_type == "if_switch" || old_type == "if_variable")) {
+        if (existing && (old_type == "if_switch" || old_type == "if_variable" ||
+                         old_type == "if_self_switch")) {
             const JsonValue* th = existing->find("then");
             const JsonValue* el = existing->find("else");
             cmd.set("then", th ? *th : JsonValue::make_arr());
@@ -5732,6 +5825,23 @@ void open_event_editor() {
     SendMessageW(g_ev.cb_cswval, CB_ADDSTRING, 0,
                  reinterpret_cast<LPARAM>(L"aus"));
     SendMessageW(g_ev.cb_cswval, CB_SETCURSEL, 0, 0);
+
+    // Etappe 19d: Self-Switch-Bedingung (XP) rechts daneben. Erstes Item
+    // ("keins") = Bedingung aus; A-D wählt den Buchstaben des Events.
+    ev_label(L"Self-Switch", 748, 128, 76);
+    g_ev.cb_cself = ev_control(L"ComboBox", nullptr, CBS_DROPDOWNLIST | WS_VSCROLL,
+                               828, 124, 68, 180, IDEV_CSELF);
+    for (const wchar_t* b : { L"keins", L"A", L"B", L"C", L"D" }) {
+        SendMessageW(g_ev.cb_cself, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(b));
+    }
+    SendMessageW(g_ev.cb_cself, CB_SETCURSEL, 0, 0);
+    g_ev.cb_cselfval = ev_control(L"ComboBox", nullptr, CBS_DROPDOWNLIST | WS_VSCROLL,
+                                  902, 124, 60, 180, IDEV_CSELFVAL);
+    SendMessageW(g_ev.cb_cselfval, CB_ADDSTRING, 0,
+                 reinterpret_cast<LPARAM>(L"an"));
+    SendMessageW(g_ev.cb_cselfval, CB_ADDSTRING, 0,
+                 reinterpret_cast<LPARAM>(L"aus"));
+    SendMessageW(g_ev.cb_cselfval, CB_SETCURSEL, 0, 0);
 
     ev_label(L"Variable", 316, 158, 56);
     g_ev.ed_cvar = ev_control(L"Edit", nullptr, WS_BORDER | ES_LEFT,

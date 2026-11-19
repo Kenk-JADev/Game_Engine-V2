@@ -27,6 +27,11 @@ end
     @map
   end
 
+  # Aktuelle Karten-ID (Etappe 19d: Teil des Self-Switch-Schlüssels).
+  def self.map_id
+    @map_id
+  end
+
   # Karte laden: ID, Events, Objekte, Editor - und Spieler an den Startpunkt.
   # Wird vom ersten Setup und vom Kartenwechsel im Editor benutzt.
   # Himmel/Nebel/Panorama aus der Karte übernehmen (Etappe 17b).
@@ -71,6 +76,7 @@ end
   def self.enter_map(id)
     @map_id = id
     @map = Database.map(id)
+    Fade.reset!   # Etappe 19d: nie mit dunklem Bildschirm in eine Karte kommen
     @events = (@map['events'] || []).map { |h| Event.new(h) }
     @map['objects'] ||= []
     # Etappe 18l: Terrain gehört zur Karte - beim Wechsel neu aufbauen,
@@ -418,6 +424,7 @@ end
     end
 
     Effects.update(dt)
+    Fade.update(dt)   # Etappe 19d: Bildschirmblende (XP-Fade) weiterdrehen
     px, py, pz = Rune::Player.position
     Weather.update(dt, px, py, pz)   # Etappe 17h: Regen/Schnee um den Spieler
 
@@ -708,6 +715,10 @@ end
       @editor.draw_selection
       @editor.draw_ui
     end
+
+    # Etappe 19d: Bildschirmblende über Spiel und UI (das Menü-Overlay bleibt
+    # sichtbar, sonst könnte man im abgedunkelten Zustand nichts mehr wählen).
+    Fade.draw(Rune::Window.width, Rune::Window.height)
 
     # Menü-Overlay ganz zum Schluss.
     if @menu

@@ -47,6 +47,7 @@ require 'event'
 require 'npc'
 require 'effects'
 require 'weather'
+require 'fade'        # Etappe 19d: Bildschirm ein-/ausblenden (XP-Feature)
 require 'interpreter'
 require 'scripts'
 require 'pick'

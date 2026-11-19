@@ -5,7 +5,8 @@
 #  Seit Etappe 18g kann ein Event mehrere SEITEN haben (wie RPG Maker XP):
 #    "pages": [
 #      { "conditions": { "switch":  {"name":"auftrag", "value":true},
-#                        "variable": {"name":"kristalle", "op":">=", "value":3} },
+#                        "variable": {"name":"kristalle", "op":">=", "value":3},
+#                        "self_switch": {"letter":"A", "value":true} },        # 19d
 #        "trigger": "action", "commands": [...] },
 #      { "conditions": {}, "trigger": "action", "commands": [...] }
 #    ]
@@ -62,7 +63,8 @@ class Event
   end
 
   # Sind die Bedingungen einer Seite erfüllt? (leer = immer ja)
-  def self.conditions_met?(c)
+  # ev: das Event selbst - nur für Self-Switch-Bedingungen nötig (19d).
+  def self.conditions_met?(c, ev = nil)
     return true unless c.is_a?(Hash)
 
     if (sw = c['switch']) && sw.is_a?(Hash) && sw['name']
@@ -83,13 +85,18 @@ class Event
            end
       return false unless ok
     end
+    # Self-Switch-Bedingung (Etappe 19d): ohne Event-Kontext nie erfüllt.
+    if (ss = c['self_switch']) && ss.is_a?(Hash) && ss['letter']
+      return false unless ev
+      return false if GameState.self_switch(ev.self_switch_key, ss['letter']) != !!ss['value']
+    end
     true
   end
 
   # Aktive Seite neu bestimmen (höchster Index mit erfüllten Bedingungen).
   # Seitenwechsel setzt 'fired' zurück, damit touch/auto erneut feuern.
   def refresh_page!
-    idx = @pages.rindex { |p| Event.conditions_met?(p.conditions) } || 0
+    idx = @pages.rindex { |p| Event.conditions_met?(p.conditions, self) } || 0
     @fired = false if idx != @page_idx
     @page_idx = idx
   end
@@ -128,5 +135,14 @@ class Event
   # Startet die Kommandos der aktiven Seite im (freien) Interpreter.
   def manual_fire(interp)
     interp.start(commands, self)
+  end
+
+  # Schlüssel für Self-Switches (Etappe 19d): Karte + Event-Name. XP nutzt
+  # Karte + Event-ID; bei uns sind IDs optional (Default 0), Namen dagegen
+  # tragen auch die Savegames ('fired'-Liste, NPC-Snapshots) - also passen
+  # sie besser ins vorhandene Datenmodell.
+  def self_switch_key
+    map = (defined?(Game) && Game.respond_to?(:map_id)) ? Game.map_id : 'welt'
+    "#{map}|#{@name}"
   end
 end
