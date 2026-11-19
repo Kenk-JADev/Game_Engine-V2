@@ -138,14 +138,14 @@ check('in der Karte, flach -> passierbar') { $game_player.passable?(5.0, 5.0) }
 check('Richtung 6 (rechts) in die Wand -> false') do
   !$game_player.passable?(10.0, 5.0, 6)
 end
-check('Richtung 4 (links) von der Wand weg -> true') do
+check('Richtung 4 (links) von der Wand hinunter -> true (Delta zählt)') do
   $game_player.passable?(11.0, 5.0, 4)
 end
 check('hinter der Kartengrenze (x > width) -> false') do
   !$game_player.passable?(125.0, 5.0)
 end
-check('Richtung 0 prüft die Stelle selbst (Wand) -> false') do
-  !$game_player.passable?(12.0, 5.0, 0)
+check('Stufe hoch vom flachen Boden (delta 5 m > 1.2 m) -> false') do
+  !$game_player.passable?(12.0, 5.0)
 end
 $game_temp.player_passable = false
 check('player_passable? aus -> immer true (XP-Debug-Verhalten)') do
