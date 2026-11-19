@@ -78,6 +78,23 @@ module MapCheck
     change_graphic change_opacity change_blending script
   ].freeze
 
+  # Deutsche Kurznamen aus Etappe 19g (Mover::ALIASE) bleiben gültig; die
+  # XP-Befehls-Codes ('11'..'57') versteht der Mover ebenfalls - beide
+  # Alias-Formen sind hier bewusst nicht doppelt gepflegt: Der Sync der
+  # Hauptliste wird in move_route_test.rb gegen Mover::SCHRITTE assertet,
+  # die Aliase gegen Mover::ALIASES.keys.
+  MOVER_ALIASE = %w[
+    down left right up zufall spieler_nah spieler_weg warte
+    vor zurueck runter rauf
+  ].freeze
+
+  # XP-Befehls-Codes (Mover::XP_CODES) - eigene Liste aus demselben Grund.
+  MOVER_XP_CODES = %w[
+    11 12 13 14 15 16 17 18 19 20 21 22 23 24 25
+    26 27 28 29 30 31 32 33 34 35 36 37 38 39 40
+    41 42 43 44 45 46 47 48 49 50 51 52 53 57
+  ].freeze
+
   # Schritte, die den Route-Parameter 'code' brauchen (19h.2).
   MOVER_CODE_PFLICHT = %w[switch_on switch_off change_speed script].freeze
   SPEICHER_SLOTS = (1..3).freeze
@@ -577,9 +594,12 @@ module MapCheck
           melde(FEHLER, w, "'steps' fehlt/leer")
         else
           steps.each_with_index do |s, si|
-            unless MOVER_SCHRITTE.include?(s.to_s)
+            name = s.to_s
+            unless MOVER_SCHRITTE.include?(name) || MOVER_ALIASE.include?(name) ||
+                   MOVER_XP_CODES.include?(name)
               melde(WARNUNG, "#{w} Schritt ##{si + 1}",
-                    "unbekannter Schritt '#{s}' (#{MOVER_SCHRITTE.join('/')})")
+                    "unbekannter Schritt '#{s}' (XP-Namen/Codes oder " \
+                    "#{MOVER_ALIASE.join('/')})")
             end
           end
         end

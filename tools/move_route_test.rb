@@ -117,6 +117,12 @@ puts '== Mover: Grundlagen =='
 check('Sync: MapCheck-Schritte == Mover-Schritte') do
   MapCheck::MOVER_SCHRITTE == Mover::SCHRITTE
 end
+check('Sync: MapCheck-Aliase == Mover-Aliase') do
+  MapCheck::MOVER_ALIASE.sort == Mover::ALIASE.keys.sort
+end
+check('Sync: MapCheck-XP-Codes == Mover-XP-Codes') do
+  MapCheck::MOVER_XP_CODES.sort == Mover::XP_CODES.keys.sort
+end
 check('leere Schrittliste -> nil') { Mover.start('Wanda', []).nil? }
 check('unbekanntes Ziel -> nil') { Mover.start('gibt_es_nicht', %w[up]).nil? }
 
@@ -421,6 +427,14 @@ end
 check('Route ohne steps -> Fehler') do
   hat?(MapCheck.scan(karte_mit([{ 'cmd' => 'move_route', 'target' => 'x' }]), **OPTS),
        "'steps' fehlt/leer", MapCheck::FEHLER)
+end
+check('deutsche 19g-Kurznamen bleiben gültig (Aliase)') do
+  MapCheck.scan(karte_mit([{ 'cmd' => 'move_route', 'target' => 'x',
+                             'steps' => %w[up warte spieler_nah] }]), **OPTS).empty?
+end
+check('XP-Code als Schritt bleibt gültig') do
+  MapCheck.scan(karte_mit([{ 'cmd' => 'move_route', 'target' => 'x',
+                             'steps' => %w[11 25] }]), **OPTS).empty?
 end
 check('unbekannter Schritt -> Warnung') do
   hat?(MapCheck.scan(karte_mit([{ 'cmd' => 'move_route', 'target' => 'x',
