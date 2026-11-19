@@ -210,9 +210,13 @@ module RGSS
       tx = x.to_f + dx
       tz = z.to_f + dz
 
-      w = $game_map ? $game_map.width : 0.0
-      h = $game_map ? $game_map.height : 0.0
-      return false if (w > 0 && (tx < 0 || tx > w)) || (h > 0 && (tz < 0 || tz > h))
+      # Ohne Karte (RGSS.setup lief noch nicht) entfällt die Grenzprüfung -
+      # die Geländestufe wird trotzdem geprüft.
+      if $game_map
+        w = $game_map.width
+        h = $game_map.height
+        return false if (w > 0 && (tx < 0 || tx > w)) || (h > 0 && (tz < 0 || tz > h))
+      end
 
       (Game.gy(tx, tz) - Game.gy(x.to_f, z.to_f)).abs <= MAX_STUFE
     end

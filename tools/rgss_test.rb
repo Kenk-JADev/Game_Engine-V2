@@ -82,6 +82,7 @@ require 'issues'
 require 'party'
 require 'weather'
 require 'fade'
+require 'data'      # Database: RGSS.setup liest seit 19h $data_* aus JSON
 require 'rgss'
 
 $fail = 0
