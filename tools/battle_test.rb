@@ -188,6 +188,7 @@ puts '== Item + Flucht =='
 Party.add_item('heiltrank', 1)
 Battle.actors[0].damage(20)
 check('usable_items enthält heiltrank') { Battle.usable_items.include?('heiltrank') }
+# Cursor steht noch von der Flucht-Auswahl auf 2; einmal runter = Item.
 druck(:down)
 check('Cursor auf Item') { Battle.command_index == 1 }
 druck(:enter)

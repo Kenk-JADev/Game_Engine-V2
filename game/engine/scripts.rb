@@ -21,6 +21,7 @@
 # ============================================================================
 
 require 'json'
+require 'battle'   # Etappe 19i: Context-Helfer battle() braucht Battle
 
 module Scripts
   @defs = {}
