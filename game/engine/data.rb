@@ -37,6 +37,13 @@ module Database
     load('system.json') || {}
   end
 
+  # Beim Spiel-Neustart/F5 kann der Editor den Projektstart inzwischen
+  # geändert haben. Nur system.json verwerfen; andere Caches bleiben bestehen.
+  def self.reload_system
+    @cache.delete('system.json')
+    system
+  end
+
   # Etappe 17g: Datenbank (Helden/Items/Gold). Optional - fehlt die Datei,
   # gilt ein leerer Katalog (keine Helden, kein Start-Inventar).
   def self.database

@@ -357,8 +357,9 @@ BOOL CALLBACK pl_collect_windows(HWND h, LPARAM param) {
     return TRUE;
 }
 
-void open_placement_dialog() {
+void open_placement_dialog(int npc_index) {
     if (g.cur_map < 0 || !g.map_root.is_obj()) return;
+    if (npc_index >= 0 && !map_marker_item(g.map_root, MapMarkerKind::Npc, static_cast<size_t>(npc_index))) return;
     if (g.props_dlg) { SetForegroundWindow(g.props_dlg); return; }
     if (event_editor_open()) {
         MessageBoxW(g.main, L"Bitte zuerst den Event-Editor schließen.\n"
@@ -372,6 +373,8 @@ void open_placement_dialog() {
     if (!resolve_object_edits()) return;
     g_pl = PlacementDlgState{};
     g_pl.work = g.map_root;
+    g_pl.kind = PlacementKind::Npc;
+    g_pl.index = npc_index;
     WNDCLASSW wc{};
     wc.lpfnWndProc = placement_proc;
     wc.hInstance = GetModuleHandleW(nullptr);

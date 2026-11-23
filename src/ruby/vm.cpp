@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <climits>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -1195,6 +1196,35 @@ bool load_script(const std::string& path) {
     g_tick_errors = 0;
     g_tick_disabled = false;
     return true;
+}
+
+bool check_syntax(const std::string& code, std::string& message) {
+    message.clear();
+    if (!g_ruby_ready) { message = "Die eingebettete Ruby-VM ist nicht verfügbar."; return false; }
+    if (code.size() > static_cast<size_t>(LONG_MAX) || code.find('\0') != std::string::npos) {
+        message = "Der Ruby-Code ist zu lang oder enthält ein NUL-Zeichen.";
+        return false;
+    }
+    // Nur kompilieren, nicht eval oder load: keine Scriptwirkung auf den Editor.
+    int state = 0;
+    rb_protect([](VALUE data) -> VALUE {
+        const auto* source = reinterpret_cast<const std::string*>(data);
+        const VALUE iseq = rb_path2class("RubyVM::InstructionSequence");
+        const VALUE text = rb_utf8_str_new(source->data(), static_cast<long>(source->size()));
+        const VALUE name = rb_utf8_str_new_cstr("F11");
+        return rb_funcall(iseq, rb_intern("compile"), 2, text, name);
+    }, reinterpret_cast<VALUE>(&code), &state);
+    if (!state) return true;
+    const VALUE err = rb_errinfo();
+    int msg_state = 0;
+    const VALUE ruby_message = rb_protect([](VALUE exception) -> VALUE {
+        return rb_funcall(exception, rb_intern("message"), 0);
+    }, err, &msg_state);
+    if (!msg_state && RB_TYPE_P(ruby_message, T_STRING))
+        message.assign(RSTRING_PTR(ruby_message), static_cast<size_t>(RSTRING_LEN(ruby_message)));
+    else message = "Ruby konnte die Syntax nicht prüfen.";
+    rb_set_errinfo(Qnil);
+    return false;
 }
 
 void tick(float dt) {

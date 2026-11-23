@@ -384,6 +384,18 @@ if ($Test) {
     & $JsonTestExe $ProjectRoot
     if ($LASTEXITCODE -ne 0) { throw 'C++-JSON-Test fehlgeschlagen' }
 
+    Write-Step 'Script- und Karten-Arbeitsabläufe portabel prüfen ...'
+    $WorkflowTestExe = Join-Path $BuildDir 'editor_workflow_test.exe'
+    $WorkflowFlags = @(
+        '-std=c++20', '-O1', '-Wall', '-Wextra', '-Werror', '-Wno-unused-parameter',
+        "-I$ProjectRoot\src", "$ProjectRoot\src\editor\json.cpp",
+        "$ProjectRoot\tools\editor_workflow_test.cpp", '-o', $WorkflowTestExe
+    )
+    & $Gcc @WorkflowFlags
+    if ($LASTEXITCODE -ne 0) { throw 'editor_workflow_test.exe konnte nicht gebaut werden' }
+    & $WorkflowTestExe
+    if ($LASTEXITCODE -ne 0) { throw 'Editor-Arbeitsablauftest fehlgeschlagen' }
+
     Write-Step 'Echtes Terrain kopflos bauen und prüfen ...'
     $TerrainTestExe = Join-Path $BuildDir 'terrain_test.exe'
     $TerrainTestFlags = @(
@@ -476,6 +488,29 @@ if ($Clean -and (Test-Path $BuildDir)) {
 }
 New-Item -ItemType Directory -Force -Path $ObjDir | Out-Null
 
+# --whole-archive zieht andernfalls das VERSIONINFO-Objekt von winpthreads
+# mit: Explorer nennt die EXE dann "POSIX WinThreads for Windows". Nur eine
+# temporäre Kopie des statischen Archivs bearbeiten, NIE die Toolchain.
+$Ar = Join-Path $Toolchain 'bin\ar.exe'
+$Windres = Join-Path $Toolchain 'bin\windres.exe'
+$Objdump = Join-Path $Toolchain 'bin\objdump.exe'
+foreach ($tool in @($Ar, $Windres, $Objdump)) {
+    if (-not (Test-Path -LiteralPath $tool -PathType Leaf)) { throw "Build-Werkzeug fehlt: $tool" }
+}
+$archiveSource = (& $Gcc '-print-file-name=libwinpthread.a' | Select-Object -First 1)
+if ($LASTEXITCODE -ne 0 -or -not $archiveSource -or -not (Test-Path -LiteralPath $archiveSource -PathType Leaf)) {
+    throw "Statisches winpthread-Archiv nicht gefunden: $archiveSource"
+}
+$WinThreadArchive = Join-Path $ObjDir 'rune-libwinpthread.a'
+Copy-Item -LiteralPath $archiveSource -Destination $WinThreadArchive -Force
+$members = @(& $Ar t $WinThreadArchive)
+if ($LASTEXITCODE -ne 0) { throw 'winpthread-Archiv kann nicht gelesen werden' }
+$resourceMembers = @($members | Where-Object { $_ -match '(^|[\\/])version\.o$' })
+if ($resourceMembers.Count -gt 0) {
+    & $Ar d $WinThreadArchive @resourceMembers
+    if ($LASTEXITCODE -ne 0) { throw 'winpthread-Versionseintrag konnte nicht aus der Kopie entfernt werden' }
+}
+
 $CxxFlags = @(
     '-std=c++20', '-O2', '-Wall', '-Wextra', '-Wno-unused-parameter',
     '-Wno-missing-field-initializers',
@@ -502,7 +537,7 @@ $Libs = @(
     # libwinpthread-1.dll aus der MSYS2-Toolchain im PATH verlangen
     # (Doppelklick ohne Ruby-PATH -> "Systemfehler").
     '-static-libgcc', '-static-libstdc++',
-    '-Wl,-Bstatic,--whole-archive', '-lwinpthread', '-Wl,--no-whole-archive,-Bdynamic'
+    '-Wl,-Bstatic,--whole-archive', $WinThreadArchive, '-Wl,--no-whole-archive,-Bdynamic'
 )
 
 $Sources = Get-ChildItem -Path (Join-Path $ProjectRoot 'src') -Recurse -Filter *.cpp | Sort-Object FullName
@@ -544,8 +579,19 @@ function Build-Target($name, $excludes, $outExe) {
 
     Write-Host "  [$name] $Built kompiliert, $Skipped übersprungen" -ForegroundColor DarkGray
     Write-Host "  linke $(Split-Path $outExe -Leaf)" -ForegroundColor DarkGray
-    & $Gcc @Objects @Libs -o $outExe
+    $rc = if ($name -eq 'editor') { Join-Path $ProjectRoot 'src\editor\RuneEditor.rc' }
+          else { Join-Path $ProjectRoot 'src\Rune3D.rc' }
+    $resource = Join-Path $ObjDir ($name + '_version.o')
+    & $Windres -i $rc -o $resource -O coff
+    if ($LASTEXITCODE -ne 0) { throw "Versionsressource fehlgeschlagen: $rc" }
+    # Die Programmressource kommt vor Bibliotheken und hat Vorrang.
+    & $Gcc $resource @Objects @Libs -o $outExe
     if ($LASTEXITCODE -ne 0) { throw 'Linken fehlgeschlagen' }
+    $imports = @(& $Objdump -p $outExe)
+    if ($LASTEXITCODE -ne 0) { throw 'EXE-Imports konnten nicht geprüft werden' }
+    if (@($imports | Where-Object { $_ -match '(?i)DLL Name:\s*libwinpthread-1\.dll' }).Count -gt 0) {
+        throw 'winpthread wurde unerwartet dynamisch in die EXE gelinkt'
+    }
 
     $size = [math]::Round((Get-Item $outExe).Length / 1KB, 1)
     Write-Host "OK: $outExe ($size KB)" -ForegroundColor Green

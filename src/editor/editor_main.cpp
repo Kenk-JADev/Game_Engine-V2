@@ -61,6 +61,8 @@
 #include "editor/main_panel_win.h"
 #include "editor/main_tree_win.h"
 #include "editor/map_document.h"
+#include "editor/map_interaction.h"
+#include "editor/script_document.h"
 #include "editor/map_props_form.h"
 #include "editor/material_document.h"
 #include "editor/number_format.h"
@@ -149,6 +151,7 @@ enum {
     ID_CTX_FOCUS      = 3121,
     ID_CTX_DUP        = 3122,
     ID_CTX_DEL        = 3123,
+    ID_CTX_PLAYER_START = 3124,
     // Kontextmenü des Kartenbaums (postet als WM_COMMAND an main_proc)
     IDM_TREE_PROPS    = 3110,
     IDM_TREE_NEW      = 3111,
@@ -353,7 +356,11 @@ struct Editor {
     int  obj_sort_col = -1;        // Etappe 19c: Sortierspalte (-1 = Datenreihenfolge)
     bool obj_sort_asc = true;      // Etappe 19c: Sortierrichtung
     std::vector<int> obj_order;    // Etappe 19c: Listenzeile -> Index in objects
-    HMENU ctx_obj = nullptr;       // Etappe 19c: Kontextmenü Viewport/Objektliste
+    HMENU ctx_obj = nullptr;       // Objektliste
+    HMENU ctx_view = nullptr;      // Kartenfläche: Spielerstart und Objektaktionen
+    MapMarkerSelection marker_selection;
+    bool project_start_visible = false;
+    double project_start_x = 0, project_start_z = 0;
     float paint_size = 8.0f;       // Brush-Grösse in Metern (Kantenlänge)
     std::string paint_tex = "weg"; // Textur des Pinsels
     bool dragging = false;         // gerade Objekt per Maus verschieben
@@ -374,6 +381,8 @@ struct Editor {
     float cam_yaw = 0.0f;
     float cam_pitch = -0.55f;
     bool  look_drag = false;
+    bool  look_moved = false;
+    POINT right_down{};
     POINT last_mouse{};
 
     // Maus im Viewport (Client-Koordinaten) + Terrain-Treffer für Status/Geist
@@ -403,6 +412,7 @@ constexpr UINT WM_EVENT_SELECT_PAGE = WM_APP + 51;
 constexpr UINT WM_EVENT_SELECT_COMMAND = WM_APP + 52;
 
 void event_requeue_selections();
+void script_requeue_selection();
 void maptree_schedule_action();
 
 void cancel_splitter_drag() {
@@ -473,6 +483,7 @@ int data_prompt(HWND owner, const wchar_t* text, const wchar_t* title, UINT flag
         PostMessageW(g.main, WM_REBUILD_MAP_MENU, 0, 0);
     }
     event_requeue_selections();
+    script_requeue_selection();
     maptree_schedule_action();
     return result;
 }
@@ -523,6 +534,7 @@ int  height_edit(float cx, float cz, bool sink);
 
 // Etappe 17d: Event-Editor (eigenes modusloses Fenster).
 void open_event_editor();
+void open_event_at(int index);
 void close_event_editor();
 bool event_editor_open();
 bool event_editor_focused();
@@ -531,11 +543,13 @@ bool resolve_event_edits();
 bool resolve_event_editor();
 
 // Etappe 19n: Platzier-Dialog für NPCs, Schilder und Objekte.
-void open_placement_dialog();
+void open_placement_dialog(int npc_index = -1);
 
-// Etappe 17e: Script-Editor (scripts.json des Projekts).
+// RGSS-/Ruby-Projektscripts gehören zum geöffneten Projekt.
 void open_script_editor();
 bool script_editor_focused();
+bool script_request_close();
+void refresh_project_start_marker();
 
 // Etappe 17f: Grafik-Import + Materialbase.
 void open_import_texture();
@@ -1568,6 +1582,8 @@ bool load_map(int index, bool departure_checked = false) {
     }
     g.cur_map = index;
     g.sel_obj = -1;
+    g.marker_selection = {};
+    refresh_project_start_marker();
     g.dirty = false;
     g.map_disk_present = true;
     g.map_disk_text = std::move(snapshot.bytes);
@@ -2437,6 +2453,9 @@ bool switch_project(const std::string& name, bool departure_checked) {
     }
     if (name == g.project_name && g.cur_map >= 0) return true;
     if (!departure_checked && g.cur_map >= 0 && !prepare_map_departure()) return false;
+    // F11 hält einen eigenen Projektentwurf; niemals in das nächste Projekt
+    // wechseln oder den alten Pfad verlieren, ohne ihn zu klären.
+    if (!script_request_close()) return false;
     cancel_object_drag();
     // Offene Dialoge schliessen (Zeiger werden ungültig).
     if (g.props_dlg) { DestroyWindow(g.props_dlg); g.props_dlg = nullptr; }
@@ -2449,6 +2468,8 @@ bool switch_project(const std::string& name, bool departure_checked) {
     ++g.map_epoch;
     g.dirty = false;
     g.sel_obj = -1;
+    g.marker_selection = {};
+    g.project_start_visible = false;
     g.undo_stack.clear();
     g.redo_stack.clear();
 
@@ -3113,10 +3134,14 @@ void restore_object_list_selection() {
 bool select_object(int i) {
     const int count = g.objects ? static_cast<int>(g.objects->arr.size()) : 0;
     const int next = (i >= 0 && i < count) ? i : -1;
-    if (next == g.sel_obj) return true;
+    if (next == g.sel_obj) {
+        if (next >= 0) g.marker_selection = {};
+        return true;
+    }
     if (!resolve_object_edits(false)) return false;
     cancel_object_drag();
     g.sel_obj = next;
+    if (next >= 0) g.marker_selection = {};
     sync_object_list();
     sync_property_fields();
     return true;
@@ -3405,6 +3430,158 @@ int object_hit(const math::Vec3& eye, const math::Vec3& dir, float& out_t) {
     }
     out_t = best_t;
     return best;
+}
+
+// Erst beim Laden bzw. Setzen einlesen, nicht bei jedem Renderframe. Nur der
+// explizite Projektstart wird markiert; alte Kartenstarts behalten ihr Verhalten.
+void refresh_project_start_marker() {
+    g.project_start_visible = false;
+    if (g.cur_map < 0 || static_cast<size_t>(g.cur_map) >= g.map_files.size()) return;
+    std::string map_id;
+    if (!playtest_map_id(g.map_files[static_cast<size_t>(g.cur_map)], map_id)) return;
+    DocumentStore store;
+    DocumentSnapshot snapshot;
+    if (store.open(g.root, g.project_name, false, "system.json") != assets::Result::Ok ||
+        store.observe(snapshot) != assets::Result::Ok || !snapshot.present) return;
+    JsonValue system;
+    if (!project_start_parse(snapshot.bytes, system)) return;
+    g.project_start_visible = project_start_marker(system, map_id, g.project_start_x, g.project_start_z);
+}
+
+math::Vec3 view_ray(HWND view, int x, int y) {
+    RECT rc{};
+    GetClientRect(view, &rc);
+    const float w = static_cast<float>(std::max(1, static_cast<int>(rc.right)));
+    const float h = static_cast<float>(std::max(1, static_cast<int>(rc.bottom)));
+    return ray_dir(2.0f * static_cast<float>(x) / w - 1.0f,
+                   1.0f - 2.0f * static_cast<float>(y) / h, w / h);
+}
+
+// Dieselben Körpermaße wie beim Zeichnen: ein Klick wählt, erst ein echter
+// Windows-Doppelklick öffnet. Andere Events oder die nächste Karte zählen nicht.
+bool view_marker_hit(const math::Vec3& dir, MapMarker& best) {
+    float best_t = 1e9f;
+    bool found = false;
+    math::Vec3 ground{};
+    if (terrain_hit(g.cam_pos, dir, ground))
+        best_t = math::dot(math::sub(ground, g.cam_pos), dir) + 0.1f;
+    // Verdeckte Marker nicht durch ein davorliegendes sichtbares Objekt
+    // hindurch öffnen. Bei gleicher Position bleibt der Marker erreichbar,
+    // wenn ein sichtbarer Teil seiner Geometrie vor dem Objekt liegt.
+    float object_t = 0;
+    if (object_hit(g.cam_pos, dir, object_t) >= 0) best_t = std::min(best_t, object_t);
+    for (const MapMarker& marker : map_markers(g.map_root)) {
+        const float x = static_cast<float>(marker.x), z = static_cast<float>(marker.z);
+        const float y = base_y_at(x, z) + static_cast<float>(marker.y);
+        const float rot = static_cast<float>(marker.rotation);
+        float t = 0;
+        const auto test = [&](const math::Vec3& center, const math::Vec3& half, float angle) {
+            if (ray_box(g.cam_pos, dir, center, half, angle, t) && t < best_t) {
+                best_t = t; best = marker; found = true;
+            }
+        };
+        if (marker.kind == MapMarkerKind::Npc)
+            test({x, y + 0.9f, z}, {0.35f, 0.9f, 0.35f}, 0);
+        else if (marker.sign) {
+            test({x, y + 0.65f, z}, {0.09f, 0.65f, 0.09f}, rot);
+            test({x, y + 1.55f, z}, {0.675f, 0.325f, 0.075f}, rot);
+        } else {
+            test({x, y + 0.7f, z}, {0.45f, 0.7f, 0.45f}, 0);
+        }
+    }
+    return found;
+}
+
+void set_project_start_at(const math::Vec3& hit) {
+    if (g.cur_map < 0 || static_cast<size_t>(g.cur_map) >= g.map_files.size() ||
+        !g.terrain || !g.terrain->ready()) return;
+    const std::uint64_t map_epoch = g.map_epoch, project_epoch = g.project_epoch;
+    const int map_index = g.cur_map;
+    const std::string filename = g.map_files[static_cast<size_t>(map_index)];
+    std::string map_id;
+    if (!playtest_map_id(filename, map_id)) {
+        data_prompt(g.main, L"Die Karte hat keine gültige Karten-ID.", L"Spielerstart", MB_OK | MB_ICONERROR);
+        return;
+    }
+    int matches = 0;
+    for (const auto& file : g.map_files) {
+        std::string id;
+        if (playtest_map_id(file, id) && id == map_id) ++matches;
+    }
+    if (matches != 1) {
+        data_prompt(g.main, L"Diese Karten-ID ist mehrdeutig. Bitte die doppelten Kartendateien prüfen.",
+                    L"Spielerstart", MB_OK | MB_ICONERROR);
+        return;
+    }
+    double x = 0, z = 0;
+    if (!map_start_point(hit.x, hit.z, g.grid, g.terrain->width(), g.terrain->height(), x, z)) {
+        data_prompt(g.main, L"Bitte eine Position innerhalb des sichtbaren Geländes wählen.",
+                    L"Spielerstart", MB_OK | MB_ICONWARNING);
+        return;
+    }
+    if (blocked_zone_at(static_cast<float>(x), static_cast<float>(z)) &&
+        data_prompt(g.main, L"Der Start liegt in einer gesperrten Zone; der Spieler kann dort feststecken. Trotzdem setzen?",
+                    L"Spielerstart", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) return;
+    if (g.project_epoch != project_epoch || g.map_epoch != map_epoch || g.cur_map != map_index ||
+        static_cast<size_t>(map_index) >= g.map_files.size() || g.map_files[static_cast<size_t>(map_index)] != filename) return;
+
+    DocumentStore store;
+    DocumentSnapshot snapshot;
+    DocumentRecovery recovery;
+    assets::Result result = store.open(g.root, g.project_name, false, "system.json");
+    if (result == assets::Result::Ok) result = store.observe(snapshot);
+    if (result == assets::Result::Ok && !snapshot.present) result = assets::Result::Missing;
+    if (result != assets::Result::Ok) {
+        document_result_notice(g.main, L"Spielerstart nicht gespeichert", result, recovery, g.project_dir);
+        return;
+    }
+    JsonValue system;
+    if (!project_start_parse(snapshot.bytes, system)) {
+        data_prompt(g.main, L"system.json ist nicht als gültiges Projektobjekt lesbar. Die Datei bleibt unverändert.",
+                    L"Spielerstart", MB_OK | MB_ICONERROR);
+        return;
+    }
+    const ProjectStartEdit edit = project_start_prepare(system, map_id, x, z);
+    if (!edit.ok) {
+        data_prompt(g.main, utf8_to_wide(edit.error).c_str(), L"Spielerstart", MB_OK | MB_ICONERROR);
+        return;
+    }
+    if (edit.changed) result = store.save(snapshot, json_write(edit.value), recovery);
+    if (result != assets::Result::Ok) {
+        document_result_notice(g.main, L"Spielerstart nicht gespeichert", result, recovery, g.project_dir);
+        return;
+    }
+    g.project_start_x = x; g.project_start_z = z; g.project_start_visible = true;
+    status_mode(L"Projekt-Spielerstart gesetzt und gespeichert");
+    core::log_info("Spielerstart gespeichert: " + map_id + " @ " + std::to_string(x) + ", " + std::to_string(z));
+    document_result_notice(g.main, L"Spielerstart gespeichert", result, recovery, g.project_dir);
+}
+
+void show_view_context(HWND h, POINT screen) {
+    if (!g.ctx_view || g.data_prompt_active || g.props_dlg) return;
+    POINT client = screen;
+    ScreenToClient(h, &client);
+    RECT rc{}; GetClientRect(h, &rc);
+    const bool in_view = client.x >= 0 && client.y >= 0 && client.x < rc.right && client.y < rc.bottom;
+    math::Vec3 hit{};
+    const bool ground = in_view && terrain_hit(g.cam_pos, view_ray(h, client.x, client.y), hit) &&
+        g.terrain && g.terrain->ready() && std::fabs(hit.x) <= g.terrain->width() * 0.5f &&
+        std::fabs(hit.z) <= g.terrain->height() * 0.5f;
+    EnableMenuItem(g.ctx_view, ID_CTX_PLAYER_START, MF_BYCOMMAND | (ground ? MF_ENABLED : MF_GRAYED));
+    EnableMenuItem(g.ctx_view, ID_CTX_PLACE, MF_BYCOMMAND | (ground ? MF_ENABLED : MF_GRAYED));
+    for (const int id : {ID_CTX_FOCUS, ID_CTX_DUP, ID_CTX_DEL})
+        EnableMenuItem(g.ctx_view, id, MF_BYCOMMAND | (object_viewable(g.sel_obj) ? MF_ENABLED : MF_GRAYED));
+    const std::uint64_t epoch = g.map_epoch, project = g.project_epoch;
+    const UINT cmd = TrackPopupMenu(g.ctx_view, TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY,
+                                    screen.x, screen.y, 0, g.main, nullptr);
+    if (!cmd || epoch != g.map_epoch || project != g.project_epoch || g.data_prompt_active || g.props_dlg) return;
+    if (cmd == ID_CTX_PLAYER_START && ground) set_project_start_at(hit);
+    else if (cmd == ID_CTX_PLACE && ground) {
+        set_mode(1);
+        place_object(hit.x, hit.z);
+        update_title();
+    } else if (cmd != ID_CTX_PLAYER_START && cmd != ID_CTX_PLACE)
+        SendMessageW(g.main, WM_COMMAND, cmd, 0);
 }
 
 // ------------------------------------------------------------
@@ -3981,23 +4158,41 @@ LRESULT CALLBACK view_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_SIZE:
             return 0;
         case WM_RBUTTONDOWN:
+        case WM_RBUTTONDBLCLK:
             cancel_object_drag();
             g.look_drag = true;
-            g.last_mouse.x = GET_X_LPARAM(lp);
-            g.last_mouse.y = GET_Y_LPARAM(lp);
+            g.look_moved = false;
+            g.right_down = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+            g.last_mouse = g.right_down;
             SetCapture(h);
+            if (GetCapture() != h) g.look_drag = false;
             return 0;
-        case WM_RBUTTONUP:
+        case WM_RBUTTONUP: {
+            const int dx = GET_X_LPARAM(lp) - g.right_down.x;
+            const int dy = GET_Y_LPARAM(lp) - g.right_down.y;
+            const bool click = g.look_drag && !g.look_moved &&
+                std::abs(dx) < std::max(2, GetSystemMetrics(SM_CXDRAG)) &&
+                std::abs(dy) < std::max(2, GetSystemMetrics(SM_CYDRAG));
             g.look_drag = false;
-            ReleaseCapture();
+            if (GetCapture() == h) ReleaseCapture();
+            if (click) {
+                POINT screen{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+                ClientToScreen(h, &screen);
+                show_view_context(h, screen);
+            }
             return 0;
+        }
         case WM_MOUSEMOVE: {
             const int mx = GET_X_LPARAM(lp);
             const int my = GET_Y_LPARAM(lp);
             if (g.look_drag) {
-                g.cam_yaw   += static_cast<float>(mx - g.last_mouse.x) * 0.005f;
-                g.cam_pitch -= static_cast<float>(my - g.last_mouse.y) * 0.005f;
-                g.cam_pitch = std::clamp(g.cam_pitch, -1.45f, 1.45f);
+                if (std::abs(mx - g.right_down.x) >= std::max(2, GetSystemMetrics(SM_CXDRAG)) ||
+                    std::abs(my - g.right_down.y) >= std::max(2, GetSystemMetrics(SM_CYDRAG))) g.look_moved = true;
+                if (g.look_moved) {
+                    g.cam_yaw   += static_cast<float>(mx - g.last_mouse.x) * 0.005f;
+                    g.cam_pitch -= static_cast<float>(my - g.last_mouse.y) * 0.005f;
+                    g.cam_pitch = std::clamp(g.cam_pitch, -1.45f, 1.45f);
+                }
             }
             g.last_mouse.x = mx;
             g.last_mouse.y = my;
@@ -4040,13 +4235,14 @@ LRESULT CALLBACK view_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
         case WM_CONTEXTMENU: {
-            // Etappe 19c: Rechtsklick im Viewport = Kontextmenü.
+            // Tastatur-Kontextmenü (Shift+F10); Mausklick wird in WM_RBUTTONUP
+            // explizit erzeugt, um ihn von einem Kamera-Drag zu unterscheiden.
             POINT pt{ GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
             if (pt.x == -1 && pt.y == -1) {
-                pt.x = 0; pt.y = 0;
+                pt = {static_cast<LONG>(g.mouse_x), static_cast<LONG>(g.mouse_y)};
                 ClientToScreen(h, &pt);
             }
-            TrackPopupMenu(g.ctx_obj, TPM_RIGHTBUTTON, pt.x, pt.y, 0, g.main, nullptr);
+            show_view_context(h, pt);
             return 0;
         }
         case WM_MOUSEWHEEL: {
@@ -4079,6 +4275,16 @@ LRESULT CALLBACK view_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             const float ndc_x = (2.0f * mx / w) - 1.0f;
             const float ndc_y = 1.0f - (2.0f * my / hh);
             const math::Vec3 dir = ray_dir(ndc_x, ndc_y, w / hh);
+            MapMarker marker;
+            if (view_marker_hit(dir, marker)) {
+                if (g.sel_obj >= 0 && !select_object(-1)) return 0;
+                g.marker_selection = map_marker_select(g.map_root, marker.kind, marker.index, g.map_epoch);
+                status_mode(marker.kind == MapMarkerKind::Npc
+                    ? L"NPC ausgewählt — Doppelklick öffnet die Bearbeitung"
+                    : L"Event ausgewählt — Doppelklick öffnet den Event-Editor");
+                return 0;
+            }
+            g.marker_selection = {};
 
             if (g.height_mode) {
                 // Etappe 18l: Berge malen - Linksklick = Hügel anheben,
@@ -4166,6 +4372,32 @@ LRESULT CALLBACK view_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 }
             }
             return 0;
+        }
+        case WM_LBUTTONDBLCLK: {
+            SetFocus(h);
+            MapMarker marker;
+            if (view_marker_hit(view_ray(h, GET_X_LPARAM(lp), GET_Y_LPARAM(lp)), marker)) {
+                if (map_marker_same(g.marker_selection, g.map_root, marker.kind, marker.index, g.map_epoch)) {
+                    cancel_object_drag();
+                    if (marker.kind == MapMarkerKind::Event) open_event_at(static_cast<int>(marker.index));
+                    else {
+                        // Der Platzierdialog arbeitet auf einer Kartenkopie;
+                        // F6 muss vorher seine offenen Eingaben klären.
+                        if (!resolve_event_editor() ||
+                            !map_marker_same(g.marker_selection, g.map_root, marker.kind, marker.index, g.map_epoch)) return 0;
+                        close_event_editor();
+                        open_placement_dialog(static_cast<int>(marker.index));
+                    }
+                } else {
+                    g.marker_selection = map_marker_select(g.map_root, marker.kind, marker.index, g.map_epoch);
+                    status_mode(L"Anderes Ziel ausgewählt — erneut doppelklicken zum Öffnen");
+                }
+                return 0;
+            }
+            // Zwei schnelle Pinsel-/Setzklicks auf freien Boden bleiben zwei
+            // Aktionen. Ein abgerutschter zweiter Event-Klick setzt nichts.
+            if (g.marker_selection.kind != MapMarkerKind::None) { g.marker_selection = {}; return 0; }
+            return SendMessageW(h, WM_LBUTTONDOWN, wp, lp);
         }
         case WM_LBUTTONUP:
             if (g.dragging) {
@@ -4345,51 +4577,50 @@ void push_blocked_zones() {
     }
 }
 
-// NPCs und Schild-Events zeigen dieselben Maße und Bodenversätze wie das
-// Spiel. Wegpunkte werden als kleine blaue Bodenmarken sichtbar.
+// NPCs, Schild-Events und bisher unsichtbare Events erhalten sichtbare,
+// eindeutig anklickbare Marker. Gelb markiert die aktuelle Auswahl.
 void push_placements() {
-    auto number = [](const JsonValue& o, const char* key, float fallback = 0.0f) {
-        const JsonValue* v = o.find(key);
-        if (!v || !v->is_num() || !std::isfinite(v->number()) || std::fabs(v->number()) > 1000000.0)
-            return fallback;
-        return static_cast<float>(v->number());
-    };
-    const JsonValue* npcs = g.map_root.find("npcs");
-    if (npcs && npcs->is_arr()) {
-        for (const JsonValue& npc : npcs->arr) {
-            if (!npc.is_obj()) continue;
-            const float x = number(npc, "x"), z = number(npc, "z"), y = number(npc, "y");
+    for (const MapMarker& marker : map_markers(g.map_root)) {
+        const JsonValue* item = map_marker_item(g.map_root, marker.kind, marker.index);
+        if (!item) continue;
+        const float x = static_cast<float>(marker.x), z = static_cast<float>(marker.z);
+        const float y = base_y_at(x, z) + static_cast<float>(marker.y);
+        if (marker.kind == MapMarkerKind::Npc) {
             uint32_t color = 0xC49A6C;
-            if (const JsonValue* c = npc.find("color"); c && c->is_num() &&
+            if (const JsonValue* c = item->find("color"); c && c->is_num() &&
                 std::isfinite(c->number()) && c->number() >= 0.0 && c->number() <= 0xFFFFFF)
                 color = static_cast<uint32_t>(c->number());
-            g.renderer->push_box(math::Vec3{x, base_y_at(x, z) + y + 0.9f, z},
-                                 math::Vec3{0.7f, 1.8f, 0.7f}, math::Vec3{}, color);
-            const JsonValue* path = npc.find("path");
-            if (!path || !path->is_arr()) continue;
-            for (const JsonValue& p : path->arr) {
+            g.renderer->push_box({x, y + 0.9f, z}, {0.7f, 1.8f, 0.7f}, {}, color);
+            const JsonValue* path = item->find("path");
+            if (path && path->is_arr()) for (const JsonValue& p : path->arr) {
                 if (!p.is_arr() || p.arr.size() != 2 || !p.arr[0].is_num() || !p.arr[1].is_num() ||
                     !std::isfinite(p.arr[0].number()) || !std::isfinite(p.arr[1].number()) ||
                     std::fabs(p.arr[0].number()) > 1000000.0 || std::fabs(p.arr[1].number()) > 1000000.0) continue;
                 const float px = static_cast<float>(p.arr[0].number()), pz = static_cast<float>(p.arr[1].number());
-                g.renderer->push_box(math::Vec3{px, base_y_at(px, pz) + y + 0.12f, pz},
-                                     math::Vec3{0.35f, 0.24f, 0.35f}, math::Vec3{}, 0x45B7F3);
+                g.renderer->push_box({px, base_y_at(px, pz) + static_cast<float>(marker.y) + 0.12f, pz},
+                                     {0.35f, 0.24f, 0.35f}, {}, 0x45B7F3);
             }
+        } else if (marker.sign) {
+            const math::Vec3 rot{0, static_cast<float>(marker.rotation), 0};
+            g.renderer->push_box({x, y + 0.65f, z}, {0.18f, 1.3f, 0.18f}, rot, 0x76502F);
+            g.renderer->push_box({x, y + 1.55f, z}, {1.35f, 0.65f, 0.15f}, rot, 0xD5AB69);
+        } else {
+            // Violett = reiner Eventpunkt, nicht notwendigerweise im Spiel sichtbar.
+            g.renderer->push_box({x, y + 0.7f, z}, {0.9f, 1.4f, 0.9f}, {}, 0xA96BE0);
         }
+        if (map_marker_same(g.marker_selection, g.map_root, marker.kind, marker.index, g.map_epoch))
+            g.renderer->push_box({x, y + 0.04f, z}, {1.3f, 0.08f, 1.3f}, {}, 0xFFE066);
     }
-    const JsonValue* events = g.map_root.find("events");
-    if (events && events->is_arr()) {
-        for (const JsonValue& event : events->arr) {
-            if (!event.is_obj()) continue;
-            const JsonValue* visual = event.find("visual");
-            if (!visual || !visual->is_str() || visual->str != "schild") continue;
-            const float x = number(event, "x"), z = number(event, "z");
-            const float y = base_y_at(x, z) + number(event, "y");
-            const math::Vec3 rot{0, number(event, "rot"), 0};
-            g.renderer->push_box(math::Vec3{x, y + 0.65f, z}, math::Vec3{0.18f, 1.3f, 0.18f}, rot, 0x76502F);
-            g.renderer->push_box(math::Vec3{x, y + 1.55f, z}, math::Vec3{1.35f, 0.65f, 0.15f}, rot, 0xD5AB69);
-        }
-    }
+}
+
+void push_project_start_marker() {
+    if (!g.project_start_visible || !g.terrain || !g.terrain->ready()) return;
+    const float x = static_cast<float>(g.project_start_x), z = static_cast<float>(g.project_start_z);
+    if (!std::isfinite(x) || !std::isfinite(z) || std::fabs(x) > g.terrain->width() * 0.5f ||
+        std::fabs(z) > g.terrain->height() * 0.5f) return;
+    const float y = base_y_at(x, z);
+    g.renderer->push_box({x, y + 0.12f, z}, {1.5f, 0.24f, 1.5f}, {}, 0x38E0A0);
+    g.renderer->push_box({x, y + 0.90f, z}, {0.25f, 1.5f, 0.25f}, {}, 0x38E0A0);
 }
 
 void render_frame() {
@@ -4410,6 +4641,7 @@ void render_frame() {
         for (int i = 0; i < static_cast<int>(g.objects->arr.size()); ++i) push_object(i);
     }
     push_placements();
+    push_project_start_marker();
     if (g.sel_obj >= 0) push_selection_frame(g.sel_obj);
     push_ghost_object();   // Etappe 19c: Vorschau vor dem Marker
     push_hover_marker();
@@ -4625,9 +4857,13 @@ void handle_shortcuts() {
         static bool esc_was = false, ent_was = false;
         const bool esc_now = (GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0;
         const bool ent_now = (GetAsyncKeyState(VK_RETURN) & 0x8000) != 0;
-        if (esc_now && !esc_was && g.sel_obj >= 0 && select_object(-1)) {
-            status_mode(L"Auswahl aufgehoben");
-            core::log_info("Auswahl aufgehoben (Esc)");
+        if (esc_now && !esc_was) {
+            const bool had_marker = g.marker_selection.kind != MapMarkerKind::None;
+            if ((g.sel_obj >= 0 && select_object(-1)) || had_marker) {
+                g.marker_selection = {};
+                status_mode(L"Auswahl aufgehoben");
+                core::log_info("Auswahl aufgehoben (Esc)");
+            }
         }
         if (ent_now && !ent_was && g.sel_obj >= 0 && apply_property_fields()) {
             update_title();
@@ -5204,6 +5440,7 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 if (r != IDYES) return 0;
             }
             if (database_editor_open() && !database_request_close()) return 0;
+            if (!script_request_close()) return 0;
             DestroyWindow(h);
             return 0;
 
@@ -5391,6 +5628,8 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             // Kinder und Toolbar sind jetzt zerstört und nutzen Schrift/Icons
             // nicht mehr. Die Dialogschrift g.font gehört weiterhin dem Editor.
             if (g.main_font) { DeleteObject(g.main_font); g.main_font = nullptr; }
+            if (g.ctx_view) { DestroyMenu(g.ctx_view); g.ctx_view = nullptr; }
+            if (g.ctx_obj) { DestroyMenu(g.ctx_obj); g.ctx_obj = nullptr; }
             if (g_toolbar_images) { ImageList_Destroy(g_toolbar_images); g_toolbar_images = nullptr; }
             g_toolbar = nullptr;
             break;
@@ -7863,6 +8102,23 @@ void open_event_editor() {
     SetForegroundWindow(g_ev.win);
 }
 
+void open_event_at(int index) {
+    if (index < 0 || !map_marker_item(g.map_root, MapMarkerKind::Event, static_cast<size_t>(index))) return;
+    const MapMarkerSelection target = map_marker_select(g.map_root, MapMarkerKind::Event,
+                                                         static_cast<size_t>(index), g.map_epoch);
+    if (g_ev.win && !resolve_event_editor()) return;
+    if (!map_marker_same(target, g.map_root, MapMarkerKind::Event, static_cast<size_t>(index), g.map_epoch)) return;
+    open_event_editor();
+    if (!g_ev.win || !map_marker_same(target, g.map_root, MapMarkerKind::Event,
+                                      static_cast<size_t>(index), g.map_epoch)) return;
+    g_ev.sel_event = index;
+    g_ev.sel_page = 0;
+    g_ev.sel_cmd = -1;
+    ev_refresh();
+    SetForegroundWindow(g_ev.win);
+    SetFocus(g_ev.list_events);
+}
+
 void close_event_editor() {
     if (g_ev.win) DestroyWindow(g_ev.win);
 }
@@ -7879,317 +8135,8 @@ bool event_editor_focused() {
 
 #include "editor/placement_dialog.h"
 
-// ============================================================================
-//  Etappe 17e: Script-Editor
-//
-//  Bearbeitet projekte/<name>/data/scripts.json ({"scripts":[{name,code}]}) in
-//  einem eigenen moduslosen Fenster. Das Spiel lädt die Datei beim Setup
-//  (Scripts.load_project); Events rufen Scripts über {"cmd":"script",...}.
-// ============================================================================
-enum {
-    IDSC_LIST   = 6001,
-    IDSC_NEW    = 6002,
-    IDSC_DEL    = 6003,
-    IDSC_NAME   = 6010,
-    IDSC_CODE   = 6011,
-    IDSC_APPLY  = 6012,
-    IDSC_SAVE   = 6013,
-    IDSC_RELOAD = 6014,
-    IDSC_CLOSE  = 6015,
-    IDSC_STATUS = 6016,
-};
-
-struct ScriptDlgState {
-    HWND win = nullptr;
-    HWND list = nullptr;
-    HWND ed_name = nullptr;
-    HWND ed_code = nullptr;
-    HWND lbl_status = nullptr;
-    JsonValue root;
-    int sel = -1;
-    bool dirty = false;
-    bool syncing = false;
-};
-
-static ScriptDlgState g_sc;
-static HFONT g_sc_code_font = nullptr;
-
-std::string sc_path() {
-    return g.project_dir + "\\scripts.json";
-}
-
-JsonValue* sc_scripts() {
-    JsonValue* s = g_sc.root.find("scripts");
-    if (!s || !s->is_arr()) s = &g_sc.root.set("scripts", JsonValue::make_arr());
-    return s;
-}
-
-void sc_status(const std::string& text) {
-    if (g_sc.lbl_status) ev_set_text(g_sc.lbl_status, text);
-}
-
-void sc_load() {
-    g_sc.root = JsonValue::make_obj();
-    std::string text;
-    if (read_file(sc_path(), text) && !text.empty()) {
-        try {
-            g_sc.root = json_parse(text);
-        } catch (const std::exception&) {
-            g_sc.root = JsonValue::make_obj();
-        }
-    }
-    JsonValue* arr = g_sc.root.find("scripts");
-    if (!arr || !arr->is_arr()) {
-        if (g_sc.root.is_arr()) {
-            JsonValue wrapped = JsonValue::make_obj();
-            wrapped.set("scripts", g_sc.root);
-            g_sc.root = std::move(wrapped);
-        } else {
-            g_sc.root.set("scripts", JsonValue::make_arr());
-        }
-    }
-    g_sc.dirty = false;
-}
-
-void sc_refresh_list() {
-    if (!g_sc.list) return;
-    SendMessageW(g_sc.list, LB_RESETCONTENT, 0, 0);
-    const JsonValue* arr = sc_scripts();
-    for (int i = 0; i < static_cast<int>(arr->arr.size()); ++i) {
-        const std::wstring w = utf8_to_wide(ev_str_of(arr->arr[i], "name", "?"));
-        const int idx = static_cast<int>(
-            SendMessageW(g_sc.list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(w.c_str())));
-        SendMessageW(g_sc.list, LB_SETITEMDATA, idx,
-                     static_cast<LPARAM>(static_cast<INT_PTR>(i)));
-    }
-    if (g_sc.sel >= 0 && g_sc.sel < static_cast<int>(arr->arr.size())) {
-        SendMessageW(g_sc.list, LB_SETCURSEL, g_sc.sel, 0);
-    } else {
-        g_sc.sel = -1;
-    }
-}
-
-void sc_refresh_fields() {
-    if (!g_sc.ed_name) return;
-    const JsonValue* arr = sc_scripts();
-    const bool valid = g_sc.sel >= 0 && g_sc.sel < static_cast<int>(arr->arr.size());
-    EnableWindow(g_sc.ed_name, valid ? TRUE : FALSE);
-    EnableWindow(g_sc.ed_code, valid ? TRUE : FALSE);
-    EnableWindow(GetDlgItem(g_sc.win, IDSC_APPLY), valid ? TRUE : FALSE);
-    EnableWindow(GetDlgItem(g_sc.win, IDSC_DEL), valid ? TRUE : FALSE);
-    if (!valid) {
-        SetWindowTextW(g_sc.ed_name, L"");
-        SetWindowTextW(g_sc.ed_code, L"");
-        return;
-    }
-    const JsonValue& s = arr->arr[g_sc.sel];
-    ev_set_text(g_sc.ed_name, ev_str_of(s, "name"));
-    ev_set_text(g_sc.ed_code, ev_str_of(s, "code"));
-}
-
-void sc_apply(bool mark_dirty) {
-    JsonValue* arr = sc_scripts();
-    if (g_sc.sel < 0 || g_sc.sel >= static_cast<int>(arr->arr.size())) return;
-    JsonValue& s = arr->arr[g_sc.sel];
-    s.set("name", JsonValue::make_str(ev_text(g_sc.ed_name)));
-    s.set("code", JsonValue::make_str(ev_text(g_sc.ed_code)));
-    if (mark_dirty) {
-        g_sc.dirty = true;
-        sc_refresh_list();
-        sc_status("Geändert - noch nicht gespeichert");
-    }
-}
-
-void sc_add() {
-    sc_apply(true);
-    JsonValue* arr = sc_scripts();
-    int n = 1;
-    std::string name;
-    for (;;) {
-        name = "script_" + std::to_string(n);
-        bool used = false;
-        for (const JsonValue& s : arr->arr) {
-            if (ev_str_of(s, "name") == name) { used = true; break; }
-        }
-        if (!used) break;
-        ++n;
-    }
-    JsonValue s = JsonValue::make_obj();
-    s.set("name", JsonValue::make_str(name));
-    s.set("code", JsonValue::make_str("# Neues Script\n# Helfer: say, switch, set_switch, variable,\n"
-                                      "#         set_variable, add_variable, teleport, sound, effect, log\n"));
-    arr->arr.push_back(std::move(s));
-    g_sc.sel = static_cast<int>(arr->arr.size()) - 1;
-    g_sc.dirty = true;
-    sc_refresh_list();
-    sc_refresh_fields();
-    sc_status("Neues Script angelegt - Speichern nicht vergessen");
-}
-
-void sc_delete() {
-    JsonValue* arr = sc_scripts();
-    if (g_sc.sel < 0 || g_sc.sel >= static_cast<int>(arr->arr.size())) return;
-    arr->arr.erase(arr->arr.begin() + g_sc.sel);
-    if (g_sc.sel >= static_cast<int>(arr->arr.size())) {
-        g_sc.sel = static_cast<int>(arr->arr.size()) - 1;
-    }
-    g_sc.dirty = true;
-    sc_refresh_list();
-    sc_refresh_fields();
-    sc_status("Script gelöscht - Speichern nicht vergessen");
-}
-
-void sc_save() {
-    sc_apply(false);
-    if (write_file(sc_path(), json_write(g_sc.root))) {
-        g_sc.dirty = false;
-        sc_status("Gespeichert: scripts.json (" +
-                  std::to_string(sc_scripts()->arr.size()) + " Scripts)");
-    } else {
-        sc_status("FEHLER: scripts.json konnte nicht geschrieben werden");
-    }
-}
-
-void sc_reload() {
-    sc_load();
-    g_sc.sel = sc_scripts()->arr.empty() ? -1 : 0;
-    sc_refresh_list();
-    sc_refresh_fields();
-    sc_status("Vom Datenträger neu geladen");
-}
-
-HWND sc_control(const wchar_t* cls, const wchar_t* text, DWORD style,
-                int x, int y, int w, int h, int id) {
-    HWND c = CreateWindowExW(0, cls, text, WS_CHILD | WS_VISIBLE | style,
-                             x, y, w, h, g_sc.win,
-                             reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),
-                             GetModuleHandleW(nullptr), nullptr);
-    SendMessageW(c, WM_SETFONT, reinterpret_cast<WPARAM>(g.font), TRUE);
-    return c;
-}
-
-LRESULT CALLBACK script_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
-    if (g.data_prompt_active || (g.props_dlg && g.dlg_mode != 1)) {
-        if (msg == WM_CLOSE) return 0;
-        if (msg == WM_COMMAND) {
-            if (LOWORD(wp) == IDSC_LIST && HIWORD(wp) == LBN_SELCHANGE && g_sc.list)
-                listbox_select_data(g_sc.list, static_cast<LPARAM>(g_sc.sel));
-            return 0;
-        }
-    }
-    switch (msg) {
-        case WM_COMMAND: {
-            const int id = LOWORD(wp);
-            const int code = HIWORD(wp);
-            if (g_sc.syncing) return 0;
-
-            if (id == IDSC_LIST && code == LBN_SELCHANGE) {
-                const int sel = static_cast<int>(
-                    SendMessageW(g_sc.list, LB_GETCURSEL, 0, 0));
-                if (sel == g_sc.sel) return 0;
-                sc_apply(true);
-                g_sc.sel = sel;
-                sc_refresh_list();
-                sc_refresh_fields();
-                return 0;
-            }
-            if (id == IDSC_NEW)    { sc_add(); return 0; }
-            if (id == IDSC_DEL)    { sc_delete(); return 0; }
-            if (id == IDSC_APPLY)  { sc_apply(true); return 0; }
-            if (id == IDSC_SAVE)   { sc_save(); return 0; }
-            if (id == IDSC_RELOAD) { sc_reload(); return 0; }
-            if (id == IDSC_CLOSE)  { DestroyWindow(h); return 0; }
-            return 0;
-        }
-        case WM_CLOSE:
-            DestroyWindow(h);
-            return 0;
-        case WM_DESTROY:
-            if (g_sc.win == h) {
-                g_sc.win = nullptr;
-                g_sc.list = nullptr;
-                g_sc.ed_name = nullptr;
-                g_sc.ed_code = nullptr;
-                g_sc.lbl_status = nullptr;
-                g_sc.sel = -1;
-            }
-            return 0;
-    }
-    return DefWindowProcW(h, msg, wp, lp);
-}
-
-void open_script_editor() {
-    if (g_sc.win) {
-        SetForegroundWindow(g_sc.win);
-        return;
-    }
-    if (g.cur_map < 0) return;
-
-    if (!g_sc_code_font) {
-        g_sc_code_font = CreateFontW(-15, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-                                     DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
-                                     CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
-                                     FIXED_PITCH | FF_MODERN, L"Consolas");
-    }
-
-    WNDCLASSW wc{};
-    wc.lpfnWndProc = script_proc;
-    wc.hInstance = GetModuleHandleW(nullptr);
-    wc.lpszClassName = L"RuneEditorScriptDlg";
-    wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-    wc.hbrBackground = GetSysColorBrush(COLOR_BTNFACE);
-    RegisterClassW(&wc);
-
-    RECT mr;
-    GetWindowRect(g.main, &mr);
-    g_sc.win = CreateWindowExW(WS_EX_DLGMODALFRAME, L"RuneEditorScriptDlg",
-                               L"Script-Editor", WS_POPUP | WS_CAPTION | WS_SYSMENU,
-                               mr.left + 140, mr.top + 70, 920, 700,
-                               g.main, nullptr, GetModuleHandleW(nullptr), nullptr);
-
-    sc_load();
-
-    sc_control(L"Static", L"SCRIPTS", 0, 12, 8, 200, 20, 0);
-    g_sc.list = sc_control(L"ListBox", nullptr,
-                           WS_VSCROLL | WS_BORDER | LBS_NOTIFY | LBS_HASSTRINGS,
-                           12, 30, 240, 500, IDSC_LIST);
-    sc_control(L"Button", L"Neu", BS_PUSHBUTTON, 12, 538, 72, 30, IDSC_NEW);
-    sc_control(L"Button", L"Löschen", BS_PUSHBUTTON, 88, 538, 84, 30, IDSC_DEL);
-    sc_control(L"Button", L"Schließen", BS_PUSHBUTTON, 12, 578, 240, 30, IDSC_CLOSE);
-
-    sc_control(L"Static", L"Name", 0, 268, 32, 44, 20, 0);
-    g_sc.ed_name = sc_control(L"Edit", nullptr, WS_BORDER | ES_LEFT,
-                              316, 28, 380, 24, IDSC_NAME);
-    sc_control(L"Button", L"Übernehmen", BS_PUSHBUTTON, 706, 26, 140, 28, IDSC_APPLY);
-    sc_control(L"Static", L"Code (Ruby)", 0, 268, 62, 200, 20, 0);
-    g_sc.ed_code = sc_control(L"Edit", nullptr,
-                              WS_BORDER | WS_VSCROLL | WS_HSCROLL | ES_LEFT |
-                              ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL | ES_WANTRETURN,
-                              268, 84, 640, 500, IDSC_CODE);
-    SendMessageW(g_sc.ed_code, WM_SETFONT,
-                 reinterpret_cast<WPARAM>(g_sc_code_font ? g_sc_code_font : g.font), TRUE);
-
-    g_sc.lbl_status = sc_control(L"Static", L"", 0, 268, 590, 500, 20, IDSC_STATUS);
-    sc_control(L"Button", L"Speichern", BS_PUSHBUTTON, 268, 616, 140, 30, IDSC_SAVE);
-    sc_control(L"Button", L"Neu laden", BS_PUSHBUTTON, 416, 616, 140, 30, IDSC_RELOAD);
-    sc_control(L"Button", L"Schließen", BS_PUSHBUTTON, 564, 616, 140, 30, IDSC_CLOSE);
-
-    g_sc.sel = sc_scripts()->arr.empty() ? -1 : 0;
-    g_sc.syncing = true;
-    sc_refresh_list();
-    sc_refresh_fields();
-    g_sc.syncing = false;
-    sc_status("scripts.json: " + sc_path());
-
-    ShowWindow(g_sc.win, SW_SHOW);
-    SetForegroundWindow(g_sc.win);
-}
-
-bool script_editor_focused() {
-    if (!g_sc.win) return false;
-    HWND fg = GetForegroundWindow();
-    return fg == g_sc.win || (fg && IsChild(g_sc.win, fg));
-}
+// RGSS-/Ruby-Projektscripts, Zeilennummern und sichere Dateitransaktionen.
+#include "editor/script_dialog_win.h"
 
 // ============================================================================
 //  Etappe 17f: Materialbase + Import-Dialog (moduslos)
@@ -9637,6 +9584,13 @@ int main(int argc, char** argv) {
     AppendMenuW(g.ctx_obj, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(g.ctx_obj, MF_STRING, ID_CTX_DUP, L"Objekt duplizieren");
     AppendMenuW(g.ctx_obj, MF_STRING, ID_CTX_DEL, L"Objekt löschen");
+    g.ctx_view = CreatePopupMenu();
+    AppendMenuW(g.ctx_view, MF_STRING, ID_CTX_PLAYER_START, L"Spieler-Startposition hier setzen");
+    AppendMenuW(g.ctx_view, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(g.ctx_view, MF_STRING, ID_CTX_PLACE, L"Objekt hier setzen");
+    AppendMenuW(g.ctx_view, MF_STRING, ID_CTX_FOCUS, L"Kamera auf ausgewähltes Objekt richten");
+    AppendMenuW(g.ctx_view, MF_STRING, ID_CTX_DUP, L"Objekt duplizieren");
+    AppendMenuW(g.ctx_view, MF_STRING, ID_CTX_DEL, L"Objekt löschen");
 
     // Hauptfenster
     WNDCLASSW wc{};
@@ -9654,6 +9608,7 @@ int main(int argc, char** argv) {
     RegisterClassW(&wc);
 
     WNDCLASSW wcv{};
+    wcv.style = CS_DBLCLKS;
     wcv.lpfnWndProc = view_proc;
     wcv.hInstance = hInst;
     wcv.lpszClassName = L"RuneEditorView";
@@ -9925,6 +9880,14 @@ int main(int argc, char** argv) {
             if (event_editor_open() && IsDialogMessageW(g_ev.win, &msg)) {
                 event_view_reveal_new_focus(g_ev.view, g_ev.win);
                 continue;
+            }
+            if (g_sc.win && (msg.hwnd == g_sc.win || IsChild(g_sc.win, msg.hwnd))) {
+                if (!g.data_prompt_active && msg.message == WM_KEYDOWN && msg.wParam == 'S' &&
+                    (GetKeyState(VK_CONTROL) & 0x8000)) {
+                    PostMessageW(g_sc.win, WM_COMMAND, MAKEWPARAM(IDSC_SAVE, BN_CLICKED), 0);
+                    continue;
+                }
+                if (IsDialogMessageW(g_sc.win, &msg)) continue;
             }
             const HWND old_focus = GetFocus();
             const bool main_child = msg.hwnd == g.main || IsChild(g.main, msg.hwnd);

@@ -155,6 +155,7 @@ end
 PLAYTEST_PROJECT = ' A_ä_日_🚀'
 PLAYTEST_MAP = ' Karte_日_🚀.'
 OTHER_PROJECT = 'B_Projekt'
+SPAWN_PROJECT = 'Start_Projekt'
 
 # Ein eigener Ruby-Prozess startet den echten Bootstrap mit den Werten,
 # die Rune3D vor VM-Start aus der CLI-Übergabe gesetzt hätte. Alle nativen
@@ -234,6 +235,48 @@ if ARGV[0] == '--playtest-child'
         Game.to_title!
         Launcher.start(OTHER_PROJECT)
         Game.map_id == 'b_start' && Game.map['name'] == 'Projekt B'
+      end
+      check('kein Fehler im Laufzeit-Log') { Rune::Log.errors.empty? }
+    when 'project_spawn', 'project_spawn_plain', 'project_spawn_other'
+      expected_map = scenario == 'project_spawn_other' ? 'andere' : 'start'
+      expected_x = scenario == 'project_spawn_other' ? 21.0 : 7.0
+      check('expliziter Projektstart gilt für Neustart und passende F4-Karte') do
+        Game.map_id == expected_map && Rune::Player.position[0] == expected_x &&
+          (scenario == 'project_spawn_other' || Rune::Player.position[2] == -6.0)
+      end
+      check('RGSS-Startscript läuft nach Globals und Kartenaufbau') do
+        $rgss_boot_seen == [[expected_map, 0.0]] && $game_variables[7] == 42
+      end
+      check('F5 führt RGSS-Startscript erneut nach dem Reset aus') do
+        load File.join(root, 'game', 'main.rb')
+        $rgss_boot_seen == [[expected_map, 0.0], [expected_map, 0.0]] &&
+          $game_variables[7] == 42 && Rune::Player.position[0] == expected_x
+      end
+      check('Kartenwechsel verwendet weiterhin den Kartenstart, nicht den Projektstart') do
+        Game.change_map('andere')
+        other_ok = Rune::Player.position[0] == 21.0
+        Game.change_map('start')
+        other_ok && Rune::Player.position[0] == 1.0
+      end
+      check('F5 liest eine inzwischen im Editor geänderte Projekt-Startkarte und Position') do
+        path = File.join(Project.data_path(SPAWN_PROJECT), 'system.json')
+        before = File.binread(path)
+        begin
+          updated = JSON.parse(before)
+          updated['start'].merge!('map' => 'andere', 'x' => 12, 'z' => -8, 'yaw' => 1.25)
+          File.write(path, JSON.generate(updated), encoding: 'UTF-8')
+          load File.join(root, 'game', 'main.rb')
+          # Eine explizite F4-Karte bleibt gewählt; der Projektstart gilt nur
+          # bei gleicher Karten-ID. Ohne F4 startet die neue Projektkarte.
+          if scenario == 'project_spawn'
+            Game.map_id == 'start' && Rune::Player.position[0] == 1.0
+          else
+            Game.map_id == 'andere' && Rune::Player.position[0] == 12.0 &&
+              Rune::Player.position[2] == -8.0 && Rune::Camera.yaw == 1.25
+          end
+        ensure
+          File.binwrite(path, before)
+        end
       end
       check('kein Fehler im Laufzeit-Log') { Rune::Log.errors.empty? }
     when 'battle_save'
@@ -490,7 +533,8 @@ Dir.mktmpdir('rune-laufzeit-') do |root|
   # von der System-Startkarte und hat eine großgeschriebene Dateiendung.
   a_data = File.join(root, 'projekte', PLAYTEST_PROJECT, 'data')
   b_data = File.join(root, 'projekte', OTHER_PROJECT, 'data')
-  [a_data, b_data].each do |data|
+  spawn_data = File.join(root, 'projekte', SPAWN_PROJECT, 'data')
+  [a_data, b_data, spawn_data].each do |data|
     FileUtils.mkdir_p(File.join(data, 'maps'))
     FileUtils.cp(File.join(root, 'game', 'data', 'database.json'), File.join(data, 'database.json'))
   end
@@ -513,6 +557,15 @@ Dir.mktmpdir('rune-laufzeit-') do |root|
   write_json.call(File.join(b_data, 'system.json'), { 'name' => 'B', 'start' => { 'map' => 'b_start' } })
   write_json.call(File.join(b_data, 'maps', 'b_start.json'), standard.merge('name' => 'Projekt B'))
   write_json.call(File.join(b_data, 'maps', PLAYTEST_MAP + '.JSON'), chosen.merge('name' => 'Fremde Karte'))
+  write_json.call(File.join(spawn_data, 'system.json'), { 'name' => 'Startprojekt',
+    'start' => { 'map' => 'start', 'x' => 7, 'z' => -6, 'yaw' => 0.75, 'use_project_position' => true } })
+  write_json.call(File.join(spawn_data, 'maps', 'start.json'), standard)
+  write_json.call(File.join(spawn_data, 'maps', 'andere.json'), standard.merge('start' => { 'x' => 21, 'z' => 2 }))
+  write_json.call(File.join(spawn_data, 'scripts.json'), { 'scripts' => [
+    { 'name' => 'rgss_start', 'autoload' => true,
+      'code' => "($rgss_boot_seen ||= []) << [$game_map.map_id, $game_variables[7]]\n$game_variables[7] = 42" },
+    { 'name' => 'nur_event', 'code' => "raise 'darf nicht automatisch starten'" }
+  ] })
   write_json.call(File.join(a_data, 'secret.json'), chosen.merge('name' => 'Nicht als Karte laden'))
   File.write(File.join(a_data, 'maps', 'kaputt.json'), '{', encoding: 'UTF-8')
   File.write(File.join(a_data, 'maps', 'liste.JSON'), '[]', encoding: 'UTF-8')
@@ -522,6 +575,9 @@ Dir.mktmpdir('rune-laufzeit-') do |root|
     ['ausgewählte Karte und Projektwechsel', 'selected', PLAYTEST_PROJECT, PLAYTEST_MAP],
     ['Kampf-Item und Spielstand auf Platte', 'battle_save', PLAYTEST_PROJECT, PLAYTEST_MAP],
     ['Projekt ohne Kartenoption', 'project_only', PLAYTEST_PROJECT, nil],
+    ['expliziter Projektstart mit F4', 'project_spawn', SPAWN_PROJECT, 'start'],
+    ['expliziter Projektstart ohne Kartenoption', 'project_spawn_plain', SPAWN_PROJECT, nil],
+    ['F4 auf anderer Karte behält deren Kartenstart', 'project_spawn_other', SPAWN_PROJECT, 'andere'],
     ['Karte nach F5 entfernt und wiederhergestellt', 'delete_retry', PLAYTEST_PROJECT, PLAYTEST_MAP],
     ['fehlende Karte', 'missing', PLAYTEST_PROJECT, 'fehlt'],
     ['nicht lesbares Kartenverzeichnis', 'inaccessible', PLAYTEST_PROJECT, PLAYTEST_MAP],

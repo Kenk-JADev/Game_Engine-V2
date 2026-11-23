@@ -212,6 +212,25 @@ begin
   Battle.abort!
   $project_root = altes_root
   Database.reset!
+
+  # Opt-in-Startscripts laufen im Top-Level wie eine RGSS-Scriptliste, in
+  # Reihenfolge und erneut nach F5. Nicht markierte Event-Scripts laufen nie
+  # automatisch. Ein fehlerhafter Eintrag verhindert die folgenden nicht.
+  File.write(File.join(tmp, 'scripts.json'), JSON.generate('scripts' => [
+    { 'name' => 'erstes', 'autoload' => true,
+      'code' => "$start_order = ['eins']\nclass RuneRGSSProbe; def self.ok; true; end; end" },
+    { 'name' => 'event', 'code' => "$start_order << 'unerwartet'" },
+    { 'name' => 'kaputt_start', 'autoload' => true, 'code' => 'syntax(' },
+    { 'name' => 'zweites', 'autoload' => true, 'code' => "$start_order << 'zwei'" }
+  ]), encoding: 'UTF-8')
+  check('Startscript-Liste geladen') { Scripts.load_project }
+  check('Startscriptfehler wird gemeldet, folgende Scripte laufen weiter') { Scripts.run_startup == false }
+  check('nur markierte Scripte laufen in Dateireihenfolge') { $start_order == %w[eins zwei] }
+  check('Top-Level-Klassendefinition wie bei RGSS möglich') { RuneRGSSProbe.ok }
+  check('Neustart führt markierte Scripte erneut aus') { Scripts.run_startup == false && $start_order == %w[eins zwei] }
+  File.write(File.join(tmp, 'scripts.json'), '{', encoding: 'UTF-8')
+  check('ungültiges neues Dokument verwirft alte Startliste') { !Scripts.load_project && Scripts.run_startup }
+  Object.send(:remove_const, :RuneRGSSProbe) if Object.const_defined?(:RuneRGSSProbe)
 ensure
   FileUtils.remove_entry(tmp)
 end

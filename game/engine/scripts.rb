@@ -25,12 +25,14 @@ require 'battle'   # Etappe 19i: Context-Helfer battle() braucht Battle
 
 module Scripts
   @defs = {}
+  @startup = []
 
   module_function
 
   # scripts.json des aktiven Projekts laden (fehlende Datei ist kein Fehler).
   def load_project
     @defs = {}
+    @startup = []
     path = File.join(Database.root, 'scripts.json')
     return true unless File.exist?(path)
 
@@ -40,7 +42,11 @@ module Scripts
       next unless h.is_a?(Hash)
       name = h['name'].to_s
       next if name.empty?
-      @defs[name] = h['code'].to_s
+      code = h['code'].to_s
+      @defs[name] = code
+      # Nur ausdrücklich markierte Scripte automatisch ausführen; alte
+      # Event-Scripte bleiben unverändert und laufen nur auf Anfrage.
+      @startup << [name, code] if h['autoload'] == true
     end
     Rune::Log.info("Scripts: #{@defs.size} Projekt-Scripts geladen")
     true
@@ -52,6 +58,24 @@ module Scripts
 
   def names = @defs.keys.sort
   def defined?(name) = @defs.key?(name.to_s)
+
+  # Wie eine RGSS-Scriptliste: explizit markierte Einträge in Dateireihenfolge
+  # im Top-Level ausführen, damit auch Klassendefinitionen möglich sind. Die
+  # RGSS-Globalen und die erste Karte stehen bereits bereit. F5/Neustart führt
+  # sie erneut aus. Das ist vertrauenswürdiger Ruby-Code, keine Sicherheitsbox.
+  def run_startup
+    ok = true
+    @startup.each do |name, code|
+      begin
+        TOPLEVEL_BINDING.eval(code, "script:#{name}", 1)
+      rescue StandardError, ScriptError => e
+        ok = false
+        Rune::Log.error("Start-Script '#{name}': #{e.class}: #{e.message}")
+        Issues.report('Scripts', "Start-Script '#{name}': #{e.class}: #{e.message}", severity: 'error')
+      end
+    end
+    ok
+  end
 
   # Benanntes Script ausführen. interpreter/event dürfen nil sein (Tests).
   def run(name, interpreter = nil, event = nil)

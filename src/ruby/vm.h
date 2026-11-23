@@ -10,6 +10,10 @@ bool init(int argc, char** argv, const std::string& root);
 // landen im Log; die Engine läuft weiter (wichtig für Hot-Reload).
 bool load_script(const std::string& path);
 
+// Kompiliert Ruby/RGSS-Code ohne Ausführung; Syntaxfehler mit Zeile liefern.
+// false gilt auch bei fehlender VM und wird in `message` erläutert.
+bool check_syntax(const std::string& code, std::string& message);
+
 // Ruft Rune.tick(dt) auf; Exceptions werden abgefangen und geloggt.
 void tick(float dt);
 

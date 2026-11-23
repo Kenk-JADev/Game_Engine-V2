@@ -79,6 +79,12 @@ jobs:
       - name: C++-JSON-Test
         run: ./json_test "$GITHUB_WORKSPACE"
 
+      - name: RGSS-Script- und Karten-Arbeitsabläufe prüfen
+        run: |
+          g++ -std=c++20 -O2 -Wall -Wextra -Werror \
+            -Isrc src/editor/json.cpp tools/editor_workflow_test.cpp -o editor_workflow_test
+          ./editor_workflow_test
+
       - name: Echtes Terrain kopflos bauen und prüfen
         run: |
           g++ -std=c++20 -O2 -Wall -Wextra -Werror \

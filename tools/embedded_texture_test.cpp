@@ -216,6 +216,16 @@ int main(int argc, char** argv) {
         check(expect_incomplete ? "unvollständiges Paket abgelehnt" : "echte eingebettete Ruby-VM gestartet",
               expect_incomplete ? !ruby_started && env_set && map_env_set : ruby_started);
         if (ruby_started && !expect_incomplete) {
+            std::string syntax_message;
+            rb_gv_set("$syntax_probe", Qfalse);
+            check("RGSS-Syntaxprüfung kompiliert, ohne Ruby-Code auszuführen",
+                  rune::ruby::check_syntax("$syntax_probe = true\nclass Probe; end\n", syntax_message) &&
+                  ruby_true("$syntax_probe == false && !defined?(Probe)"));
+            check("Syntaxfehler nennt die Editor-Datei und setzt Ruby-Fehlerzustand zurück",
+                  !rune::ruby::check_syntax("x = 1\nif\n", syntax_message) &&
+                  syntax_message.find("F11:") != std::string::npos && NIL_P(rb_errinfo()));
+            check("Syntaxprüfung weist NUL im Code ab",
+                  !rune::ruby::check_syntax(std::string("a\0b", 3), syntax_message));
             rb_gv_set("$expected_root", rb_utf8_str_new(f.root.data(), static_cast<long>(f.root.size())));
             rb_gv_set("$expected_project", rb_utf8_str_new(f.project.data(), static_cast<long>(f.project.size())));
             rb_gv_set("$expected_map", rb_utf8_str_new(expected_map.data(), static_cast<long>(expected_map.size())));

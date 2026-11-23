@@ -133,9 +133,21 @@ end
     @was_air = nil
   end
 
+  # Eine explizit im Editor gesetzte Projekt-Startposition gilt beim Neustart
+  # und F4 nur auf dieser Karte. Alte Projekte behalten die frühere Priorität
+  # des Karten-Starts; Transfers und Spielstände bleiben davon unberührt.
+  def self.project_start_for(map_id)
+    start = Database.system['start']
+    return nil unless start.is_a?(Hash) && start['use_project_position'] == true && start['map'] == map_id
+    return nil unless %w[x z].all? { |key| start[key].is_a?(Numeric) && start[key].to_f.finite? }
+    return nil unless start['yaw'].nil? || (start['yaw'].is_a?(Numeric) && start['yaw'].to_f.finite?)
+
+    start
+  end
+
   # Karte mit Terrain, Objekten, Events und NPCs aufbauen und den Spieler
   # an ihren Startpunkt setzen; auch beim Laden eines Spielstands verwendet.
-  def self.enter_map(id, loaded_map: nil)
+  def self.enter_map(id, loaded_map: nil, start_override: nil)
     @map_id = id
     @map = loaded_map || Database.map(id)
     reset_step_tracking
@@ -193,8 +205,9 @@ end
     @hover_dist = 0.0
     @prompt = nil
 
-    # Startpunkt: erst die Karte, dann system.json.
-    st = @map['start'] || Database.system['start'] || { 'x' => 0.0, 'z' => 0.0 }
+    # Projektvorgabe nur bei explizitem Spielstart; sonst wie bisher Karte,
+    # dann system.json. Laden eines Spielstands setzt seine Position danach.
+    st = start_override || @map['start'] || Database.system['start'] || { 'x' => 0.0, 'z' => 0.0 }
     Rune::Player.teleport(st['x'].to_f, gy(st['x'].to_f, st['z'].to_f) + 0.2, st['z'].to_f)
     Rune::Camera.yaw = (st['yaw'] || Math::PI).to_f
     # Etappe 19k.3: Ein Startpunkt in der Block-Zone wäre ein feststeckender
@@ -513,6 +526,9 @@ end
       Rune::Input.capture = true
     end
 
+    # Der Editor kann während des Playtests den Projektstart verschieben.
+    # F5/Neustart liest system.json deshalb erneut, ohne andere Caches zu leeren.
+    Database.reload_system
     # Spielzustand aus system.json zurücksetzen (bei F5 ebenfalls).
     GameState.reset!(Database.system)
     Party.setup(Database.database)
@@ -528,7 +544,7 @@ end
     Textures.register_project
     # Etappe 18l: Terrain-Bau ist nach enter_map gewandert (Kartenwechsel
     # baut es ebenfalls auf, damit Kartengrenze und gemalte Berge stimmen).
-    enter_map(map_id, loaded_map: selected_map)
+    enter_map(map_id, loaded_map: selected_map, start_override: project_start_for(map_id))
     RGSS.setup   # Etappe 19e: $game_*-Globale (RPG-Maker-XP-Schicht)
     # enter_map läuft beim Kaltstart vor RGSS.setup; dieses ersetzt den
     # Spieler auch bei F5. Den neuen Spieler daher auf der Startkarte würfeln.
@@ -536,6 +552,9 @@ end
     Rune::Camera.mode = :third
     Rune::Camera.distance = 7   # Launcher-Überblick (28) -> normaler Follow-Cam
     Rune::Sound.loop('musik', 0.22)   # im Spiel etwas lauter als im Titel
+    # Opt-in-RGSS-Projektscripte: nach Aufbau von Karte und $game_*-Globalen,
+    # vor dem ersten Spielframe, in der Reihenfolge des Script-Editors.
+    Scripts.run_startup
 
     # Intro-Text als Event am Kartenstart (auto-Trigger desselben Effekts).
     @intro = ['Willkommen in Rune3D.  WASD = laufen, Shift = rennen, Leertaste = springen.',

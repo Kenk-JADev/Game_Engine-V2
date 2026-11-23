@@ -22,6 +22,15 @@ foreach ($relative in @('RuneEditor.exe', 'Rune3D.exe', 'lib\ruby')) {
     if (-not (Test-Path -LiteralPath $path)) { throw "Build unvollständig: $path" }
 }
 
+# Die EXE trägt ihren eigenen Namen, nicht die VERSIONINFO von winpthreads.
+foreach ($expect in @(@('RuneEditor.exe', 'Rune3D Editor'), @('Rune3D.exe', 'Rune3D Spiel'))) {
+    $info = (Get-Item -LiteralPath (Join-Path $build $expect[0])).VersionInfo
+    if ($info.FileDescription -ne $expect[1] -or $info.OriginalFilename -ne $expect[0] -or $info.ProductName -ne 'Rune3D') {
+        throw "Falsche EXE-Metadaten für $($expect[0]): $($info.FileDescription) / $($info.OriginalFilename)"
+    }
+    Write-Host "Versionsinfo OK: $($expect[0]) — $($info.FileDescription)"
+}
+
 $game = Join-Path $build 'game'
 $projects = Join-Path $build 'projekte'
 if (-not ((Test-Path -LiteralPath $game -PathType Container) -and
