@@ -164,6 +164,45 @@ if ($WarpTest) {
     if ($LASTEXITCODE -ne 0) { throw 'renderer_warp_test.exe konnte nicht gebaut werden' }
     & $WarpExe
     if ($LASTEXITCODE -ne 0) { throw 'D3D11-WARP-Test fehlgeschlagen' }
+
+    # Echte CRuby-Bindings + derselbe WARP-Renderer; ohne Stubs, vollständig
+    # getrennte Temp-Projekte. Kein vorausgebautes Rune3D.exe erforderlich.
+    $EmbeddedExe = Join-Path $BuildDir 'embedded_texture_test.exe'
+    Write-Step 'Baue und prüfe eingebettete Ruby-Texturbrücke ...'
+    $EmbeddedFlags = @(
+        '-std=c++20', '-O1', '-Wall', '-Wextra', '-Wno-unused-parameter',
+        '-Wno-missing-field-initializers',
+        '-DUNICODE', '-D_UNICODE', '-DNOMINMAX', '-DWIN32_LEAN_AND_MEAN',
+        "-I$ProjectRoot\src", "-I$($Ruby.HeaderDir)", "-I$($Ruby.ArchDir)",
+        "$ProjectRoot\tools\embedded_texture_test.cpp",
+        "$ProjectRoot\src\app.cpp", "$ProjectRoot\src\ruby\vm.cpp",
+        "$ProjectRoot\src\core\log.cpp", "$ProjectRoot\src\core\sound.cpp",
+        "$ProjectRoot\src\core\window.cpp", "$ProjectRoot\src\gfx\camera.cpp",
+        "$ProjectRoot\src\gfx\renderer.cpp", "$ProjectRoot\src\gfx\ui.cpp",
+        "$ProjectRoot\src\world\physics.cpp", "$ProjectRoot\src\world\terrain.cpp",
+        '-o', $EmbeddedExe,
+        # UCRT muss wie beim eigentlichen Build vor der Ruby-Bibliothek stehen.
+        '-lucrtbase', "-L$($Ruby.LibDir)", $Ruby.LibArg,
+        '-ld3d11', '-ldxgi', '-ld3dcompiler', '-ldxguid', '-luuid',
+        '-lole32', '-loleaut32', '-luxtheme', '-lcomctl32', '-luser32', '-lgdi32',
+        '-ladvapi32', '-lshell32', '-lshlwapi', '-lwinmm', '-lws2_32',
+        '-liphlpapi', '-lwindowscodecs', '-lcomdlg32'
+    )
+    & $Gcc @EmbeddedFlags
+    if ($LASTEXITCODE -ne 0) { throw 'embedded_texture_test.exe konnte nicht gebaut werden' }
+    # Die kopierte Ruby-DLL berechnet ihr Präfix relativ zur Test-EXE. Für
+    # diesen Test die Stdlib der tatsächlich ausgewählten Ruby-Installation
+    # verwenden; die Umgebung danach wiederherstellen.
+    $AltRubyLib = $env:RUBYLIB
+    try {
+        $env:RUBYLIB = ((& $Ruby.Exe -e 'print $LOAD_PATH.join(File::PATH_SEPARATOR)') -join '')
+        if ($LASTEXITCODE -ne 0 -or -not $env:RUBYLIB) { throw 'Ruby-Load-Pfad nicht ermittelbar' }
+        & $EmbeddedExe $ProjectRoot
+        if ($LASTEXITCODE -ne 0) { throw 'Eingebettete Ruby-Texturbrücke fehlgeschlagen' }
+    } finally {
+        if ($null -eq $AltRubyLib) { Remove-Item Env:RUBYLIB -ErrorAction SilentlyContinue }
+        else { $env:RUBYLIB = $AltRubyLib }
+    }
     if (-not $Test) { return }
 }
 

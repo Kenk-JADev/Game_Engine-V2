@@ -159,7 +159,7 @@ jobs:
           try { .\build.ps1 -Test }
           catch { Write-Host "::error title=Windows-Testablauf::$($_.Exception.Message)"; throw }
 
-      - name: D3D11-WARP (Software-Rendering und Atlasreferenzen)
+      - name: D3D11-WARP und eingebettete Ruby-Texturbrücke
         shell: pwsh
         run: |
           try { .\build.ps1 -WarpTest }
