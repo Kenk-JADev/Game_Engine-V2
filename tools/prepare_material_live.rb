@@ -2,12 +2,12 @@
 # Erzeugt eine NEUE, isolierte Installation für den manuellen Windows-Test.
 # Keine vorhandenen Projekt-/Build-Ordner werden gelöscht oder verändert.
 # Aufruf nach .\build.ps1 -Clean:
-#   ruby tools/prepare_material_live_test.rb C:/Temp/rune-material-live
+#   ruby tools/prepare_material_live.rb C:/Temp/rune-material-live
 require 'fileutils'
 require 'json'
 
 SOURCE = File.expand_path('..', __dir__)
-abort 'Aufruf: ruby tools/prepare_material_live_test.rb <neuer-ordner-ausserhalb-des-repos>' unless ARGV.size == 1
+abort 'Aufruf: ruby tools/prepare_material_live.rb <neuer-ordner-ausserhalb-des-repos>' unless ARGV.size == 1
 requested = File.expand_path(ARGV.first)
 parent = File.dirname(requested)
 abort "Elternordner existiert nicht: #{parent}" unless Dir.exist?(parent)

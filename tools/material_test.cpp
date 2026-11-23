@@ -4,6 +4,7 @@
 #include "world/texture_limits.h"
 
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -15,9 +16,19 @@ using namespace rune::editor;
 namespace {
 int failures = 0, checks = 0;
 void check(const char* name, bool value) {
+#ifdef _WIN32
+    const unsigned long last_error = GetLastError();
+#endif
     ++checks;
     if (!value) ++failures;
     std::printf("  %s  %s\n", value ? "ok  " : "FAIL", name);
+    if (!value && std::getenv("GITHUB_ACTIONS")) {
+#ifdef _WIN32
+        std::printf("::error title=Materialtest::%s (letzter Win32-Status %lu)\n", name, last_error);
+#else
+        std::printf("::error title=Materialtest::%s\n", name);
+#endif
+    }
 }
 
 void portable_tests() {
@@ -260,5 +271,7 @@ int main() {
     windows_tests();
 #endif
     std::printf("MATERIAL-TEST: %d Prüfungen, %d Fehler\n", checks, failures);
+    if (std::getenv("GITHUB_ACTIONS"))
+        std::printf("::notice title=Materialtest::%d Prüfungen, %d Fehler\n", checks, failures);
     return failures ? 1 : 0;
 }

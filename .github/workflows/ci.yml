@@ -155,11 +155,15 @@ jobs:
 
       - name: Tests (C++-Logik, Windows-Dateien, Ruby, JSON- und Event-Brücke)
         shell: pwsh
-        run: .\build.ps1 -Test
+        run: |
+          try { .\build.ps1 -Test }
+          catch { Write-Host "::error title=Windows-Testablauf::$($_.Exception.Message)"; throw }
 
       - name: D3D11-WARP (Software-Rendering und Atlasreferenzen)
         shell: pwsh
-        run: .\build.ps1 -WarpTest
+        run: |
+          try { .\build.ps1 -WarpTest }
+          catch { Write-Host "::error title=WARP-Testablauf::$($_.Exception.Message)"; throw }
 
       # Etappe 19f: Das Artefakt muss SELBSTLAUFEND sein - die EXEs finden
       # ihre Daten (game/, projekte/) neben sich oder eine Ebene höher. Ein

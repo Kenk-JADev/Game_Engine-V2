@@ -7,6 +7,7 @@
 #include <windows.h>
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -20,9 +21,12 @@ void log_error(const std::string& msg) { std::printf("  ERROR %s\n", msg.c_str()
 namespace {
 int failures = 0, checks = 0;
 void check(const char* message, bool ok) {
+    const unsigned long last_error = GetLastError();
     ++checks;
     if (!ok) ++failures;
     std::printf("  %s  %s\n", ok ? "ok  " : "FAIL", message);
+    if (!ok && std::getenv("GITHUB_ACTIONS"))
+        std::printf("::error title=WARP-Test::%s (letzter Win32-Status %lu)\n", message, last_error);
 }
 
 std::vector<std::uint8_t> solid(std::uint8_t r, std::uint8_t g, std::uint8_t b) {
@@ -206,5 +210,7 @@ int main() {
     renderer.shutdown();
     DestroyWindow(window);
     std::printf("WARP-TEST: %d Prüfungen, %d Fehler\n", checks, failures);
+    if (std::getenv("GITHUB_ACTIONS"))
+        std::printf("::notice title=WARP-Test::%d Prüfungen, %d Fehler\n", checks, failures);
     return failures ? 1 : 0;
 }

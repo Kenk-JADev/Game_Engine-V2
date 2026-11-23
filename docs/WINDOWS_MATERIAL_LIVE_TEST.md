@@ -25,7 +25,7 @@ Ersatz für den GPU-/Bedientest.
 2. Nur eine **neue** Kopie außerhalb des Repositorys verwenden, z. B.:
 
    ```powershell
-   ruby tools/prepare_material_live_test.rb "$env:TEMP\RuneMaterialLive"
+   ruby tools/prepare_material_live.rb "$env:TEMP\RuneMaterialLive"
    cd "$env:TEMP\RuneMaterialLive"
    ```
 
