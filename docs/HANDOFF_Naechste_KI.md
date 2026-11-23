@@ -1,6 +1,6 @@
-# Handoff für die nächste KI - Rune3D, Stand nach Etappe 19r
+# Handoff für die nächste KI - Rune3D, Stand nach Etappe 19s
 
-**Datum des Stands:** 2026-11-19 — Etappe 19r: Windows-Projekt- und Kartenpfade; CI-Status in GitHub Actions prüfen
+**Datum des Stands:** 2026-11-19 — Etappe 19s: Karten-/F9-Dateischutz; CI-Status in GitHub Actions prüfen
 **Projekt:** `C:/Users/jusagu/Desktop/Engine` — Windows-Only 3D-RPG-Engine (C++20/Win32/D3D11 + echtes CRuby 3.4.11), Editor = eigenes Programm `RuneEditor.exe`.
 
 ## 0. Auftrag und Fortschritt (RPG-Maker-XP-Überholung)
@@ -39,6 +39,7 @@ Der User beauftragte eine Überarbeitung von Engine und Editor **im Stil von RPG
 | 19p | `84ad7b5` (CI grün) | Terrain-/Atmosphärengrenzen, sichtbare F10-/Atlas-Fallbacks, F7-Datentreue, Ruby-Brücke und portable Terrain-Tests |
 | 19q | `d2e6192` bis `776044d` (CI-Grün Run 45162482261) | Projektgebundene Texturen, Materialstore, Windows-Datei-/WARP-/Ruby-Bindingtests und vorbereiteter Windows-Live-Test |
 | 19r | `08b064e` + `ae0cfe6` (CI-Grün Run 45169345662) | UTF-8 intern, strikte Windows-UTF-16-Grenzen, Unicode-Projekte/Karten, Ruby-Dateisystemkodierung und F4-Prozessübergabe |
+| 19s | `6a3b8e1` (CI-Grün Run 45175342986) | Handle-relative Karten-/F9-Dateitransaktionen, erneut geprüfte Rückfragen, Wiederherstellung und 58 echte Windows-Dateitests |
 | 19o.6 | `326925b` (CI-Grün Run 44640705908) | F6: Monitor-Arbeitsfläche, DPI-skalierter Scroll-Ausschnitt, Fokus-Nachführung und portable/unsichtbare Windows-Tests |
 | 19o.5 | `4635c80` (CI-Grün Run 44628573472) | F6: datentreue Event-/Seiten-/Befehlsformulare, Pending-Schutz, bedarfsweise Altseitenmigration und C++/Ruby-Event-Brücke |
 | 19o.4 | `38ed554` (CI-Grün Run 44614856669) | Objektformular datentreu, Pending-/Drag-Schutz und sicheres Kartenladen; portable Tests |
@@ -62,6 +63,10 @@ Stand 19p: 671 JSON-/Editor-Checks und 51 echte Terrain-Checks jeweils in Releas
 Stand 19q: Windows-2022-CI für Commit `776044d`, [Lauf 45162482261](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45162482261), alle vier Jobs grün. Material-/Dateitest 57/0, Ruby-Suite einschließlich WIC-Import 27/0, WARP 34/0 und echte eingebettete Texturbrücke mit WARP 19/0.
 
 Stand 19r: Windows-2022-CI für Commit `ae0cfe6`, [Lauf 45169345662](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45169345662), alle vier Jobs grün: Windows-Pfadtest 28/0, Material 57/0, WARP 36/0, echte eingebettete Ruby-/WARP-Brücke 28/0 und Ruby 3.4.13 27/0/0. Die Tests nutzen reale W-APIs, einen eigenen Kindprozess, echte kopierte Editor-CLI und CRuby; sie sind kein vollständiger F4-Spielstart, GUI-/DPI- oder Hardware-GPU-Test. Der Brückentest nutzt den Ruby-Load-Pfad der ausgewählten Installation. Interaktive Prüfung und Langpfadgrenzen siehe Backlog und Live-Anleitung. CI-Status und Arbeitsbaum vor Weiterarbeit prüfen; `opencode.json` ist lokaler Harness-Kram (ignoriert).
+
+Stand 19s: [CI 45175342986](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45175342986) auf `6a3b8e1`: vier Jobs grün, 58 Windows-Karten-/F9-Dateitests, 28 Pfad-, 57 Material-, 36 WARP- und 28 Ruby-/WARP-Checks sowie 27 Ruby-Suiten ohne Fehler. Lokal 671 JSON-, 51 Terrain-, 25 Material-Sanitizerprüfungen/0 Fehler; Ruby 3.0.6 26 OK/1 EXE-Skip, Lint 0 Fehler/3 Warnungen. Interaktive GUI-/DPI-/Hardwaretests und weitere Dateisysteme bleiben offen.
+
+**Anschließender Userwunsch:** Rune3D funktional ausbauen und den darin integrierten Editor entfernen; RuneEditor soll das einzige vollständige Editorprogramm bleiben. Zuerst Abhängigkeiten und tatsächliche Engine-Lücken untersuchen; welche konkreten neuen Funktionen priorisiert werden sollen, ist noch nicht festgelegt.
 
 **Nacharbeit 19a (notiert für die Historie):** Der erste CI-Lauf hat genau das getan,
 wofür er da ist: `build.ps1 -Test` übergab g++ Argumente mit angehängtem Komma
@@ -160,6 +165,15 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
 
 **Backlog:** Offene Fehler, Grenzen und Test-Wissen stehen zentral in `docs/BACKLOG.md` — dort nachsehen und neue Erkenntnisse dorthin eintragen (nicht mehr hier listen).
 
+- **Karten-/F9-Dateischutz (19s):** `document_store_win.h` bindet die
+  Projektverzeichnisse je Aktion, beobachtet Datei-Bytes und ID, hält ein
+  Attribut-Handle während einer Rückfrage und prüft danach beide unter
+  Schreib-/Löschsperre erneut. Temp/Backup/Promotion ersetzen kein fremdes
+  Ziel; Löschen erfolgt am geprüften Handle. Das ist kein atomarer Namens-
+  austausch: `.rune-*.bak`/`.tmp` nach Crash oder blockierter Rücksetzung
+  sichern und nach Prüfung manuell wiederherstellen. Reparsepunkte und
+  Hardlinks werden abgelehnt. 58 echte Windows-Datei-/Race-Checks grün;
+  keine GUI, kein allgemeiner Netzlaufwerk-/Memory-Mapping-/Crash-Nachweis.
 - **Windows-Projektpfade (19r):** `win_path.h` definiert gültiges UTF-8
   intern und strikte UTF-16-Konvertierung an Windows-Grenzen. `win_project_cli.h`
   liest die Wide-Kommandozeile und setzt `RUNE_PROJECT` ohne ACP; `vm.cpp`
@@ -244,10 +258,9 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
   aber nicht in der Vorschau. Fehlende Wurzel-`terrain` wird bei Bedarf
   zeigersicher angelegt (F6 schließen); `objects` danach neu holen.
   Karten-Dateibytes werden vor Speichern/Löschen auf externe Änderungen
-  geprüft. `atomic_file_win.h` schreibt zunächst eine temporäre Datei;
-  neue Karten überschreiben keine vorhandene Datei. Die Konfliktprüfung
-  bleibt nicht atomar (Backlog). Neue kopflose Windows-Tests prüfen die
-  gemeinsame Datei-Hilfe; echte GUI-/End-to-End-Dateitests stehen aus.
+  geprüft; 19s ersetzt die frühere Dateihilfe durch die oben beschriebene
+  Handle-Transaktion. Sie ist kein atomarer Namensaustausch. Echte GUI-/
+  End-to-End-Dateitests stehen weiterhin aus.
   Der Kartenbaum hält Einfüge-Texte bis zum Win32-Aufruf am Leben;
   `GetAsyncKeyState`-Aktionen laufen nur im Vordergrund-Hauptfenster.
   Gezielt abgesicherte Terrain-/Atmosphärenpfade siehe 19p; andere
@@ -258,9 +271,9 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
   Fehlerhafte Eingaben verhindern die ganze Übernahme; unlesbare/kaputte
   Datenbanken werden nicht überschrieben, Ersetzen problematischer Daten
   und Löschung verlangen Rückfrage. Nicht darstellbare Einzeltexte sind
-  gesperrt. Externe Änderungen werden vor dem temporären Datei-Ersetzen
-  erkannt (Vergleich/Ersetzen nicht atomar, siehe Backlog); Schließen und
-  Neu laden schützen ungespeicherte Daten. Grafischer Live-Test steht aus.
+  gesperrt. Externe Änderungen lösen vor dem Speichern eine Rückfrage aus;
+  19s prüft den bestätigten Stand danach erneut unter Handle-Sperre. Schließen
+  und Neu laden schützen ungespeicherte Daten. Grafischer Live-Test steht aus.
 - **F2-Block-Zonen (19o.2):** `blocked_form.h` zeigt stabile temporäre
   `#n:`-Zeilenmarken; beim Editieren/Umordnen die Marke behalten, neue Zeile
   ohne Marke. Unbekannte Felder und unberührte Zahlen bleiben erhalten;

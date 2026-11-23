@@ -130,10 +130,10 @@ Ein alter Projektmerker, der kein gültiges UTF-8 enthält, wird nicht aus der
 System-Codepage erraten: Projekt einmal erneut auswählen.
 
 Die automatisierten Windows-Tests decken auch Namen außerhalb der aktiven
-Codepage ab. Sie garantieren weder alle Windows-Langpfade noch die interaktive
-GUI, jedes Dateisystem oder einen allgemeinen Pfad-/Dateischutz für Karten
-und Datenbank. Der [Live-Test](docs/WINDOWS_MATERIAL_LIVE_TEST.md) bleibt
-offen; für Materialdateien gelten die gesonderten Handle-Schutzregeln.
+Codepage ab. Karten und F9 verwenden zusätzlich die unten beschriebene
+Handle-Transaktion; Materialdateien haben einen eigenen Schutz. Beides ist
+keine Garantie für alle Langpfade, Dateisysteme oder übrigen Projektdateien.
+Der interaktive [Live-Test](docs/WINDOWS_MATERIAL_LIVE_TEST.md) bleibt offen.
 
 ## Testen
 
@@ -153,6 +153,7 @@ ruby tools\lint_repo.rb                        # Repo-Hygiene
 | C++-Terrain | Echte Geländegenerierung, Höhen-/Splat-Budgets, Atlasplan und Fehlerpfade ohne D3D | `tools/terrain_test.cpp` |
 | Materialien/Dateien | Verlustfreier JSON-Baum, unter Windows Handle-Konflikte, Junctions und Hardlinks | `tools/material_test.cpp` |
 | Windows-Projektpfade | UTF-8/UTF-16, Projekt-/Kartenscan, F9-Datei-I/O, F4-Kindprozess | `tools/windows_path_test.cpp` (`-Test`) |
+| Windows-Karten/F9 | Echte Dateihandles, simulierte Bestätigungen, Konkurrenz, Unicode, Hardlinks und Junctions | `tools/document_store_test.cpp` (`-Test`) |
 | D3D11-WARP | Software-Renderer, Pixel, Projektwechsel und Atlas-/Terrainreferenzen | `tools/renderer_warp_test.cpp` (`-WarpTest`) |
 | Eingebettete Texturbrücke | Echtes CRuby, Projektdateien, A→B→A und WARP-Pixel | `tools/embedded_texture_test.cpp` (`-WarpTest`) |
 | JSON-Brücke | Schreibt C++ bytegleich zu Ruby `JSON.pretty_generate`? | `tools/json_bridge_check.rb` |
@@ -176,9 +177,11 @@ Pull Request:
 | `cpp-logik` | ubuntu | JSON-/Editor-, Terrain- und Material-C++-Tests mit `-Werror`, danach JSON- und Event-Brücke |
 | `windows` | windows-2022 | Build, kopflose Datei-/Importtests und `-WarpTest`, EXEs als Artefakt |
 
-Windows-CI für Commit `ae0cfe6`, Lauf [45169345662](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45169345662):
-28 Pfad-, 57 Material-/Datei-, 36 WARP- und 28 eingebettete Ruby-/WARP-
-Prüfungen sowie 27 Ruby-Suiten jeweils ohne Fehler. Der Pfadtest nutzt
+Windows-CI für Commit `6a3b8e1`, Lauf [45175342986](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45175342986):
+58 Karten-/F9-Datei-, 28 Pfad-, 57 Material-/Datei-, 36 WARP- und 28
+eingebettete Ruby-/WARP-Prüfungen sowie 27 Ruby-Suiten jeweils ohne Fehler.
+Der Dateitest nutzt echte Windows-Dateisystem-Handles und deterministisch
+ausgelöste Konkurrenz, aber keine sichtbaren Editorfenster. Der Pfadtest nutzt
 echte Windows-W-APIs und einen eigenen F4-Kindprozess, aber nicht das
 komplette Spiel. WARP testet den echten D3D11-Renderer mit Software, aber
 keine Hardware-GPU, Bedienung oder DPI.
@@ -418,10 +421,9 @@ Zahlen werden exakt gespeichert; Kommazahlen akzeptieren Punkt oder Komma.
 Ungültige Eingaben blockieren die Übernahme. Fehlende Sammlungen entstehen
 erst beim Anlegen eines Eintrags; fehlerhafte Sammlungen und uneindeutige
 alte Gegnerlisten werden nur nach Rückfrage ersetzt. Nicht darstellbare
-Einzeltexte sind geschützt. Speichern schreibt zunächst eine temporäre Datei;
-beim Schließen/Neu-Laden wird vor dem Verwerfen gefragt. Hat ein anderes
-Programm die Datei seit dem Laden geändert, fragt F9 vor dem Überschreiben.
-Diese Konfliktprüfung ist keine atomare Sperre gegen gleichzeitiges Schreiben.
+Einzeltexte sind geschützt. Beim Schließen/Neu-Laden wird vor dem Verwerfen
+gefragt. Hat ein anderes Programm die Datei seit dem Laden geändert, fragt F9
+vor dem Überschreiben; zur Dateitransaktion und ihren Grenzen siehe unten.
 Ungültiges JSON, doppelte Schlüssel, ungültiges Unicode und nicht endliche
 Kommazahlen verhindern das Laden, statt eine leere Datenbank zu überschreiben.
 
@@ -431,13 +433,26 @@ Andere doppelte JSON-Schlüssel bleiben erhalten. Die Terrain-/Atmosphären-
 Vorschau prüft zusätzlich ihre Eingaben und Budgets; das ist keine
 vollständige semantische Validierung aller Projektdateien (siehe Backlog).
 
-Vor dem Speichern vergleicht der Editor die Datei mit dem zuletzt geladenen
-oder gespeicherten Stand und fragt bei externen Änderungen oder Löschung.
-Er schreibt zunächst eine temporäre Datei und ersetzt das Ziel erst danach;
-ein Schreibfehler verkürzt die alte Datei nicht. Vor dem Löschen gibt es bei
-externen Änderungen ebenfalls eine Warnung. Diese Prüfungen sind keine
-atomare Sperre: Änderungen anderer Programme zwischen Prüfung und Ersetzen
-bzw. Löschen können verloren gehen. Sicherungskopien bleiben wichtig.
+**Karten und F9:** Vor Speichern oder Kartenlöschen vergleicht der Editor
+die Originalbytes mit dem geladenen bzw. gespeicherten Stand und fragt bei
+Abweichungen. Nach einem Ja werden die konkret beobachteten Bytes und die
+Dateiidentität unter einer Windows-Schreib-/Löschsperre erneut geprüft. Eine
+Änderung während der Rückfrage bricht den Vorgang ab. Neue Dateien werden
+nur ohne Überschreiben eingehängt; gelöscht wird nur das bestätigte Handle.
+Während der Transaktion sind Projektverzeichnisse gebunden, Reparsepunkte
+und mehrfach verlinkte Dokumentdateien werden abgelehnt. Ein fremder
+Dateihandle, der die nötige Sperre nicht zulässt, führt zum Abbruch.
+
+Das Verfahren ist **kein atomarer Namensaustausch**: Das alte Dokument wird
+kurz als `.rune-*.bak` gesichert und eine vollständige `.rune-*.tmp` ohne
+Ersetzen veröffentlicht. Bei Absturz kann der Name vorübergehend fehlen
+oder eine Sicherung liegen bleiben; bei blockierter Rücksetzung nennt der
+Editor den Wiederherstellungspfad. Sicherung und fremdes Ziel vergleichen
+und manuell sichern/wiederherstellen, nicht blind löschen. Dateisysteme ohne
+passende IDs/Handle-Unterstützung können abgewiesen werden; Netzlaufwerke,
+Speicherabbildungen bereits geöffneter Dateien, Stromausfälle und die GUI
+sind nicht allgemein abgesichert bzw. getestet. Andere Projektdateien fallen
+nicht automatisch unter diesen Schutz. Regelmäßige Backups bleiben nötig.
 
 Regeln: Editor und Spiel schreiben beide `JSON.pretty_generate`-Format (LF,
 2 Leerzeichen, kürzeste exakte Zahlendarstellung) — deshalb wirft Speichern

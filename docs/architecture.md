@@ -1713,6 +1713,40 @@ CI baut/linkt den Win32-Editor und kann WARP in einem unsichtbaren Fenster
 prüfen, ersetzt aber keinen interaktiven GUI-/Hardware-GPU-Test (siehe Backlog
 und Handoff).
 
+## Windows-Karten-/F9-Dateitransaktionen (Etappe 19s)
+
+`document_store_win.h` verwendet den vertrauten Engine-Anker und öffnet
+Projekt-, Daten- und Kartenordner einzeln relativ zu gehaltenen Handles;
+Dateinamen sind Einzelkomponenten, Reparsepunkte und Hardlinks verboten.
+Karten laden/anlegen/speichern/löschen und F9 laden/speichern verwenden
+diesen Pfad. Andere Projektdateien sind dadurch nicht automatisch geschützt.
+
+Die Beobachtung liest die vollständigen Bytes bei gesperrten Schreib-/
+Löschzugriffen und hält zusätzlich ein Attribut-Handle mit Datei-ID während
+einer Rückfrage. Nach einem Ja wird das Ziel erneut ohne Schreib-/Delete-
+Sharing geöffnet und Identität plus exakte Bytes werden erneut verglichen;
+auf Abweichung, fehlende Unterstützung oder Fremdsperre folgt Abbruch. Bei
+fehlender Datei schützt No-Replace gegen spätere Neuanleger. Die vorbereitete,
+geflushte Datei wird handle-relativ veröffentlicht; das gesperrte Original
+wird zuvor in einen eindeutigen Backupnamen verschoben. Kartenlöschung
+markiert ausschließlich das bestätigte Handle zum Löschen.
+
+Es gibt keinen atomaren Namensaustausch: Zwischen Backup und Promotion kann
+der alte Name fehlen. Eine Konkurrenzdatei wird nicht ersetzt; falls die
+Rücksetzung blockiert ist, wird der `.rune-*.bak`-Pfad angezeigt. Fehlende
+Temp-Bereinigung wird ebenfalls gemeldet. Ein Prozess-/Systemabsturz kann
+Sicherungs- oder Tempdateien hinterlassen; manuell vergleichen und sichern.
+Netzlaufwerke, andere Dateisysteme, bestehende beschreibbare Speicher-
+abbildungen, Metadaten/ACL-Erhalt und Stromausfall sind nicht allgemein
+geprüft; FileIdInfo und Rename müssen vom Dateisystem unterstützt werden.
+
+`tools/document_store_test.cpp` prüft denselben Transaktionsablauf mit
+simulierten Bestätigungen und realen Windows-I/O-Renn-Hooks, einschließlich
+Unicode, fremdem CWD, Fremdhandles, Links, Identitätswechsel mit gleichen
+Bytes, Neuanlage, Backupkollision und blockierter Rücksetzung. Windows-CI
+`6a3b8e1`, Lauf 45175342986: 58/0, alle vier Jobs grün. Kein interaktiver
+GUI-/DPI-/Hardwaretest; Testvorschlag im Windows-Live-Dokument.
+
 ## Windows-Projekt- und Kartenpfade (Etappe 19r)
 
 Der ursprünglich im Backlog vorgeschlagene reine UTF-16-Durchstich wurde
@@ -1752,8 +1786,8 @@ pfade sowie Texturen und Pixel (28/0). WARP insgesamt 36/0, Materialtest
 57/0, Ruby-Suiten 27/0/0. Keine interaktive GUI, keine Hardware-GPU und kein
 vollständiger Launcher-/F5-Test. Ein langer Kartenkomponententest verwendet
 explizit `\\?\` und belegt keine allgemeine Langpfadunterstützung. Karten
-und Datenbank bekommen dadurch keinen Materialstore-Sicherheitsvertrag;
-Konfliktprüfung und Ersetzen bleiben nicht durchgehend gesperrt. Live-Test:
+und Datenbank bekamen dadurch noch keinen Dateischutz; 19s ergänzt die oben
+beschriebene eigene Transaktion. Live-Test:
 `docs/WINDOWS_MATERIAL_LIVE_TEST.md`.
 
 ## Projektgebundene Materialien und Texturen (Etappe 19q)
@@ -1774,8 +1808,9 @@ bei Bedarf das Original in eine Sicherung und hängt die vorbereitete Datei
 ohne Überschreiben ein. Das Rename nutzt `NtSetInformationFile` mit dem
 gehaltenen Zielverzeichnis und einem einzelnen Dateinamen, ohne Pfad-Fallback.
 Das ist kein atomarer Namensaustausch: bei Absturz oder blockierter
-Rücksetzung bleibt eine Sicherung zur Wiederherstellung. Der Schutz umfasst
-nicht andere Projektdateien und vertraut dem Engine-Anker.
+Rücksetzung bleibt eine Sicherung zur Wiederherstellung. Der Materialschutz
+allein umfasst keine anderen Projektdateien und vertraut dem Engine-Anker;
+der separate Karten-/F9-Schutz kam in 19s hinzu.
 
 Der Renderer hält Basis- und Projekt-Namensräume separat; Projekt-Overrides
 gewinnen bei der Auflösung und im Atlas. Projektwechsel/F5 verwerfen Projekt-
@@ -2001,11 +2036,9 @@ Schlüssel bleiben erhalten; Objektfelder mit Duplikaten sind gesperrt.
 Karte und F9. Die Prüfung deckt nicht alle semantischen Extremwerte ab; der gezielte
 Terrain-/Atmosphärenschutz wurde in 19p ergänzt. Karten behalten
 die Originalbytes ihres letzten Ladens/Speicherns: Vor Speichern oder
-Löschen wird bei externen Änderungen gefragt. `atomic_file_win.h` schreibt
-erst eine temporäre Datei, ersetzt danach das Ziel und sichert neue Karten
-gegen Überschreiben einer vorhandenen Datei. Ein fehlgeschlagener Schreib-/
-Flush-Vorgang verkürzt die vorhandene Datei nicht. Vergleich und Ersetzen/
-Löschen sind keine durchgehende Prozesssperre (Race im Backlog).
+Löschen wird bei externen Änderungen gefragt. Der frühere Pfad über
+`atomic_file_win.h` ist seit 19s durch die oben beschriebene Handle-
+Transaktion ersetzt; sie ist kein atomarer Namensaustausch.
 
 `tools/json_test.cpp` testet u. a. 400-stellige Integer, präzise Werte,
 ungültige und doppelte Felder, Preview-/Drag-Schutz, Rückstellen und die
@@ -2043,10 +2076,9 @@ Ungültiges JSON, doppelte Schlüssel, ungültiges UTF-8/Unicode, falsche
 Wurzeltypen und nicht endliche Float-Altwerte werden nicht geladen. Ein
 Lesefehler ersetzt weder den bisherigen Entwurf noch die Datei. Speichern
 vergleicht die Dateibytes mit dem Stand beim Laden/Speichern, fragt bei
-externen Änderungen und schreibt vor dem Ersetzen eine neue temporäre
-Datei. Der Vergleich und das Ersetzen sind nicht atomar gegen andere
-Prozesse (offener Backlog-Punkt); Dateien erst nach Sicherung gemeinsam
-bearbeiten. Fehlende database.json lässt sich explizit neu speichern.
+externen Änderungen. Seit 19s wird der bestätigte Stand anschließend unter
+einer Handle-Sperre erneut geprüft und ohne ersetzendes Rename veröffentlicht
+(Grenzen siehe oben). Fehlende database.json lässt sich explizit neu speichern.
 
 `tools/json_test.cpp` testet die Logik einschließlich ungültiger Dokumente,
 fehlender Auswahl, sehr großer Werte, kaputter Listen, Konfliktvergleich

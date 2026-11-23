@@ -48,8 +48,9 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
   Geöffnete Projektverzeichnisse bleiben bis zum Wechsel gebunden.
 - Offene Grenzen: Backup und Promotion sind kein atomarer Namensaustausch;
   nach Absturz oder blockierter Wiederherstellung kann `.rune-*.bak` bleiben.
-  Das gilt nur für Materialdaten, nicht pauschal für Karten/Datenbank. Die
-  CI-Tests ersetzen keine Tests auf Netzlaufwerken, anderen Dateisystemen, bei
+  Seit 19s nutzen Karten/F9 ein ähnliches, separat getestetes Verfahren;
+  andere Projektdateien sind nicht pauschal geschützt. Die CI-Tests ersetzen
+  keine Tests auf Netzlaufwerken, anderen Dateisystemen, bei
   Stromausfall oder in der interaktiven GUI. Sicherungskopien nutzen.
 - Automatisierung: Windows-2022-CI für Commit `776044d`, Lauf 45162482261:
   `tools/material_test.cpp` 57 Prüfungen/0 Fehler (Handle-/Reparse-/Race-
@@ -86,26 +87,27 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
   Anleitung und sichere Testkopie: `docs/WINDOWS_MATERIAL_LIVE_TEST.md`.
 - Keine allgemeine Langpfad-Zusage: Der Test einer langen Kartenkomponente
   verwendet explizit `\\?\`; Dialoge, Ruby und alle Windows-Versionen/
-  Dateisysteme sind damit nicht allgemein abgedeckt. Die Umstellung ist kein
-  Reparsepunkt-/Hardlink-/Race-Schutz für Karten und Datenbank; F9-/Karten-
-  Konfliktfenster bleiben separat offen. Sicherungskopien nutzen.
+  Dateisysteme sind damit nicht allgemein abgedeckt. Die Unicode-Umstellung
+  allein war kein Dateischutz; 19s ergänzt den gezielten Karten-/F9-Schutz.
+  Sicherungskopien nutzen und die Grenzen des Verfahrens beachten.
 - Betroffene Stellen: `src/core/win_path.h`, `src/editor/editor_main.cpp`,
   `src/ruby/vm.cpp`, `tools/windows_path_test.cpp`, Live-Anleitung.
 - Gefunden in: 19r (2026-11-19).
 
-### [Editor] F9-/Karten-Dateikonfliktprüfung ist nicht atomar — offen (Daten-Treue)
-- Symptom: Ändert ein anderes Programm eine Datei genau zwischen der
-  Konfliktprüfung und dem Ersetzen bzw. Karten-Löschen, können seine
-  Änderungen überschrieben oder gelöscht werden, ohne dass der Vergleich
-  sie gesehen hat.
-- Analyse: F9 (19o.3) und Karten (19o.4) vergleichen Originalbytes und
-  fragen bei Abweichungen; vor dem Ersetzen wird eine temporäre Datei
-  vollständig geschrieben. Vergleich und Ersetzen/Löschen sind aber kein
-  atomarer Compare-and-Swap und sperren andere Prozesse nicht durchgehend.
-  Neue Karten überschreiben keine bereits vorhandene Datei. Backups nutzen.
-- Betroffene Stellen: `src/editor/editor_main.cpp` (`db_save`, `save_map`,
-  `delete_current_map`), `src/editor/atomic_file_win.h`.
-- Gefunden in: Etappe 19o.3 (F9), 19o.4 (Karten).
+### [Tests/Editor] Karten-/F9-Dateischutz interaktiv und auf weiteren Dateisystemen prüfen — offen (Live)
+- 19s schützt den bestätigten Stand mit Handle-Identität und erneutem
+  Bytevergleich unter Windows-Schreib-/Löschsperre. Automatisiert: Windows-
+  CI `6a3b8e1`, Lauf 45175342986, 58/0 einschließlich Dialog-Callbacks,
+  Konkurrenz, Sicherungsnamen und Unicode. Das ist kein GUI-End-to-End-Test.
+- Offen: echte Editor-/F9-Bedienung, Abbruch/Ja während externer Änderungen,
+  Fremdhandles und Wiederherstellungsmeldungen am Zielrechner; Anleitung in
+  `docs/WINDOWS_MATERIAL_LIVE_TEST.md`. Backup/Promotion ist kein atomarer
+  Namensaustausch; `.rune-*.bak`/`.tmp` nach Absturz oder Fehlern prüfen.
+- Tests decken nicht alle Netz-/anderen Dateisysteme, Schreibzugriffe über
+  bereits bestehende Speicherabbildungen, Stromausfall oder Metadaten-/ACL-
+  Erhalt ab. Reparsepunkte und Hardlinks werden abgelehnt. Backups nutzen.
+- Betroffene Stellen: `src/editor/document_store_win.h`, `editor_main.cpp`,
+  `src/core/project_assets_win.h`, `tools/document_store_test.cpp`.
 
 ### [Engine] Kampf-Grundgerüst deckt noch nicht alles ab — offen (Feature-Fehlend)
 - Stand 19i: Rundenkampf mit Angriff/Item/Flucht, Sieg/Niederlage/Exp/
@@ -273,6 +275,21 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Etappe 19a.
 
 ## Erledigt
+### [Editor] F9-/Karten-Dateikonfliktfenster — implementiert (19s)
+- Zuvor konnten Änderungen zwischen Konfliktvergleich und Ersetzen/Löschen
+  verloren gehen. Karten laden/anlegen/speichern/löschen und F9 laden/
+  speichern nutzen nun `document_store_win.h` und den geprüften Projektanker.
+- Beobachtung hält eine Datei-ID über die Rückfrage; danach werden ID und
+  Bytes unter einer Schreib-/Löschsperre erneut geprüft. Neuanlage und
+  Promotion ersetzen kein fremdes Ziel; Löschen betrifft nur das geprüfte
+  Handle. Blockierte Rücksetzung meldet beide möglichen Wiederherstellungs-
+  namen. F9-Datenrückfragen sperren andere Editorfenster.
+- Windows-CI für `6a3b8e1`, Lauf 45175342986: 58 Dateiprüfungen/0 Fehler;
+  alle vier Jobs grün. Grenzen und fehlender GUI-Test stehen oben.
+- Betroffene Stellen: `src/editor/document_store_win.h`, `editor_main.cpp`,
+  `src/core/project_assets_win.h`, `tools/document_store_test.cpp`, `build.ps1`.
+- Gefunden in: Etappe 19o.3 (F9), 19o.4 (Karten).
+
 ### [Editor/Engine] Projekt-Dateipfade mischen System-Codepage und UTF-8 — implementiert (19r)
 - Symptom/Ursache: Die frühere Wurzelsuche und die Projekt-/Kartenscans
   benutzten Win32-A-Dateinamen, während F9 den zusammengesetzten Pfad als
@@ -396,8 +413,8 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Fehlerhafte/unlesbare Datenbankdateien werden nicht durch leere ersetzt;
   Änderungen durch andere Programme vor dem Speichern lösen eine Rückfrage
   aus. Speichern nutzt eine temporäre Datei; Schließen/Neu laden fragen
-  bei ungespeicherten Änderungen. Das kleine Konflikt-Zeitfenster bleibt
-  als offener Eintrag dokumentiert.
+  bei ungespeicherten Änderungen. Das frühere Konflikt-Zeitfenster wird seit
+  19s durch die separat dokumentierte Handle-Transaktion geschützt.
 - Tests: `tools/json_test.cpp`, Win64-Cross-Kompilierung und Ruby-Suite;
   grafischer Windows-Live-Test steht aus.
 - Betroffene Stellen: `src/editor/database_form.h`, `editor_main.cpp`.

@@ -158,13 +158,40 @@ bereits bestandener Test. Er ergänzt die automatisierten W-API-/Ruby-Tests.
    Windows-Version, Systemcodepage, DPI und GPU sowie Erfolg/Fehler notieren;
    bei Fehlern die Testkopie und Sicherungen zur Diagnose erhalten.
 
-## 6. Grenzen und Wiederherstellung
+## 6. Zusätzlicher Live-Test: Karten-/F9-Konflikte (noch offen)
+
+Nur in einer isolierten Kopie mit zusätzlich gesicherten Dateien testen;
+die automatisierten Callback-/Dateitests ersetzen diesen GUI-Ablauf nicht.
+
+1. Karte öffnen und im Editor ändern. Extern eine andere Änderung an derselben
+   Kartendatei speichern. Strg+S: Die Konfliktfrage muss erscheinen. **Nein**
+   erhält die externen Bytes und den ungespeicherten Editorstand. Danach
+   erneut speichern und **Ja**: Nur der bestätigte Stand wird ersetzt.
+2. Konflikt erneut erzeugen, Strg+S drücken und die Rückfrage offen lassen.
+   Die Datei währenddessen nochmals extern ändern, dann **Ja** wählen: Der
+   Editor muss den Vorgang abbrechen und die neuesten Bytes erhalten. Dasselbe
+   mit F9 und `database.json` wiederholen; bei Nein bleibt der Entwurf offen.
+3. Für Kartenlöschen zuerst extern ändern. Löschfrage und Konfliktfrage
+   prüfen; beim offenen Konfliktdialog nochmals extern ändern und Ja drücken.
+   Die neue Änderung darf nicht gelöscht werden und die Karte bleibt offen.
+   Eine unveränderte Kopie kann nach bestätigtem Löschen entfernt werden.
+4. Eine Datei testweise mit einem exklusiven Fremdhandle öffnen. Speichern/
+   Löschen muss abbrechen; nach Freigabe kann erneut versucht werden. Neue
+   Karte und entfernte Datei testen: bereits neu angelegte fremde Dateien
+   dürfen nicht überschrieben werden.
+5. Log und ggf. angezeigten Wiederherstellungspfad notieren. Wenn eine
+   `.rune-*.bak` oder `.rune-*.tmp` erscheint, beide Versionen vor manueller
+   Wiederherstellung separat sichern; niemals blind eine fremde Datei löschen.
+   Windows-Version, Dateisystem, Ergebnis und nicht getestete Fälle festhalten.
+
+## 7. Grenzen und Wiederherstellung
 
 * Dateipfade der Materialdaten werden unter dem gewählten Engine-Anker einzeln
   über Windows-Handles geöffnet; Junctions/Symlinks und mehrfach verlinkte
   Dateien werden abgelehnt. Das vom Benutzer ausgewählte Importbild darf
-  außerhalb des Projekts liegen. Andere Datenpfade (Karten, Datenbank usw.)
-  sind hierdurch **nicht** automatisch abgesichert.
+  außerhalb des Projekts liegen. Karten und F9 haben seit 19s eine eigene
+  ähnliche Handle-Transaktion; andere Datenpfade sind nicht automatisch
+  abgesichert.
 * Der Speicher-Commit prüft alte Bytes und verwendet Sicherung plus Rename
   ohne Überschreiben. Zwischen den Renames kann der Zielname kurz fehlen;
   Stromausfall/Absturz kann eine `.rune-*.bak` hinterlassen. Bei einem
@@ -174,7 +201,9 @@ bereits bestandener Test. Er ergänzt die automatisierten W-API-/Ruby-Tests.
   gültiges UTF-8 und an Windows-Grenzen UTF-16 statt ACP. Automatische Tests
   decken Unicode einschließlich Zeichen außerhalb der aktiven Codepage ab;
   der interaktive GUI-Ablauf oben ist noch offen. Das ist weder eine
-  allgemeine Langpfadgarantie noch der Material-Dateischutz für Karten/F9.
-  Alte Projektmerker in ungültigem UTF-8 nicht automatisch umkodieren.
+  allgemeine Langpfadgarantie noch ein automatischer Dateischutz für andere
+  Daten. Der separate Karten-/F9-Schutz wurde in 19s ergänzt; er ist kein
+  atomarer Namensaustausch. Alte Projektmerker in ungültigem UTF-8 nicht
+  automatisch umkodieren.
 * Nach Abschluss alle Programme der Kopie schließen. Testkopie erst nach
   Sicherung/Prüfung entfernen; niemals das Original-Repository bereinigen.
