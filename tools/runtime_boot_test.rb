@@ -84,11 +84,13 @@ module Rune
 
   module Input
     @keys = []
+    @previous_keys = []
     class << self
       attr_accessor :keys, :capture
     end
-    def self.pressed?(key) = @keys.include?(key)
+    def self.pressed?(key) = @keys.include?(key) && !@previous_keys.include?(key)
     def self.down?(key) = @keys.include?(key)
+    def self.end_frame = (@previous_keys = @keys.dup)
     def self.mouse_position = [640, 360]
     def self.mouse_pressed?(_button) = false
     def self.captured? = !!@capture
@@ -141,6 +143,15 @@ rescue StandardError, ScriptError => e
   $fail += 1
 end
 
+# Nativer Esc-Mausfang und Frame-Ende wie in src/main.cpp; Rune.tick enthält
+# auch das Zeichnen, damit pressed? bis zum Ende des gesamten Frames gilt.
+def runtime_frame(dt = 0.016, draw: true)
+  Rune::Input.capture = false if Rune::Input.pressed?(:escape)
+  draw ? Rune.tick(dt) : Game.update(dt)
+ensure
+  Rune::Input.end_frame
+end
+
 PLAYTEST_PROJECT = ' A_ä_日_🚀'
 PLAYTEST_MAP = ' Karte_日_🚀.'
 OTHER_PROJECT = 'B_Projekt'
@@ -182,7 +193,7 @@ if ARGV[0] == '--playtest-child'
         scene = Game.instance_variable_get(:@scene)
         Game.instance_variable_set(:@intro, nil)
         Rune::Input.keys = [:f4]
-        Rune.tick(0.016)
+        runtime_frame(0.016)
         Rune::Input.keys = []
         Game.instance_variable_get(:@scene).equal?(scene) && !defined?(Editor) && File.binread(path) == before
       ensure
@@ -225,6 +236,90 @@ if ARGV[0] == '--playtest-child'
         Game.map_id == 'b_start' && Game.map['name'] == 'Projekt B'
       end
       check('kein Fehler im Laufzeit-Log') { Rune::Log.errors.empty? }
+    when 'battle_save'
+      # Dieser Kindprozess benutzt das echte Project-Modul und ausschließlich
+      # die vom Elterntest angelegte temporäre Projektkopie, keine Save-Attrappe.
+      slot_path = File.join(Project.saves_dir(PLAYTEST_PROJECT), 'slot1.json')
+      script_path = File.join(Project.data_path(PLAYTEST_PROJECT), 'scripts.json')
+      scripts_before = File.binread(script_path) if File.file?(script_path)
+      saved_party = nil
+      frame = lambda do |key|
+        Rune::Input.keys = key ? [key] : []
+        runtime_frame
+      end
+      Battle.singleton_class.send(:define_method, :rand) { 0.9 }
+      begin
+        check('Action-Event mit Projekt-Script wählt das KO-Ziel über Eingabeflanken') do
+          Game.instance_variable_set(:@intro, nil)
+          code = "party.find('arik').hp = 60\nparty.find('mira').hp = 0\nparty.find('mira').mp = 2\n"
+          File.write(script_path, JSON.generate('scripts' => [{ 'name' => 'kampf_probe', 'code' => code }]),
+                     encoding: 'UTF-8')
+          scripts_loaded = Scripts.load_project && Scripts.defined?('kampf_probe')
+          x, _y, z = Rune::Player.position
+          Game.events << Event.new('id' => 77, 'name' => 'Kampfprobe', 'x' => x, 'z' => z, 'radius' => 1,
+                                   'trigger' => 'action', 'commands' => [
+                                     { 'cmd' => 'script', 'name' => 'kampf_probe' },
+                                     { 'cmd' => 'battle', 'name' => 'waldweg',
+                                       'can_escape' => true, 'can_lose' => true }
+                                   ])
+          frame.call(:e)
+          started = Game.interpreter.running? && !Battle.active?
+          frame.call(nil)
+          fighting = Battle.active? && $game_temp.in_battle && Rune::Simulation.paused &&
+                     Party.find('arik').hp == 60 && Party.find('mira').hp.zero? && Party.find('mira').mp == 2
+          Battle.enemies.each { |enemy| enemy.instance_variable_set(:@atk, 0) }
+          frame.call(:down)
+          frame.call(:enter)
+          frame.call(:enter) # gehalten: keine zweite Bestätigung
+          held_item = Battle.phase == :item && Battle.actions.empty?
+          frame.call(nil)
+          frame.call(:enter)
+          frame.call(:enter) # gehalten: Ziel noch nicht bestätigen
+          held_target = Battle.phase == :item_target && Battle.actions.empty?
+          frame.call(:right)
+          frame.call(:enter)
+          scripts_loaded && started && fighting && held_item && held_target && Battle.phase == :execute &&
+            Battle.actions.one? && Battle.actions.first[:target].id == 'mira' &&
+            Party.item_count('heiltrank') == 2
+        end
+        check('Item wirkt im Kampf und wird erst jetzt verbraucht') do
+          frame.call(nil)
+          Battle.turn == 1 && Party.find('mira').hp.between?(38, 40) &&
+            Party.find('arik').hp + Party.find('mira').hp == 98 &&
+            Party.find('mira').mp == 2 && Party.item_count('heiltrank') == 1
+        end
+        check('Sieg erhält die Partywerte und gibt die Simulation frei') do
+          Battle.enemies.each { |enemy| enemy.hp = 0 }
+          frame.call(nil)
+          Battle.result == :sieg && !Battle.active? && !$game_temp.in_battle && !Rune::Simulation.paused
+        end
+        check('echtes Project schreibt die Party nach dem Kampf in eine Slot-Datei') do
+          absent = !File.exist?(slot_path)
+          saved_party = Party.snapshot
+          saved = Game.save_game(1)
+          from_disk = JSON.parse(File.read(slot_path, encoding: 'UTF-8'))
+          absent && saved && File.file?(slot_path) && from_disk['map'] == PLAYTEST_MAP &&
+            from_disk['party'] == saved_party && from_disk.dig('party', 'items', 'heiltrank') == 1
+        end
+        check('Game.load_game liest Datei und stellt HP, MP, Inventar und Karte wieder her') do
+          Party.find('arik').hp = 1
+          Party.find('mira').hp = 1
+          Party.find('mira').mp = 40
+          Party.add_item('heiltrank', 9)
+          Game.change_map('start')
+          changed = Game.map_id == 'start' && Party.snapshot != saved_party
+          loaded = Game.load_game(1)
+          changed && loaded && Game.map_id == PLAYTEST_MAP && Party.snapshot == saved_party &&
+            Party.find('mira').hp.between?(38, 40) && Party.find('mira').mp == 2 &&
+            Party.item_count('heiltrank') == 1 && !Battle.active? && !Rune::Simulation.paused
+        end
+        check('kein Fehler im Laufzeit-Log') { Rune::Log.errors.empty? }
+      ensure
+        Rune::Input.keys = []
+        Battle.abort!
+        Battle.singleton_class.send(:remove_method, :rand)
+        scripts_before ? File.binwrite(script_path, scripts_before) : FileUtils.rm_f(script_path)
+      end
     when 'project_only'
       check('Projekt ohne Kartenoption startet weiterhin die System-Startkarte') do
         Game.instance_variable_get(:@mode) == :game && Game.map_id == 'start' &&
@@ -273,7 +368,7 @@ if ARGV[0] == '--playtest-child'
       check('laufender Kampf pausiert die Simulation vor dem F5-Fehler') do
         Game.instance_variable_set(:@intro, nil)
         started = Battle.start('waldweg')
-        Game.update(0.016)
+        runtime_frame(0.016, draw: false)
         started && Battle.active? && $game_temp.in_battle && Rune::Simulation.paused
       end
       path = File.join(Project.data_path(PLAYTEST_PROJECT), 'maps', PLAYTEST_MAP + '.JSON')
@@ -319,7 +414,7 @@ if ARGV[0] == '--playtest-child'
       check('Fehler wird sichtbar gezeichnet und Esc beendet den Spielprozess') do
         Game.draw
         Rune::Input.keys = [:escape]
-        Game.update(0.016)
+        runtime_frame(0.016, draw: false)
         Rune::Gfx.texts.include?('Playtest abgebrochen') &&
           Rune::Gfx.texts.any? { |text| text.include?('[F5]') && text.include?('[Esc]') } &&
           Rune::App.quit_requested && Rune::Log.warnings.any? { |message| message.include?('Playtest abgebrochen') }
@@ -353,7 +448,7 @@ Dir.mktmpdir('rune-laufzeit-') do |root|
       end
       check('Launcher aktualisiert und zeichnet den echten Szenenbaum') do
         vorher = Rune::Gfx.boxes
-        Rune.tick(0.016)
+        runtime_frame(0.016)
         Rune::Gfx.boxes > vorher && Rune::Gfx.texts.any? { |t| t.include?('Willkommen') }
       end
       check('Demo-Projekt startet über den echten Launcher mit Hindernissen und Events') do
@@ -369,7 +464,7 @@ Dir.mktmpdir('rune-laufzeit-') do |root|
         scene = Game.instance_variable_get(:@scene)
         Game.instance_variable_set(:@intro, nil)
         Rune::Input.keys = [:f4]
-        Rune.tick(0.016)
+        runtime_frame(0.016)
         Rune::Input.keys = []
         Game.instance_variable_get(:@scene).equal?(scene) && !defined?(Editor) &&
           !Game.respond_to?(:playtest_start) && File.binread(map_path) == vorher
@@ -380,7 +475,7 @@ Dir.mktmpdir('rune-laufzeit-') do |root|
         alte_szene = Game.instance_variable_get(:@scene)
         load File.join(root, 'game', 'main.rb')
         Game.instance_variable_set(:@intro, nil)
-        Rune.tick(0.016)
+        runtime_frame(0.016)
         Game.map_id == 'dorf' && Game.instance_variable_get(:@scene) != alte_szene &&
           Rune::Physics.solid_count.positive? && !defined?(Editor)
       end
@@ -425,6 +520,7 @@ Dir.mktmpdir('rune-laufzeit-') do |root|
 
   scenarios = [
     ['ausgewählte Karte und Projektwechsel', 'selected', PLAYTEST_PROJECT, PLAYTEST_MAP],
+    ['Kampf-Item und Spielstand auf Platte', 'battle_save', PLAYTEST_PROJECT, PLAYTEST_MAP],
     ['Projekt ohne Kartenoption', 'project_only', PLAYTEST_PROJECT, nil],
     ['Karte nach F5 entfernt und wiederhergestellt', 'delete_retry', PLAYTEST_PROJECT, PLAYTEST_MAP],
     ['fehlende Karte', 'missing', PLAYTEST_PROJECT, 'fehlt'],

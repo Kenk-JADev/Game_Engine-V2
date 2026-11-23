@@ -31,6 +31,16 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Betroffene Stellen: `game/engine/{battle,party}.rb`, `game/main.rb`,
   `tools/{battle_state,encounter,runtime_boot}_test.rb`.
 
+### [Engine] Mausblick nach Esc im Kampf — offen (Bedienung)
+- Esc bricht im Kampf eine Auswahl ab oder versucht Flucht. Die native
+  Hauptschleife gibt dabei zusätzlich immer den Mausfang frei; nach dem Kampf
+  kann der Mausblick deshalb bis zur mittleren Maustaste ausgeschaltet bleiben.
+- Die Absicht der globalen Esc-Mausfreigabe und eine kampfspezifische Lösung
+  vor einer Änderung gemeinsam bewerten; das Verhalten ist in der Live-Test-
+  Anleitung und in den Eingabeattrappen berücksichtigt, nicht interaktiv geprüft.
+- Betroffene Stellen: `src/main.cpp`, `src/core/window.cpp`, `game/main.rb`,
+  `tools/encounter_test.rb`, `docs/WINDOWS_BATTLE_LIVE_TEST.md`.
+
 ### [Editor] Oberfläche später am RPG Maker XP ausrichten — offen (Design)
 - Wunsch: Die vom User gezeigten XP-Screenshots dienen als Vorbild für eine
   spätere Überarbeitung; jetzt noch keine Design-Umsetzung.
@@ -312,9 +322,11 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Esc wird im Kampf nicht vom Weltmenü abgefangen. Flucht, KO, Game Over,
   Titel/Kartenwechsel, F5 und Playtest-Fehler räumen Aktionen/Pause auf.
 - `battle_state_test.rb`, `battle_test.rb`, `party_test.rb`, `rgss_test.rb`,
-  `encounter_test.rb` und `runtime_boot_test.rb` sichern die Logik ab. Lokal
-  Ruby 3.0.6: 28 Suiten OK, 0 Fehler, 1 Windows-EXE-Test übersprungen;
-  MapCheck sauber. Der interaktive Windows-Test bleibt oben offen.
+  `encounter_test.rb` und `runtime_boot_test.rb` sichern die Logik ab. Die
+  Inputattrappe berücksichtigt Halten/Loslassen; der Bootstrap prüft ein
+  Kampf-Item und echtes Slot-Datei-I/O in einer temporären Projektkopie.
+  Auf `9441733` war [CI 45190029051](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45190029051)
+  grün, Windows-Ruby 29/0/0. Der interaktive Windows-Test bleibt oben offen.
 - Betroffene Stellen: `game/engine/{battle,party,rgss,scripts}.rb`,
   `game/main.rb`, die genannten Tests und `docs/WINDOWS_BATTLE_LIVE_TEST.md`.
 

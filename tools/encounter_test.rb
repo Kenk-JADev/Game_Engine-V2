@@ -93,11 +93,15 @@ module Rune
 
   module Input
     @keys = []
+    @previous_keys = []
     class << self
       attr_accessor :keys, :capture
     end
-    def self.pressed?(key) = @keys.include?(key)
+    # Wie InputState::pressed: nur die Flanke ist gedrückt, während down?
+    # auch beim Halten wahr bleibt. Mehrere Abfragen desselben Frames sind OK.
+    def self.pressed?(key) = @keys.include?(key) && !@previous_keys.include?(key)
     def self.down?(key) = @keys.include?(key)
+    def self.end_frame = (@previous_keys = @keys.dup)
     def self.captured? = !!capture
     def self.mouse_position = [640, 360]
     def self.mouse_pressed?(_button) = false
@@ -228,20 +232,31 @@ def counter(value)
   $game_player.instance_variable_set(:@encounter_count, value)
 end
 
+# Logik-Frame: Wie im nativen Loop gibt Esc vor Game.update den Mausfang frei;
+# der vorige Tastenzustand wird erst nach dem Frame aktualisiert. Das Zeichnen
+# wird hier nur in eigenen Checks und ohne Tasteneingabe geprüft.
+def game_frame(dt = 0.016)
+  Rune::Input.capture = false if Rune::Input.pressed?(:escape)
+  Game.update(dt)
+ensure
+  Rune::Input.end_frame
+end
+
 def prepare
   Battle.abort!
   Game.setup
   Game.instance_variable_set(:@intro, nil)
   Rune::Input.keys = []
+  Rune::Input.capture = true
   Rune::Player.ground = true
   # Erster Frame nimmt die Startposition als Referenz auf, ohne Schritt.
-  Game.update(0.016)
+  game_frame(0.016)
 end
 
 def step(distance = 0.7)
   x, y, z = Rune::Player.position
   Rune::Player.pos = [x + distance, y, z]
-  Game.update(0.016)
+  game_frame(0.016)
 end
 
 puts '== Karten-Terrain und Atmosphäre: Ruby-Brücke =='
@@ -358,7 +373,7 @@ end
 check('F5-artiges erneutes Laden von main.rb läuft ohne Editor') do
   load File.join(Rune::ROOT, 'game', 'main.rb')
   Game.instance_variable_set(:@intro, nil)
-  Game.update(0.016)
+  game_frame(0.016)
   Game.draw
   !defined?(Editor) && Game.map_id == 'start' && !Game.respond_to?(:playtest_start)
 end
@@ -377,7 +392,7 @@ check('Kartenwechsel würfelt neu und Teleport zählt nicht als Schritt') do
   vorher = $game_player.steps
   Game.enter_map('weit')
   Game.instance_variable_set(:@intro, nil)
-  Game.update(0.016)
+  game_frame(0.016)
   $game_player.encounter_count == 1 && $game_player.steps == vorher && !Battle.active?
 end
 check('Spielstand lädt mit neuem Zähler ohne Teleport-Schritt') do
@@ -387,7 +402,7 @@ check('Spielstand lädt mit neuem Zähler ohne Teleport-Schritt') do
                         'party' => Party.snapshot, 'time' => 5,
                         'player' => { 'x' => -40, 'y' => 0, 'z' => 50 } }
   geladen = Game.load_game(1)
-  Game.update(0.016)
+  game_frame(0.016)
   geladen && Game.map_id == 'weit' && $game_player.encounter_count == 1 &&
     $game_player.steps == vorher && !Battle.active?
 end
@@ -397,7 +412,7 @@ check('Teleport-Event zählt nicht als gelaufener Schritt') do
   vorher = $game_player.steps
   counter(1)
   Game.interpreter.start([{ 'cmd' => 'teleport', 'x' => 50, 'z' => 50 }])
-  Game.update(0.016)
+  game_frame(0.016)
   Rune::Player.position[0] == 50.0 && $game_player.steps == vorher &&
     $game_player.encounter_count == 1 && !Battle.active?
 end
@@ -406,7 +421,7 @@ check('move_player-Event zählt nicht als gelaufener Schritt') do
   vorher = $game_player.steps
   counter(1)
   Game.interpreter.start([{ 'cmd' => 'move_player', 'relative' => true, 'x' => 50, 'z' => 0 }])
-  Game.update(0.016)
+  game_frame(0.016)
   Rune::Player.position[0] == 50.0 && $game_player.steps == vorher &&
     $game_player.encounter_count == 1 && !Battle.active?
 end
@@ -415,10 +430,10 @@ check('RGSS-moveto und Script-teleport zählen nicht als Schritte') do
   vorher = $game_player.steps
   counter(1)
   $game_player.moveto(50, 0)
-  Game.update(0.016)
+  game_frame(0.016)
   rgss_ok = !Battle.active? && $game_player.steps == vorher && $game_player.encounter_count == 1
   Scripts::Context.new.teleport(100, 0)
-  Game.update(0.016)
+  game_frame(0.016)
   rgss_ok && !Battle.active? && $game_player.steps == vorher && $game_player.encounter_count == 1
 end
 check('Script-Teleport verwirft den im selben Frame vorgemerkten Encounter') do
@@ -439,10 +454,10 @@ check('NPC ist per E ansprechbar und zeigt seinen Text') do
                   'commands' => [{ 'cmd' => 'text', 'lines' => ['Hallo vom NPC'] }] }, scene)
   Game.npcs << npc
   Rune::Input.keys = [:e]
-  Game.update(0.016)
+  game_frame(0.016)
   gestartet = Game.interpreter.running?
   Rune::Input.keys = []
-  Game.update(0.016)
+  game_frame(0.016)
   gestartet && Game.interpreter.message == ['Hallo vom NPC']
 ensure
   Rune::Input.keys = []
@@ -457,9 +472,9 @@ check('Schild aus Kartendaten wird dargestellt und per E gelesen') do
   scene = Game.instance_variable_get(:@scene)
   sichtbar = scene.root.children.count { |n| n.name.start_with?('event_visual_') } == 2
   Rune::Input.keys = [:e]
-  Game.update(0.016)
+  game_frame(0.016)
   Rune::Input.keys = []
-  Game.update(0.016)
+  game_frame(0.016)
   sichtbar && Game.interpreter.message == ['Weg']
 ensure
   Rune::Input.keys = []
@@ -484,19 +499,19 @@ check('Schild und NPC sind als Event statt als verdeckender Körper pickbar') do
     kandidaten.include?(npc.event) && kandidaten.include?(schild) &&
     !kandidaten.include?(npc.node) && schilder.none? { |node| kandidaten.include?(node) }
 end
-check('einmaliges NPC-Auto-Event bleibt nach einem echten Save/Load ausgelöst') do
+check('NPC-Auto-Event bleibt nach Game-Save/Load mit Project-Attrappe ausgelöst') do
   prepare
   karte = Database.map('start')
   karte['npcs'] = [{ 'name' => 'Auto-NPC', 'x' => 2, 'z' => 0, 'trigger' => 'auto',
                      'commands' => [{ 'cmd' => 'wait', 'seconds' => 10 }] }]
   Game.enter_map('start')
   Game.instance_variable_set(:@intro, nil)
-  Game.update(0.016)
+  game_frame(0.016)
   ausgelöst = Game.npcs.first.event.fired && Game.interpreter.running?
   gespeichert = Game.save_game(1) && Project.save_data['npcs'].first['fired'] == true
   geladen = Game.load_game(1)
   wiederhergestellt = Game.npcs.first.event.fired
-  Game.update(0.016)
+  game_frame(0.016)
   ausgelöst && gespeichert && geladen && wiederhergestellt && !Game.interpreter.running?
 ensure
   karte.delete('npcs') if karte
@@ -509,9 +524,9 @@ check('Touch-Event verdrängt kein NPC-Gespräch und hat im selben Frame Vorrang
   Game.events << Event.new('name' => 'Kontakt', 'x' => 0, 'z' => 0, 'trigger' => 'touch',
                            'commands' => [{ 'cmd' => 'text', 'lines' => ['Kontakt'] }])
   Rune::Input.keys = [:e]
-  Game.update(0.016)
+  game_frame(0.016)
   Rune::Input.keys = []
-  Game.update(0.016)
+  game_frame(0.016)
   Game.interpreter.message == ['Kontakt']
 ensure
   Rune::Input.keys = []
@@ -522,10 +537,10 @@ check('Esc bricht Gegnerzielwahl ab statt das Spielmenü zu öffnen') do
   prepare
   Battle.start('waldweg', can_escape: false)
   Rune::Input.keys = [:enter]
-  Game.update(0.016)
+  game_frame(0.016)
   in_target = Battle.phase == :target
   Rune::Input.keys = [:escape]
-  Game.update(0.016)
+  game_frame(0.016)
   in_target && Battle.phase == :command && Battle.actions.empty? &&
     !Game.instance_variable_get(:@menu) && Battle.active? && Rune::Simulation.paused
 ensure
@@ -533,43 +548,74 @@ ensure
   Game.instance_variable_set(:@menu, nil)
   Battle.abort!
 end
-check('Esc im Kampf führt von Itemziel zu Itemliste und dann zum Befehl zurück') do
+check('gehaltenes Enter bestätigt weder Item noch Ziel mehrfach') do
   prepare
   Party.find('arik').hp = 20
   Battle.start('waldweg', can_escape: false)
-  [:down, :enter, :enter].each do |key|
-    Rune::Input.keys = [key]
-    Game.update(0.016)
+  Rune::Input.keys = [:down]
+  game_frame
+  Rune::Input.keys = [:enter]
+  game_frame
+  game_frame # Enter gehalten: Itemliste bleibt offen
+  held_in_list = Battle.phase == :item && Battle.actions.empty?
+  Rune::Input.keys = []
+  game_frame
+  Rune::Input.keys = [:enter]
+  game_frame
+  game_frame # Enter gehalten: Ziel bleibt unbestätigt
+  held_in_target = Battle.phase == :item_target && Battle.actions.empty?
+  Rune::Input.keys = []
+  game_frame
+  Rune::Input.keys = [:enter]
+  game_frame
+  held_in_list && held_in_target && Battle.current_actor&.id == 'mira' &&
+    Battle.actions.one? && Party.item_count('heiltrank') == 2
+ensure
+  Rune::Input.keys = []
+  Battle.abort!
+end
+check('Esc führt mit Loslassen von Itemziel über Itemliste zum Befehl zurück') do
+  prepare
+  Party.find('arik').hp = 20
+  Battle.start('waldweg', can_escape: false)
+  [:down, :enter, nil, :enter].each do |key|
+    Rune::Input.keys = key ? [key] : []
+    game_frame
   end
   in_target = Battle.phase == :item_target
   Rune::Input.keys = [:escape]
-  Game.update(0.016)
+  game_frame
   in_items = Battle.phase == :item && !Game.instance_variable_get(:@menu)
-  Game.update(0.016)
-  in_target && in_items && Battle.phase == :command && !Game.instance_variable_get(:@menu) &&
+  game_frame # gehaltenes Esc darf die Itemliste nicht ebenfalls verlassen
+  held = Battle.phase == :item && !Game.instance_variable_get(:@menu)
+  Rune::Input.keys = []
+  game_frame
+  Rune::Input.keys = [:escape]
+  game_frame
+  in_target && in_items && held && Battle.phase == :command && !Game.instance_variable_get(:@menu) &&
     Party.item_count('heiltrank') == 2
 ensure
   Rune::Input.keys = []
   Game.instance_variable_set(:@menu, nil)
   Battle.abort!
 end
-check('Kampf-Item und HP überleben einen echten Game-Save-/Load-Rundlauf') do
+check('Kampf-Item und HP überleben den JSON-Rundlauf mit Project-Attrappe') do
   prepare
   Battle.singleton_class.send(:define_method, :rand) { 0.9 }
   Party.find('arik').hp = 70
   Party.find('mira').hp = 0
   Battle.start('waldweg')
   Battle.enemies.each { |enemy| enemy.instance_variable_set(:@atk, 0) }
-  [:down, :enter, :enter, :right, :enter].each do |key|
-    Rune::Input.keys = [key]
-    Game.update(0.016)
+  [:down, :enter, nil, :enter, :right, :enter].each do |key|
+    Rune::Input.keys = key ? [key] : []
+    game_frame
   end
   selected = Battle.phase == :execute && Party.item_count('heiltrank') == 2
   Rune::Input.keys = []
-  Game.update(0.016)
+  game_frame(0.016)
   healed = Battle.turn == 1 && Party.find('mira').hp.between?(38, 40) && Party.item_count('heiltrank') == 1
   Battle.enemies.each { |enemy| enemy.hp = 0 }
-  Game.update(0.016)
+  game_frame(0.016)
   final_party = Party.snapshot
   saved = Game.save_game(1)
   serialized = JSON.parse(JSON.generate(Project.save_data))
@@ -588,11 +634,11 @@ check('direkter Kampf-Abbruch gibt die Physik frei und behält Änderungen') do
   prepare
   Battle.start('waldweg')
   Party.find('arik').hp = 35
-  Game.update(0.016)
+  game_frame(0.016)
   was_paused = Rune::Simulation.paused
   Battle.abort!
   released_immediately = !Rune::Simulation.paused
-  Game.update(0.016)
+  game_frame(0.016)
   was_paused && released_immediately && !Rune::Simulation.paused && !Battle.active? &&
     !$game_temp.in_battle && Party.find('arik').hp == 35
 ensure
@@ -603,7 +649,7 @@ check('direktes Kampfende durch Ruby gibt die Physik sofort frei') do
   prepare
   Battle.singleton_class.send(:define_method, :rand) { 0.0 }
   Battle.start('waldweg')
-  Game.update(0.016)
+  game_frame(0.016)
   was_paused = Rune::Simulation.paused
   Battle.attempt_escape
   was_paused && !Battle.active? && Battle.result == :flucht && !$game_temp.in_battle && !Rune::Simulation.paused
@@ -616,7 +662,7 @@ check('Kartenwechsel bricht einen Kampf ab und gibt die Physik frei') do
   prepare
   Battle.start('waldweg')
   Party.find('arik').hp = 35
-  Game.update(0.016)
+  game_frame(0.016)
   was_paused = Rune::Simulation.paused
   Game.change_map('weit')
   was_paused && Game.map_id == 'weit' && !Battle.active? && !$game_temp.in_battle &&
@@ -628,7 +674,7 @@ end
 check('direkter Rücksprung zum Titel beendet auch einen aktiven Kampf') do
   prepare
   Battle.start('waldweg')
-  Game.update(0.016)
+  game_frame(0.016)
   was_paused = Rune::Simulation.paused
   Game.to_title!
   was_paused && Game.instance_variable_get(:@mode) == :launcher && !Battle.active? &&
@@ -642,7 +688,7 @@ end
 check('F5 während eines Kampfes gibt nach dem Neustart die Physik frei') do
   prepare
   Battle.start('waldweg')
-  Game.update(0.016)
+  game_frame(0.016)
   was_paused = Rune::Simulation.paused
   load File.join(Rune::ROOT, 'game', 'main.rb')
   was_paused && !Battle.active? && !$game_temp.in_battle && !Rune::Simulation.paused && Game.map_id == 'start'
@@ -650,13 +696,18 @@ ensure
   Rune::Input.keys = []
   Battle.abort!
 end
-check('Esc außerhalb eines Kampfes öffnet und schließt weiterhin das Spielmenü') do
+check('Esc außerhalb eines Kampfes öffnet und schließt das Menü erst nach Loslassen') do
   prepare
   Rune::Input.keys = [:escape]
-  Game.update(0.016)
+  game_frame
   opened = Game.instance_variable_get(:@menu) && !Rune::Input.captured?
-  Game.update(0.016)
-  opened && !Game.instance_variable_get(:@menu) && Rune::Input.captured?
+  game_frame # Halten schließt das Menü nicht wieder.
+  held = Game.instance_variable_get(:@menu) && !Rune::Input.captured?
+  Rune::Input.keys = []
+  game_frame
+  Rune::Input.keys = [:escape]
+  game_frame
+  opened && held && !Game.instance_variable_get(:@menu) && Rune::Input.captured?
 ensure
   Rune::Input.keys = []
   Game.instance_variable_set(:@menu, nil)
@@ -665,21 +716,21 @@ check('Esc bei verbotener Flucht öffnet kein Menü und lässt den Kampf aktiv')
   prepare
   Battle.start('waldweg', can_escape: false)
   Rune::Input.keys = [:escape]
-  Game.update(0.016)
+  game_frame
   Battle.active? && Battle.phase == :command && !Game.instance_variable_get(:@menu) &&
-    Rune::Simulation.paused && Rune::Input.captured?
+    Rune::Simulation.paused && !Rune::Input.captured?
 ensure
   Rune::Input.keys = []
   Battle.abort!
 end
-check('Esc bei erlaubter Flucht beendet den Kampf und gibt die Physik frei') do
+check('Esc bei erlaubter Flucht beendet den Kampf und gibt Physik und Maus frei') do
   prepare
   Battle.singleton_class.send(:define_method, :rand) { 0.0 }
   Battle.start('waldweg')
   Rune::Input.keys = [:escape]
-  Game.update(0.016)
+  game_frame
   !Battle.active? && Battle.result == :flucht && !Game.instance_variable_get(:@menu) &&
-    !Rune::Simulation.paused && Rune::Input.captured?
+    !Rune::Simulation.paused && !Rune::Input.captured?
 ensure
   Rune::Input.keys = []
   Battle.abort!
@@ -690,16 +741,16 @@ check('misslungene Esc-Flucht verwirft vorgemerkte Items ohne Verbrauch') do
   Battle.singleton_class.send(:define_method, :rand) { 0.9 }
   Party.find('arik').hp = 20
   Battle.start('waldweg')
-  [:down, :enter, :enter, :enter].each do |key|
-    Rune::Input.keys = [key]
-    Game.update(0.016)
+  [:down, :enter, nil, :enter, nil, :enter].each do |key|
+    Rune::Input.keys = key ? [key] : []
+    game_frame
   end
   reserved = Battle.current_actor&.id == 'mira' && Battle.actions.one?
   Rune::Input.keys = [:escape]
-  Game.update(0.016)
+  game_frame(0.016)
   cancelled = Battle.phase == :execute && Battle.actions.empty? && Party.item_count('heiltrank') == 2
   Rune::Input.keys = []
-  Game.update(0.016)
+  game_frame(0.016)
   reserved && cancelled && Battle.turn == 1 && Party.item_count('heiltrank') == 2 &&
     Party.find('arik').hp <= 20 && !Game.instance_variable_get(:@menu)
 ensure
@@ -711,12 +762,12 @@ check('Game Over nach Event-Kampf hat Vorrang vor den Folgebefehlen') do
   prepare
   Game.interpreter.start([{ 'cmd' => 'battle', 'name' => 'waldweg' },
                           { 'cmd' => 'switch', 'name' => 'nach_niederlage', 'value' => true }])
-  Game.update(0.016)
+  game_frame(0.016)
   Party.actors.each { |actor| actor.hp = 0 }
   Battle.finish_round
-  Game.update(0.016)
+  game_frame(0.016)
   defeated = Battle.result == :niederlage && $game_temp.gameover && !Battle.active?
-  Game.update(0.016)
+  game_frame(0.016)
   defeated && Game.instance_variable_get(:@mode) == :launcher && !GameState.switch('nach_niederlage') &&
     !$game_temp.gameover && !Rune::Simulation.paused
 ensure
@@ -729,12 +780,12 @@ check('erlaubte Niederlage setzt die Event-Befehle fort') do
   prepare
   Game.interpreter.start([{ 'cmd' => 'battle', 'name' => 'waldweg', 'can_lose' => true },
                           { 'cmd' => 'switch', 'name' => 'nach_pruefung', 'value' => true }])
-  Game.update(0.016)
+  game_frame(0.016)
   Party.actors.each { |actor| actor.hp = 0 }
   Battle.finish_round
-  Game.update(0.016)
+  game_frame(0.016)
   defeated = Battle.result == :niederlage && !$game_temp.gameover
-  Game.update(0.016)
+  game_frame(0.016)
   defeated && Game.instance_variable_get(:@mode) == :game && GameState.switch('nach_pruefung') &&
     Party.actors.all? { |actor| actor.hp.zero? } && !Rune::Simulation.paused
 ensure
@@ -762,13 +813,13 @@ check('die Physik pausiert im Kampf und läuft nach Sieg wieder an') do
   pausiert = Battle.active? && Rune::Simulation.paused
   Battle.enemies.each { |g| g.hp = 0 }
   Battle.finish_round
-  Game.update(0.016)
+  game_frame(0.016)
   pausiert && !Battle.active? && !Rune::Simulation.paused
 end
 check('ein Event-Kampf pausiert die Physik noch im Start-Frame') do
   prepare
   Game.interpreter.start([{ 'cmd' => 'battle', 'name' => 'waldweg' }])
-  Game.update(0.016)
+  game_frame(0.016)
   Battle.active? && Rune::Simulation.paused
 end
 check('ohne Truppenliste startet kein Kampf') do
@@ -797,7 +848,7 @@ check('laufender Interpreter verhindert Kampf bis zum nächsten freien Schritt')
   step
   wartend = !Battle.active? && Game.interpreter.running? && $game_player.encounter_count == 0
   Game.interpreter.instance_variable_set(:@wait_left, 0.0)
-  Game.update(0.016)
+  game_frame(0.016)
   step
   wartend && Battle.active?
 end
@@ -858,7 +909,7 @@ check('schrittweise Spieler-Route zählt trotz interner Teleports') do
   counter(1)
   Mover.start('spieler', ['move_right'], speed: 2.0)
   30.times do
-    Game.update(0.05)
+    game_frame(0.05)
     break if Battle.active?
   end
   Battle.active? && Rune::Player.position[0] > 0.6

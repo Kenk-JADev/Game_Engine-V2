@@ -70,6 +70,8 @@ wiederbeleben. Ein volles bzw. ungültiges Ziel wird nicht bestätigt.
 **Esc** geht von der Zielwahl zur Itemliste bzw. von dort zum Befehl zurück;
 in der Gegnerzielwahl verwirft es den Angriff. Bei der Befehlswahl versucht
 Esc eine Flucht, sofern sie erlaubt ist, und öffnet nicht das Spielmenü.
+Jeder erneute Tastendruck erfordert Loslassen. Esc gibt zusätzlich den
+nativen Mausfang frei; die mittlere Maustaste schaltet den Mausblick wieder an.
 Ein fehlgeschlagener Fluchtversuch verwirft die vorgemerkten Aktionen und
 lässt die Gegner ziehen. Items werden für die Runde reserviert und erst bei
 wirksamer Ausführung abgezogen. Nach einem Sieg verbrauchen spätere Aktionen

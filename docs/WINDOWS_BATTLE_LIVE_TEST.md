@@ -22,17 +22,19 @@ WARP in der Windows-CI ist Software und ersetzt diese Prüfung nicht.
    wählen. Es kopiert Build und Vorlage und erstellt die Testprojekte
    `A_material` und `B_material`. F4 ist keine Sandbox und benutzt die
    regulären Dateien des gewählten Projekts: nur in der Kopie arbeiten.
-3. `build\RuneEditor.exe --project A_material` öffnen. F9: In der aus der
-   Vorlage kopierten Datenbank sind `arik`, `mira`, `heiltrank`, `manatrank`
-   und die Truppe `waldweg` vorhanden. Für reproduzierbare Schäden bei den
-   Gegnern `goblin` und `wolf` jeweils `ATK` auf 0 setzen und F9 speichern.
-   Ein Gegner verursacht wegen Mindestschaden weiterhin 1 HP. Im Karten-F2
+3. In der Kopie `.\build\RuneEditor.exe --project A_material` starten und
+   die Karte `dorf` auswählen. F9: In der aus der Vorlage kopierten Datenbank
+   sind `arik`, `mira`, `heiltrank`, `manatrank` und die Truppe `waldweg`
+   vorhanden. Für reproduzierbare Schäden im Reiter **Gegner** bei `goblin`
+   und `wolf` jeweils `ATK` auf 0 setzen und F9 **Speichern** wählen. Ein
+   Gegner verursacht wegen Mindestschaden weiterhin 1 HP. Im Karten-F2
    zufällige Begegnungen für die Testkarte leer lassen, damit sie den Test
    nicht vorzeitig auslösen. Die Karte mit Strg+S sichern.
 
 ## Definierten Kampf im Editor anlegen
 
-1. Im Script-Editor F11 ein Script `kampf_probe` anlegen und speichern:
+1. Im Script-Editor F11 **Neu** wählen, den Namen `kampf_probe` eintragen,
+   folgenden Code einsetzen und **Speichern** wählen:
 
    ```ruby
    party.find('arik').hp = 60
@@ -42,11 +44,23 @@ WARP in der Windows-CI ist Software und ersetzt diese Prüfung nicht.
 
    Das Script ist nur zur Testvorbereitung; es gehört nicht in ein echtes
    Spielprojekt. Die Vorlage startet mit zwei Heiltränken und einem Manatrank.
-2. In F6 auf der Testkarte ein erreichbares Action-Event erstellen. Zuerst
-   einen Script-Befehl mit Namen `kampf_probe`, danach „Kampf starten“ mit
-   Truppen-ID `waldweg`, Flucht erlaubt und Verlust 1 (`can_lose`) einfügen.
-   F6-Änderungen übernehmen, Karte mit Strg+S speichern und F4 drücken.
-   Intro-Text wegklicken und das Event per **E** auslösen.
+2. In F6 **Neu** wählen und ein Action-Event erstellen, z. B. bei X = 0,
+   Z = 8 und Radius = 2 direkt am Startpunkt der Testkopie. **Event
+   übernehmen** wählen; auf der Seite muss der Trigger `action` stehen.
+   Nacheinander **[Steuerung] Script** mit Script-Name `kampf_probe` und
+   **[Kampf] Kampf starten** mit Truppen-ID `waldweg`, `an` für Flucht und
+   Verlust `1` (`can_lose`) jeweils über **Einfügen** ergänzen. Die Reihenfolge
+   in der Befehlsliste prüfen. F6 schließen, Karte mit Strg+S speichern und
+   F4 drücken.
+3. Beide Intro-Textseiten mit **E** oder **Enter** bestätigen (kein Mausklick),
+   die Taste zwischen den Bestätigungen loslassen. Das Event in Reichweite
+   anschließend mit einem erneuten **E** auslösen. Ein Action-Event ohne
+   Schildgrafik ist unsichtbar; der Hinweis mit dem Eventnamen zeigt die
+   Reichweite an.
+
+Tasten sind flankengesteuert: Für jeden erneuten Druck dieselbe Taste zunächst
+loslassen. Esc gibt unabhängig von der Kampf-UI auch den nativen Mausfang frei;
+mit der mittleren Maustaste lässt sich der Mausblick wieder einschalten.
 
 ## Ablauf und Erwartungen
 
@@ -67,24 +81,33 @@ WARP in der Windows-CI ist Software und ersetzt diese Prüfung nicht.
 4. In der nächsten Runde Arik einen Heiltrank auf sich selbst wählen lassen.
    Bei Miras Itemwahl darf der letzte, bereits reservierte Heiltrank nicht
    nochmals auswählbar sein. Mira wählt stattdessen den Manatrank auf sich
-   selbst. Nach Ausführung muss ihr MP-Wert 22 sein; im Kampflog und Inventar
-   die tatsächlichen Wirkungen und verbrauchten Mengen vergleichen. Die
-   Gegner können danach erneut je 1 HP abziehen.
+   selbst. Nach Ausführung muss ihr MP-Wert 22 sein; die Wirkungen im
+   Kampflog prüfen. Die Gegner können danach erneut je 1 HP abziehen. Den
+   vollständigen Inventarstand erst nach dem Kampf im Weltmenü vergleichen.
 5. Gegnerwahl öffnen, mit Esc abbrechen und prüfen, dass keine unerwünschte
    Aktion ausgeführt wird. Esc in der **Befehlswahl** versucht Flucht statt
    das Weltmenü zu öffnen. Bei Fehlschlag verfallen vorgemerkte Aktionen,
    die Gegner ziehen; bis zum Erfolg erneut versuchen. Nach dem Kampf müssen
    Steuerung und Physik wieder laufen. Erst außerhalb des Kampfes öffnet Esc
-   das normale Menü. Dort Slot speichern, Werte notieren, erneut laden und
-   HP/MP und Inventar vergleichen.
+   das normale Menü. Dort HP/MP und Inventar notieren und Slot 1 speichern.
+   Danach F5 drücken, das Intro bestätigen und prüfen, dass die Party auf
+   Startwerte zurückgesetzt wurde. Im erneut geöffneten Menü Slot 1 laden
+   und die wiederhergestellten Werte mit den Notizen vergleichen.
+   Falls das Party-Panel nicht erscheint, das Spielfenster verbreitern oder
+   maximieren; bei zu wenig Platz wird es ausgeblendet. Wenn es nicht sichtbar
+   gemacht werden kann, diese Sichtprüfung als offen festhalten.
 6. Das Event erneut starten und **F5 im Spiel** während des Kampfes drücken.
-   Der Kampf ist abgebrochen und der Spieler danach wieder beweglich. F5
-   startet den Spielzustand neu; es ist kein Speichern und soll die gerade
-   nicht gespeicherte Party nicht erhalten.
-7. Optional zwei weitere Testevents anlegen: ein Script setzt alle Party-HP
-   auf 0, danach startet der Kampf. Mit Verlust 0 muss der Titel erscheinen,
-   ohne einen nachfolgenden Textbefehl auszuführen. Mit Verlust 1 muss der
-   nachfolgende Text erscheinen und die Helden bleiben bei 0 HP.
+   Der Kampf ist abgebrochen und der Spieler danach wieder beweglich; das
+   erneut erscheinende Intro mit E oder Enter bestätigen. F5 startet den
+   Spielzustand neu; es ist kein Speichern und soll die gerade nicht
+   gespeicherte Party nicht erhalten.
+7. Optional im F11-Script `kampf_alle_ko` mit
+   `party.actors.each { |held| held.hp = 0 }` anlegen. Zwei getrennt erreichbare
+   Action-Events anlegen: jeweils zuerst das Script, dann den Kampf und einen
+   Textbefehl einfügen. Beim ersten Kampf `Verlust 0` wählen: Der Titel muss
+   erscheinen, ohne den folgenden Text auszuführen. Projekt neu starten und
+   das zweite Event mit `Verlust 1` auslösen: Der nachfolgende Text muss
+   erscheinen und die Helden bleiben bei 0 HP.
 
 Pro Schritt Erwartung und tatsächliches Ergebnis, Log (`log/engine.log`),
 Screenshots und nicht ausgeführte Fälle festhalten. Bei unerwartetem Ergebnis

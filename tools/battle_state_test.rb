@@ -10,12 +10,14 @@ module Rune
     def self.info(_message); end
     def self.warn(_message); end
   end
+  # Dieser Unit-Test speist einzelne Tastendruck-Flanken direkt ein. Halten
+  # und Loslassen über native Frames prüft zusätzlich encounter_test.rb.
   module Input
-    @keys = []
+    @pressed_edges = []
     class << self
-      attr_accessor :keys
+      attr_accessor :pressed_edges
     end
-    def self.pressed?(key) = @keys.include?(key)
+    def self.pressed?(key) = @pressed_edges.include?(key)
   end
   module Sound
     def self.play(*_args); end
@@ -103,15 +105,15 @@ def reset_party
   Battle.abort! if Battle.active?
   Party.setup(Database.database)
   $game_temp = TestBattleTemp.new
-  Rune::Input.keys = []
+  Rune::Input.pressed_edges = []
   UI.texts.clear
 end
 
 def press(*keys)
-  Rune::Input.keys = keys
+  Rune::Input.pressed_edges = keys
   Battle.update(0.016)
 ensure
-  Rune::Input.keys = []
+  Rune::Input.pressed_edges = []
 end
 
 def choose_item(index = 0)

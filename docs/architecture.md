@@ -1718,7 +1718,9 @@ XP-vollständige Item-/Gegnerlogik sind weiterhin nicht implementiert.
 
 `Game.update` leitet Esc im Kampf an `Battle` statt an das Weltmenü. Ein
 nicht erlaubter Fluchtversuch öffnet kein Menü; ein fehlgeschlagener löscht
-Aktionen und Reservierungen. Nach Game Over wird der Titelwechsel vor den
+Aktionen und Reservierungen. Der native Hauptloop gibt bei Esc zusätzlich
+immer den Mausfang frei, auch während eines Kampfes; die mittlere Maustaste
+schaltet den Mausblick wieder ein. Nach Game Over wird der Titelwechsel vor den
 Folgekommandos des wartenden Event-Interpreters verarbeitet; `can_lose`
 setzt die Event-Liste dagegen fort. Kampfende und `abort!` geben auch bei
 direktem Ruby-Aufruf die Simulation frei. Kartenwechsel, Titelrücksprung,
@@ -1728,12 +1730,16 @@ wie bisher neu auf und ist kein Speichern.
 
 `battle_state_test.rb` prüft echte Battle-/Party-Logik mit nativen Attrappen,
 `encounter_test.rb` die echte Spielschleife einschließlich Esc, Event-Folgen,
-Abbruch und JSON-Save-/Load-Rundlauf über eine Speicherattrappe. Der echte
-Bootstrap wird in `runtime_boot_test.rb` auch mit Kampf und F5-Fehler in
-einer temporären Kopie geprüft. `party_test.rb` und `rgss_test.rb` prüfen die
-Ruby-Zugänge. Der zentrale Glob-Runner nimmt die neue Suite automatisch in
-CI und `build.ps1 -Test` auf. Kein interaktiver Windows-/GPU-Nachweis; siehe
-`docs/WINDOWS_BATTLE_LIVE_TEST.md`.
+Abbruch und JSON-Rundlauf über eine `Project`-Speicherattrappe. Seine
+Inputattrappe bildet Tastendruckflanken, Halten/Loslassen und die native
+Esc-Mausfreigabe nach; der Battle-Unit-Test speist Flanken direkt ein.
+`runtime_boot_test.rb` startet den echten Bootstrap in einer temporären
+Projektkopie und prüft dort unter anderem Action-Event, Projekt-Script,
+Kampf-Item und Speichern/Laden über eine echte `Project`-Slot-Datei sowie
+den F5-Fehler. Fenster, Eingabe und Rendering bleiben auch dabei Attrappen.
+`party_test.rb` und `rgss_test.rb` prüfen die Ruby-Zugänge. Der zentrale
+Glob-Runner nimmt die neue Suite automatisch in CI und `build.ps1 -Test` auf.
+Kein interaktiver Windows-/GPU-Nachweis; siehe `docs/WINDOWS_BATTLE_LIVE_TEST.md`.
 
 ## F4 mit ausgewählter Karte (Etappe 19u)
 
