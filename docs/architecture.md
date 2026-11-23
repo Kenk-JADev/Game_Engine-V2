@@ -1712,6 +1712,77 @@ Demo-Datenbank, JSON-Roundtrips und unberührte allgemeine Eigenschaften.
 CI baut/linkt den Win32-Editor, hat aber keine GPU/Fenster für einen echten
 grafischen Live-Test (siehe Backlog und Handoff).
 
+## Sichere Terrain-/Atmosphärenvorschau (Etappe 19p)
+
+`world/terrain_limits.h` definiert einen portablen Plan: Breite/Höhe
+1–10000, X-Auflösung 8–1024, höchstens 1024 Z-Zellen und 262144 Quads;
+Seed 0–4294967295, Amplitude ±10000, Pinsel-/Flächenkoordinaten ±1000000,
+Radius bzw. Ausdehnung 0,001–1000000. Pro Karte höchstens je 2048 Pinsel
+und Splats, 4 Mio. Pinsel-Samples und 8 Mio. Quad-Splat-Prüfungen. Vor
+`float`-/Integer-Casts wird geprüft; Höheabfragen werden vor dem Index-Cast
+auf die Kartengrenze geklemmt. `Terrain` gibt bei ungültigem Plan, Budget-
+oder Speicherfehler `false` zurück und verwirft das alte/teilweise Mesh.
+`gfx/mesh_vertex.h` entkoppelt das echte Terrain für Linux-Tests von Win32.
+
+`terrain_preview.h` liest ohne JSON-Mutation, erkennt mehrdeutige Felder
+und hält Grundfehler, Pinsel und Flächen vom Mesh fern. Einzelne ungültige
+Texture-/Tile-/Atmosphärenwerte erzeugen Warnungen und Vorschau-Ersatz;
+Texturnamen sind auf 1024 Bytes ohne NUL begrenzt. Tile gilt für 0,01–10000,
+Fog-Far für 0,1–100000 und RGB für 0–0xFFFFFF. Wetterintensität ist größer
+0 bis 10 (höchstens 400 Partikel). `mapcheck.rb` prüft dieselben Grenzwerte;
+`tools/sync_test.rb` vergleicht die Konstanten. F10 und die Statusleiste
+behalten auch tatsächliche Aufbau-/Atlasfehler sichtbar; JSON-Altdaten
+werden dadurch nicht repariert oder automatisch gespeichert.
+
+F2 validiert gezielt geänderte Felder; F7 bereitet Textur/Kachel auf einer
+Kopie vor, ohne fehlende oder ungültige unberührte Felder anzulegen bzw.
+zu ersetzen. Das bewusste Ersetzen ungültiger F7-Felder wird bestätigt.
+Die Splatliste zeigt bis zu 2048 Originalzeilen mit ihren echten JSON-
+Indizes und eine nicht löschbare Auslassungszeile. Ungültige Einträge
+brauchen vor dem Löschen eine Rückfrage; eine vorhandene leere Liste bleibt
+erhalten. F7 bindet sich an Karten-/Projekt-Epochen (auch A→B→A); zentrale
+Datenrückfragen sperren konkurrierende Editorfenster. F2 prüft den Entwurf
+nach einer Rückfrage erneut; F2 und F6 öffnen nicht gleichzeitig. Bereits
+zugestellte Listenauswahlen werden anhand ihrer Originalindizes abgeglichen;
+F5 sperrt konkurrierende F7-/Material-/Script-/F9-Datenaktionen.
+
+`texture_path.h` weist beim Editor-Lesen und -Schreiben/Löschen von RGBA-
+Dateien Pfadtrenner, Datenströme, Windows-Gerätenamen und zu lange Namen
+lexikalisch ab. Verknüpfungen/Reparsepunkte und Dateikonflikte sind damit
+nicht geprüft; auch die Material-Metadaten bleiben ein eigener offener Punkt.
+
+`AtlasPlan` begrenzt 64×64-Tiles auf 1024 (maximal 2048×2048, 16 MiB pro
+RGBA-Kopie). `Renderer::update_atlas` verwendet bei unveränderten
+Eingaben den Cache, bei Änderungen einen privaten wiederverwendeten Slot;
+eine öffentliche Textur namens `atlas` bleibt eine normale Eingabe.
+Auch wiederholtes Registrieren desselben Textur-Namens ersetzt den Slot
+statt alte CPU-/GPU-Kopien anzuhäufen. Neue einzigartige Namen und andere
+Projektdateien haben damit noch keine globale Speicherobergrenze.
+Fehlt Atlas oder Basiszelle, zeigen Editor und Spiel Einzeltextur-Boden;
+unbekannte Flächentexturen fallen auf die Basis zurück und werden gemeldet.
+Der Shader-Faktor 2/tile steht für Atlas-UV neutral auf 1 (`tile` = 2),
+nicht wie früher auf 2. `terrain.tile` wird im Splatpfad nicht angewendet.
+
+`terrain_api.rb` reicht Hash- oder Array-Höhenpinsel ohne unsichere Ruby-
+Koerzierung an die nativen Bindings und leert den alten Pinselsatz beim
+nächsten Aufruf. `Game.build_terrain` wird auch beim Launcher und dem
+Ruby-Editor-Neuaufbau genutzt; es setzt erst die Basistextur und erhält
+bei fehlendem Atlas den schon erzeugten Einzeltexturboden. Fehlerhafte
+Flächen verwerfen dagegen das Terrain. Die 32-Bit-`long`-Byteberechnung
+für Ruby-Texturen wird vor der Multiplikation auf D3D-Maße begrenzt.
+
+Lokal: 671 JSON-/Editor-Checks und 51 Terrain-Checks jeweils in Release
+und mit ASan/UBSan/float-cast-overflow; Ruby 3.0.6 nativ 26 Suiten OK,
+ein EXE-Skip; dieselben 26 Suiten einzeln mit Ruby 3.4-WASM im isolierten
+WASI-Shim OK (ohne EXE-Test). Die 3.4-JSON-/Event-
+Brücken nutzen echte C++-Fixtures (14 Dateien/0 Format- oder Semantik-
+fehler, 17 Event-Checks/0 Fehler), da WASM kein Open3 ausführen kann.
+Win64-Editor, Renderer, Terrain und Ruby-VM wurden cross-kompiliert;
+zusätzliche unsichtbare Windows-Listboxprüfungen wurden hier nicht ausgeführt.
+CI ist für den vollständigen Windows-Build mit Ruby 3.4 vorgesehen.
+Kein D3D-/GUI-Lauf, GPU-Fehler-Injektion oder nativer Binding-Lauf wurde
+hier durchgeführt; der Windows-Live-Test bleibt offen (Handoff/Backlog).
+
 ## F6-Layout für kleine Arbeitsflächen (Etappe 19o.6)
 
 `event_layout.h` berechnet unabhängig von Win32 das Einpassen auf eine
@@ -1840,8 +1911,8 @@ UTF-8/Unicode, keine nicht darstellbaren Kommazahlen und höchstens ein
 `objects`, das, falls vorhanden, eine Liste sein muss. Andere doppelte
 Schlüssel bleiben erhalten; Objektfelder mit Duplikaten sind gesperrt.
 `json_validation.h` und `text_validation.h` sind gemeinsame Prüfer für
-Karte und F9. Die Prüfung deckt nicht alle semantischen Extremwerte ab;
-Terrain-/Atmosphären-Casts bleiben im Backlog dokumentiert. Karten behalten
+Karte und F9. Die Prüfung deckt nicht alle semantischen Extremwerte ab; der gezielte
+Terrain-/Atmosphärenschutz wurde in 19p ergänzt. Karten behalten
 die Originalbytes ihres letzten Ladens/Speicherns: Vor Speichern oder
 Löschen wird bei externen Änderungen gefragt. `atomic_file_win.h` schreibt
 erst eine temporäre Datei, ersetzt danach das Ziel und sichert neue Karten

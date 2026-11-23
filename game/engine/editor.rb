@@ -218,15 +218,10 @@ class Editor
   # Höhen live anwenden: Pinsel setzen und Terrain mit den Karten-
   # Parametern neu generieren (build_terraform der Karte).
   def apply_heights!
-    tt = (@map_ref || {})['terrain'] || {}
-    Rune::World.height_brushes = (tt['heights'] || []).map do |hh|
-      [hh['x'].to_f, hh['z'].to_f, hh['r'].to_f, hh['h'].to_f]
-    end
-    Rune::World.generate(width: tt['width'] || tt['size'] || 240,
-                        height: tt['height'] || tt['size'] || 240,
-                        resolution: tt['resolution'] || 192,
-                        seed: tt['seed'] || 7,
-                        amplitude: tt['amplitude'] || 0.0)
+    # Identischer geprüfter Aufbau wie beim Kartenwechsel; dabei werden die
+    # Pinsel nicht durch generate() wieder geleert und Splats neu angewendet.
+    return unless Game.build_terrain(@map_ref || {})
+
     if @scene_ref
       Editor.rebuild(@objects, @scene_ref)
       Game.refresh_placement_visuals(@scene_ref) if Game.respond_to?(:refresh_placement_visuals)

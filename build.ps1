@@ -166,6 +166,20 @@ if ($Test) {
     & $JsonTestExe $ProjectRoot
     if ($LASTEXITCODE -ne 0) { throw 'C++-JSON-Test fehlgeschlagen' }
 
+    Write-Step 'Echtes Terrain kopflos bauen und prüfen ...'
+    $TerrainTestExe = Join-Path $BuildDir 'terrain_test.exe'
+    $TerrainTestFlags = @(
+        '-std=c++20', '-O1', '-Wall', '-Wextra', '-Wno-unused-parameter',
+        "-I$ProjectRoot\src",
+        "$ProjectRoot\src\world\terrain.cpp",
+        "$ProjectRoot\tools\terrain_test.cpp",
+        '-o', $TerrainTestExe
+    )
+    & $Gcc @TerrainTestFlags
+    if ($LASTEXITCODE -ne 0) { throw 'terrain_test.exe konnte nicht gebaut werden' }
+    & $TerrainTestExe
+    if ($LASTEXITCODE -ne 0) { throw 'C++-Terrain-Test fehlgeschlagen' }
+
     Write-Step 'Ruby-Testsuite (tools/test_all.rb) ...'
     $SuiteArgs = @((Join-Path $ProjectRoot 'tools\test_all.rb'))
     if ($Clean -or (Test-Path $EdExe)) { $SuiteArgs += '--strict' }   # mit EXE muss auch tex_import laufen

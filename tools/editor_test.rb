@@ -200,5 +200,26 @@ check('Prefabs verweisen auf existierende Texturen') {
   Prefabs::LIST.flat_map { |p| p[:parts] }.all? { |part| !part[:tex] || RuneGfxStub::REG.key?(part[:tex]) }
 }
 
+# Ein Höhenneubau muss den vollständigen Kartenpfad aufrufen; andernfalls
+# löscht World.generate seine zuvor gesetzten Pinsel oder vergisst die Splats.
+module Game
+  class << self
+    attr_accessor :last_terrain_map, :terrain_result
+  end
+  def self.build_terrain(map)
+    self.last_terrain_map = map
+    terrain_result
+  end
+end
+Game.terrain_result = true
+hoehenkarte = { 'terrain' => { 'heights' => [{ 'x' => 0, 'z' => 0, 'r' => 4, 'h' => 2 }],
+                             'splats' => [{ 'tex' => 'weg', 'x' => 0, 'z' => 0, 'w' => 2, 'h' => 2 }] } }
+ed = Editor.new('start', [])
+ed.instance_variable_set(:@map_ref, hoehenkarte)
+check('Höhen-Neubau verwendet vollständigen Kartenpfad mit Pinseln und Splats') do
+  ed.apply_heights!
+  Game.last_terrain_map.equal?(hoehenkarte)
+end
+
 puts($fail.zero? ? 'EDITOR-TEST OK (0 Fehler)' : "EDITOR-TEST FEHLGESCHLAGEN (#{$fail} Fehler)")
 exit($fail.zero? ? 0 : 1)

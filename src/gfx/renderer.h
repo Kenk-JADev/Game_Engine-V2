@@ -9,8 +9,10 @@
 #include <d3d11.h>
 
 #include "math/math.h"
+#include "gfx/mesh_vertex.h"
 #include "gfx/ui.h"
 #include "world/atlas.h"
+#include "world/terrain_limits.h"
 
 namespace rune::gfx {
 
@@ -21,14 +23,6 @@ struct DrawCmd {
     math::Vec4 color;
     int        tex;   // Index in die Texturliste, -1 = untexturiert
     float      tile;  // Kachelgrösse in Metern (<=0: UV wie geliefert)
-};
-
-// Vertexformat für alle Meshes: Position, Normale, Vertexfarbe (0..1), UV.
-struct MeshVertex {
-    math::Vec3 pos;
-    math::Vec3 nrm;
-    math::Vec3 col;
-    float      uv[2];
 };
 
 // Direct3D-11-Renderer: sammelt Box-Draws während eines Frames und zeichnet sie
@@ -52,11 +46,15 @@ public:
     // Himmel-Verlauf (Screen-Space) und Sonnenlicht; beides von Ruby aus gesetzt.
     void set_sky(uint32_t top_rgb, uint32_t bottom_rgb) { m_sky_top = top_rgb; m_sky_bottom = bottom_rgb; m_sky_on = true; }
     void set_sun(const math::Vec3& dir, float ambient) { m_sun = dir; m_ambient = ambient; }
-    void set_fog(bool on, uint32_t rgb, float far_dist) { m_fog_on = on; m_fog_rgb = rgb; m_fog_far = far_dist; }
+    void set_fog(bool on, uint32_t rgb, float far_dist) {
+        m_fog_on = on; m_fog_rgb = rgb;
+        m_fog_far = world::atmosphere_valid_fog_far(far_dist) ? far_dist : 180.0f;
+    }
     void set_terrain_tex(int index) { m_terrain_tex = index; }
-    // Etappe 18c: UV-Vielfaches des Gelandes (Standard 2.0 m pro Kachel).
-    // Kleinerer Wert = grössere Kacheln; <= 0 ignoriert (bleibt 2.0).
-    void set_terrain_tile(float meters) { m_terrain_tile = meters > 0.0f ? meters : 2.0f; }
+    // Ein zu kleiner Wert würde im Shader 2/tile überlaufen.
+    void set_terrain_tile(float meters) {
+        m_terrain_tile = world::terrain_valid_tile_float(meters) ? meters : 2.0f;
+    }
     // Pixel einer angemeldeten Textur (RGBA) für Dialog-Vorschauen; false
     // wenn Name unbekannt.
     bool texture_rgba(const std::string& name, std::vector<uint8_t>& out,
@@ -67,9 +65,8 @@ public:
     bool set_terrain(const std::vector<MeshVertex>& verts, const std::vector<uint32_t>& indices);
     void clear_terrain();
 
-    // Etappe 18d: baut aus allen angemeldeten 64x64-Texturen einen Atlas
-    // (Raster aus 64-px-Zellen) und meldet ihn als neue Textur an. Liefert
-    // Layout + Slot; ohne passende Textur ist valid = false.
+    // Begrenzt den 64x64-Atlas und verwendet ihn bei unveränderten Texturen
+    // wieder. Ohne passenden/sicheren Atlas ist valid = false.
     world::AtlasInfo update_atlas();
 
     // Sichert den aktuellen Backbuffer als BMP (F12).
@@ -86,6 +83,9 @@ public:
     Ui&           ui() { return m_ui; }
 
 private:
+    // Der interne Atlas hat einen eigenen Slot und keinen öffentlichen Namen;
+    // eine Projekttextur namens "atlas" bleibt dadurch unberührt.
+    int add_texture_impl(const std::string& name, int w, int h, const uint8_t* rgba, bool internal_atlas);
     bool create_shaders();
     bool create_cube();
     bool create_targets(int width, int height);
@@ -138,6 +138,9 @@ private:
     // Etappe 18c: Pixel + Grössen für Vorschauen/G_tileset-Zugriff.
     std::vector<std::vector<uint8_t>>       m_tex_pixels;
     std::vector<std::pair<int, int>>         m_tex_sizes;
+    world::AtlasInfo                         m_atlas_cache;
+    int                                      m_atlas_slot = -1;
+    bool                                     m_atlas_dirty = true;
 
     math::Vec3               m_sun{ -0.45f, 0.85f, -0.30f };
     float                    m_ambient = 0.20f;

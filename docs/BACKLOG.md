@@ -21,20 +21,56 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 ---
 
 ## Offen
-### [Editor/Engine] Extreme Terrain-/Atmosphärenwerte sind nicht vollständig abgesichert — offen
-- Symptom: Wohlgeformtes JSON mit extrem großen Ganzzahlen/Kommazahlen oder
-  ungünstigen Terrain-Abmessungen/Auflösungen kann vor der Objektvorschau
-  zu ungültigen Casts, übergroßen Allokationen oder fehlerhafter Darstellung
-  führen. Der sichere Objektpfad allein schützt diese Kartenteile nicht.
-- Analyse: `map_parse_document` prüft Serialisierbarkeit, aber keine
-  vollständigen semantischen Bereiche. `regen_terrain`, Atmosphären- und
-  weitere Viewport-Pfade konvertieren Altwerte teils ungeprüft nach float/int;
-  `Terrain::generate` und Höhenpinsel erwarten realistische Parameter.
-  Nur mit gesicherten Testkarten reproduzieren; Grenzen zentral prüfen,
-  Altdaten im JSON erhalten und unbrauchbare Vorschau sicher umgehen.
-- Betroffene Stellen: `src/editor/editor_main.cpp` (`regen_terrain`,
-  `apply_map_atmosphere_editor`, weitere Viewport-Pfade), `src/world/terrain.cpp`.
-- Gefunden in: Prüfung zu Etappe 19o.4.
+### [Editor] Oberfläche später am RPG Maker XP ausrichten — offen (Design)
+- Wunsch: Die vom User gezeigten XP-Screenshots dienen als Vorbild für eine
+  spätere Überarbeitung; jetzt noch keine Design-Umsetzung.
+- Hauptfenster: klassische Menü-/Werkzeugleisten, links eine gut erreichbare
+  Palette und darunter der Kartenbaum, daneben eine große Arbeitsfläche und
+  unten eine Statusleiste. Die Arbeitsfläche bleibt für Rune3D eine 3D-Ansicht.
+- Datenbank: Kategorien als Reiter, links die Eintragsliste, rechts das
+  zugehörige Formular; eindeutige OK-/Abbrechen-/Übernehmen-Aktionen.
+- Event-Editor: Seitenreiter, Bedingungen/Grafik/Bewegung/Optionen/Trigger
+  links und die übersichtliche, strukturierte Befehlsliste rechts.
+- Weitere Vorbilder: Projekt anlegen mit Ordner, Titel und Speicherort;
+  Materialverwaltung als Ordner-/Dateiliste; Script-Editor mit Scriptliste,
+  Zeilennummern und Syntaxhervorhebung; übersichtliche Grafik-Auswahl.
+- Bei der Umsetzung Bedienbarkeit bei kleinen Fenstern und hohen DPI sowie
+  bestehende 3D-Funktionen und Datentreue erhalten. Sichtbare Kategorien
+  dürfen nicht als funktionsfähig ausgegeben werden, wenn sie es nicht sind.
+- Betroffene Stellen: Editor-Hauptfenster und Projekt-, F6-, F9-, Material-,
+  Tileset- und Script-Dialoge in `src/editor/`.
+- Gefunden in: User-Screenshots des RPG Maker XP.
+
+### [Editor/Engine] Textur-Metadaten und Projektwechsel brauchen eigenen Datenschutz — offen
+- Symptom: Beschädigte/extreme `textures.json`-Größen können im Editor noch
+  vor dem Renderer ungeprüft nach `int` konvertiert oder multipliziert
+  werden; Editor und Ruby lesen rohe RGBA-Dateien vor einer allgemeinen
+  Größenbegrenzung. `mat_save` baut die Metadaten neu auf und bewahrt nicht
+  alle unbekannten/ungültigen Felder. RGBA-Ziele können bestehende Dateien
+  überschreiben; Reparsepunkte/Verknüpfungen werden nicht geprüft. Nur mit
+  Sicherungskopien testen, beschädigte Metadaten nicht im Editor speichern.
+- Analyse: 19p schützt den Terrain-/Atlasplan und die native Texturbyte-
+  Rechnung; Editor-Lesen, F7-Speichern, Import und F3-Löschen weisen zudem
+  lexikalische Pfade und Gerätenamen in RGBA-Dateinamen ab. Dies ist keine
+  vollständige Absicherung von Dateizielen, Materialimport, Projektdateien
+  oder JSON-Einlesen. Ein eigener Schritt muss Größen vor Cast/Dateilesen,
+  Dateikonflikte und Reparsepunkte prüfen sowie Metadaten nichtdestruktiv
+  behandeln; Fehlermeldungen und Ruby/C++-Parität mitprüfen.
+- Betroffene Stellen: `src/editor/editor_main.cpp` (`mat_load`,
+  `mat_register`, `mat_save`, WIC), `game/engine/textures.rb`.
+- Gefunden in: Terrain-/Atlas-Audit 19p.
+
+### [Editor/Engine] Alte Projekttexturen bleiben im Renderer — offen
+- Symptom: Wiederholtes Registrieren desselben Namens verwendet seit 19p
+  denselben Slot, aber Texturen mit unterschiedlichen Namen können bei
+  Projektwechseln im Renderer verbleiben. Alte Namen können später noch
+  auflösbar sein und Speicher bzw. Atlasplätze belegen.
+- Analyse: Es fehlt eine projektbezogene Lebensdauer/Entfernung, die auch
+  eingebaute Texturen und Namensüberschreibungen sicher behandelt. Eine
+  Lösung braucht Tests für A→B→A, F5 und laufende GPU-Ressourcen.
+- Betroffene Stellen: `src/gfx/renderer.cpp`, `src/editor/editor_main.cpp`
+  (`mat_load`), `game/engine/textures.rb` und Projektwechsel.
+- Gefunden in: Terrain-/Atlas-Audit 19p.
 
 ### [Editor] Projekt-Dateipfade mischen System-Codepage und UTF-8 — offen
 - Symptom: Bei nicht-ASCII-Zeichen in Engine-Wurzel oder fremd angelegten
@@ -203,7 +239,8 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Vermutung/Analyse: Kein Fehler, eine Grenze. CI deckt Logik ab (Ruby-Tests,
   C++-JSON, Daten-Scan, Windows-Linken); grafisches Verhalten muss weiter am
   Rechner geprüft werden (F12-Screenshot, `edclick`). Insbesondere stehen
-  die neuen Dialog- und DPI-Tests für F6 sowie Objektformular/F2/F5/F9 aus.
+  die Dialog-/DPI-Tests für F6 sowie Objektformular/F2/F5/F7/F9 und die
+  echte Atlas-/Splat-Darstellung und native Ruby-Bindings aus (siehe Handoff).
 - Betroffene Stellen: `.github/workflows/ci.yml`, `tools/edclick.psm1`.
 - Gefunden in: Etappe 19a.
 
@@ -228,6 +265,33 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Etappe 19a.
 
 ## Erledigt
+### [Editor/Engine] Terrain-/Atmosphärengrenzen und Vorschau — implementiert (19p)
+- Der Terrainplan prüft Maße, Seitenverhältnis, Auflösung, Seed, Amplitude,
+  Pinsel-/Flächenwerte und Arbeitsbudgets vor Cast, Schleifen und Meshbau.
+  Ungültige oder zu teure Kartenwerte bleiben im JSON; die Vorschau wird
+  geleert und der Grund steht dauerhaft in Status/F10. Für Kachelgröße und
+  Atmosphäre gibt es gewarnte Ersatzwerte. F2/F7 bewahren unberührte und
+  uneindeutige Altdaten; das Ersetzen ungültiger F7-Werte erfordert Zustimmung.
+- Der Editor lehnt Pfade und Windows-Gerätenamen als RGBA-Dateinamen ab.
+  Das ist nur ein lexikalischer Schutz, keine Reparsepunkt-/Konfliktprüfung;
+  die vollständige Materialabsicherung bleibt im offenen Eintrag oben.
+- Der Atlas hat höchstens 1024 64×64-Zellen, nutzt einen privaten Slot und
+  cacht unveränderte Inhalte; auch erneut registrierte Texturen behalten
+  ihren Namens-Slot. Fehlen Atlas/Basiszelle, bleibt Einzeltextur-Terrain;
+  fehlende Flächentexturen verwenden die Basis. Atlas-UV werden nicht mehr
+  versehentlich doppelt skaliert. Höhenpinsel bleiben beim Ruby-Karten- und
+  Editor-Neuaufbau erhalten; Wetterpartikel sind auf Intensität 10 begrenzt.
+- Lokal: C++-Release und Sanitizer, portable Terrain-/Formularfälle,
+  Ruby-Tests und Brücken sowie Win64-Cross-Kompilierung. Ein echter
+  Windows-GUI-/D3D-/GPU-Lauf und native Binding-Fehlerpfade bleiben offen;
+  Tests und konkreter Plan stehen im Handoff. Andere Projektdateien sind
+  ausdrücklich nicht pauschal geschützt (siehe offene Einträge oben).
+- Betroffene Stellen: `src/world/{terrain_limits,terrain,atlas}.*`,
+  `src/gfx/renderer.*`, `src/editor/{terrain_preview,tile_form,map_props_form}.h`,
+  `src/editor/editor_main.cpp`, `src/ruby/vm.cpp`, `game/engine/terrain_api.rb`,
+  `game/engine/{weather,mapcheck}.rb`, `game/main.rb`, `tools/terrain_test.cpp`.
+- Gefunden in: Prüfung zu Etappe 19o.4; gezielte Behebung in 19p.
+
 ### [Editor] F6-Fenster auf kleinen Arbeitsflächen erreichbar — implementiert (19o.6)
 - Das frühere feste 1000×730-Fenster konnte unterhalb der Arbeitsfläche
   liegen. Jetzt werden Fenstergröße und Position auf den aktuellen Monitor
@@ -283,8 +347,8 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
   Vergleich ist keine durchgehende Sperre (separater Backlog-Eintrag).
 - Tests: `tools/json_test.cpp`, ASan/UBSan und Win64-Cross-Kompilierung;
   Windows-CI prüft die gemeinsame Dateihilfe kopflos. Der grafische
-  Windows-Live-Test steht aus. F6 ist seit 19o.5 geschützt; extreme
-  Terrain-/Atmosphärenwerte bleiben ein eigener offener Eintrag.
+  Windows-Live-Test steht aus. F6 ist seit 19o.5 geschützt; der gezielte
+  Terrain-/Atmosphärenschutz ist seit 19p implementiert (siehe oben).
 - Betroffene Stellen: `src/editor/{object_props_form,map_document,json_validation,text_validation,atomic_file_win}.h`,
   `src/editor/editor_main.cpp`, `src/editor/placement_dialog.h`.
 

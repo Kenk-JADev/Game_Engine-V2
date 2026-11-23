@@ -5,6 +5,9 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <limits>
+#include <new>
+#include <stdexcept>
 #include <string>
 
 #include <d3dcompiler.h>
@@ -14,6 +17,11 @@ using namespace rune::math;
 
 namespace rune::gfx {
 namespace {
+
+// Protokollieren darf insbesondere im Speicher-/GPU-Fehlerpfad nicht selbst
+// einen zweiten C++-Ausnahmefehler aus dem Renderer herauswerfen.
+void log_warn_safely(const char* message) noexcept { try { log_warn(message); } catch (...) {} }
+void log_error_safely(const char* message) noexcept { try { log_error(message); } catch (...) {} }
 
 const char* kShaderSource = R"(
 cbuffer FrameCB : register(b0)
@@ -712,7 +720,26 @@ void Renderer::begin_frame(const Mat4& view_proj, const Vec3& eye) {
 }
 
 int Renderer::add_texture(const std::string& name, int w, int h, const uint8_t* rgba) {
-    if (!m_device || w <= 0 || h <= 0 || !rgba) return -1;
+    return add_texture_impl(name, w, h, rgba, false);
+}
+
+int Renderer::add_texture_impl(const std::string& name, int w, int h, const uint8_t* rgba, bool internal_atlas) {
+    if (!m_device || !world::terrain_valid_texture_name(name) ||
+        w <= 0 || h <= 0 || w > 16384 || h > 16384 || !rgba) return -1;
+    // Ein Name behält seinen Slot: F5, erneuter Import und Atlas-Neubau
+    // dürfen keine unreferenzierten GPU-/CPU-Kopien ansammeln. Der interne
+    // Atlas-Slot ist separat und kann keine Projekttextur überschreiben.
+    const auto found = m_tex_ids.find(name);
+    const int existing = internal_atlas ? m_atlas_slot : found == m_tex_ids.end() ? -1 : found->second;
+    const bool replace_slot = existing >= 0 && static_cast<size_t>(existing) < m_tex_srvs.size() &&
+        static_cast<size_t>(existing) < m_tex_pixels.size() &&
+        static_cast<size_t>(existing) < m_tex_sizes.size();
+    if (!replace_slot && m_tex_srvs.size() >= static_cast<size_t>(std::numeric_limits<int>::max())) return -1;
+    const size_t byte_count = static_cast<size_t>(w) * static_cast<size_t>(h) * 4;
+    if (replace_slot && m_tex_sizes[static_cast<size_t>(existing)] == std::pair<int, int>{w, h} &&
+        m_tex_pixels[static_cast<size_t>(existing)].size() == byte_count &&
+        std::memcmp(m_tex_pixels[static_cast<size_t>(existing)].data(), rgba, byte_count) == 0)
+        return existing;
 
     D3D11_TEXTURE2D_DESC td{};
     td.Width = static_cast<UINT>(w);
@@ -730,7 +757,8 @@ int Renderer::add_texture(const std::string& name, int w, int h, const uint8_t* 
 
     ID3D11Texture2D* tex = nullptr;
     if (FAILED(m_device->CreateTexture2D(&td, &sd, &tex)) || !tex) {
-        log_error("Textur '" + name + "' konnte nicht erstellt werden");
+        if (tex) tex->Release();
+        try { log_error("Textur '" + name + "' konnte nicht erstellt werden"); } catch (...) {}
         return -1;
     }
 
@@ -738,17 +766,50 @@ int Renderer::add_texture(const std::string& name, int w, int h, const uint8_t* 
     HRESULT hr = m_device->CreateShaderResourceView(tex, nullptr, &srv);
     tex->Release();
     if (FAILED(hr) || !srv) {
-        log_error("Textur-View '" + name + "' konnte nicht erstellt werden");
+        if (srv) srv->Release();
+        try { log_error("Textur-View '" + name + "' konnte nicht erstellt werden"); } catch (...) {}
         return -1;
     }
 
-    const int index = static_cast<int>(m_tex_srvs.size());
-    m_tex_srvs.push_back(srv);
-    m_tex_ids[name] = index;
-    // Etappe 18c: Pixel für Tileset-Vorschau mitführen.
-    m_tex_pixels.emplace_back(rgba, rgba + static_cast<size_t>(w) * h * 4);
-    m_tex_sizes.emplace_back(w, h);
-    log_info("Textur '" + name + "' registriert (" + std::to_string(w) + "x" + std::to_string(h) + ")");
+    const int index = replace_slot ? existing : static_cast<int>(m_tex_srvs.size());
+    try {
+        // Alles Allokierende vor dem Eintrag erledigen, damit ein Fehlschlag
+        // weder die drei Slot-Vektoren auseinanderlaufen lässt noch srv leckt.
+        std::vector<uint8_t> copy(rgba, rgba + byte_count);
+        if (replace_slot) {
+            if (m_tex_srvs[static_cast<size_t>(index)]) m_tex_srvs[static_cast<size_t>(index)]->Release();
+            m_tex_srvs[static_cast<size_t>(index)] = srv;
+            m_tex_pixels[static_cast<size_t>(index)] = std::move(copy);
+            m_tex_sizes[static_cast<size_t>(index)] = {w, h};
+        } else {
+            const size_t next = m_tex_srvs.size() + 1;
+            auto reserve_slot = [next](auto& slots) {
+                if (slots.capacity() >= next) return;
+                size_t grow = slots.capacity() ? slots.capacity() + slots.capacity() / 2 + 1 : 8;
+                if (grow < slots.capacity() || grow > slots.max_size()) grow = next;
+                slots.reserve(std::max(next, grow));
+            };
+            reserve_slot(m_tex_srvs);
+            reserve_slot(m_tex_pixels);
+            reserve_slot(m_tex_sizes);
+            if (!internal_atlas) m_tex_ids.insert_or_assign(name, index);
+            m_tex_srvs.push_back(srv);
+            m_tex_pixels.push_back(std::move(copy));
+            m_tex_sizes.emplace_back(w, h);
+            if (internal_atlas) m_atlas_slot = index;
+        }
+    } catch (const std::bad_alloc&) {
+        srv->Release();
+        log_error_safely("Nicht genügend Speicher für Texturpixel");
+        return -1;
+    } catch (const std::length_error&) {
+        srv->Release();
+        log_error_safely("Texturpixel überschreiten den Speicherbereich");
+        return -1;
+    }
+    m_atlas_dirty = true;
+    try { log_info("Textur '" + name + "' registriert (" + std::to_string(w) + "x" + std::to_string(h) + ")"); }
+    catch (...) {}
     return index;
 }
 
@@ -769,26 +830,25 @@ bool Renderer::texture_rgba(const std::string& name, std::vector<uint8_t>& out,
     return true;
 }
 
-// Etappe 18d: Atlas aller 64x64-Texturen. Zellen 64 px, Raster ~quadratisch;
-// der Atlas meldet sich unter "atlas" an (F5 => neuer Slot, wie alle Texturen).
+// Atlas aller 64x64-Texturen. Bei unveränderten Texturen wiederverwenden;
+// bei Änderungen den bisherigen Atlas-Slot ersetzen statt Speicher zu häufen.
 world::AtlasInfo Renderer::update_atlas() {
+    try {
+    if (!m_atlas_dirty && m_atlas_cache.valid) return m_atlas_cache;
     world::AtlasInfo info;
-    std::vector<std::pair<std::string, int>> entries;   // Name -> Pixelindex
-    for (const auto& [name, idx] : m_tex_ids) {
-        if (idx < 0 || idx >= static_cast<int>(m_tex_sizes.size())) continue;
-        if (m_tex_sizes[idx].first == 64 && m_tex_sizes[idx].second == 64) {
-            entries.emplace_back(name, idx);
-        }
+    const world::AtlasSources sources = world::atlas_sources(m_tex_ids, m_tex_sizes);
+    if (sources.too_many) {
+        log_warn_safely("Atlas: mehr als 1024 Kacheln; Einzeltextur als Ersatz");
+        return info;
     }
-    if (entries.empty()) return info;
+    const auto& entries = sources.entries; // map bereits nach Namen sortiert
+    const world::AtlasPlan plan = world::atlas_plan(entries.size());
+    if (!plan.ok()) return info;
 
-    std::sort(entries.begin(), entries.end(),
-              [](const auto& a, const auto& b) { return a.first < b.first; });
     const int n = static_cast<int>(entries.size());
-    const int cols = std::max(1, static_cast<int>(std::ceil(std::sqrt(static_cast<double>(n)))));
-    const int rows = (n + cols - 1) / cols;
+    const int cols = plan.cols, rows = plan.rows;
 
-    std::vector<uint8_t> px(static_cast<size_t>(cols * 64) * rows * 64 * 4, 0);
+    std::vector<uint8_t> px(plan.rgba_bytes, 0);
     for (int e = 0; e < n; ++e) {
         const auto& pixels = m_tex_pixels[entries[e].second];
         const int col = e % cols, row = e / cols;
@@ -799,20 +859,39 @@ world::AtlasInfo Renderer::update_atlas() {
         info.cell_of[entries[e].first] = e;
     }
 
-    info.tex_index = add_texture("atlas", cols * 64, rows * 64, px.data());
+    info.tex_index = add_texture_impl("atlas", cols * 64, rows * 64, px.data(), true);
     info.cols = cols;
     info.rows = rows;
     info.valid = info.tex_index >= 0;
     if (info.valid) {
-        log_info("Atlas gebaut: " + std::to_string(n) + " Kacheln, " +
-                 std::to_string(cols * 64) + "x" + std::to_string(rows * 64) + " px");
+        m_atlas_cache = std::move(info);
+        m_atlas_dirty = false;
+        try {
+            log_info("Atlas gebaut: " + std::to_string(n) + " Kacheln, " +
+                     std::to_string(cols * 64) + "x" + std::to_string(rows * 64) + " px");
+        } catch (...) {}
+        return m_atlas_cache;
     }
     return info;
+    } catch (const std::bad_alloc&) {
+        log_warn_safely("Nicht genügend Speicher für den Atlas; Einzeltextur als Ersatz");
+        return {};
+    } catch (const std::length_error&) {
+        log_warn_safely("Atlas überschreitet den Speicherbereich; Einzeltextur als Ersatz");
+        return {};
+    }
 }
 
 bool Renderer::set_terrain(const std::vector<MeshVertex>& verts, const std::vector<uint32_t>& indices) {
     clear_terrain();
     if (!m_device || verts.empty() || indices.empty()) return false;
+    // D3D11 ByteWidth ist UINT, die Draw-Anzahl wird als int gespeichert.
+    if (verts.size() > std::numeric_limits<UINT>::max() / sizeof(MeshVertex) ||
+        indices.size() > std::numeric_limits<UINT>::max() / sizeof(uint32_t) ||
+        indices.size() > static_cast<size_t>(std::numeric_limits<int>::max())) {
+        log_error_safely("Gelände-Mesh ist für den Renderer zu groß");
+        return false;
+    }
 
     D3D11_BUFFER_DESC bd{};
     bd.Usage = D3D11_USAGE_IMMUTABLE;
@@ -821,7 +900,8 @@ bool Renderer::set_terrain(const std::vector<MeshVertex>& verts, const std::vect
     D3D11_SUBRESOURCE_DATA vd{};
     vd.pSysMem = verts.data();
     if (FAILED(m_device->CreateBuffer(&bd, &vd, &m_terrain_vb))) {
-        log_error("Gelände-Vertexbuffer konnte nicht erstellt werden");
+        clear_terrain();
+        log_error_safely("Gelände-Vertexbuffer konnte nicht erstellt werden");
         return false;
     }
 
@@ -832,8 +912,8 @@ bool Renderer::set_terrain(const std::vector<MeshVertex>& verts, const std::vect
     D3D11_SUBRESOURCE_DATA id{};
     id.pSysMem = indices.data();
     if (FAILED(m_device->CreateBuffer(&ibd, &id, &m_terrain_ib))) {
-        log_error("Gelände-Indexbuffer konnte nicht erstellt werden");
         clear_terrain();
+        log_error_safely("Gelände-Indexbuffer konnte nicht erstellt werden");
         return false;
     }
 
@@ -1052,7 +1132,7 @@ void Renderer::end_frame() {
             cb.params[1] = 0.0f;
             // Etappe 18c: Kachelgrösse des Bodens (Terrain-UV ist auf
             // 2 m gebacken; Faktor 2/tile skaliert auf die Wunschgrösse).
-            cb.params[2] = 2.0f / (m_terrain_tile > 0.0f ? m_terrain_tile : 2.0f);
+            cb.params[2] = world::terrain_uv_scale(m_terrain_tile);
             cb.params[3] = 0.0f;
             std::memcpy(mapped.pData, &cb, sizeof(cb));
             m_context->Unmap(m_object_cb, 0);
@@ -1125,6 +1205,11 @@ void Renderer::shutdown() {
     for (ID3D11ShaderResourceView* srv : m_tex_srvs) if (srv) srv->Release();
     m_tex_srvs.clear();
     m_tex_ids.clear();
+    m_tex_pixels.clear();
+    m_tex_sizes.clear();
+    m_atlas_cache = {};
+    m_atlas_slot = -1;
+    m_atlas_dirty = true;
     if (m_sky_dss) { m_sky_dss->Release(); m_sky_dss = nullptr; }
     if (m_sky_cb) { m_sky_cb->Release(); m_sky_cb = nullptr; }
     if (m_sky_ps) { m_sky_ps->Release(); m_sky_ps = nullptr; }

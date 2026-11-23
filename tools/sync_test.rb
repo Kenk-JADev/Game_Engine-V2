@@ -150,5 +150,21 @@ check('jede Truppe nennt nur bekannte Gegner') do
   DATEN.fetch('troops', []).all? { |t| (t['enemies'] - ids).empty? }
 end
 
+puts '== Terrain-/Atmosphären-Grenzen =='
+limits_cpp = File.read(File.join(ROOT, 'src', 'world', 'terrain_limits.h'), encoding: 'utf-8')
+%w[TERRAIN_MIN_SIZE TERRAIN_MAX_SIZE TERRAIN_MIN_RES TERRAIN_MAX_RES TERRAIN_MAX_QUADS
+   TERRAIN_MAX_AMPLITUDE TERRAIN_MAX_COORD TERRAIN_MIN_RADIUS TERRAIN_MAX_BRUSHES
+   TERRAIN_MAX_BRUSH_SAMPLES TERRAIN_MAX_SPLATS TERRAIN_MAX_SPLAT_CHECKS TERRAIN_MAX_TEXTURE_BYTES
+   TERRAIN_MIN_TILE TERRAIN_MAX_TILE FOG_MIN_FAR FOG_MAX_FAR WEATHER_MAX_INTENSITY].each do |name|
+  check("#{name}: Ruby == C++") do
+    literal = limits_cpp[/\b#{Regexp.escape(name)}\s*=\s*([\d.]+)/, 1]
+    literal && literal.to_f == MapCheck.const_get(name).to_f
+  end
+end
+weather_rb = File.read(File.join(ROOT, 'game', 'engine', 'weather.rb'), encoding: 'utf-8')
+check('Wetter-Partikelgrenze == MapCheck und C++') do
+  weather_rb[/MAX_INTENSITY\s*=\s*([\d.]+)/, 1].to_f == MapCheck::WEATHER_MAX_INTENSITY
+end
+
 puts($fail.zero? ? 'SYNC-TEST OK (0 Fehler)' : "SYNC-TEST FEHLGESCHLAGEN (#{$fail} Fehler)")
 exit($fail.zero? ? 0 : 1)

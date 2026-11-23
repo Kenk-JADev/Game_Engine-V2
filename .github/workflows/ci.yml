@@ -79,6 +79,13 @@ jobs:
       - name: C++-JSON-Test
         run: ./json_test "$GITHUB_WORKSPACE"
 
+      - name: Echtes Terrain kopflos bauen und prüfen
+        run: |
+          g++ -std=c++20 -O2 -Wall -Wextra -Werror \
+            -Wno-unused-parameter -Wno-missing-field-initializers \
+            -Isrc src/world/terrain.cpp tools/terrain_test.cpp -o terrain_test
+          ./terrain_test
+
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.4'

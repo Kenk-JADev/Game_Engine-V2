@@ -25,11 +25,15 @@
 #include "editor/event_form.h"
 #include "editor/event_layout.h"
 #include "editor/event_view_win.h"
+#include "editor/listbox_win.h"
 #include "editor/map_document.h"
 #include "editor/map_props_form.h"
 #include "editor/number_format.h"
 #include "editor/object_props_form.h"
 #include "editor/placement_form.h"
+#include "editor/terrain_preview.h"
+#include "editor/texture_path.h"
+#include "editor/tile_form.h"
 
 #include <algorithm>
 #include <cctype>
@@ -128,6 +132,33 @@ int roundtrip_modus(int argc, char** argv) {
     }
     std::printf("roundtrip: %s -> %s\n", argv[2], argv[3]);
     return 0;
+}
+
+void texture_path_tests() {
+    using rune::editor::texture_file_is_flat;
+    std::printf("== Editor: RGBA-Dateinamen ohne Pfadwechsel ==\n");
+    check("normale, Unicode- und versteckte Dateinamen zulässig",
+          texture_file_is_flat("gras.rgba") && texture_file_is_flat("Fels-ä.rgba") &&
+          texture_file_is_flat(".kachel.rgba"));
+    check("relative Pfade mit beiden Trennern abgewiesen",
+          !texture_file_is_flat("../database.json") && !texture_file_is_flat("..\\database.json"));
+    check("absolute und Netzwerkpfade abgewiesen",
+          !texture_file_is_flat("/data/file.rgba") && !texture_file_is_flat("\\\\server\\datei.rgba"));
+    check("Laufwerke, Datenströme und Windows-Sonderzeichen abgewiesen",
+          !texture_file_is_flat("C:bild.rgba") && !texture_file_is_flat("bild.rgba:stream") &&
+          !texture_file_is_flat("bild?.rgba") && !texture_file_is_flat("bild|.rgba"));
+    check("NUL und Steuerzeichen abgewiesen",
+          !texture_file_is_flat(std::string("bild\0.rgba", 10)) && !texture_file_is_flat("a\nb.rgba"));
+    check("Windows-Gerätenamen unabhängig von Großschreibung und Erweiterung abgewiesen",
+          !texture_file_is_flat("con.rgba") && !texture_file_is_flat("NUL.txt.rgba") &&
+          !texture_file_is_flat("Com9.rgba") && !texture_file_is_flat("lpt1.x") &&
+          !texture_file_is_flat("CON .rgba") && !texture_file_is_flat("com\xC2\xB9.rgba") &&
+          texture_file_is_flat("com9grafik.rgba"));
+    check("leere Namen, Punktpfade und normalisierte Enden abgewiesen",
+          !texture_file_is_flat("") && !texture_file_is_flat(".") && !texture_file_is_flat("..") &&
+          !texture_file_is_flat("bild.") && !texture_file_is_flat("bild "));
+    check("Dateiname auf 255 Bytes begrenzt",
+          texture_file_is_flat(std::string(255, 'a')) && !texture_file_is_flat(std::string(256, 'a')));
 }
 
 void placement_form_tests() {
@@ -564,6 +595,205 @@ void blocked_form_tests() {
     check("leeres Feld ohne alte Liste legt keine neue Liste an", none.ok && !none.changed);
 }
 
+void terrain_preview_tests(const std::string& wurzel) {
+    using namespace rune::editor;
+    using namespace rune::world;
+    std::printf("== Editor: sichere Terrain-/Atmosphären-Vorschau ==\n");
+    const std::string huge(400, '9');
+    JsonValue root = json_parse("{\"name\":\"Alt\",\"objects\":[],\"terrain\":{\"width\":" + huge +
+        ",\"height\":240,\"seed\":" + huge + ",\"amplitude\":1e300,\"heights\":[]},"
+        "\"fog\":{\"on\":true,\"far\":1e300,\"color\":" + huge + "},"
+        "\"panorama\":{\"color\":-999999999999999999999},"
+        "\"weather\":{\"type\":\"regen\",\"intensity\":1e300}}");
+    const std::string old = json_write(root);
+    const TerrainPreview terrain = terrain_preview_read(root);
+    check("extremes Terrain wird vor allen Casts abgewiesen", !terrain.ok() && !terrain.error.empty());
+    const AtmospherePreview atmosphere = atmosphere_preview_read(root);
+    check("Nebel/Himmel mit sicheren Ersatzwerten und Warnungen",
+          atmosphere.sky == 0x3D6FB5 && atmosphere.fog_on && atmosphere.fog_color == 0xBFD8EC &&
+          atmosphere.fog_far == 180.0f && atmosphere.warnings.size() == 4);
+    check("Vorschau verändert auch übergroße Ganzzahlen niemals", json_write(root) == old &&
+          json_write(*root.find("terrain")->find("width")) == huge + "\n");
+    check("F2-Zahlenanzeige erhält extremen Originaltoken",
+          map_props_number_display(root.find("terrain")->find("width"), 240) == huge &&
+          map_props_number_display(root.find("terrain")->find("seed"), 7) == huge &&
+          map_props_color_display(root.find("fog")->find("color"), 0) == "ungültig");
+    MapPropsForm before;
+    before.name = "Alt"; before.width = huge; before.height = "240"; before.seed = huge;
+    before.amplitude = "1e300"; before.mountains = true; before.fog_on = true;
+    before.fog_far = "1e300"; before.fog_color = "ungültig";
+    before.panorama_color = "ungültig"; before.weather_intensity = "1e300";
+    MapPropsForm after = before;
+    after.name = "Neu";
+    const BlockedEdit blocked = blocked_form_prepare(nullptr, "", "");
+    check("nur Name ändern erlaubt und Altdaten bleiben exakt",
+          map_props_check(root, before, after).ok && map_props_apply(root, before, after, blocked).changed &&
+          json_write(*root.find("terrain")->find("width")) == huge + "\n" &&
+          json_write(*root.find("fog")->find("color")) == huge + "\n");
+    const std::string after_name = json_write(root);
+    after = before; after.width = "1e300"; after.name = "darf nicht gespeichert werden";
+    check("ungültige F2-Zahl blockiert alle Änderungen atomar",
+          !map_props_check(root, before, after).ok && !map_props_apply(root, before, after, blocked).changed &&
+          json_write(root) == after_name);
+    after = before; after.seed = "4294967296";
+    check("Seed über uint32 abgewiesen", !map_props_check(root, before, after).ok);
+    after.seed = "4294967295";
+    check("oberer Seed im Formular erlaubt", map_props_check(root, before, after).ok);
+    after = before; after.fog_far = "nan";
+    check("NaN-Feld wird abgewiesen", !map_props_check(root, before, after).ok);
+    after = before; after.weather_intensity = "1e300"; after.width = "nan";
+    check("unsichere Eingabe trotz anderer unveränderter Altwerte erkannt", !map_props_check(root, before, after).ok);
+    after = before; after.weather_intensity = "0";
+    check("Wetterintensität null wird abgewiesen", !map_props_check(root, before, after).ok);
+    after.weather_intensity = "0,00000001";
+    const MapPropsCheck tiny_weather = map_props_check(root, before, after);
+    check("kleine positive Wetterintensität bleibt zulässig", tiny_weather.ok);
+    after = before; after.panorama_color = "kaputt";
+    check("ungültige Hexfarbe erzeugt kein stilles Schwarz", !map_props_check(root, before, after).ok);
+    after = before; after.fog_on = false;
+    check("nur Nebelschalter ändert keine extreme Farbe oder Entfernung",
+          map_props_apply(root, before, after, blocked).changed &&
+          json_write(*root.find("fog")->find("color")) == huge + "\n" &&
+          root.find("fog")->find("far")->number() == 1e300);
+
+    JsonValue duplicate = json_parse(R"({"terrain":{"width":240,"width":30,"height":120}})");
+    check("doppelte Rasterfelder sperren Vorschau", !terrain_preview_read(duplicate).ok());
+    MapPropsForm d0, d1; d0.width = "240"; d1 = d0; d1.width = "100";
+    check("doppelte Rasterfelder durch F2 nicht überschreiben", !map_props_check(duplicate, d0, d1).ok);
+    JsonValue wrong = json_parse(R"({"terrain":[1,2,3],"name":"X"})");
+    check("nichtobjektartiges Terrain nicht durch F2 ersetzen", !map_props_check(wrong, d0, d1).ok);
+    JsonValue unused_size = json_parse("{\"terrain\":{\"size\":" + huge + ",\"width\":240,\"height\":120}}");
+    check("ungültiges, nicht verwendetes Legacy-size stört gültige width/height nicht",
+          terrain_preview_read(unused_size).ok());
+    const TerrainPreview fallback_size = terrain_preview_read(json_parse(R"({"terrain":{"size":150,"resolution":64}})"));
+    check("alte size-Karten bleiben unterstützt", fallback_size.ok() && fallback_size.plan.width == 150 &&
+          fallback_size.plan.height == 150 && fallback_size.plan.res_x == 64);
+    const TerrainPreview bad_ratio = terrain_preview_read(json_parse(R"({"terrain":{"width":1,"height":10000,"resolution":192}})"));
+    check("Seitenverhältnis wird schon im Editor abgewiesen", !bad_ratio.ok());
+    const TerrainPreview bad_brush = terrain_preview_read(json_parse(
+        "{\"terrain\":{\"heights\":[{\"x\":" + huge + ",\"z\":0,\"r\":1,\"h\":1}]}}"));
+    check("extremer Höhenpinsel verhindert statt verfälscht die Vorschau", !bad_brush.ok());
+    const TerrainPreview bad_splat = terrain_preview_read(json_parse(
+        "{\"terrain\":{\"splats\":[{\"tex\":\"weg\",\"x\":0,\"z\":0,\"w\":1,\"h\":" + huge + "}]}}"));
+    check("extreme Bodenfläche verhindert statt verfälscht die Vorschau", !bad_splat.ok());
+    SplatRect s;
+    check("ungültige Listenzeile nicht mit gültiger verwechseln",
+          !preview_splat(json_parse(R"({"tex":"weg","x":1,"z":2,"w":0,"h":1})"), s) &&
+          preview_splat(json_parse(R"({"tex":"weg","x":1,"z":2,"w":2,"h":1})"), s) && s.x == 1);
+    const JsonValue splat_list = json_parse(R"([false,{"tex":"weg","x":1,"z":2,"w":2,"h":1},)"
+        R"({"tex":"gras","x":3,"x":4,"z":0,"w":1,"h":1},)"
+        R"({"tex":"stein","x":5,"z":0,"w":1,"h":1}])");
+    const SplatListModel rows = splat_list_model(&splat_list);
+    check("Splat-Zeilen einschließlich ungültiger behalten die Originalindizes",
+          rows.rows.size() == 4 && !rows.rows[0].valid && rows.rows[0].original_index == 0 &&
+          rows.rows[1].valid && rows.rows[1].original_index == 1 && rows.rows[1].splat.tex == "weg" &&
+          !rows.rows[2].valid && rows.rows[2].original_index == 2 &&
+          rows.rows[3].valid && rows.rows[3].original_index == 3 && rows.omitted == 0);
+    JsonValue removed_root = JsonValue::make_obj();
+    JsonValue removed_terrain = JsonValue::make_obj();
+    removed_terrain.set("splats", splat_list);
+    removed_root.set("terrain", std::move(removed_terrain));
+    check("ungültige Splat-Zeile benötigt Bestätigung und bleibt bei Abbruch erhalten",
+          splat_delete_state(removed_root, 0) == SplatDeleteState::NeedsConfirmation &&
+          !splat_delete_apply(removed_root, 0, false) &&
+          removed_root.find("terrain")->find("splats")->arr.size() == 4);
+    const auto original = static_cast<std::ptrdiff_t>(rows.rows[3].original_index);
+    const bool removed = splat_delete_apply(removed_root, original, false);
+    const JsonValue* after_delete = removed_root.find("terrain")->find("splats");
+    check("Löschen über Originalindex entfernt nicht den ungültigen Vorgänger",
+          removed && after_delete->arr.size() == 3 && !after_delete->arr[0].is_obj() &&
+          after_delete->arr[1].find("tex")->str == "weg" && !preview_unique(after_delete->arr[2], "x"));
+    check("bestätigtes Löschen entfernt nur die gewählte ungültige Zeile",
+          splat_delete_apply(removed_root, 0, true) &&
+          removed_root.find("terrain")->find("splats")->arr.size() == 2 &&
+          removed_root.find("terrain")->find("splats")->arr[0].find("tex")->str == "weg");
+    JsonValue singleton = json_parse(R"({"terrain":{"extra":42,"splats":[false]}})");
+    check("nach letzter Löschung bleibt die vorhandene leere Liste samt Nachbarfeldern erhalten",
+          splat_delete_apply(singleton, 0, true) && singleton.find("terrain")->find("splats")->is_arr() &&
+          singleton.find("terrain")->find("splats")->arr.empty() && singleton.find("terrain")->find("extra")->number() == 42);
+    JsonValue ambiguous = json_parse(R"({"terrain":{"splats":[false],"splats":[true]}})");
+    const std::string ambiguous_before = json_write(ambiguous);
+    check("doppelte Splat-Schlüssel werden nicht bearbeitet",
+          splat_delete_state(ambiguous, 0) == SplatDeleteState::Unavailable &&
+          !splat_delete_apply(ambiguous, 0, true) && json_write(ambiguous) == ambiguous_before);
+    JsonValue many_rows = JsonValue::make_arr();
+    many_rows.arr.resize(rune::world::TERRAIN_MAX_SPLATS + 3);
+    const SplatListModel limited = splat_list_model(&many_rows);
+    check("überlange Splat-Liste begrenzt anzeigen und Auslassung melden",
+          limited.rows.size() == rune::world::TERRAIN_MAX_SPLATS && limited.omitted == 3 &&
+          limited.rows.back().original_index == rune::world::TERRAIN_MAX_SPLATS - 1);
+    JsonValue many_root = JsonValue::make_obj(), many_terrain = JsonValue::make_obj();
+    many_terrain.set("splats", std::move(many_rows));
+    many_root.set("terrain", std::move(many_terrain));
+    check("Auslassungszeile und ausgeblendete Indizes sind nicht löschbar",
+          splat_delete_state(many_root, -1) == SplatDeleteState::Unavailable &&
+          splat_delete_state(many_root, static_cast<std::ptrdiff_t>(TERRAIN_MAX_SPLATS)) == SplatDeleteState::Unavailable &&
+          !splat_delete_apply(many_root, -1, true) &&
+          !splat_delete_apply(many_root, static_cast<std::ptrdiff_t>(TERRAIN_MAX_SPLATS), true) &&
+          many_root.find("terrain")->find("splats")->arr.size() == TERRAIN_MAX_SPLATS + 3);
+    const TerrainPreview bad_tile = terrain_preview_read(json_parse(R"({"terrain":{"tile":1e-300}})"));
+    check("extreme Kachelgröße nur für Vorschau ersetzen und warnen", bad_tile.ok() &&
+          bad_tile.tile == 2 && bad_tile.warnings.size() == 1);
+    const JsonValue nul_texture = json_parse(R"({"terrain":{"texture":"a\u0000b"}})");
+    const TerrainPreview nul_view = terrain_preview_read(nul_texture);
+    check("NUL im Basisnamen warnt, zeigt Ersatz und bewahrt JSON", nul_view.ok() &&
+          nul_view.texture == "gras" && !nul_view.warnings.empty() &&
+          nul_texture.find("terrain")->find("texture")->str.size() == 3);
+    const JsonValue nul_splat = json_parse(R"({"tex":"a\u0000b","x":0,"z":0,"w":1,"h":1})");
+    check("NUL im Flächennamen verhindert unsichere Ruby-/UI-Übergabe", !preview_splat(nul_splat, s));
+    JsonValue long_name = json_parse(R"({"terrain":{"texture":""}})");
+    long_name.find("terrain")->find("texture")->str = std::string(TERRAIN_MAX_TEXTURE_BYTES + 1, 'x');
+    const std::string long_before = json_write(long_name);
+    const TerrainPreview long_view = terrain_preview_read(long_name);
+    check("übergroßer Basisname wird nicht kopiert oder im JSON ersetzt", long_view.ok() &&
+          long_view.texture == "gras" && !long_view.warnings.empty() && json_write(long_name) == long_before);
+    const JsonValue old_tile = json_parse("{\"texture\":\"gras\",\"tile\":" + huge + ",\"extra\":true}");
+    const TileFormEdit tex_only = tile_form_prepare(&old_tile, "gras", "weg", huge, huge);
+    check("Tileset-Texturwechsel bewahrt extremen, unberührten tile-Token und Zusatzfelder",
+          tex_only.ok && tex_only.changed && json_write(*tex_only.value.find("tile")) == huge + "\n" &&
+          tex_only.value.find("extra")->b && tex_only.value.find("texture")->str == "weg");
+    check("Tileset ohne Änderung schreibt nichts", !tile_form_prepare(&old_tile, "gras", "gras", huge, huge).changed);
+    const JsonValue invalid_tile = json_parse(R"({"texture":"gras","tile":"kaputt","extra":5})");
+    const TileFormEdit invalid_preserved = tile_form_prepare(&invalid_tile, "gras", "weg", "ungültig", "ungültig");
+    check("Texturänderung bewahrt auch einen nichtnumerischen tile-Altwert",
+          invalid_preserved.ok && invalid_preserved.value.find("tile")->str == "kaputt" &&
+          invalid_preserved.value.find("extra")->number() == 5);
+    const TileFormEdit repair = tile_form_prepare(&old_tile, "gras", "gras", huge, "2.5");
+    check("bewusst bearbeitete Kachelgröße lässt sich nach Rückfrage reparieren", repair.ok && repair.changed &&
+          repair.replaces_invalid && repair.value.find("tile")->number() == 2.5);
+    const TileFormEdit comma = tile_form_prepare(&old_tile, "gras", "gras", huge, "2,75");
+    check("Dezimalkomma wird validiert und korrekt gespeichert", comma.ok && comma.value.find("tile")->number() == 2.75);
+    check("ungültige Kachelgröße blockiert auch Texturänderung",
+          !tile_form_prepare(&old_tile, "gras", "weg", huge, "1e300").ok &&
+          json_write(*old_tile.find("tile")) == huge + "\n");
+    const JsonValue duplicates = json_parse(R"({"texture":"gras","tile":2,"tile":3})");
+    check("doppeltes tile beim gezielten Ändern geschützt",
+          !tile_form_prepare(&duplicates, "gras", "weg", "2", "4").ok &&
+          tile_form_prepare(&duplicates, "gras", "weg", "2", "2").ok);
+    const JsonValue missing_texture = json_parse(R"({"tile":2,"extra":true})");
+    const TileFormEdit only_size = tile_form_prepare(&missing_texture, "gras", "gras", "2", "3");
+    check("Kacheländerung legt fehlende Basistextur nicht unbemerkt an", only_size.ok && only_size.changed &&
+          !only_size.value.find("texture") && only_size.value.find("tile")->number() == 3);
+    const JsonValue invalid_texture = json_parse(R"({"texture":{"alt":true},"tile":2})");
+    const TileFormEdit preserve_texture = tile_form_prepare(&invalid_texture, "", "", "2", "3");
+    check("Kacheländerung erhält ungültiges Texturobjekt vollständig", preserve_texture.ok &&
+          preserve_texture.value.find("texture")->find("alt")->b);
+    const TileFormEdit replace_texture = tile_form_prepare(&invalid_texture, "", "gras", "2", "2");
+    check("gezieltes Ersetzen ungültiger Textur verlangt Rückfrage", replace_texture.ok &&
+          replace_texture.replaces_invalid && replace_texture.value.find("texture")->str == "gras");
+    const AtmospherePreview malformed = atmosphere_preview_read(json_parse(
+        R"({"fog":{"on":"ja","far":-1,"color":1e300},"weather":{"intensity":-2}})"));
+    check("fehlerhafte Atmosphäre mit definierten Ersatzwerten", !malformed.fog_on &&
+          malformed.fog_far == 180 && malformed.fog_color == 0xBFD8EC && malformed.warnings.size() == 4);
+    std::string file;
+    if (datei_lesen(wurzel + "/projekte/dorf/data/maps/dorf.json", file)) {
+        const JsonValue demo = json_parse(file);
+        const TerrainPreview demo_view = terrain_preview_read(demo);
+        check("mitgelieferte Dorfkarte bleibt vollständig darstellbar", demo_view.ok() &&
+              demo_view.plan.res_x == 192 && demo_view.brushes.size() == 35 && json_write(demo).find("\"heights\"") != std::string::npos);
+    } else check("mitgelieferte Dorfkarte lesbar", false);
+}
+
 void map_props_form_tests() {
     using namespace rune::editor;
     std::printf("== Editor: F2 erhält unberührte Karteneigenschaften ==\n");
@@ -581,6 +811,13 @@ void map_props_form_tests() {
     before.mountains = true; before.fog_far = "123"; before.fog_color = "00002A";
     before.panorama_color = "00000B"; before.weather_type = 1; before.weather_intensity = "0.6";
     before.blocked = blocked_form_read(root.find("blocked"));
+    MapPropsForm prompt_snapshot = before;
+    check("F2-Rückfrage erkennt denselben Formularstand", prompt_snapshot == before);
+    prompt_snapshot.blocked += "\nEntwurf";
+    check("F2-Rückfrage erkennt währenddessen geänderte Felder", !(prompt_snapshot == before));
+    prompt_snapshot = before;
+    prompt_snapshot.fog_on = !before.fog_on;
+    check("F2-Rückfrage erkennt geänderte Schalter", !(prompt_snapshot == before));
     auto apply = [&root](const MapPropsForm& was, const MapPropsForm& now) {
         const BlockedEdit blocked = blocked_form_prepare(root.find("blocked"), was.blocked, now.blocked);
         return map_props_apply(root, was, now, blocked);
@@ -1875,7 +2112,19 @@ void event_view_windows_tests() {
     }
     SendMessageW(list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Erstes Event"));
     SendMessageW(list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Zweites Event"));
-    SendMessageW(list, LB_SETCURSEL, 1, 0);
+    SendMessageW(list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"[weitere ausgeblendet]"));
+    SendMessageW(list, LB_SETITEMDATA, 0, 9);
+    SendMessageW(list, LB_SETITEMDATA, 1, 4);
+    SendMessageW(list, LB_SETITEMDATA, 2, static_cast<LPARAM>(-1));
+    check("Listbox stellt Auswahl anhand des Originalindex wieder her",
+          listbox_select_data(list, 4) && SendMessageW(list, LB_GETCURSEL, 0, 0) == 1 &&
+          listbox_select_data(list, 9) && SendMessageW(list, LB_GETCURSEL, 0, 0) == 0);
+    check("unbekannter Originalindex löscht die Auswahl",
+          !listbox_select_data(list, 5) && SendMessageW(list, LB_GETCURSEL, 0, 0) == LB_ERR);
+    SendMessageW(list, LB_SETCURSEL, 2, 0);
+    check("negativer Sentinel wählt keine Auslassungszeile",
+          listbox_select_data(list, -1) && SendMessageW(list, LB_GETCURSEL, 0, 0) == LB_ERR);
+    listbox_select_data(list, 4);
     SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"an"));
     SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"aus"));
     SendMessageW(combo, CB_SETCURSEL, 1, 0);
@@ -2317,6 +2566,8 @@ int main(int argc, char** argv) {
     encounter_form_tests(wurzel);
     blocked_form_tests();
     map_props_form_tests();
+    terrain_preview_tests(wurzel);
+    texture_path_tests();
     placement_form_tests();
     database_form_tests(wurzel);
     map_document_tests(wurzel);

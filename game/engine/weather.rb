@@ -14,6 +14,7 @@
 
 module Weather
   TYPES = %w[kein regen schnee].freeze
+  MAX_INTENSITY = 10.0 # höchstens 400 Partikel, passend zu terrain_limits.h
 
   @type = 'kein'
   @intensity = 1.0
@@ -39,7 +40,12 @@ module Weather
       Rune::Log.info('Wetter: aus')
     else
       @type = key
-      @intensity = intensity.to_f.positive? ? intensity.to_f : 1.0
+      n = (intensity.is_a?(Integer) || intensity.is_a?(Float)) ? intensity.to_f : Float::NAN
+      unless n.finite? && n.positive? && n <= MAX_INTENSITY
+        Rune::Log.warn('Wetter-Intensität ungültig; 1.0 als Ersatz')
+        n = 1.0
+      end
+      @intensity = n
       @drops.clear
       Rune::Log.info("Wetter: #{key} (Intensität #{@intensity})")
     end
@@ -48,8 +54,13 @@ module Weather
 
   # Aus dem Karten-Hash übernehmen (Kartenstart/F5).
   def load_map(map)
-    w = (map || {})['weather'] || {}
-    set(w['type'] || 'kein', w['intensity'] || 1.0)
+    w = (map || {})['weather']
+    unless w.nil? || w.is_a?(Hash)
+      Rune::Log.warn('weather ist kein Objekt; Wetter aus')
+      w = nil
+    end
+    w ||= {}
+    set(w['type'] || 'kein', w['intensity'].nil? ? 1.0 : w['intensity'])
   end
 
   # Partikel um den Spieler herum neu verteilen (Spawn im Umkreis).

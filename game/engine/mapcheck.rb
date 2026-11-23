@@ -28,6 +28,26 @@ module MapCheck
   WARNUNG = 1
   FEHLER  = 2
 
+  # Muss zu src/world/terrain_limits.h passen (tools/sync_test.rb).
+  TERRAIN_MIN_SIZE = 1.0
+  TERRAIN_MAX_SIZE = 10_000.0
+  TERRAIN_MIN_RES = 8
+  TERRAIN_MAX_RES = 1024
+  TERRAIN_MAX_QUADS = 262_144
+  TERRAIN_MAX_AMPLITUDE = 10_000.0
+  TERRAIN_MAX_COORD = 1_000_000.0
+  TERRAIN_MIN_RADIUS = 0.001
+  TERRAIN_MAX_BRUSHES = 2048
+  TERRAIN_MAX_BRUSH_SAMPLES = 4_000_000
+  TERRAIN_MAX_SPLATS = 2048
+  TERRAIN_MAX_SPLAT_CHECKS = 8_000_000
+  TERRAIN_MAX_TEXTURE_BYTES = 1024
+  TERRAIN_MIN_TILE = 0.01
+  TERRAIN_MAX_TILE = 10_000.0
+  FOG_MIN_FAR = 0.1
+  FOG_MAX_FAR = 100_000.0
+  WEATHER_MAX_INTENSITY = 10.0
+
   Finding = Struct.new(:severity, :where, :message) do
     def fehler? = severity == FEHLER
     def warnung? = severity == WARNUNG
@@ -282,6 +302,43 @@ module MapCheck
       end
     end
 
+    # Ruby-Integer können beliebig groß sein. Vor to_f/round und jeder
+    # Multiplikation prüfen, statt Inf oder einen riesigen Loop zu erzeugen.
+    def terrain_bereich?(v, min, max)
+      (v.is_a?(Integer) || (v.is_a?(Float) && v.finite?)) && v >= min && v <= max
+    end
+
+    def terrain_float32(v) = [v.to_f].pack('f').unpack1('f')
+    def terrain_texture_name?(v)
+      v.is_a?(String) && !v.empty? && v.bytesize <= TERRAIN_MAX_TEXTURE_BYTES && !v.include?("\0")
+    end
+
+    # Entspricht TerrainPlan; Rückgabe nil, wenn das Raster nicht sicher ist.
+    def terrain_pruefplan(t)
+      size = t['size'].nil? ? 240 : t['size']
+      width = t['width'].nil? ? size : t['width']
+      height = t['height'].nil? ? size : t['height']
+      res = t['resolution'].nil? ? 192 : t['resolution']
+      seed = t['seed'].nil? ? 7 : t['seed']
+      amp = t['amplitude'].nil? ? 0 : t['amplitude']
+      return nil unless terrain_bereich?(width, TERRAIN_MIN_SIZE, TERRAIN_MAX_SIZE) &&
+                        terrain_bereich?(height, TERRAIN_MIN_SIZE, TERRAIN_MAX_SIZE) &&
+                        terrain_bereich?(res, TERRAIN_MIN_RES, TERRAIN_MAX_RES) &&
+                        terrain_bereich?(seed, 0, 4_294_967_295) &&
+                        terrain_bereich?(amp, -TERRAIN_MAX_AMPLITUDE, TERRAIN_MAX_AMPLITUDE)
+
+      w = terrain_float32(width)
+      h = terrain_float32(height)
+      rx = res.to_i
+      z = terrain_float32(terrain_float32(rx * h) / [1.0, w].max)
+      return nil if z >= TERRAIN_MAX_RES + 0.5
+
+      rz = [TERRAIN_MIN_RES, z.round].max
+      return nil if rx * rz > TERRAIN_MAX_QUADS
+
+      [w, h, rx, rz]
+    end
+
     def pruefe_terrain(t)
       return if t.nil?
 
@@ -295,18 +352,58 @@ module MapCheck
       hoehe   = t['height'] || t['size']
       melde(WARNUNG, wo, "'width'/'size' fehlt oder <= 0") unless zahl?(groesse) && groesse > 0
       melde(WARNUNG, wo, "'height'/'size' fehlt oder <= 0") unless zahl?(hoehe) && hoehe > 0
-      if t.key?('resolution') && !(zahl?(t['resolution']) && t['resolution'].to_i > 1)
-        melde(WARNUNG, wo, "'resolution' muss > 1 sein")
+      if t.key?('resolution') && !(terrain_bereich?(t['resolution'], 2, TERRAIN_MAX_RES))
+        melde(WARNUNG, wo, "'resolution' muss > 1 sein und im sicheren Bereich liegen")
       end
       if t.key?('amplitude') && !zahl?(t['amplitude'])
         melde(WARNUNG, wo, "'amplitude' ist keine Zahl")
       end
-      if t.key?('tile') && !(zahl?(t['tile']) && t['tile'] > 0)
-        melde(WARNUNG, wo, "'tile' muss > 0 sein")
+      if t.key?('tile') && !t['tile'].nil? && !terrain_bereich?(t['tile'], TERRAIN_MIN_TILE, TERRAIN_MAX_TILE)
+        melde(WARNUNG, wo, "'tile' muss zwischen 0.01 und 10000 liegen; Ersatz 2 m")
+      end
+      if !t['texture'].nil? && !terrain_texture_name?(t['texture'])
+        melde(WARNUNG, wo, "'texture' ungültig oder zu lang; Gras als Ersatz")
       end
 
+      plan = terrain_pruefplan(t)
+      melde(WARNUNG, wo, 'Maße, Auflösung, Seed, Amplitude oder Rasterbudget ungültig; kein Gelände') unless plan
       pruefe_heights(t['heights'])
       pruefe_splats(t['splats'])
+      pruefe_terrain_budget(t, plan) if plan
+    end
+
+    def pruefe_terrain_budget(t, plan)
+      width, height, rx, rz = plan
+      splats = t['splats']
+      if splats.is_a?(Array) && !splats.empty? && rx * rz > TERRAIN_MAX_SPLAT_CHECKS / splats.size
+        melde(WARNUNG, "#{@karte_name} terrain.splats", 'Rechenbudget überschritten; kein Gelände')
+      end
+      brushes = t['heights']
+      return unless brushes.is_a?(Array) && brushes.size <= TERRAIN_MAX_BRUSHES
+
+      samples = 0
+      brushes.each do |b|
+        next unless b.is_a?(Hash) &&
+                    terrain_bereich?(b['x'], -TERRAIN_MAX_COORD, TERRAIN_MAX_COORD) &&
+                    terrain_bereich?(b['z'], -TERRAIN_MAX_COORD, TERRAIN_MAX_COORD) &&
+                    terrain_bereich?(b['r'], TERRAIN_MIN_RADIUS, TERRAIN_MAX_COORD) &&
+                    terrain_bereich?(b['h'], -TERRAIN_MAX_AMPLITUDE, TERRAIN_MAX_AMPLITUDE)
+        x, z, radius, h = %w[x z r h].map { |key| terrain_float32(b[key]) }
+        next if h.zero?
+
+        hw, hh = width * 0.5, height * 0.5
+        next if x - radius > hw || x + radius < -hw || z - radius > hh || z + radius < -hh
+
+        x0 = (((x - radius + hw) * rx / width).clamp(0.0, rx)).floor
+        x1 = (((x + radius + hw) * rx / width).clamp(0.0, rx)).ceil
+        z0 = (((z - radius + hh) * rz / height).clamp(0.0, rz)).floor
+        z1 = (((z + radius + hh) * rz / height).clamp(0.0, rz)).ceil
+        samples += (x1 - x0 + 1) * (z1 - z0 + 1)
+        if samples > TERRAIN_MAX_BRUSH_SAMPLES
+          melde(WARNUNG, "#{@karte_name} terrain.heights", 'Rechenbudget überschritten; kein Gelände')
+          break
+        end
+      end
     end
 
     # Gemalte Berge/Senken (Etappe 18l): [{x,z,r,h}]
@@ -316,6 +413,10 @@ module MapCheck
       wo = "#{@karte_name} terrain.heights"
       unless liste.is_a?(Array)
         melde(FEHLER, wo, 'ist keine Liste')
+        return
+      end
+      if liste.size > TERRAIN_MAX_BRUSHES
+        melde(WARNUNG, wo, 'mehr als 2048 Höhenpinsel; kein Gelände')
         return
       end
 
@@ -330,6 +431,13 @@ module MapCheck
         end
         melde(WARNUNG, w, "'r' (Radius) muss > 0 sein") if zahl?(b['r']) && b['r'] <= 0
         melde(WARNUNG, w, "'h' ist 0 (Bürste ohne Wirkung)") if zahl?(b['h']) && b['h'].zero?
+        if %w[x z r h].all? { |k| zahl?(b[k]) } &&
+           !(terrain_bereich?(b['x'], -TERRAIN_MAX_COORD, TERRAIN_MAX_COORD) &&
+             terrain_bereich?(b['z'], -TERRAIN_MAX_COORD, TERRAIN_MAX_COORD) &&
+             terrain_bereich?(b['r'], TERRAIN_MIN_RADIUS, TERRAIN_MAX_COORD) &&
+             terrain_bereich?(b['h'], -TERRAIN_MAX_AMPLITUDE, TERRAIN_MAX_AMPLITUDE))
+          melde(WARNUNG, w, 'Pinselwerte außerhalb des sicheren Bereichs; kein Gelände')
+        end
       end
     end
 
@@ -401,6 +509,10 @@ module MapCheck
         melde(FEHLER, wo, 'ist keine Liste')
         return
       end
+      if liste.size > TERRAIN_MAX_SPLATS
+        melde(WARNUNG, wo, 'mehr als 2048 Bodenflächen; kein Gelände')
+        return
+      end
 
       liste.each_with_index do |s, i|
         w = "#{wo} ##{i + 1}"
@@ -408,7 +520,9 @@ module MapCheck
           melde(FEHLER, w, 'ist kein Objekt')
           next
         end
-        unless text?(s['tex'])
+        if !terrain_texture_name?(s['tex']) && s['tex'].is_a?(String) && !s['tex'].empty?
+          melde(WARNUNG, w, 'Texturname ungültig oder zu lang; kein Gelände')
+        elsif !terrain_texture_name?(s['tex']) || !text?(s['tex'])
           melde(FEHLER, w, "ohne Material ('tex')")
         end
         %w[x z w h].each do |k|
@@ -417,7 +531,15 @@ module MapCheck
         %w[w h].each do |k|
           melde(WARNUNG, w, "'#{k}' muss > 0 sein") if zahl?(s[k]) && s[k] <= 0
         end
-        next unless @materials && text?(s['tex']) && !@materials.include?(s['tex'])
+        if %w[x z w h].all? { |k| zahl?(s[k]) } &&
+           !(terrain_bereich?(s['x'], -TERRAIN_MAX_COORD, TERRAIN_MAX_COORD) &&
+             terrain_bereich?(s['z'], -TERRAIN_MAX_COORD, TERRAIN_MAX_COORD) &&
+             terrain_bereich?(s['w'], TERRAIN_MIN_RADIUS, TERRAIN_MAX_COORD) &&
+             terrain_bereich?(s['h'], TERRAIN_MIN_RADIUS, TERRAIN_MAX_COORD))
+          melde(WARNUNG, w, 'Fläche außerhalb des sicheren Bereichs; kein Gelände')
+        end
+        next unless @materials && terrain_texture_name?(s['tex']) && text?(s['tex']) &&
+                    !@materials.include?(s['tex'])
 
         melde(WARNUNG, w, "Material '#{s['tex']}' ist nicht geladen")
       end
@@ -796,18 +918,20 @@ module MapCheck
     end
 
     def pruefe_atmosphaere(map)
-      if (fog = map['fog'])
+      unless (fog = map['fog']).nil?
         wo = "#{@karte_name} fog"
         unless fog.is_a?(Hash)
           melde(FEHLER, wo, 'ist kein Objekt')
         else
           melde(WARNUNG, wo, "'on' ist kein Bool") if fog.key?('on') && ![true, false].include?(fog['on'])
-          melde(WARNUNG, wo, "'far' muss > 0 sein") if fog.key?('far') && !(zahl?(fog['far']) && fog['far'] > 0)
+          if fog.key?('far') && !fog['far'].nil? && !terrain_bereich?(fog['far'], FOG_MIN_FAR, FOG_MAX_FAR)
+            melde(WARNUNG, wo, "'far' muss zwischen 0.1 und 100000 liegen; Ersatz 180 m")
+          end
           pruefe_farbe(fog['color'], wo)
         end
       end
 
-      if (pano = map['panorama'])
+      unless (pano = map['panorama']).nil?
         wo = "#{@karte_name} panorama"
         if pano.is_a?(Hash)
           pruefe_farbe(pano['color'], wo)
@@ -816,7 +940,7 @@ module MapCheck
         end
       end
 
-      if (wet = map['weather'])
+      unless (wet = map['weather']).nil?
         wo = "#{@karte_name} weather"
         unless wet.is_a?(Hash)
           melde(FEHLER, wo, 'ist kein Objekt')
@@ -824,16 +948,17 @@ module MapCheck
           unless WETTER.include?(wet['type'].to_s)
             melde(WARNUNG, wo, "unbekannter Typ '#{wet['type']}' (kein/regen/schnee)")
           end
-          if wet.key?('intensity') && !(zahl?(wet['intensity']) && wet['intensity'] > 0)
-            melde(WARNUNG, wo, "'intensity' muss > 0 sein")
+          if wet.key?('intensity') && !wet['intensity'].nil? &&
+             !(terrain_bereich?(wet['intensity'], 0, WEATHER_MAX_INTENSITY) && wet['intensity'] > 0)
+            melde(WARNUNG, wo, "'intensity' muss > 0 und <= 10 sein; Ersatz 1")
           end
         end
       end
     end
 
     def pruefe_farbe(wert, wo)
-      return unless wert
-      return if zahl?(wert) && wert.to_i >= 0 && wert.to_i <= 0xFFFFFF
+      return if wert.nil?
+      return if terrain_bereich?(wert, 0, 0xFFFFFF)
 
       melde(WARNUNG, wo, "'color' muss 0x000000..0xFFFFFF sein (ist #{wert.inspect})")
     end

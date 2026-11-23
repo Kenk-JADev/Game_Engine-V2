@@ -15,26 +15,11 @@ module Rune
     Game.draw       if Game.respond_to?(:draw)
   end
 
-  module World
-    # Gelände erzeugen - mit benannten Argumenten, damit Skripte lesbar bleiben.
-    # Rune::World.generate(width: 240, height: 180, resolution: 192, seed: 7,
-    #                      amplitude: 0.0)   # amplitude 0 = ganz flach
-    # size: wird als Quadrat weiter unterstützt (alte Karten).
-    # height_brushes: gemalte Berge/Senken aus dem Editor (Etappe 18l) -
-    # Liste von [x, z, radius, höhe] (höhe < 0 = Senke). Muss vor dem
-    # generate_raw-Aufruf gesetzt werden.
-    def self.generate(width: nil, height: nil, size: nil, resolution: 176,
-                      seed: 7, amplitude: 5.0, height_brushes: nil)
-      w = width || size || 220.0
-      h = height || size || w
-      self.height_brushes = height_brushes || []
-      generate_raw(w.to_f, h.to_f, resolution, seed, amplitude)
-    end
-  end
 end
 
 $LOAD_PATH.unshift(File.join(Rune::ROOT, 'game', 'engine'))
 
+require 'terrain_api'
 require 'node'
 require 'scene'
 require 'ui'

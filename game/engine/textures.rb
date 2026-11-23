@@ -174,8 +174,8 @@ module Textures
     'fels'  => method(:fels),
   }.freeze
 
-  # Alle Texturen an die Engine reichen. Bei F5 erneut aufgerufen - die Engine
-  # legt dann neue Slots an, die Namen zeigen auf die neuesten.
+  # Alle Texturen an die Engine reichen. Bei F5 erneut aufgerufen; der
+  # Renderer verwendet vorhandene Namens-Slots und unveränderte Pixel wieder.
   def self.register_all
     LIST.each do |name, maker|
       Rune::Gfx.texture(name, SIZE, SIZE, maker.call)

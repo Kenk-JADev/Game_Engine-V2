@@ -37,6 +37,8 @@
 #include <cstdlib>   // Etappe 19k.2: std::atof (Block-Zonen-Feld)
 #include <cstring>
 #include <cwchar>
+#include <new>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -50,11 +52,15 @@
 #include "editor/encounter_form.h"
 #include "editor/event_form.h"
 #include "editor/event_view_win.h"
+#include "editor/listbox_win.h"
 #include "editor/map_document.h"
 #include "editor/map_props_form.h"
 #include "editor/number_format.h"
 #include "editor/object_props_form.h"
 #include "editor/placement_form.h"
+#include "editor/terrain_preview.h"
+#include "editor/texture_path.h"
+#include "editor/tile_form.h"
 #include "gfx/camera.h"      // nur fuer Kamera-Konstanten, falls noetig
 #include "gfx/renderer.h"
 #include "math/math.h"
@@ -276,6 +282,11 @@ struct Editor {
 
     gfx::Renderer*  renderer = nullptr;
     world::Terrain* terrain = nullptr;
+    std::string terrain_error;       // Fehler des letzten tatsächlichen Mesh-Aufbaus
+    std::string terrain_warning;     // z.B. Einzeltextur statt Splat-Atlas
+    bool terrain_memory_error = false; // setzt auch ohne String-Allokation einen sichtbaren Fehler
+    bool terrain_field_warning = false;
+    bool atmosphere_warning = false;
 
     std::string root;                 // Engine-Wurzel (übergeordnetes Verz.)
     std::string project_dir;          // z.B. projekte/dorf
@@ -284,6 +295,7 @@ struct Editor {
     std::vector<std::string> map_files;   // Dateinamen in maps/
     std::vector<std::string> map_names;   // Anzeigenamen
     int cur_map = -1;
+    std::uint64_t map_epoch = 0, project_epoch = 0; // auch A → B → A erkennen
 
     JsonValue  map_root;              // ganze Karte (events/npcs bleiben drin)
     bool map_disk_present = false;
@@ -378,13 +390,17 @@ void cancel_object_drag() {
 struct DataPromptWindows {
     HWND owner = nullptr;
     std::vector<HWND> disabled;
+    bool failed = false;
 };
 
 BOOL CALLBACK collect_data_prompt_windows(HWND window, LPARAM param) {
     auto& state = *reinterpret_cast<DataPromptWindows*>(param);
     if (window != state.owner && IsWindowEnabled(window) &&
-        (window == g.main || GetWindow(window, GW_OWNER) == g.main))
-        state.disabled.push_back(window);
+        (window == g.main || GetWindow(window, GW_OWNER) == g.main)) {
+        // Keine C++-Exception aus einem Win32-Callback herauslaufen lassen.
+        try { state.disabled.push_back(window); }
+        catch (...) { state.failed = true; return FALSE; }
+    }
     return TRUE;
 }
 
@@ -397,7 +413,12 @@ int data_prompt(HWND owner, const wchar_t* text, const wchar_t* title, UINT flag
     DataPromptWindows windows;
     windows.owner = owner;
     g.data_prompt_active = true;
-    EnumThreadWindows(GetCurrentThreadId(), collect_data_prompt_windows, reinterpret_cast<LPARAM>(&windows));
+    if (!EnumThreadWindows(GetCurrentThreadId(), collect_data_prompt_windows,
+                           reinterpret_cast<LPARAM>(&windows)) || windows.failed) {
+        g.data_prompt_active = false;
+        try { core::log_warn("Datenrückfrage: Fenster konnten nicht sicher gesperrt werden"); } catch (...) {}
+        return IDCANCEL;
+    }
     for (HWND window : windows.disabled) EnableWindow(window, FALSE);
     const int result = MessageBoxW(owner, text, title, flags);
     for (HWND window : windows.disabled) if (IsWindow(window)) EnableWindow(window, TRUE);
@@ -455,9 +476,7 @@ void maptree_select_current();
 void open_tileset_dialog();
 
 // Etappe 18d: Splat-Boden (Boden-Flächen pro Karte).
-std::vector<world::SplatRect> read_splats(const JsonValue* t);
 void regen_terrain();
-void json_remove_key(JsonValue& v, const std::string& key);
 bool splat_edit(float cx, float cz, float sw, float sh,
                const std::string& tex, bool erase, bool snap);   // Etappe 18e
 // Etappe 18l: Berge/Senken malen (Höhen-Pinsel im Karten-JSON).
@@ -746,6 +765,10 @@ bool decode_image_wic(const std::string& path, int& out_w, int& out_h,
 
 void mat_register(const MaterialInfo& m) {
     if (!g.renderer) return;
+    if (!texture_file_is_flat(m.file)) {
+        core::log_warn("Material: ungültiger Dateiname in textures.json; Datei wird nicht gelesen");
+        return;
+    }
     std::string bytes;
     if (!read_file(mat_dir() + "\\" + m.file, bytes)) return;
     if (static_cast<int>(bytes.size()) != m.w * m.h * 4) {
@@ -865,6 +888,10 @@ bool mat_import_file(const std::string& src, std::string& out_name) {
     m.h = h;
     m.tile = 2.0;
     m.imported = true;
+    if (!texture_file_is_flat(m.file)) {
+        core::log_warn("Import: ungültiger Material-Dateiname");
+        return false;
+    }
 
     const std::string data(reinterpret_cast<const char*>(rgba.data()), rgba.size());
     if (!write_file(mat_dir() + "\\" + m.file, data)) {
@@ -1084,6 +1111,17 @@ void issues_scan_map() {
     // Die Existenz der Truppen prüft erst Battle.start gegen die Datenbank.
     issue_scan_encounters(g.map_root.find("encounters"), mapname + " encounters", issue_report);
     issue_scan_placement_heights(g.map_root, mapname, issue_report);
+    const TerrainPreview terrain = terrain_preview_read(g.map_root);
+    if (!terrain.ok())
+        issue_report(1, mapname + " terrain", terrain.error + "; keine Gelände-Vorschau");
+    else if (g.terrain_memory_error)
+        issue_report(1, mapname + " terrain", "Speicher für die Gelände-Vorschau nicht verfügbar; kein Gelände");
+    else if (!g.terrain_error.empty())
+        issue_report(1, mapname + " terrain", g.terrain_error + "; keine Gelände-Vorschau");
+    if (!g.terrain_warning.empty()) issue_report(1, mapname + " terrain", g.terrain_warning);
+    for (const std::string& warning : terrain.warnings) issue_report(1, mapname + " terrain", warning);
+    const AtmospherePreview atmosphere = atmosphere_preview_read(g.map_root);
+    for (const std::string& warning : atmosphere.warnings) issue_report(1, mapname + " Atmosphäre", warning);
 
     // Etappe 19k.3: Positionen in Block-Zonen (Parität zu MapCheck) - der
     // Spieler käme dort nicht hinein, NPCs stünden an der Wand und Wegpunkte
@@ -1246,7 +1284,12 @@ LRESULT CALLBACK problems_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
 }
 
 void open_problems_dialog() {
+    // Auch ein inzwischen reparierter Vorschaufehler muss verschwinden:
+    // der letzte Scan kann sowohl älter als ein Fehler als auch älter als
+    // dessen Behebung sein. F10 liest deshalb immer den aktuellen Zustand.
+    issues_scan_map();
     if (g_pb.win) {
+        pb_refresh();
         SetForegroundWindow(g_pb.win);
         return;
     }
@@ -1311,6 +1354,7 @@ bool load_map(int index, bool departure_checked = false) {
     cancel_object_drag();
     close_event_editor();   // Zeiger in map_root werden ungültig
     g.map_root = std::move(loaded);
+    ++g.map_epoch;
     g.objects = g.map_root.find("objects");
     if (!g.objects || !g.objects->is_arr()) {
         // Karte ohne Objekte: leeres Array anlegen.
@@ -1331,7 +1375,7 @@ bool load_map(int index, bool departure_checked = false) {
     regen_terrain();
 
     // Kamera auf eine gute Übersichtsposition (Blick Richtung Kartenmitte).
-    const float span = std::max(g.terrain->width(), g.terrain->height());
+    const float span = g.terrain->ready() ? std::max(g.terrain->width(), g.terrain->height()) : 240.0f;
     g.cam_pos = math::Vec3{ 0.0f, span * 0.10f + 8.0f, span * 0.18f };
     g.cam_yaw = math::PI;
     g.cam_pitch = -0.5f;
@@ -1484,14 +1528,40 @@ struct TileDlgState {
     HWND splist = nullptr;           // Etappe 18d: Flächen-Liste
     std::vector<std::string> names;   // Texturen in Listenreihenfolge
     std::string sel;                  // aktuell gewählte Textur
+    std::string project, map_file, texture_before, tile_before;
+    std::uint64_t map_epoch = 0, project_epoch = 0;
+    bool texture_indices_safe = true, splat_indices_safe = true;
 };
 static TileDlgState g_ts;
 
 // Text eines Kind-Controls (Edit) im Tileset-Fenster als UTF-8.
 std::string ts_text(int id) {
-    wchar_t buf[128];
-    GetDlgItemTextW(g_ts.win, id, buf, 128);
-    return wide_to_utf8(buf);
+    HWND control = GetDlgItem(g_ts.win, id);
+    if (!control) return {};
+    const int length = GetWindowTextLengthW(control);
+    if (length <= 0) return {};
+    std::wstring buf(static_cast<size_t>(length) + 1, L'\0');
+    GetWindowTextW(control, &buf[0], static_cast<int>(buf.size()));
+    return wide_to_utf8(buf.c_str());
+}
+
+bool ts_same_project() {
+    if (g_ts.project_epoch == g.project_epoch && g_ts.project == g.project_dir) return true;
+    MessageBoxW(g_ts.win, L"Das Projekt wurde gewechselt. Bitte das Tileset-Fenster "
+                          L"schließen und erneut öffnen, bevor Daten geändert werden.",
+                L"Terrain", MB_OK | MB_ICONWARNING);
+    return false;
+}
+
+bool ts_same_map() {
+    if (!ts_same_project()) return false;
+    if (g_ts.map_epoch == g.map_epoch && g.cur_map >= 0 &&
+        static_cast<size_t>(g.cur_map) < g.map_files.size() &&
+        g_ts.map_file == g.map_files[static_cast<size_t>(g.cur_map)]) return true;
+    MessageBoxW(g_ts.win, L"Die Karte wurde gewechselt oder neu geladen. Bitte das Tileset-Fenster "
+                          L"schließen und erneut öffnen, bevor Daten geändert werden.",
+                L"Terrain", MB_OK | MB_ICONWARNING);
+    return false;
 }
 
 // Eigene Kachel prozedural erzeugen (Basisfarbe + Zweitfarbe + Muster),
@@ -1587,18 +1657,21 @@ void draw_tileset_preview(HWND hwnd) {
 void ts_fill_list() {
     SendMessageW(g_ts.list, LB_RESETCONTENT, 0, 0);
     g_ts.names = mat_all_names();
-    for (const std::string& n : g_ts.names) {
-        SendMessageW(g_ts.list, LB_ADDSTRING, 0,
-                     reinterpret_cast<LPARAM>(utf8_to_wide(n).c_str()));
-    }
-    if (!g_ts.sel.empty()) {
-        for (int i = 0; i < static_cast<int>(g_ts.names.size()); ++i) {
-            if (g_ts.names[i] == g_ts.sel) {
-                SendMessageW(g_ts.list, LB_SETCURSEL, i, 0);
-                break;
-            }
+    g_ts.texture_indices_safe = true;
+    LRESULT selected = -1;
+    for (std::size_t i = 0; i < g_ts.names.size(); ++i) {
+        const std::wstring label = utf8_to_wide(g_ts.names[i]);
+        const LRESULT item = SendMessageW(g_ts.list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label.c_str()));
+        if (item == LB_ERR || item == LB_ERRSPACE ||
+            SendMessageW(g_ts.list, LB_SETITEMDATA, static_cast<WPARAM>(item), static_cast<LPARAM>(i)) == LB_ERR) {
+            g_ts.texture_indices_safe = false;
+            continue;
         }
+        if (g_ts.names[i] == g_ts.sel) selected = item;
     }
+    if (selected >= 0) SendMessageW(g_ts.list, LB_SETCURSEL, static_cast<WPARAM>(selected), 0);
+    if (!g_ts.texture_indices_safe)
+        status_mode(L"Texturliste unvollständig — Auswahl gesperrt; F7 erneut öffnen");
 }
 
 // Etappe 18d: Splat-Flächen-Liste im Tileset-Dialog neu füllen (Format:
@@ -1607,21 +1680,58 @@ void ts_fill_splats() {
     const int sel_before = static_cast<int>(
         SendMessageW(g_ts.splist, LB_GETCURSEL, 0, 0));
     SendMessageW(g_ts.splist, LB_RESETCONTENT, 0, 0);
+    g_ts.splat_indices_safe = true;
     const JsonValue* t = g.map_root.find("terrain");
-    const std::vector<world::SplatRect> splats = read_splats(t);
-    for (const world::SplatRect& s : splats) {
-        wchar_t buf[160];
-        swprintf(buf, 160, L"%s @ (%g, %g) %gx%g",
-                utf8_to_wide(s.tex).c_str(), s.x, s.z, s.w, s.h);
-        SendMessageW(g_ts.splist, LB_ADDSTRING, 0,
-                     reinterpret_cast<LPARAM>(buf));
+    const JsonValue* list = t && t->is_obj() ? t->find("splats") : nullptr;
+    const SplatListModel model = splat_list_model(list);
+    // Auch ungültige Einträge sichtbar lassen. Der Listeneintrag trägt den
+    // Originalindex; gefilterte Vorschauen dürfen nie einen anderen löschen.
+    for (const SplatListRow& row : model.rows) {
+        std::wstring label;
+        if (row.valid) {
+            const world::SplatRect& s = row.splat;
+            std::wstring name = utf8_to_wide(s.tex);
+            if (name.size() > 60) name = name.substr(0, 57) + L"...";
+            wchar_t buf[160] = {};
+            swprintf(buf, 160, L"%ls @ (%g, %g) %gx%g", name.c_str(), s.x, s.z, s.w, s.h);
+            label = buf;
+        } else label = L"#" + std::to_wstring(row.original_index + 1) + L" [ungültige Fläche]";
+        const LRESULT item = SendMessageW(g_ts.splist, LB_ADDSTRING, 0,
+                                           reinterpret_cast<LPARAM>(label.c_str()));
+        if (item == LB_ERR || item == LB_ERRSPACE ||
+            SendMessageW(g_ts.splist, LB_SETITEMDATA, static_cast<WPARAM>(item),
+                         static_cast<LPARAM>(row.original_index)) == LB_ERR)
+            g_ts.splat_indices_safe = false;
     }
-    if (sel_before >= 0 && sel_before < static_cast<int>(splats.size())) {
+    if (model.omitted) {
+        const std::wstring more = L"[" + std::to_wstring(model.omitted) + L" weitere ausgeblendet]";
+        const LRESULT item = SendMessageW(g_ts.splist, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(more.c_str()));
+        if (item == LB_ERR || item == LB_ERRSPACE ||
+            SendMessageW(g_ts.splist, LB_SETITEMDATA, static_cast<WPARAM>(item), static_cast<LPARAM>(-1)) == LB_ERR)
+            g_ts.splat_indices_safe = false;
+    }
+    if (!g_ts.splat_indices_safe)
+        status_mode(L"Flächenliste unvollständig — Löschen gesperrt; F7 erneut öffnen");
+    if (sel_before >= 0 && sel_before < SendMessageW(g_ts.splist, LB_GETCOUNT, 0, 0))
         SendMessageW(g_ts.splist, LB_SETCURSEL, sel_before, 0);
-    }
 }
 
 LRESULT CALLBACK tileset_dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
+    // Auch bereits gepostete Aktionen dürfen während einer Datenrückfrage
+    // keine Karte oder Liste ändern (MessageBox pumpt Nachrichten weiter).
+    if (g.data_prompt_active) {
+        if (msg == WM_COMMAND) {
+            if (LOWORD(wp) == IDTS_LIST &&
+                (HIWORD(wp) == LBN_SELCHANGE || HIWORD(wp) == LBN_DBLCLK)) {
+                const auto it = std::find(g_ts.names.begin(), g_ts.names.end(), g_ts.sel);
+                const LPARAM original = g_ts.texture_indices_safe && it != g_ts.names.end()
+                    ? static_cast<LPARAM>(it - g_ts.names.begin()) : -1;
+                listbox_select_data(g_ts.list, original);
+            }
+            return 0;
+        }
+        if (msg == WM_CLOSE) return 0;
+    }
     switch (msg) {
         case WM_PAINT:
             if (h == g_ts.preview) { draw_tileset_preview(h); return 0; }
@@ -1629,10 +1739,24 @@ LRESULT CALLBACK tileset_dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_COMMAND: {
             const int id = LOWORD(wp);
             const int code = HIWORD(wp);
+            // F5 arbeitet auf einer vollständigen Kartenkopie; eine bereits
+            // gepostete F7-Aktion darf diese Kopie nicht überholen und später
+            // vom F5-OK wieder überschrieben werden. F2 bearbeitet dagegen
+            // nur seine Felder auf dem aktuellen Baum.
+            if (g.props_dlg && g.dlg_mode != 1 &&
+                (id == IDTS_APPLY || id == IDTS_SPADD || id == IDTS_SPDEL ||
+                 id == IDTS_EXPORT || id == IDTS_SAVE)) return 0;
             if (id == IDTS_LIST && (code == LBN_SELCHANGE || code == LBN_DBLCLK)) {
-                const int sel = static_cast<int>(SendMessageW(g_ts.list, LB_GETCURSEL, 0, 0));
-                if (sel >= 0 && sel < static_cast<int>(g_ts.names.size())) {
-                    g_ts.sel = g_ts.names[sel];
+                if (!g_ts.texture_indices_safe) {
+                    SendMessageW(g_ts.list, LB_SETCURSEL, static_cast<WPARAM>(-1), 0);
+                    status_mode(L"Texturliste unvollständig — Auswahl gesperrt; F7 erneut öffnen");
+                    return 0;
+                }
+                const LRESULT sel = SendMessageW(g_ts.list, LB_GETCURSEL, 0, 0);
+                const LRESULT original = sel == LB_ERR ? LB_ERR :
+                    SendMessageW(g_ts.list, LB_GETITEMDATA, static_cast<WPARAM>(sel), 0);
+                if (original >= 0 && static_cast<std::size_t>(original) < g_ts.names.size()) {
+                    g_ts.sel = g_ts.names[static_cast<std::size_t>(original)];
                     // Etappe 18e: im Mal-Modus die Pinseltextur mitführen.
                     if (g.paint_mode) {
                         g.paint_tex = g_ts.sel;
@@ -1645,21 +1769,43 @@ LRESULT CALLBACK tileset_dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 return 0;
             }
             if (id == IDTS_APPLY) {
-                if (!g_ts.sel.empty() && g.cur_map >= 0) {
+                if (g.cur_map >= 0) {
+                    if (!ts_same_map()) return 0;
+                    const std::string tile_text = ts_text(IDTS_TILE);
+                    TileFormEdit edit;
+                    try {
+                        edit = tile_form_prepare(g.map_root.find("terrain"), g_ts.texture_before,
+                                                 g_ts.sel, g_ts.tile_before, tile_text);
+                    } catch (const std::bad_alloc&) {
+                        MessageBoxW(g_ts.win, L"Nicht genügend Speicher; die Kartendaten wurden nicht geändert.",
+                                    L"Terrain", MB_OK | MB_ICONERROR);
+                        return 0;
+                    } catch (const std::length_error&) {
+                        MessageBoxW(g_ts.win, L"Terrain-Daten zu groß; die Kartendaten wurden nicht geändert.",
+                                    L"Terrain", MB_OK | MB_ICONERROR);
+                        return 0;
+                    }
+                    if (!edit.ok) {
+                        MessageBoxW(g_ts.win, utf8_to_wide(edit.error).c_str(), L"Terrain",
+                                    MB_OK | MB_ICONWARNING);
+                        return 0;
+                    }
+                    if (!edit.changed) { status_mode(L"Boden unverändert"); return 0; }
+                    if (edit.replaces_invalid && data_prompt(g_ts.win,
+                        L"Die Änderung ersetzt ungültige vorhandene Terrain-Daten. Trotzdem übernehmen?",
+                        L"Terrain", MB_YESNO | MB_DEFBUTTON2 | MB_ICONWARNING) != IDYES) return 0;
+                    if (!ts_same_map()) return 0;
                     JsonValue* ter = writable_terrain();
                     if (!ter) return 0;
-                    ter->set("texture", JsonValue::make_str(g_ts.sel));
-                    const float tile = std::max(0.25f,
-                        static_cast<float>(std::atof(ts_text(IDTS_TILE).c_str())));
-                    ter->set("tile", JsonValue::make_num(static_cast<double>(tile), false));
+                    *ter = std::move(edit.value);
+                    g_ts.texture_before = g_ts.sel;
+                    g_ts.tile_before = tile_text;
                     regen_terrain();          // entscheidet Ein-Textur- oder Splat-Pfad
                     g.dirty = true;
                     update_title();
                     ts_fill_splats();
                     status_mode(L"Boden übernommen");
-                    core::log_info("Boden umgestellt: " + g_ts.sel +
-                                   " (Kachel " + std::to_string(tile) + " m, " +
-                                   std::to_string(read_splats(ter).size()) + " Fläche(n))");
+                    core::log_info("Boden umgestellt: " + g_ts.sel);
                 } else {
                     core::log_warn("Tileset: keine Textur gewählt oder keine Karte offen");
                     status_mode(L"Keine Textur gewählt");
@@ -1673,17 +1819,30 @@ LRESULT CALLBACK tileset_dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                     status_mode(L"Erst Textur wählen");
                     return 0;
                 }
-                const float x = static_cast<float>(std::atof(ts_text(IDTS_SPX).c_str()));
-                const float z = static_cast<float>(std::atof(ts_text(IDTS_SPZ).c_str()));
-                const float w = static_cast<float>(std::atof(ts_text(IDTS_SPW).c_str()));
-                const float h = static_cast<float>(std::atof(ts_text(IDTS_SPH).c_str()));
-                if (w <= 0.0f || h <= 0.0f) {
-                    core::log_warn("Tileset: Fläche braucht Breite/Tiefe > 0");
-                    status_mode(L"Breite/Tiefe ungültig");
+                if (!ts_same_map()) return 0;
+                double xd, zd, wd, hd;
+                if (!map_props_number(ts_text(IDTS_SPX), xd) || !map_props_number(ts_text(IDTS_SPZ), zd) ||
+                    !map_props_number(ts_text(IDTS_SPW), wd) || !map_props_number(ts_text(IDTS_SPH), hd) ||
+                    !world::terrain_valid_splat(xd, zd, wd, hd)) {
+                    MessageBoxW(g_ts.win, L"Fläche: endliche Koordinaten bis ±1.000.000 und "
+                                           L"Breite/Tiefe von 0,001 bis 1.000.000 eingeben.",
+                                L"Terrain", MB_OK | MB_ICONWARNING);
                     return 0;
                 }
+                TerrainPreview candidate = terrain_preview_read(g.map_root);
+                if (!candidate.ok()) {
+                    MessageBoxW(g_ts.win, L"Terrain-Vorschau ungültig. Bitte zuerst die F10-Probleme prüfen.",
+                                L"Terrain", MB_OK | MB_ICONWARNING); return 0;
+                }
+                const float x = static_cast<float>(xd), z = static_cast<float>(zd);
+                const float w = static_cast<float>(wd), h = static_cast<float>(hd);
+                candidate.splats.push_back(world::SplatRect{x, z, w, h, g_ts.sel});
+                if (world::terrain_check_splats(candidate.plan, candidate.splats) != world::TerrainProblem::None) {
+                    MessageBoxW(g_ts.win, L"Diese Fläche würde das Terrain-Budget überschreiten.",
+                                L"Terrain", MB_OK | MB_ICONWARNING); return 0;
+                }
                 JsonValue* ter = writable_terrain();
-                if (!ter) return 0;
+                if (!ter || !preview_unique(*ter, "splats")) return 0;
                 JsonValue* arr = ter->find("splats");
                 if (arr && !arr->is_arr()) {
                     MessageBoxW(g_ts.win, L"terrain.splats ist keine Liste; die Altdaten bleiben erhalten.",
@@ -1693,10 +1852,10 @@ LRESULT CALLBACK tileset_dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 if (!arr) arr = &ter->set("splats", JsonValue::make_arr());
                 JsonValue e = JsonValue::make_obj();
                 e.set("tex", JsonValue::make_str(g_ts.sel));
-                e.set("x", JsonValue::make_num(static_cast<double>(x)));
-                e.set("z", JsonValue::make_num(static_cast<double>(z)));
-                e.set("w", JsonValue::make_num(static_cast<double>(w)));
-                e.set("h", JsonValue::make_num(static_cast<double>(h)));
+                e.set("x", JsonValue::make_num(xd));
+                e.set("z", JsonValue::make_num(zd));
+                e.set("w", JsonValue::make_num(wd));
+                e.set("h", JsonValue::make_num(hd));
                 arr->arr.push_back(e);
                 regen_terrain();
                 ts_fill_splats();
@@ -1710,18 +1869,31 @@ LRESULT CALLBACK tileset_dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             }
             // Etappe 18d: markierte Fläche entfernen.
             if (id == IDTS_SPDEL) {
-                const int sel = static_cast<int>(SendMessageW(g_ts.splist, LB_GETCURSEL, 0, 0));
-                JsonValue* ter = g.map_root.find("terrain");
-                JsonValue* arr = ter ? ter->find("splats") : nullptr;
-                if (sel < 0 || !arr || !arr->is_arr() || sel >= static_cast<int>(arr->arr.size())) {
-                    core::log_warn("Tileset: keine Fläche markiert");
-                    status_mode(L"Keine Fläche markiert");
+                if (!ts_same_map()) return 0;
+                if (!g_ts.splat_indices_safe) {
+                    MessageBoxW(g_ts.win, L"Die Flächenliste konnte nicht vollständig aufgebaut werden. "
+                                           L"Löschen ist gesperrt; bitte F7 erneut öffnen.",
+                                L"Terrain", MB_OK | MB_ICONWARNING);
                     return 0;
                 }
-                arr->arr.erase(arr->arr.begin() + sel);
-                if (arr->arr.empty()) {
-                    json_remove_key(*ter, "splats");   // leere Liste ganz raus
+                const int sel = static_cast<int>(SendMessageW(g_ts.splist, LB_GETCURSEL, 0, 0));
+                const LRESULT original = sel < 0 ? LB_ERR :
+                    SendMessageW(g_ts.splist, LB_GETITEMDATA, static_cast<WPARAM>(sel), 0);
+                const SplatDeleteState state = splat_delete_state(g.map_root, static_cast<std::ptrdiff_t>(original));
+                if (state == SplatDeleteState::Unavailable) {
+                    core::log_warn("Tileset: keine eindeutige Fläche markiert");
+                    status_mode(L"Keine eindeutige Fläche markiert");
+                    return 0;
                 }
+                const bool needs_confirmation = state == SplatDeleteState::NeedsConfirmation;
+                if (needs_confirmation && data_prompt(g_ts.win,
+                    L"Dieser Eintrag enthält ungültige Altdaten. Wirklich vollständig löschen?", L"Terrain",
+                    MB_YESNO | MB_DEFBUTTON2 | MB_ICONWARNING) != IDYES) return 0;
+                // Nach der modalen Rückfrage nur auf dem aktuellen Baum und
+                // derselben Karten-/Projektgeneration arbeiten, nie mit einem
+                // zuvor gehaltenen JSON-Zeiger.
+                if (!ts_same_map() || splat_delete_state(g.map_root, static_cast<std::ptrdiff_t>(original)) != state ||
+                    !splat_delete_apply(g.map_root, static_cast<std::ptrdiff_t>(original), needs_confirmation)) return 0;
                 regen_terrain();
                 ts_fill_splats();
                 g.dirty = true;
@@ -1731,17 +1903,26 @@ LRESULT CALLBACK tileset_dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 return 0;
             }
             if (id == IDTS_EXPORT) {
+                if (!ts_same_project()) return 0;
                 std::string name = ts_text(IDTS_NAME);
                 for (char& c : name) if (c == ' ') c = '_';
                 if (name.empty()) {
                     name = "kachel_" + std::to_string(GetTickCount() % 10000);
                 }
+                if (!world::terrain_valid_texture_name(name)) {
+                    MessageBoxW(g_ts.win, L"Der Texturname ist ungültig oder zu lang.",
+                                L"Terrain", MB_OK | MB_ICONWARNING);
+                    return 0;
+                }
                 wchar_t wpat[32];
                 GetDlgItemTextW(h, IDTS_PAT, wpat, 32);
                 const std::vector<uint8_t> px = make_pattern_tile(
                     ts_text(IDTS_COLR), wide_to_utf8(wpat), ts_text(IDTS_COLR2));
-                if (g.renderer) {
-                    g.renderer->add_texture(name, 64, 64, px.data());
+                if (!g.renderer || g.renderer->add_texture(name, 64, 64, px.data()) < 0) {
+                    MessageBoxW(g_ts.win, L"Die Kachel konnte nicht im Renderer angelegt werden.",
+                                L"Terrain", MB_OK | MB_ICONERROR);
+                    status_mode(L"Kachel nicht angelegt");
+                    return 0;
                 }
                 g_ts.sel = name;
                 ts_fill_list();
@@ -1752,20 +1933,28 @@ LRESULT CALLBACK tileset_dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 return 0;
             }
             if (id == IDTS_SAVE) {
+                if (!ts_same_project()) return 0;
                 if (g_ts.sel.empty()) {
                     core::log_warn("Tileset: keine Textur gewählt");
                     return 0;
                 }
-                g_ts.sel = ts_text(IDTS_NAME).empty() ? g_ts.sel : ts_text(IDTS_NAME);
+                const std::string typed = ts_text(IDTS_NAME);
+                const std::string selected = typed.empty() ? g_ts.sel : typed;
+                const std::string filename = selected + ".rgba";
+                if (!world::terrain_valid_texture_name(selected) || !texture_file_is_flat(filename)) {
+                    MessageBoxW(g_ts.win, L"Bitte einen einfachen Dateinamen ohne Pfad, Geräte- oder Sonderzeichen eingeben.",
+                                L"Terrain", MB_OK | MB_ICONWARNING);
+                    return 0;
+                }
                 std::vector<uint8_t> px;
                 int w = 0, h = 0;
-                if (!g.renderer || !g.renderer->texture_rgba(g_ts.sel, px, w, h)) {
-                    core::log_error("Tileset: Pixel nicht abrufbar: " + g_ts.sel);
+                if (!g.renderer || !g.renderer->texture_rgba(selected, px, w, h)) {
+                    core::log_error("Tileset: Pixel nicht abrufbar: " + selected);
                     return 0;
                 }
                 MaterialInfo m;
-                m.name = g_ts.sel;
-                m.file = g_ts.sel + ".rgba";
+                m.name = selected;
+                m.file = filename;
                 m.source = "tileset";
                 m.w = w;
                 m.h = h;
@@ -1777,6 +1966,7 @@ LRESULT CALLBACK tileset_dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                     core::log_error("Tileset: .rgba nicht schreibbar: " + m.file);
                     return 0;
                 }
+                g_ts.sel = selected;
                 bool replaced = false;
                 for (MaterialInfo& old : g_materials) {
                     if (old.name == m.name) { old = m; replaced = true; break; }
@@ -1827,6 +2017,12 @@ void open_tileset_dialog() {
                                WS_POPUP | WS_CAPTION | WS_SYSMENU,
                                mr.left + 180, mr.top + 90, W, H,
                                g.main, nullptr, GetModuleHandleW(nullptr), nullptr);
+    g_ts.project = g.project_dir;
+    g_ts.project_epoch = g.project_epoch;
+    g_ts.map_epoch = g.map_epoch;
+    g_ts.map_file = g.cur_map >= 0 && static_cast<size_t>(g.cur_map) < g.map_files.size()
+        ? g.map_files[static_cast<size_t>(g.cur_map)] : std::string();
+    g_ts.sel.clear();
 
     // Control-Helfer auf dem Tileset-Fenster (wie prj_control).
     auto ts = [&](const wchar_t* cls, const wchar_t* text, DWORD style,
@@ -1844,26 +2040,16 @@ void open_tileset_dialog() {
     g_ts.list = ts(L"ListBox", nullptr,
                    LBS_NOTIFY | WS_BORDER | LBS_HASSTRINGS | WS_VSCROLL,
                    12, 36, 180, 380, IDTS_LIST);
-    g_ts.names = mat_all_names();
-    for (const std::string& n : g_ts.names) {
-        SendMessageW(g_ts.list, LB_ADDSTRING, 0,
-                     reinterpret_cast<LPARAM>(utf8_to_wide(n).c_str()));
-    }
     // Aktuell in der Karte eingestellte Boden-Textur vorwählen.
     {
         const JsonValue* ter = g.map_root.find("terrain");
-        const JsonValue* tx = ter ? ter->find("texture") : nullptr;
-        const std::string cur = tx ? tx->str : std::string("gras");
-        if (!cur.empty()) {
-            g_ts.sel = cur;
-            for (int i = 0; i < static_cast<int>(g_ts.names.size()); ++i) {
-                if (g_ts.names[i] == cur) {
-                    SendMessageW(g_ts.list, LB_SETCURSEL, i, 0);
-                    break;
-                }
-            }
-        }
+        const JsonValue* tx = ter && ter->is_obj() ? ter->find("texture") : nullptr;
+        const std::string cur = !tx || tx->is_null() ? "gras"
+            : tx->is_str() && world::terrain_valid_texture_name(tx->str) ? tx->str : std::string();
+        if (!cur.empty()) g_ts.sel = cur;
     }
+    ts_fill_list();
+    g_ts.texture_before = g_ts.sel;
 
     // Rechte Spalte: Vorschau + Kachelgrösse + Eigene Kachel + Buttons.
     // Vorschau als eigenes Fenster der Tileset-Klasse (WM_PAINT landet so
@@ -1875,7 +2061,11 @@ void open_tileset_dialog() {
                                    GetModuleHandleW(nullptr), nullptr);
 
     ts(L"Static", L"Kachelgröße (m):", 0, 205, 232, 120, 20, 0);
-    ts(L"Edit", L"2.0", WS_BORDER | ES_LEFT, 330, 228, 44, 24, IDTS_TILE);
+    HWND tile_edit = ts(L"Edit", L"2.0", WS_BORDER | ES_LEFT, 330, 228, 44, 24, IDTS_TILE);
+    const JsonValue* tile_terrain = g.map_root.find("terrain");
+    const JsonValue* old_tile = tile_terrain && tile_terrain->is_obj() ? tile_terrain->find("tile") : nullptr;
+    SetWindowTextW(tile_edit, utf8_to_wide(map_props_number_display(old_tile, 2.0)).c_str());
+    g_ts.tile_before = ts_text(IDTS_TILE);
 
     ts(L"Static", L"Eigene Kachel:", 0, 205, 262, 100, 20, 0);
     ts(L"Static", L"Farbe:", 0, 205, 288, 60, 20, 0);
@@ -2048,6 +2238,8 @@ bool switch_project(const std::string& name, bool departure_checked) {
 
     g.project_dir = data;
     g.project_name = name;
+    ++g.project_epoch;
+    ++g.map_epoch;
     g.dirty = false;
     g.sel_obj = -1;
     g.undo_stack.clear();
@@ -2059,6 +2251,12 @@ bool switch_project(const std::string& name, bool departure_checked) {
     g.map_disk_present = false;
     g.map_disk_text.clear();
     g.cur_map = -1;
+    g.terrain_error.clear();
+    g.terrain_warning.clear();
+    g.terrain_memory_error = false;
+    g.terrain_field_warning = false;
+    g.atmosphere_warning = false;
+    g.terrain->clear();
     g.renderer->clear_terrain();
 
     // Importierte Texturen des Projekts laden.
@@ -2100,6 +2298,8 @@ struct ProjectDlgState {
 static ProjectDlgState g_prj;
 
 LRESULT CALLBACK project_dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
+    // Bereits gepostete Befehle werden auch an deaktivierte Fenster zugestellt.
+    if (g.data_prompt_active && (msg == WM_COMMAND || msg == WM_CLOSE)) return 0;
     switch (msg) {
         case WM_COMMAND: {
             const int id = LOWORD(wp);
@@ -2577,12 +2777,6 @@ void sync_object_list() {
     write_objects_introspection();
 }
 
-void json_remove_key(JsonValue& v, const std::string& key) {
-    for (auto it = v.obj.begin(); it != v.obj.end(); ++it) {
-        if (it->first == key) { v.obj.erase(it); return; }
-    }
-}
-
 void sync_property_fields() {
     const JsonValue* object = nullptr;
     if (g.objects && g.sel_obj >= 0 && static_cast<size_t>(g.sel_obj) < g.objects->arr.size())
@@ -2873,6 +3067,8 @@ math::Vec3 ray_dir(float ndc_x, float ndc_y, float aspect) {
 
 // Ray-March übers Gelände (wie der alte Editor.terrain_hit).
 bool terrain_hit(const math::Vec3& eye, const math::Vec3& dir, math::Vec3& out) {
+    // Kein fiktiver Nullboden zum Malen/Picken, wenn die Vorschau ausfiel.
+    if (!g.terrain || !g.terrain->ready()) return false;
     const float max_t = 400.0f;
     float t_prev = 0.0f;
     float d_prev = eye.y - base_y_at(eye.x, eye.z);
@@ -3344,7 +3540,12 @@ void status_text(int part, const std::wstring& text) {
 
 void update_status() {
     wchar_t buf[128];
-    status_text(0, g.status_mode);
+    // Andere Aktionen überschreiben status_mode. Ein ausgefallenes Terrain
+    // muss trotzdem sichtbar bleiben, bis ein Neuaufbau wieder gelingt.
+    if (g.terrain_memory_error || !g.terrain_error.empty()) status_text(0, L"Keine Gelände-Vorschau — F10");
+    else if (!g.terrain_warning.empty()) status_text(0, L"Boden-Vorschau eingeschränkt — F10");
+    else if (g.terrain_field_warning || g.atmosphere_warning) status_text(0, L"Terrain-/Atmosphäre-Ersatz — F10");
+    else status_text(0, g.status_mode);
     std::swprintf(buf, 128, L"Objekte: %d", g.objects ? static_cast<int>(g.objects->arr.size()) : 0);
     status_text(1, buf);
     if (g.hover_valid) {
@@ -3370,6 +3571,12 @@ void update_status() {
 //  Viewport: Eingabe (Maus) + D3D-Ausgabe
 // ------------------------------------------------------------
 LRESULT CALLBACK view_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
+    // Bereits gepostete Mausaktionen können eine MessageBox-Schleife noch
+    // erreichen. Keine JSON-Bearbeitung während einer Datenentscheidung;
+    // Mouse-Up bleibt für Capture-/Drag-Aufräumen zulässig.
+    if (g.data_prompt_active &&
+        ((msg >= WM_MOUSEFIRST && msg <= WM_MOUSELAST && msg != WM_LBUTTONUP && msg != WM_RBUTTONUP) ||
+         msg == WM_CONTEXTMENU)) return 0;
     // Während eines offenen Dialogs keine Kamera-/Editier-Eingaben.
     if (g.props_dlg && (msg >= WM_MOUSEFIRST && msg <= WM_MOUSELAST)) return 0;
     switch (msg) {
@@ -4073,7 +4280,21 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 return 0;
             case WM_OBJECT_LIST_FOCUS: case WM_OBJECT_LIST_CONTEXT: case WM_OBJECT_LIST_SORT:
             case WM_TREE_OPEN_PROPS: case WM_TREE_CONTEXT: case WM_TREE_RENAME_WARNING:
-            case WM_COMMAND: case WM_NOTIFY: case WM_CONTEXTMENU: case WM_CLOSE:
+            case WM_COMMAND: case WM_CONTEXTMENU: case WM_CLOSE:
+                return 0;
+            case WM_NOTIFY: {
+                const NMHDR* nm = reinterpret_cast<const NMHDR*>(lp);
+                if (!nm) return 0;
+                if (nm->idFrom == IDC_MAPTREE && nm->hwndFrom == g.map_tree) {
+                    if (nm->code == TVN_SELCHANGING || nm->code == TVN_BEGINLABELEDIT) return TRUE;
+                    if (nm->code == TVN_SELCHANGED) g.map_selection_delayed = true;
+                } else if (nm->idFrom == IDC_OBJ_LIST && nm->code == LVN_ITEMCHANGED) {
+                    g.object_selection_delayed = true;
+                }
+                return 0;
+            }
+            case WM_DROPFILES:
+                DragFinish(reinterpret_cast<HDROP>(wp));
                 return 0;
             default: break;
         }
@@ -4250,15 +4471,8 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                     return 0;
                 case ID_MENU_RESETCAM:
                     if (g.cur_map >= 0) {
-                        const JsonValue* t = g.map_root.find("terrain");
-                        auto tnum = [&](const char* key, double fallback) {
-                            if (!t) return fallback;
-                            const JsonValue* v = t->find(key);
-                            return v ? v->number(fallback) : fallback;
-                        };
-                        const double size_fallback = tnum("size", 240);
-                        const float span = static_cast<float>(std::max(tnum("width", size_fallback),
-                                                                       tnum("height", size_fallback)));
+                        const float span = g.terrain && g.terrain->ready()
+                            ? std::max(g.terrain->width(), g.terrain->height()) : 240.0f;
                         g.cam_pos = math::Vec3{ 0.0f, span * 0.10f + 8.0f, span * 0.18f };
                         g.cam_yaw = math::PI;
                         g.cam_pitch = -0.5f;
@@ -4794,6 +5008,15 @@ void encounter_add_choice() {
 }
 
 LRESULT CALLBACK dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
+    if (g.data_prompt_active) {
+        // Ein Edit-Control kann eine bereits zugestellte Textänderung noch
+        // melden. Die Berührungsmarke behalten, aber keine Aktion ausführen.
+        if (msg == WM_COMMAND && g.dlg_mode == 1 && !g_enc_dlg.syncing && HIWORD(wp) == EN_CHANGE) {
+            if (LOWORD(wp) == IDLG_ENC_TROOPS) g_enc_dlg.troops_touched = true;
+            if (LOWORD(wp) == IDLG_ENC_STEPS) g_enc_dlg.steps_touched = true;
+        }
+        if (msg == WM_COMMAND || msg == WM_CLOSE) return 0;
+    }
     switch (msg) {
         // Das Fenster nutzt eine eigene Klasse statt eines Dialog-Templates;
         // IsDialogMessage muss trotzdem den Standard-Button ermitteln können.
@@ -4850,29 +5073,6 @@ void modal_loop(HWND dlg) {
     SetForegroundWindow(g.main);
 }
 
-// Flächen-Liste (terrain.splats) aus dem Karten-JSON lesen.
-std::vector<world::SplatRect> read_splats(const JsonValue* t) {
-    std::vector<world::SplatRect> splats;
-    const JsonValue* arr = t ? t->find("splats") : nullptr;
-    if (!arr || !arr->is_arr()) return splats;
-    for (const JsonValue& e : arr->arr) {
-        if (!e.is_obj()) continue;
-        const JsonValue* tex = e.find("tex");
-        const JsonValue* x = e.find("x");
-        const JsonValue* z = e.find("z");
-        const JsonValue* w = e.find("w");
-        const JsonValue* h = e.find("h");
-        world::SplatRect s;
-        s.tex = tex ? tex->str : std::string();
-        s.x = x ? static_cast<float>(x->number(0)) : 0.0f;
-        s.z = z ? static_cast<float>(z->number(0)) : 0.0f;
-        s.w = w ? static_cast<float>(w->number(0)) : 0.0f;
-        s.h = h ? static_cast<float>(h->number(0)) : 0.0f;
-        if (!s.tex.empty() && s.w > 0.0f && s.h > 0.0f) splats.push_back(s);
-    }
-    return splats;
-}
-
 // Etappe 18e: Boden-Fläche anlegen (rev = false) oder Punkt-löschen (true).
 // Zentriert x/z, Ausdehnung w/h; legt terrain.splats an, falls fehlt.
 // Rückgabe: true wenn die Karte geändert wurde.
@@ -4886,8 +5086,17 @@ bool splat_edit(float cx, float cz, float sw, float sh,
         sh = std::max(g.grid, std::round(sh / g.grid) * g.grid);
     }
     if (erase && !g.map_root.find("terrain")) return false;
+    if (!erase) {
+        TerrainPreview candidate = terrain_preview_read(g.map_root);
+        if (!candidate.ok()) return false;
+        candidate.splats.push_back(world::SplatRect{cx - sw * 0.5f, cz - sh * 0.5f, sw, sh, tex});
+        if (world::terrain_check_splats(candidate.plan, candidate.splats) != world::TerrainProblem::None) {
+            MessageBoxW(g.main, L"Diese Fläche würde das Terrain-Budget überschreiten.",
+                        L"Terrain", MB_OK | MB_ICONWARNING); return false;
+        }
+    }
     JsonValue* ter = writable_terrain();
-    if (!ter) return false;
+    if (!ter || !preview_unique(*ter, "splats")) return false;
     JsonValue* arr = ter->find("splats");
     if (erase && (!arr || !arr->is_arr())) return false;
     if (arr && !arr->is_arr()) {
@@ -4907,22 +5116,22 @@ bool splat_edit(float cx, float cz, float sw, float sh,
         arr->arr.push_back(e);
         return true;
     }
-    // Löschen: letzte (späteste) Fläche entfernen, die den Punkt abdeckt.
-    for (int i = static_cast<int>(arr->arr.size()) - 1; i >= 0; --i) {
+    // Ein Radierer darf bei extrem langen Listen keine unbegrenzte Suche
+    // auslösen; einzelne sichtbare Einträge können stattdessen in F7 weg.
+    if (arr->arr.size() > world::TERRAIN_MAX_SPLATS) {
+        MessageBoxW(g.main, L"Zu viele Bodenflächen für den Radierer. Bitte die Liste in F7 prüfen.",
+                    L"Terrain", MB_OK | MB_ICONWARNING);
+        return false;
+    }
+    // Letzte (späteste) gültige Fläche unter dem Punkt entfernen.
+    for (std::size_t i = arr->arr.size(); i-- > 0;) {
         const JsonValue& e = arr->arr[i];
         if (!e.is_obj()) continue;
-        const JsonValue* ex = e.find("x");
-        const JsonValue* ez = e.find("z");
-        const JsonValue* ew = e.find("w");
-        const JsonValue* eh = e.find("h");
-        const float x0 = ex ? static_cast<float>(ex->number(0)) : 0.0f;
-        const float z0 = ez ? static_cast<float>(ez->number(0)) : 0.0f;
-        const float w0 = ew ? static_cast<float>(ew->number(0)) : 0.0f;
-        const float h0 = eh ? static_cast<float>(eh->number(0)) : 0.0f;
-        if (cx >= x0 && cx < x0 + w0 && cz >= z0 && cz < z0 + h0) {
-            arr->arr.erase(arr->arr.begin() + i);
-            if (arr->arr.empty()) json_remove_key(*ter, "splats");
-            return true;
+        world::SplatRect s;
+        if (!preview_splat(e, s)) continue;
+        if (cx >= s.x && cx < s.x + s.w && cz >= s.z && cz < s.z + s.h) {
+            arr->arr.erase(arr->arr.begin() + static_cast<std::ptrdiff_t>(i));
+            return true; // eine vorhandene leere Liste bleibt erhalten
         }
     }
     return false;
@@ -4941,9 +5150,26 @@ int height_edit(float cx, float cz, bool sink) {
     cz = std::round(cz / g.grid) * g.grid;
     const float r = std::max(g.grid, g.paint_size * 0.5f);
     const float hgt = sink ? -height_step() : height_step();
+    TerrainPreview candidate = terrain_preview_read(g.map_root);
+    if (!candidate.ok()) return 0;
+    auto within_budget = [&candidate]() {
+        if (world::terrain_check_brushes(candidate.plan, candidate.brushes) == world::TerrainProblem::None)
+            return true;
+        MessageBoxW(g.main, L"Dieser Höhenpinsel würde den sicheren Bereich oder das Rechenbudget überschreiten.",
+                    L"Terrain", MB_OK | MB_ICONWARNING);
+        return false;
+    };
 
+    // Vor dem erstmaligen Anlegen von terrain/heights prüfen, damit ein
+    // abgelehnter Pinsel auch keine leeren Felder in der Karte hinterlässt.
+    const JsonValue* old_terrain = g.map_root.find("terrain");
+    const JsonValue* old_heights = old_terrain && old_terrain->is_obj() ? old_terrain->find("heights") : nullptr;
+    if (!old_heights) {
+        candidate.brushes.push_back(math::Vec4{cx, hgt, cz, r});
+        if (!within_budget()) return 0;
+    }
     JsonValue* ter = writable_terrain();
-    if (!ter) return 0;
+    if (!ter || !preview_unique(*ter, "heights")) return 0;
     JsonValue* arr = ter->find("heights");
     if (arr && !arr->is_arr()) {
         MessageBoxW(g.main, L"terrain.heights ist keine Liste; die Altdaten bleiben erhalten.",
@@ -4956,7 +5182,8 @@ int height_edit(float cx, float cz, bool sink) {
     // selben Pinsel addieren, damit die JSON-Liste beim "Höhen-Stapeln"
     // nicht endlos wächst.
     const double cell = static_cast<double>(g.grid);
-    for (JsonValue& e : arr->arr) {
+    for (size_t i = 0; i < arr->arr.size(); ++i) {
+        JsonValue& e = arr->arr[i];
         if (!e.is_obj()) continue;
         const JsonValue* ex = e.find("x");
         const JsonValue* ez = e.find("z");
@@ -4967,12 +5194,21 @@ int height_edit(float cx, float cz, bool sink) {
         const double rr = er->number(0);
         if (dx * dx + dz * dz <= cell * cell * 0.25 && rr == static_cast<double>(r)) {
             const JsonValue* eh = e.find("h");
-            e.set("h", JsonValue::make_num((eh ? eh->number(0) : 0.0) +
-                                            static_cast<double>(hgt)));
+            const double next = (eh ? eh->number(0) : 0.0) + static_cast<double>(hgt);
+            if (!world::terrain_valid_brush(cx, cz, r, next)) return 0;
+            candidate.brushes[i].y = static_cast<float>(next);
+            if (!within_budget()) return 0;
+            e.set("h", JsonValue::make_num(next));
             return static_cast<int>(arr->arr.size());
         }
     }
 
+    // Bei einem bereits vorhandenen Array ist der neue Pinsel noch nicht in
+    // candidate enthalten; das neu angelegte Array wurde oben schon geprüft.
+    if (candidate.brushes.size() == arr->arr.size()) {
+        candidate.brushes.push_back(math::Vec4{cx, hgt, cz, r});
+        if (!within_budget()) return 0;
+    }
     JsonValue e = JsonValue::make_obj();
     e.set("x", JsonValue::make_num(static_cast<double>(cx)));
     e.set("z", JsonValue::make_num(static_cast<double>(cz)));
@@ -4983,77 +5219,83 @@ int height_edit(float cx, float cz, bool sink) {
 }
 
 void regen_terrain() {
-    const JsonValue* t = g.map_root.find("terrain");
-    auto tnum = [&](const char* key, double fallback) {
-        if (!t) return fallback;
-        const JsonValue* v = t->find(key);
-        return v ? v->number(fallback) : fallback;
+    if (!g.terrain || !g.renderer) return;
+    g.terrain_error.clear();
+    g.terrain_warning.clear();
+    g.terrain_memory_error = false;
+    g.terrain_field_warning = false;
+    auto fail = [](const std::string& reason) {
+        g.terrain->clear();
+        g.renderer->clear_terrain();
+        g.terrain_error = reason;
+        core::log_warn("Terrain: " + reason + "; keine Vorschau, Kartendaten unverändert");
+        status_mode(L"Keine Gelände-Vorschau — F10 zeigt die Ursache");
     };
-    const double size_fallback = tnum("size", 240);
-    const float w = static_cast<float>(tnum("width", size_fallback));
-    const float h = static_cast<float>(tnum("height", size_fallback));
-    const int res = static_cast<int>(tnum("resolution", 192));
-    const uint32_t seed = static_cast<uint32_t>(tnum("seed", 7));
-    const float amp = static_cast<float>(tnum("amplitude", 0.0));
-    // Etappe 18l: gemalte Berge/Senken (terrain.heights) vor dem Generieren
-    // ans Terrain geben - compute_heights() baut sie nach dem FBM ein.
-    std::vector<math::Vec4> brushes;
-    const JsonValue* heights = t ? t->find("heights") : nullptr;
-    if (heights && heights->is_arr()) {
-        for (const JsonValue& e : heights->arr) {
-            if (!e.is_obj()) continue;
-            const JsonValue* bx = e.find("x");
-            const JsonValue* bz = e.find("z");
-            const JsonValue* br = e.find("r");
-            const JsonValue* bh = e.find("h");
-            math::Vec4 b{};
-            b.x = bx ? static_cast<float>(bx->number(0)) : 0.0f;
-            b.z = bz ? static_cast<float>(bz->number(0)) : 0.0f;
-            b.w = br ? static_cast<float>(br->number(0)) : 0.0f;   // Radius
-            b.y = bh ? static_cast<float>(bh->number(0)) : 0.0f;   // Höhe
-            if (b.w > 0.0f && b.y != 0.0f) brushes.push_back(b);
+    try {
+        const TerrainPreview preview = terrain_preview_read(g.map_root);
+        if (!preview.ok()) { fail(preview.error); return; }
+        g.terrain_field_warning = !preview.warnings.empty();
+        for (const std::string& warning : preview.warnings) core::log_warn("Terrain: " + warning);
+        if (!g.terrain->set_height_brushes(preview.brushes)) {
+            fail("Höhenpinsel konnten nicht übernommen werden"); return;
         }
-    }
-    g.terrain->set_height_brushes(brushes);
-    // Etappe 18d: mit Boden-Flächen Atlas-Pfad (pro-Quad-UV), sonst der
-    // alte Ein-Textur-Pfad inkl. Kachelgrösse (live-kompatibel).
-    const std::vector<world::SplatRect> splats = read_splats(t);
-    const JsonValue* tx = t ? t->find("texture") : nullptr;
-    const std::string base_tex = tx ? tx->str : std::string("gras");
-    if (!splats.empty()) {
-        const world::AtlasInfo atlas = g.renderer->update_atlas();
-        if (atlas.valid) {
-            g.terrain->generate_splat(w, h, res, seed, amp, base_tex, splats, atlas);
-            g.renderer->set_terrain(g.terrain->vertices(), g.terrain->indices());
-            g.renderer->set_terrain_tex(atlas.tex_index);
-            g.renderer->set_terrain_tile(1.0f);
-            core::log_info("Splat-Boden aktiv: " + std::to_string(splats.size()) +
-                           " Fläche(n), Atlas-Slot " + std::to_string(atlas.tex_index));
-            return;
+        const world::TerrainPlan& p = preview.plan;
+        if (!preview.splats.empty()) {
+            const world::AtlasInfo atlas = g.renderer->update_atlas();
+            if (world::atlas_has_texture(atlas, preview.texture)) {
+                if (std::any_of(preview.splats.begin(), preview.splats.end(),
+                    [&atlas](const world::SplatRect& s) { return !world::atlas_has_texture(atlas, s.tex); })) {
+                    g.terrain_warning = "Bodenflächen-Textur fehlt im Atlas; betroffene Flächen zeigen die Basis";
+                    core::log_warn("Splat-Boden: " + g.terrain_warning);
+                }
+                if (!g.terrain->generate_splat(p.width, p.height, p.res_x, p.seed, p.amplitude,
+                                               preview.texture, preview.splats, atlas) ||
+                    !g.renderer->set_terrain(g.terrain->vertices(), g.terrain->indices())) {
+                    fail("Splat-Gelände konnte nicht aufgebaut werden"); return;
+                }
+                g.renderer->set_terrain_tex(atlas.tex_index);
+                g.renderer->set_terrain_tile(world::ATLAS_NEUTRAL_TILE);
+                core::log_info("Splat-Boden aktiv: " + std::to_string(preview.splats.size()) +
+                               " Fläche(n), Atlas-Slot " + std::to_string(atlas.tex_index));
+                return;
+            }
+            g.terrain_warning = atlas.valid
+                ? "Basistextur fehlt im Atlas; Bodenflächen fehlen in der Einzeltextur-Vorschau"
+                : "Kein Atlas möglich; Bodenflächen fehlen in der Einzeltextur-Vorschau";
+            core::log_warn("Splat-Boden: " + g.terrain_warning);
         }
-        core::log_warn("Splat-Boden: kein Atlas möglich (keine 64x64-Texturen?)");
+        if (!g.terrain->generate(p.width, p.height, p.res_x, p.seed, p.amplitude) ||
+            !g.renderer->set_terrain(g.terrain->vertices(), g.terrain->indices())) {
+            fail("Gelände oder GPU-Puffer konnte nicht aufgebaut werden"); return;
+        }
+        const int texture = g.renderer->texture_index(preview.texture);
+        if (texture < 0) {
+            if (!g.terrain_warning.empty()) g.terrain_warning += "; ";
+            g.terrain_warning += "Basistextur nicht geladen; Gelände ohne Textur";
+        }
+        g.renderer->set_terrain_tex(texture);
+        g.renderer->set_terrain_tile(preview.tile);
+    } catch (const std::bad_alloc&) {
+        g.terrain->clear();
+        g.renderer->clear_terrain();
+        g.terrain_memory_error = true;
+        try { core::log_warn("Nicht genügend Speicher für die Gelände-Vorschau"); } catch (...) {}
+    } catch (const std::length_error&) {
+        g.terrain->clear();
+        g.renderer->clear_terrain();
+        g.terrain_memory_error = true;
+        try { core::log_warn("Gelände-Vorschau überschreitet den Speicherbereich"); } catch (...) {}
     }
-    g.terrain->generate(w, h, res, seed, amp);
-    g.renderer->set_terrain(g.terrain->vertices(), g.terrain->indices());
-    g.renderer->set_terrain_tex(g.renderer->texture_index(base_tex));
-    const JsonValue* tl = t ? t->find("tile") : nullptr;
-    g.renderer->set_terrain_tile(tl ? static_cast<float>(tl->number(2.0)) : 2.0f);
 }
 
-// Himmel/Nebel im Editor-Viewport aus der Karte übernehmen.
+// Himmel/Nebel im Editor-Viewport aus der Karte übernehmen. Ersatzwerte
+// betreffen nur den Renderer; die JSON-Daten bleiben unverändert.
 void apply_map_atmosphere_editor() {
-    const JsonValue* pan = g.map_root.find("panorama");
-    const JsonValue* pc = pan ? pan->find("color") : nullptr;
-    const uint32_t pan_col = pc ? static_cast<uint32_t>(pc->number(0x3D6FB5)) : 0x3D6FB5;
-    g.renderer->set_sky(pan_col, pan_col);
-
-    const JsonValue* fog = g.map_root.find("fog");
-    const JsonValue* on = fog ? fog->find("on") : nullptr;
-    const JsonValue* fc = fog ? fog->find("color") : nullptr;
-    const JsonValue* ff = fog ? fog->find("far") : nullptr;
-    g.renderer->set_fog(on && on->b,
-                        fc ? static_cast<uint32_t>(fc->number(0xBFD8EC)) : 0xBFD8EC,
-                        static_cast<float>(ff ? ff->number(180.0) : 180.0));
+    const AtmospherePreview preview = atmosphere_preview_read(g.map_root);
+    g.atmosphere_warning = !preview.warnings.empty();
+    g.renderer->set_sky(preview.sky, preview.sky);
+    g.renderer->set_fog(preview.fog_on, preview.fog_color, preview.fog_far);
+    for (const std::string& warning : preview.warnings) core::log_warn("Atmosphäre: " + warning);
 }
 
 void open_map_props() {
@@ -5198,43 +5440,34 @@ void open_map_props() {
     dlg_control(L"Button", L"OK", BS_DEFPUSHBUTTON, 562, 464, 90, 30, IDLG_OK);
     dlg_control(L"Button", L"Abbrechen", BS_PUSHBUTTON, 662, 464, 90, 30, IDLG_CANCEL);
 
-    // Felder füllen
+    // Originalzahlen ohne int-/uint-Casts anzeigen. Nicht editierte Werte
+    // (auch große Integer) bleiben beim OK bytegetreu im JSON-Baum erhalten.
     const JsonValue* t = g.map_root.find("terrain");
-    auto tnum = [&](const char* key, double fallback) {
-        if (!t) return fallback;
-        const JsonValue* v = t->find(key);
-        return v ? v->number(fallback) : fallback;
-    };
-    const double size_fallback = tnum("size", 240);
-    char buf[64];
+    if (t && !t->is_obj()) t = nullptr;
+    const JsonValue* size = t ? t->find("size") : nullptr;
+    const JsonValue* width = t ? t->find("width") : nullptr;
+    const JsonValue* height = t ? t->find("height") : nullptr;
+    if (!width || width->is_null()) width = size;
+    if (!height || height->is_null()) height = size;
     dlg_set_text(IDLG_NAME, g.map_root.find("name") ? g.map_root.find("name")->str : "");
-    std::snprintf(buf, sizeof(buf), "%d", static_cast<int>(tnum("width", size_fallback)));
-    dlg_set_text(IDLG_WIDTH, buf);
-    std::snprintf(buf, sizeof(buf), "%d", static_cast<int>(tnum("height", size_fallback)));
-    dlg_set_text(IDLG_HEIGHT, buf);
-    const double amp = tnum("amplitude", 0.0);
-    CheckDlgButton(g_dlg, IDLG_BERGE, amp > 0.0 ? BST_CHECKED : BST_UNCHECKED);
-    std::snprintf(buf, sizeof(buf), "%u", static_cast<uint32_t>(tnum("seed", 7)));
-    dlg_set_text(IDLG_SEED, buf);
-    std::snprintf(buf, sizeof(buf), "%.1f", amp);
-    dlg_set_text(IDLG_AMP, buf);
+    dlg_set_text(IDLG_WIDTH, map_props_number_display(width, 240));
+    dlg_set_text(IDLG_HEIGHT, map_props_number_display(height, 240));
+    const JsonValue* amplitude = t ? t->find("amplitude") : nullptr;
+    const double amp = amplitude ? amplitude->number(0.0) : 0.0;
+    CheckDlgButton(g_dlg, IDLG_BERGE, amp != 0.0 ? BST_CHECKED : BST_UNCHECKED);
+    dlg_set_text(IDLG_SEED, map_props_number_display(t ? t->find("seed") : nullptr, 7));
+    dlg_set_text(IDLG_AMP, map_props_number_display(amplitude, 0.0));
 
     const JsonValue* fog = g.map_root.find("fog");
+    if (fog && !fog->is_obj()) fog = nullptr;
     const JsonValue* fon = fog ? fog->find("on") : nullptr;
-    const JsonValue* ffar = fog ? fog->find("far") : nullptr;
-    const JsonValue* fcol = fog ? fog->find("color") : nullptr;
-    CheckDlgButton(g_dlg, IDLG_FOG, (fon && fon->b) ? BST_CHECKED : BST_UNCHECKED);
-    std::snprintf(buf, sizeof(buf), "%d", static_cast<int>(ffar ? ffar->number(180.0) : 180.0));
-    dlg_set_text(IDLG_FOGFAR, buf);
-    std::snprintf(buf, sizeof(buf), "%06X",
-                  static_cast<uint32_t>(fcol ? fcol->number(0xBFD8EC) : 0xBFD8EC));
-    dlg_set_text(IDLG_FOGCOL, buf);
-
+    CheckDlgButton(g_dlg, IDLG_FOG, (fon && fon->type == JsonValue::Type::Bool && fon->b)
+                                     ? BST_CHECKED : BST_UNCHECKED);
+    dlg_set_text(IDLG_FOGFAR, map_props_number_display(fog ? fog->find("far") : nullptr, 180.0));
+    dlg_set_text(IDLG_FOGCOL, map_props_color_display(fog ? fog->find("color") : nullptr, 0xBFD8EC));
     const JsonValue* pan = g.map_root.find("panorama");
-    const JsonValue* pcol = pan ? pan->find("color") : nullptr;
-    std::snprintf(buf, sizeof(buf), "%06X",
-                  static_cast<uint32_t>(pcol ? pcol->number(0x3D6FB5) : 0x3D6FB5));
-    dlg_set_text(IDLG_PANCOL, buf);
+    if (pan && !pan->is_obj()) pan = nullptr;
+    dlg_set_text(IDLG_PANCOL, map_props_color_display(pan ? pan->find("color") : nullptr, 0x3D6FB5));
 
     // Etappe 17h: Wetter-Typ + Intensität aus dem Karten-JSON.
     {
@@ -5245,9 +5478,7 @@ void open_map_props() {
         if (wt == "regen")  sel = 1;
         if (wt == "schnee") sel = 2;
         SendMessageW(GetDlgItem(g_dlg, IDLG_WTYPE), CB_SETCURSEL, sel, 0);
-        std::snprintf(buf, sizeof(buf), "%.1f",
-                      w && w->find("intensity") ? w->find("intensity")->number(1.0) : 1.0);
-        dlg_set_text(IDLG_WINT, buf);
+        dlg_set_text(IDLG_WINT, map_props_number_display(w && w->is_obj() ? w->find("intensity") : nullptr, 1.0));
     }
 
     const JsonValue* note = g.map_root.find("note");
@@ -5294,9 +5525,12 @@ bool apply_props_from_dlg() {
 
     // Erst ALLE neuen Felder prüfen und Rückfragen stellen, bevor irgendein
     // Kartenwert geändert wird. Abbrechen lässt auch Name/Terrain unangetastet.
+    const std::uint64_t project_epoch = g.project_epoch, map_epoch = g.map_epoch;
+    const std::string troops_text = dlg_text_long(IDLG_ENC_TROOPS);
+    const std::string steps_text = dlg_text_long(IDLG_ENC_STEPS);
+    const bool troops_touched = g_enc_dlg.troops_touched, steps_touched = g_enc_dlg.steps_touched;
     EncounterEdit enc = encounter_form_prepare(g.map_root.find("encounters"), g_enc_dlg.before,
-        dlg_text_long(IDLG_ENC_TROOPS), dlg_text_long(IDLG_ENC_STEPS),
-        g_enc_dlg.troops_touched, g_enc_dlg.steps_touched);
+        troops_text, steps_text, troops_touched, steps_touched);
     if (!enc.ok) {
         MessageBoxW(dlg, utf8_to_wide(enc.error).c_str(), L"Zufallskämpfe",
                     MB_OK | MB_ICONWARNING);
@@ -5304,6 +5538,25 @@ bool apply_props_from_dlg() {
         return false;
     }
     const MapPropsForm props = dlg_map_props_form();
+    const MapPropsCheck general_check = map_props_check(g.map_root, g_enc_dlg.props_before, props);
+    if (!general_check.ok) {
+        MessageBoxW(dlg, utf8_to_wide(general_check.error).c_str(), L"Karten-Eigenschaften",
+                    MB_OK | MB_ICONWARNING);
+        int focus = IDLG_NAME;
+        if (general_check.field == "width") focus = IDLG_WIDTH;
+        else if (general_check.field == "height") focus = IDLG_HEIGHT;
+        else if (general_check.field == "seed") focus = IDLG_SEED;
+        else if (general_check.field == "amplitude") focus = IDLG_AMP;
+        else if (general_check.field == "fog_on") focus = IDLG_FOG;
+        else if (general_check.field == "fog_far") focus = IDLG_FOGFAR;
+        else if (general_check.field == "fog_color") focus = IDLG_FOGCOL;
+        else if (general_check.field == "panorama_color") focus = IDLG_PANCOL;
+        else if (general_check.field == "weather_type") focus = IDLG_WTYPE;
+        else if (general_check.field == "weather_intensity") focus = IDLG_WINT;
+        else if (general_check.field == "note") focus = IDLG_NOTE;
+        SetFocus(GetDlgItem(dlg, focus));
+        return false;
+    }
     const BlockedEdit blocked = blocked_form_prepare(g.map_root.find("blocked"),
                                                      g_enc_dlg.props_before.blocked, props.blocked);
     if (!blocked.ok) {
@@ -5320,10 +5573,10 @@ bool apply_props_from_dlg() {
             text += L"\r\n• Ersetzte ungültige Einträge: " + std::to_wstring(blocked.replaces_invalid_entries);
         if (blocked.replaces_invalid_list) text += L"\r\n• Ungültige alte Liste wird ersetzt";
         text += L"\r\n\r\nZusatzdaten entfernter/ersetzter Einträge gehen verloren. Trotzdem übernehmen?";
-        if (MessageBoxW(dlg, text.c_str(), L"Block-Zonen",
+        if (data_prompt(dlg, text.c_str(), L"Block-Zonen",
                         MB_YESNO | MB_DEFBUTTON2 | MB_ICONWARNING) != IDYES) return false;
     }
-    if (enc.replaces_invalid && MessageBoxW(dlg,
+    if (enc.replaces_invalid && data_prompt(dlg,
         L"Die vorhandenen Begegnungsdaten sind ungültig oder nicht vollständig "
         L"darstellbar. Das bearbeitete Feld bzw. Begegnungsobjekt wird ersetzt.\r\n\r\n"
         L"Trotzdem übernehmen?", L"Zufallskämpfe",
@@ -5338,7 +5591,7 @@ bool apply_props_from_dlg() {
         if (!encounter_read_database(db, status)) {
             const std::wstring text = status +
                 L"\r\n\r\nDie Truppen können nicht geprüft werden. Trotzdem übernehmen?";
-            if (MessageBoxW(dlg, text.c_str(), L"Zufallskämpfe",
+            if (data_prompt(dlg, text.c_str(), L"Zufallskämpfe",
                             MB_YESNO | MB_DEFBUTTON2 | MB_ICONWARNING) != IDYES) return false;
         } else {
             const std::vector<std::string> unknown = encounter_unknown_troops(*ids, db);
@@ -5353,10 +5606,24 @@ bool apply_props_from_dlg() {
                 if (unknown.size() > limit) text += L"\r\n… und weitere.";
                 text += L"\r\n\r\nIm Spiel kann dafür möglicherweise kein Kampf starten. "
                         L"Trotzdem übernehmen?";
-                if (MessageBoxW(dlg, text.c_str(), L"Zufallskämpfe",
+                if (data_prompt(dlg, text.c_str(), L"Zufallskämpfe",
                                 MB_YESNO | MB_DEFBUTTON2 | MB_ICONWARNING) != IDYES) return false;
             }
         }
+    }
+
+    // MessageBox-Schleifen können bereits zugestellte Nachrichten verarbeiten.
+    // Ein inzwischen geänderter Entwurf darf nicht durch den alten Snapshot
+    // überschrieben und beim Schließen des Dialogs verloren werden.
+    if (!IsWindow(dlg) || g.props_dlg != dlg || g.project_epoch != project_epoch || g.map_epoch != map_epoch)
+        return false;
+    if (!(dlg_map_props_form() == props) || dlg_text_long(IDLG_ENC_TROOPS) != troops_text ||
+        dlg_text_long(IDLG_ENC_STEPS) != steps_text || g_enc_dlg.troops_touched != troops_touched ||
+        g_enc_dlg.steps_touched != steps_touched) {
+        data_prompt(dlg, L"Das Formular wurde während der Rückfrage geändert. "
+                         L"Bitte die Eingaben erneut prüfen und bestätigen.",
+                    L"Karten-Eigenschaften", MB_OK | MB_ICONWARNING);
+        return false;
     }
 
     {
@@ -5377,6 +5644,7 @@ bool apply_props_from_dlg() {
         g.dirty = true;
         if (general.terrain) regen_terrain();
         if (general.atmosphere) apply_map_atmosphere_editor();
+        issues_scan_map();
         if (general.name && g.cur_map < static_cast<int>(g.map_names.size())) {
             g.map_names[g.cur_map] = props.name;
             rebuild_map_menu();
@@ -5443,15 +5711,23 @@ bool apply_new_from_dlg() {
     } while (std::find(g.map_files.begin(), g.map_files.end(), id + ".json") != g.map_files.end() ||
              file_path_exists(g.project_dir + "\\maps\\" + id + ".json"));
 
-    const float w = static_cast<float>(std::max(60.0, std::atof(dlg_text(IDLG_WIDTH).c_str())));
-    const float h = static_cast<float>(std::max(60.0, std::atof(dlg_text(IDLG_HEIGHT).c_str())));
+    double width, height;
+    if (!map_props_number(dlg_text(IDLG_WIDTH), width) ||
+        !map_props_number(dlg_text(IDLG_HEIGHT), height) ||
+        width < 60.0 || height < 60.0 ||
+        !world::terrain_plan(width, height, 192, 7, 0).ok()) {
+        MessageBoxW(g_dlg, L"Breite/Höhe müssen mindestens 60 und höchstens 10000 betragen; "
+                            L"auch das Seitenverhältnis muss zum Terrain-Raster passen.",
+                    L"Neue Karte", MB_OK | MB_ICONWARNING);
+        return false;
+    }
     const bool berge = IsDlgButtonChecked(g_dlg, IDLG_BERGE) == BST_CHECKED;
 
     JsonValue map = JsonValue::make_obj();
     map.set("name", JsonValue::make_str(dlg_text(IDLG_NAME).empty() ? "Neue Welt" : dlg_text(IDLG_NAME)));
     JsonValue ter = JsonValue::make_obj();
-    ter.set("width", JsonValue::make_num(w, false));
-    ter.set("height", JsonValue::make_num(h, false));
+    ter.set("width", JsonValue::make_num(width, false));
+    ter.set("height", JsonValue::make_num(height, false));
     ter.set("resolution", JsonValue::make_num(192, true));
     ter.set("seed", JsonValue::make_num(static_cast<double>(GetTickCount() % 9999 + 1), true));
     ter.set("amplitude", JsonValue::make_num(berge ? 18.0 : 0.0, false));
@@ -5541,6 +5817,7 @@ void delete_current_map() {
     core::log_info("Karte gelöscht: " + path);
     cancel_object_drag();
     close_event_editor();
+    ++g.map_epoch;
     g.cur_map = -1;
     g.sel_obj = -1;
     g.dirty = false;
@@ -5550,6 +5827,12 @@ void delete_current_map() {
     g.map_root = JsonValue{};
     g.map_disk_present = false;
     g.map_disk_text.clear();
+    g.terrain_error.clear();
+    g.terrain_warning.clear();
+    g.terrain_memory_error = false;
+    g.terrain_field_warning = false;
+    g.atmosphere_warning = false;
+    g.terrain->clear();
     g.renderer->clear_terrain();
     scan_maps();
     rebuild_map_menu();
@@ -6632,7 +6915,7 @@ void ev_queue_selection(int which) {
     if (!g_ev.select_queued[which]) {
         HWND list = which == 0 ? g_ev.list_events : which == 1 ? g_ev.list_pages : g_ev.list_cmds;
         const int previous = which == 0 ? g_ev.sel_event : which == 1 ? g_ev.sel_page : g_ev.sel_cmd;
-        SendMessageW(list, LB_SETCURSEL, static_cast<WPARAM>(previous), 0);
+        listbox_select_data(list, static_cast<LPARAM>(previous));
     }
 }
 
@@ -6661,7 +6944,7 @@ bool ev_reconcile_selection(int which) {
     const bool has_target = which == 2 && next >= 0 && static_cast<size_t>(next) < g_ev.refs.size();
     if (has_target) target = g_ev.refs[static_cast<size_t>(next)];
     if (!resolve_event_edits()) {
-        SendMessageW(list, LB_SETCURSEL, static_cast<WPARAM>(previous), 0);
+        listbox_select_data(list, static_cast<LPARAM>(previous));
         return false;
     }
     if (which == 0) {
@@ -6716,7 +6999,18 @@ LRESULT CALLBACK event_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             }
             return 0;
         }
-        if (msg == WM_COMMAND || msg == WM_CLOSE) return 0;
+        if (msg == WM_COMMAND) {
+            if (HIWORD(wp) == LBN_SELCHANGE) {
+                const int id = LOWORD(wp);
+                HWND list = id == IDEV_LIST ? g_ev.list_events : id == IDEV_PAGES ? g_ev.list_pages
+                           : id == IDEV_CMDS ? g_ev.list_cmds : nullptr;
+                const int previous = id == IDEV_LIST ? g_ev.sel_event : id == IDEV_PAGES ? g_ev.sel_page
+                                   : id == IDEV_CMDS ? g_ev.sel_cmd : -1;
+                if (list) listbox_select_data(list, static_cast<LPARAM>(previous));
+            }
+            return 0;
+        }
+        if (msg == WM_CLOSE) return 0;
     }
     if (event_view_message(g_ev.view, h, msg, wp, lp)) return 0;
     switch (msg) {
@@ -6770,6 +7064,13 @@ void open_event_editor() {
         event_view_fit_existing(g_ev.win);
         SetForegroundWindow(g_ev.win);
         event_view_reveal(g_ev.view, g_ev.win, GetFocus());
+        return;
+    }
+    // F2 schützt den umgekehrten Weg ebenfalls. Sonst könnte ein bereits
+    // offenes F2 beim Übernehmen während F6 den JSON-Baum verschieben.
+    if (g.props_dlg) {
+        MessageBoxW(g.main, L"Bitte zuerst den Karten-Dialog schließen, bevor der Event-Editor geöffnet wird.",
+                    L"Event-Editor", MB_OK | MB_ICONINFORMATION);
         return;
     }
     if (g.cur_map < 0) return;
@@ -7181,6 +7482,14 @@ HWND sc_control(const wchar_t* cls, const wchar_t* text, DWORD style,
 }
 
 LRESULT CALLBACK script_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
+    if (g.data_prompt_active || (g.props_dlg && g.dlg_mode != 1)) {
+        if (msg == WM_CLOSE) return 0;
+        if (msg == WM_COMMAND) {
+            if (LOWORD(wp) == IDSC_LIST && HIWORD(wp) == LBN_SELCHANGE && g_sc.list)
+                listbox_select_data(g_sc.list, static_cast<LPARAM>(g_sc.sel));
+            return 0;
+        }
+    }
     switch (msg) {
         case WM_COMMAND: {
             const int id = LOWORD(wp);
@@ -7319,6 +7628,7 @@ struct MaterialDlgState {
     HWND lbl_status = nullptr;
     std::vector<std::string> names;
     std::string sel;
+    bool indices_safe = true;
 };
 
 static MaterialDlgState g_md;
@@ -7330,8 +7640,8 @@ void ma_status(const std::string& text) {
 void ma_refresh_info() {
     if (!g_md.win) return;
     const MaterialInfo* m = g_md.sel.empty() ? nullptr : mat_find(g_md.sel);
-    const bool has_sel = !g_md.sel.empty();
-    const bool is_imported = m != nullptr;
+    const bool has_sel = g_md.indices_safe && !g_md.sel.empty();
+    const bool is_imported = g_md.indices_safe && m != nullptr;
 
     EnableWindow(GetDlgItem(g_md.win, IDMA_TILE), is_imported ? TRUE : FALSE);
     EnableWindow(GetDlgItem(g_md.win, IDMA_TILESET), is_imported ? TRUE : FALSE);
@@ -7368,18 +7678,24 @@ void ma_refresh_list() {
     if (!g_md.list) return;
     g_md.names = mat_all_names();
     SendMessageW(g_md.list, LB_RESETCONTENT, 0, 0);
-    int select = -1;
-    for (int i = 0; i < static_cast<int>(g_md.names.size()); ++i) {
+    g_md.indices_safe = true;
+    LRESULT select = LB_ERR;
+    for (std::size_t i = 0; i < g_md.names.size(); ++i) {
         const bool imported = mat_find(g_md.names[i]) != nullptr;
         const std::wstring line = utf8_to_wide(g_md.names[i]) +
                                   (imported ? L"  (importiert)" : L"");
-        const int idx = static_cast<int>(
-            SendMessageW(g_md.list, LB_ADDSTRING, 0,
-                         reinterpret_cast<LPARAM>(line.c_str())));
-        if (g_md.names[i] == g_md.sel) select = idx;
+        const LRESULT row = SendMessageW(g_md.list, LB_ADDSTRING, 0,
+                                         reinterpret_cast<LPARAM>(line.c_str()));
+        if (row == LB_ERR || row == LB_ERRSPACE ||
+            SendMessageW(g_md.list, LB_SETITEMDATA, static_cast<WPARAM>(row), static_cast<LPARAM>(i)) == LB_ERR) {
+            g_md.indices_safe = false;
+            continue;
+        }
+        if (g_md.names[i] == g_md.sel) select = row;
     }
-    if (select >= 0) SendMessageW(g_md.list, LB_SETCURSEL, select, 0);
+    if (g_md.indices_safe && select != LB_ERR) SendMessageW(g_md.list, LB_SETCURSEL, static_cast<WPARAM>(select), 0);
     ma_refresh_info();
+    if (!g_md.indices_safe) ma_status("Materialliste unvollständig; Auswahl gesperrt. Bitte F3 erneut öffnen.");
 }
 
 void ma_apply_tile() {
@@ -7396,7 +7712,8 @@ void ma_apply_tile() {
     ma_status("Kachel gespeichert: " + g_md.sel);
 }
 
-void ma_set_object_material(const std::string& material) {
+// Die Auswahl vor einer möglichen Rückfrage als Wert sichern.
+void ma_set_object_material(std::string material) {
     if (!g.objects || g.sel_obj < 0 || static_cast<size_t>(g.sel_obj) >= g.objects->arr.size()) return;
     if (!resolve_object_edits()) return;
     const JsonValue& object = g.objects->arr[static_cast<size_t>(g.sel_obj)];
@@ -7436,6 +7753,12 @@ void ma_clear_object() { ma_set_object_material(""); }
 void ma_delete() {
     const MaterialInfo* m = mat_find(g_md.sel);
     if (!m || !m->imported) return;
+    if (!texture_file_is_flat(m->file)) {
+        MessageBoxW(g_md.win, L"Der Material-Dateiname ist kein einfacher Dateiname. "
+                              L"Datei und Metadaten bleiben unverändert; bitte extern prüfen.",
+                    L"Material", MB_OK | MB_ICONWARNING);
+        return;
+    }
     DeleteFileA((mat_dir() + "\\" + m->file).c_str());
     const std::string name = m->name;
     for (size_t i = 0; i < g_materials.size(); ++i) {
@@ -7461,20 +7784,45 @@ HWND ma_control(const wchar_t* cls, const wchar_t* text, DWORD style,
 }
 
 LRESULT CALLBACK material_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
+    // Auch eine bereits an die Listbox zugestellte Auswahl darf das Ziel
+    // einer Rückfrage nicht ändern; die angezeigte Auswahl zurücksetzen.
+    const bool data_modal = g.data_prompt_active || (g.props_dlg && g.dlg_mode != 1);
+    if (data_modal) {
+        if (msg == WM_COMMAND) {
+            if (LOWORD(wp) == IDMA_LIST && HIWORD(wp) == LBN_SELCHANGE) {
+                const auto it = std::find(g_md.names.begin(), g_md.names.end(), g_md.sel);
+                const LPARAM original = g_md.indices_safe && it != g_md.names.end()
+                    ? static_cast<LPARAM>(it - g_md.names.begin()) : -1;
+                listbox_select_data(g_md.list, original);
+            }
+            return 0;
+        }
+        if (msg == WM_CLOSE) return 0;
+    }
     switch (msg) {
         case WM_COMMAND: {
             const int id = LOWORD(wp);
             const int code = HIWORD(wp);
             if (id == IDMA_LIST && code == LBN_SELCHANGE) {
-                const int idx = static_cast<int>(
-                    SendMessageW(g_md.list, LB_GETCURSEL, 0, 0));
-                if (idx >= 0 && idx < static_cast<int>(g_md.names.size())) {
-                    g_md.sel = g_md.names[idx];
+                if (!g_md.indices_safe) {
+                    listbox_select_data(g_md.list, -1);
+                    ma_status("Materialliste unvollständig; Auswahl gesperrt. Bitte F3 erneut öffnen.");
+                    return 0;
+                }
+                const LRESULT row = SendMessageW(g_md.list, LB_GETCURSEL, 0, 0);
+                const LRESULT idx = row == LB_ERR ? LB_ERR :
+                    SendMessageW(g_md.list, LB_GETITEMDATA, static_cast<WPARAM>(row), 0);
+                if (idx >= 0 && static_cast<std::size_t>(idx) < g_md.names.size()) {
+                    g_md.sel = g_md.names[static_cast<std::size_t>(idx)];
                     ma_refresh_info();
                 }
                 return 0;
             }
             if (id == IDMA_IMPORT)  { open_import_texture(); return 0; }
+            if (!g_md.indices_safe && (id == IDMA_DEL || id == IDMA_APPLY || id == IDMA_TILESET)) {
+                ma_status("Materialliste unvollständig; Auswahl gesperrt. Bitte F3 erneut öffnen.");
+                return 0;
+            }
             if (id == IDMA_DEL)     { ma_delete(); return 0; }
             if (id == IDMA_APPLY)   { ma_apply_to_object(); return 0; }
             if (id == IDMA_CLEAR)   { ma_clear_object(); return 0; }
@@ -8099,6 +8447,25 @@ HWND db_control(const wchar_t* cls, const wchar_t* text, DWORD style,
 }
 
 LRESULT CALLBACK database_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
+    if (g.data_prompt_active || (g.props_dlg && g.dlg_mode != 1)) {
+        if (msg == WM_CLOSE) return 0;
+        if (msg == WM_COMMAND) {
+            const int id = LOWORD(wp), code = HIWORD(wp);
+            // Falls eine Listen-/Reiterauswahl schon vor der Sperre im nativen
+            // Control ankam, auf den noch gültigen Modellzustand zurücksetzen.
+            if (id == IDDB_LIST && code == LBN_SELCHANGE && g_db.list)
+                listbox_select_data(g_db.list, static_cast<LPARAM>(g_db.sel));
+            if (code == BN_CLICKED && (id == IDDB_TAB_H || id == IDDB_TAB_I ||
+                                       id == IDDB_TAB_E || id == IDDB_TAB_T)) {
+                const int current = g_db.tab == 1 ? IDDB_TAB_I : g_db.tab == 2 ? IDDB_TAB_E
+                                  : g_db.tab == 3 ? IDDB_TAB_T : IDDB_TAB_H;
+                for (const int button : {IDDB_TAB_H, IDDB_TAB_I, IDDB_TAB_E, IDDB_TAB_T})
+                    SendMessageW(GetDlgItem(g_db.win, button), BM_SETCHECK,
+                                 button == current ? BST_CHECKED : BST_UNCHECKED, 0);
+            }
+            return 0;
+        }
+    }
     switch (msg) {
         case WM_COMMAND: {
             const int id = LOWORD(wp);

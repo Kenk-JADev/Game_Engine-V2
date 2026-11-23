@@ -84,6 +84,19 @@ Weather.set('blubb')
 check('unbekannter Typ = aus') { !Weather.active? && Weather.type == 'kein' }
 Weather.set('regen', -5)
 check('negative Intensität fiel auf 1.0 zurück') { Weather.intensity == 1.0 }
+Weather.set('regen', 10**400)
+check('riesiger Integer fällt sicher auf 1.0 zurück') { Weather.intensity == 1.0 }
+Weather.set('schnee', Float::INFINITY)
+check('Unendlich fällt sicher auf 1.0 zurück') { Weather.intensity == 1.0 }
+Weather.set('regen', Float::NAN)
+check('NaN fällt sicher auf 1.0 zurück') { Weather.intensity == 1.0 }
+Weather.set('regen', 10.01)
+check('überschrittenes Partikelbudget fällt auf 1.0 zurück') { Weather.intensity == 1.0 }
+Weather.set('regen', 10)
+Weather.update(0.016, 0.0, 5.0, 0.0)
+check('höchste erlaubte Intensität begrenzt Anzahl auf 400') { Weather.count == 400 }
+Weather.set('regen', '1e300')
+check('nichtnumerische Intensität wird nicht koerziert') { Weather.intensity == 1.0 }
 
 # --- 2) load_map aus Karten-JSON ----------------------------------------------
 Weather.load_map('weather' => { 'type' => 'schnee', 'intensity' => 1.5 })
@@ -94,6 +107,10 @@ Weather.load_map({})
 check('load_map ohne weather-Feld = aus') { !Weather.active? }
 Weather.load_map(nil)
 check('load_map(nil) = aus') { !Weather.active? }
+Weather.load_map('weather' => [])
+check('ungültiges Wetterobjekt = aus') { !Weather.active? }
+Weather.load_map('weather' => { 'type' => 'regen', 'intensity' => false })
+check('boolean statt Zahl fällt auf 1.0 zurück') { Weather.intensity == 1.0 }
 
 # --- 3) Partikel-Pflege -------------------------------------------------------
 Weather.set('regen', 1.0)

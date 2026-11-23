@@ -71,16 +71,23 @@ end
   # Panorama-Farbe ersetzt den Himmelverlauf (Vollfarbe), Nebel blendet
   # die Ferne zur Nebelfarbe. Ohne Angaben: Standard-Himmel, kein Nebel.
   def self.apply_map_atmosphere(map)
-    pan = map['panorama'] || {}
-    if pan['color']
+    pan = map['panorama']
+    Rune::Log.warn('panorama ist kein Objekt; Standardhimmel') if !pan.nil? && !pan.is_a?(Hash)
+    pan = {} unless pan.is_a?(Hash)
+    unless pan['color'].nil?
       c = pan['color']
       Rune::Gfx.sky(c, c)
     else
       Rune::Gfx.sky(0x3D6FB5, 0xBFD8EC)
     end
-    fog = map['fog'] || {}
-    Rune::Gfx.fog(fog['on'] ? true : false, fog['color'] || 0xBFD8EC,
-                  fog['far'] || 180.0)
+    fog = map['fog']
+    Rune::Log.warn('fog ist kein Objekt; Nebel aus') if !fog.nil? && !fog.is_a?(Hash)
+    fog = {} unless fog.is_a?(Hash)
+    unless fog['on'].nil? || fog['on'] == true || fog['on'] == false
+      Rune::Log.warn('fog.on ist kein Bool; Nebel aus')
+    end
+    Rune::Gfx.fog(fog['on'] == true, fog['color'].nil? ? 0xBFD8EC : fog['color'],
+                  fog['far'].nil? ? 180.0 : fog['far'])
   end
 
   # Etappe 18l: Terrain einer Karte aufbauen (Grösse/Seed/Amplitude plus
@@ -88,22 +95,34 @@ end
   # Wird vom Setup und von jedem Kartenwechsel (enter_map) gerufen - damit
   # Kartengrenze und gemalte Hügel auch nach dem Wechsel stimmen.
   def self.build_terrain(map)
-    t = map['terrain'] || {}
-    hb = t['heights']
-    hb = nil unless hb.is_a?(Array) && !hb.empty?
-    Rune::World.generate(width: t['width'] || t['size'] || 240,
-                         height: t['height'] || t['size'] || 240,
-                         resolution: t['resolution'] || 192,
-                         seed: t['seed'] || 7, amplitude: t['amplitude'] || 0.0,
-                         height_brushes: hb)
-    # Etappe 18c/18d: Boden. Mit Boden-Flächen (splats) Atlas pro Quad,
-    # sonst Einzeltextur + Kachelgrösse.
-    t_splats = t['splats']
-    if t_splats.is_a?(Array) && !t_splats.empty?
-      Rune::Gfx.terrain_splats(t['texture'] || 'gras', t_splats)
-    else
-      Rune::Gfx.terrain_texture(t['texture'] || 'gras', t['tile'] || 2.0)
+    t = map['terrain']
+    if !t.nil? && !t.is_a?(Hash)
+      Rune::Log.warn('terrain ist kein Objekt; kein Gelände')
+      Rune::World.generate(width: 0) # vorhandenes Terrain ausdrücklich verwerfen
+      return false
     end
+    t ||= {}
+    value = ->(key, fallback) { t[key].nil? ? fallback : t[key] }
+    size = value.call('size', 240)
+    ok = Rune::World.generate(width: value.call('width', size),
+                              height: value.call('height', size),
+                              resolution: value.call('resolution', 192),
+                              seed: value.call('seed', 7), amplitude: value.call('amplitude', 0.0),
+                              height_brushes: t['heights'])
+    return false unless ok
+
+    # Zuerst die Basistextur setzen: Wenn kein Atlas möglich ist, bleibt ein
+    # erkennbarer Einzeltexturboden statt der Textur der vorherigen Karte.
+    base_texture = value.call('texture', 'gras')
+    Rune::Gfx.terrain_texture(base_texture, value.call('tile', 2.0))
+    t_splats = t['splats']
+    if !t_splats.nil? && (!t_splats.is_a?(Array) || !t_splats.empty?)
+      Rune::Gfx.terrain_splats(base_texture, t_splats)
+      # Bei ungültigen Flächen löscht das Binding das Terrain; ohne Atlas
+      # bleibt hingegen der bereits aufgebaute Einzeltexturboden erhalten.
+      return false unless Rune::World.ready?
+    end
+    true
   end
 
   # Teleports sind keine gelaufenen Schritte. Die nächste Position wird neu

@@ -125,6 +125,7 @@ ruby tools\lint_repo.rb                        # Repo-Hygiene
 |---|---|---|
 | Ruby-Modultests | Engine-Logik mit `Rune::*`-Stubs (Events, Seiten, Interpreter, Party, Kampf, Wetter, Scripte, Projekte, Speichern) + Ruby/C++-Vokabular-Sync | `tools/*_test.rb`, Runner `tools/test_all.rb` |
 | C++-Logiktest | JSON und portable Editor-Formularmodelle, darunter F6-Transaktionen und Datentreue | `tools/json_test.cpp` |
+| C++-Terrain | Echte Geländegenerierung, Höhen-/Splat-Budgets, Atlasplan und Fehlerpfade ohne D3D | `tools/terrain_test.cpp` |
 | JSON-Brücke | Schreibt C++ bytegleich zu Ruby `JSON.pretty_generate`? | `tools/json_bridge_check.rb` |
 | Event-Brücke | C++-F6-Änderungen gegen echte Ruby-Event- und Interpreter-Laufzeit | `tools/event_bridge_check.rb` |
 | Karten-Scan | Daten-Validierung (Befehle, Trigger, Bedingungen, Wegpunkte, Terrain) | `game/engine/mapcheck.rb` |
@@ -143,7 +144,7 @@ Pull Request:
 |---|---|---|
 | `hygiene` | ubuntu | `tools/lint_repo.rb` |
 | `engine` | ubuntu | `tools/test_all.rb` + Karten-Scan |
-| `cpp-logik` | ubuntu | `tools/json_test.cpp` mit `-Werror`, danach JSON- und Event-Brücke |
+| `cpp-logik` | ubuntu | JSON-/Editor- und Terrain-C++-Tests mit `-Werror`, danach JSON- und Event-Brücke |
 | `windows` | windows-2022 | `build.ps1 -Clean` **und** `-Test`, EXEs als Artefakt |
 
 Der Windows-Job ist der einzige Ort, an dem D3D11/Win32 wirklich kompiliert und
@@ -296,6 +297,40 @@ Rad nicht selbst verarbeitet. Listen und Komboboxen behalten ihr eigenes
 Radverhalten. Bei genügend Platz sind die Leisten deaktiviert. Ein echter
 Windows-GUI-/DPI-Test steht noch aus.
 
+### Terrain, Boden und Atmosphäre (F2/F7)
+
+Für Vorschau und Spiel gelten sichere Grenzen: Kartenbreite/-höhe 1–10000 m,
+Auflösung 8–1024 Zellen in X und höchstens 262144 Quads insgesamt;
+Seitenverhältnis und Z-Auflösung werden ebenfalls geprüft. Seed liegt bei
+0–4294967295, Amplitude bei ±10000. Höchstens 2048 Höhenpinsel und 2048
+Bodenflächen sind erlaubt, zusätzlich gelten Rechenbudgets. Texturnamen
+dürfen höchstens 1024 UTF-8-Bytes und kein NUL enthalten. Für `terrain.tile`
+sind 0,01–10000 m, für Nebelweite 0,1–100000 m und für Wetterintensität
+Werte größer 0 bis 10 zulässig. Farben liegen zwischen 0 und 0xFFFFFF.
+
+Fehlerhafte oder zu aufwendige Grundparameter, Höhenpinsel und Bodenflächen
+bleiben im Karten-JSON erhalten; der Editor zeigt statt eines alten/falschen
+Meshs keine Gelände-Vorschau und nennt die Ursache über **F10** und die
+Statusleiste. Ungültige Einzelwerte für Textur, Kachelgröße oder Atmosphäre
+erhalten nur für die Darstellung sichere Ersatzwerte. F2/F7 schreiben
+unberührte Felder nicht zurück; ungültige Tileset-Altdaten werden nur bei
+gezielter Änderung nach Rückfrage ersetzt. Im F7-Dialog bleiben ungültige
+Bodenflächen sichtbar; die Auslassungszeile bei überlangen Listen ist nicht
+löschbar. Auch nach dem Löschen des letzten Eintrags bleibt eine vorhandene
+leere Flächenliste erhalten. Nach Karten-/Projektwechsel F7 schließen und neu
+öffnen, bevor Daten geändert werden.
+
+Der Editor erwartet für Projekt-RGBA-Dateien einfache Dateinamen ohne
+Pfadtrenner, Datenstrom oder Windows-Gerätenamen. Die Prüfung ist lexikalisch:
+Verknüpfungen und Dateikonflikte sind damit nicht vollständig abgesichert.
+Für Materialarbeiten Sicherungskopien verwenden (siehe Backlog).
+
+Der Atlas ist auf 1024 Texturen à 64×64 begrenzt (höchstens 16 MiB pro
+RGBA-Kopie). Ohne Atlas oder ohne passende Basistextur bleibt der Boden als
+Einzeltextur-Vorschau; fehlende Flächentexturen zeigen die Basis. Die
+Einschränkung steht in Status/F10 bzw. im Spiel-Log. `terrain.tile` wirkt
+weiterhin nur ohne Splat-Atlas. Ein echter Windows-GUI-/D3D-Test steht aus.
+
 ### Karten-Eigenschaften (F2)
 
 `blocked` (optional) sind unsichtbare Wände über alle Höhen (x/z = Mitte,
@@ -306,7 +341,7 @@ erhalten. Für eine neue Zone eine Zeile ohne Nummer eingeben (`x; z; w; h`
 oder `x,z,w,h`); Dezimalkomma ist bei Semikolontrennung möglich. Entfernte
 Zeilen und das Ersetzen ungültiger Altdaten werden vor OK bestätigt. Bei
 fehlerhafter Eingabe bleibt die ganze Karte unverändert. Block-Zonen sind
-als rote Flach-Quader sichtbar. Vor F2 den Event-Editor F6 schließen.
+als rote Flach-Quader sichtbar. Vor F2 den Event-Editor F6 schließen; umgekehrt lässt sich F6 erst nach dem Schließen von F2 öffnen.
 
 `encounters` ist optional. Im Editor die gewünschte Karte wählen und **F2**
 öffnen: Unter „Zufallskämpfe“ eine gespeicherte Projekt-Truppe auswählen
@@ -345,9 +380,9 @@ Kommazahlen verhindern das Laden, statt eine leere Datenbank zu überschreiben.
 
 Das Kartenladen lehnt ungültiges JSON/Unicode, nicht darstellbare
 Kommazahlen sowie ein mehrfaches oder nicht listenförmiges `objects` ab.
-Andere doppelte JSON-Schlüssel bleiben erhalten; das ist keine vollständige
-Validierung aller Kartenwerte. Besonders extreme Terrain-/Atmosphärenwerte
-sind weiterhin nicht vollständig abgesichert (siehe Backlog).
+Andere doppelte JSON-Schlüssel bleiben erhalten. Die Terrain-/Atmosphären-
+Vorschau prüft zusätzlich ihre Eingaben und Budgets; das ist keine
+vollständige semantische Validierung aller Projektdateien (siehe Backlog).
 
 Vor dem Speichern vergleicht der Editor die Datei mit dem zuletzt geladenen
 oder gespeicherten Stand und fragt bei externen Änderungen oder Löschung.
@@ -360,7 +395,7 @@ bzw. Löschen können verloren gehen. Sicherungskopien bleiben wichtig.
 Regeln: Editor und Spiel schreiben beide `JSON.pretty_generate`-Format (LF,
 2 Leerzeichen, kürzeste exakte Zahlendarstellung) — deshalb wirft Speichern
 keine Diff-Flut. Unbekannte Schlüssel und große vorhandene JSON-Ganzzahlen
-bleiben beim reinen Laden/Speichern erhalten. Die Formulare F2, F5, F6, F9
+bleiben beim reinen Laden/Speichern erhalten. Die Formulare F2, F5, F6, F7, F9
 und das Objektformular schreiben unberührte Felder nicht zurück. Numerische
 Berechnungen und neu eingegebene Kommazahlen bleiben double-basiert.
 Spielstände liegen in `projekte/<name>/saves/slot1..3.json`.

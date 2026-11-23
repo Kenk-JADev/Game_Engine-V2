@@ -51,18 +51,10 @@ module Launcher
   # Projekt genau die Demo-Welt), Kamera kreist langsam darum.
   def build_backdrop
     map = Database.map(Database.map_ids.first || 'dorf') || {}
-    t = map['terrain'] || {}
-    # Etappe 18l: gemalte Berge/Senken (heights) mitgeben, Amplitude-Default
-    # 0 (flach) wie im Spiel - das Demodorf bringt seine eigene Amplitude mit.
-    hb = t['heights']
-    hb = nil unless hb.is_a?(Array) && !hb.empty?
-    Rune::World.generate(width: t['width'] || t['size'] || 240,
-                         height: t['height'] || t['size'] || 240,
-                         resolution: t['resolution'] || 192,
-                         seed: t['seed'] || 7, amplitude: t['amplitude'] || 0.0,
-                         height_brushes: hb)
+    # Derselbe geprüfte Aufbau wie beim Kartenwechsel, auch für kaputte
+    # Höhenpinsel/Bodenflächen und extreme Raster des Demodorfes.
     Textures.register_all
-    Rune::Gfx.terrain_texture('gras')
+    Game.build_terrain(map)
     Rune::Gfx.sky(0x3D6FB5, 0xBFD8EC)
     Rune::Gfx.sun(-0.55, 0.75, 0.25, 0.35)
     @scene = Scene.new(map['name'] || 'Dorf')

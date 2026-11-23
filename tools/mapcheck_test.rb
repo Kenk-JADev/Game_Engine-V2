@@ -142,6 +142,64 @@ check('heights als Hash statt Liste -> Fehler') do
   k['terrain']['heights'] = { 'x' => 1.0 }
   hat?(MapCheck.scan(k, **OPTS), 'terrain.heights', MapCheck::FEHLER)
 end
+check('lange und NUL-haltige Texturnamen melden, ohne Karte zu verändern') do
+  k = saubere_karte
+  k['terrain']['texture'] = 'x' * (MapCheck::TERRAIN_MAX_TEXTURE_BYTES + 1)
+  k['terrain']['splats'][0]['tex'] = "weg\0rest"
+  original = Marshal.dump(k)
+  f = MapCheck.scan(k, **OPTS)
+  hat?(f, "'texture' ungültig oder zu lang", MapCheck::WARNUNG) &&
+    hat?(f, 'Texturname ungültig oder zu lang', MapCheck::WARNUNG) && Marshal.dump(k) == original
+end
+check('extreme Integer und Kommazahlen: Warnung ohne Datenänderung') do
+  k = saubere_karte
+  k['terrain']['width'] = 10**400
+  k['terrain']['seed'] = 10**400
+  k['terrain']['amplitude'] = 1e300
+  original = Marshal.dump(k)
+  hat?(MapCheck.scan(k, **OPTS), 'Rasterbudget ungültig', MapCheck::WARNUNG) && Marshal.dump(k) == original
+end
+check('Seitenverhältnis und Quad-Budget werden früh erkannt') do
+  k = saubere_karte
+  k['terrain'].merge!('width' => 1, 'height' => 10_000, 'resolution' => 192)
+  aspect = MapCheck.scan(k, **OPTS)
+  k['terrain'].merge!('width' => 240, 'height' => 240, 'resolution' => 513)
+  hat?(aspect, 'Rasterbudget ungültig', MapCheck::WARNUNG) &&
+    hat?(MapCheck.scan(k, **OPTS), 'Rasterbudget ungültig', MapCheck::WARNUNG)
+end
+check('sicherer maximaler Quad-Budget-Rand bleibt gültig') do
+  k = saubere_karte
+  k['terrain'].merge!('width' => 240, 'height' => 240, 'resolution' => 512, 'splats' => [])
+  !hat?(MapCheck.scan(k, **OPTS), 'Rasterbudget ungültig')
+end
+check('unendliche Auflösung wird nicht nach Integer konvertiert') do
+  k = saubere_karte
+  k['terrain']['resolution'] = Float::INFINITY
+  hat?(MapCheck.scan(k, **OPTS), 'Rasterbudget ungültig', MapCheck::WARNUNG)
+end
+check('extreme Höhen- und Bodenwerte werden gemeldet') do
+  k = saubere_karte
+  k['terrain']['heights'][0]['x'] = 10**400
+  k['terrain']['splats'][0]['w'] = 1e300
+  f = MapCheck.scan(k, **OPTS)
+  hat?(f, 'Pinselwerte außerhalb', MapCheck::WARNUNG) && hat?(f, 'Fläche außerhalb', MapCheck::WARNUNG)
+end
+check('Pinsel-Rechenbudget und Splat-Rechenbudget unabhängig') do
+  k = saubere_karte
+  k['terrain'].merge!('width' => 240, 'height' => 240, 'resolution' => 192,
+                      'heights' => Array.new(120) { { 'x' => 0, 'z' => 0, 'r' => 1000, 'h' => 1 } })
+  first = MapCheck.scan(k, **OPTS)
+  k['terrain'].merge!('resolution' => 512, 'heights' => [],
+                      'splats' => Array.new(40) { { 'tex' => 'weg', 'x' => 0, 'z' => 0, 'w' => 1, 'h' => 1 } })
+  hat?(first, 'terrain.heights: Rechenbudget überschritten', MapCheck::WARNUNG) &&
+    hat?(MapCheck.scan(k, **OPTS), 'terrain.splats: Rechenbudget überschritten', MapCheck::WARNUNG)
+end
+check('zu viele Pinsel erzeugen nicht tausende Einzelfunde') do
+  k = saubere_karte
+  k['terrain']['heights'] = Array.new(2049) { { 'x' => 10**400 } }
+  f = MapCheck.scan(k, **OPTS)
+  hat?(f, 'mehr als 2048 Höhenpinsel', MapCheck::WARNUNG) && f.size < 20
+end
 
 puts '== MapCheck: Events und Seiten =='
 check('Event ohne Position -> Fehler') do
@@ -518,6 +576,21 @@ check('panorama als Liste -> Fehler') do
   k = saubere_karte
   k['panorama'] = [1, 2]
   hat?(MapCheck.scan(k, **OPTS), 'panorama', MapCheck::FEHLER)
+end
+check('extreme Atmosphäre wird ohne to_i auf Infinity geprüft') do
+  k = saubere_karte
+  k['fog']['color'] = Float::INFINITY
+  k['fog']['far'] = 10**400
+  k['weather']['intensity'] = 1e300
+  f = MapCheck.scan(k, **OPTS)
+  hat?(f, "'color' muss 0x000000..0xFFFFFF", MapCheck::WARNUNG) &&
+    hat?(f, "'far' muss zwischen", MapCheck::WARNUNG) &&
+    hat?(f, "'intensity' muss > 0 und <= 10", MapCheck::WARNUNG)
+end
+check('false statt Atmosphärenobjekt ist kein fehlendes Feld') do
+  k = saubere_karte
+  k['fog'] = false
+  hat?(MapCheck.scan(k, **OPTS), 'fog: ist kein Objekt', MapCheck::FEHLER)
 end
 
 puts '== MapCheck: Dateien und Verzeichnisse =='

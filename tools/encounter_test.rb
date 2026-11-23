@@ -13,21 +13,38 @@ module Rune
   ROOT = File.expand_path('..', __dir__)
 
   module Log
+    @warnings = []
+    def self.warnings = @warnings
     def self.info(_message); end
-    def self.warn(_message); end
+    def self.warn(message) = @warnings << message
     def self.error(_message); end
   end
 
   module World
-    def self.ready? = false
-    def self.generate(**_kwargs); end
+    @result = true
+    class << self
+      attr_accessor :result, :last_args, :ready
+    end
+    def self.ready? = !!ready
+    def self.generate(**kwargs)
+      self.last_args = kwargs
+      result
+    end
   end
 
   module Gfx
-    def self.sky(*_args); end
-    def self.fog(*_args); end
-    def self.terrain_texture(*_args); end
-    def self.terrain_splats(*_args); end
+    @calls = []
+    class << self
+      attr_reader :calls
+    end
+    def self.reset_calls = @calls.clear
+    def self.sky(*args) = (@calls << [:sky, *args])
+    def self.fog(*args) = (@calls << [:fog, *args])
+    def self.terrain_texture(*args) = (@calls << [:texture, *args])
+    def self.terrain_splats(*args)
+      @calls << [:splats, *args]
+      Rune::World.ready = false if args[1] == false # das native Binding verwirft den Boden
+    end
   end
 
   module Physics
@@ -202,6 +219,60 @@ def step(distance = 0.7)
   Game.update(0.016)
 end
 
+puts '== Karten-Terrain und Atmosphäre: Ruby-Brücke =='
+Rune::World.ready = true
+check('Karten-Pinsel und Splats gehen unverändert an die native API') do
+  Rune::World.result = true
+  Rune::Gfx.reset_calls
+  pinsel = [{ 'x' => 1, 'z' => 2, 'r' => 3, 'h' => 4 }]
+  splats = [{ 'tex' => 'weg', 'x' => 0, 'z' => 0, 'w' => 4, 'h' => 4 }]
+  map = { 'terrain' => { 'size' => 100, 'width' => 120, 'heights' => pinsel, 'splats' => splats } }
+  original = Marshal.dump(map)
+  Game.build_terrain(map) && Rune::World.last_args[:height_brushes].equal?(pinsel) &&
+    Rune::World.last_args[:width] == 120 && Rune::World.last_args[:height] == 100 &&
+    Rune::Gfx.calls.map(&:first) == %i[texture splats] && Rune::Gfx.calls[1][2].equal?(splats) &&
+    Marshal.dump(map) == original
+end
+check('extreme und falsche Grundwerte werden nicht heimlich normalisiert') do
+  Rune::Gfx.reset_calls
+  riesig = 10**400
+  map = { 'terrain' => { 'width' => false, 'height' => riesig, 'resolution' => riesig,
+                         'seed' => false, 'amplitude' => 1e300, 'heights' => false,
+                         'texture' => false, 'tile' => false } }
+  Game.build_terrain(map)
+  args = Rune::World.last_args
+  args[:width] == false && args[:height] == riesig && args[:resolution] == riesig &&
+    args[:seed] == false && args[:height_brushes] == false &&
+    Rune::Gfx.calls[0][1] == false && Rune::Gfx.calls[0][2] == false
+end
+check('gescheiterte native Erzeugung wendet keine alte Textur an') do
+  Rune::Gfx.reset_calls
+  Rune::World.result = false
+  result = Game.build_terrain('terrain' => { 'width' => 1e300 })
+  Rune::World.result = true
+  result == false && Rune::Gfx.calls.empty?
+end
+check('nichtobjektartiges Terrain verwirft statt benutzt vorheriges Gelände') do
+  Rune::Gfx.reset_calls
+  result = Game.build_terrain('terrain' => false)
+  result == false && Rune::World.last_args[:width] == 0 && Rune::Gfx.calls.empty?
+end
+check('falsche Splat-Liste erreicht native Schutzprüfung') do
+  Rune::Gfx.reset_calls
+  result = Game.build_terrain('terrain' => { 'splats' => false })
+  ok = result == false && Rune::Gfx.calls.map(&:first) == %i[texture splats] && Rune::Gfx.calls[1][2] == false
+  Rune::World.ready = true
+  ok
+end
+check('Atmosphärenwerte werden zur nativen Prüfung weitergereicht') do
+  Rune::Gfx.reset_calls
+  Rune::Log.warnings.clear
+  Game.apply_map_atmosphere('panorama' => { 'color' => false },
+                            'fog' => { 'on' => 'ja', 'color' => 10**400, 'far' => 1e300 })
+  Rune::Gfx.calls[0] == [:sky, false, false] && Rune::Gfx.calls[1] == [:fog, false, 10**400, 1e300] &&
+    Rune::Log.warnings.any? { |message| message.include?('fog.on') }
+end
+Rune::World.ready = false
 puts '== Zufallskampf: Start und Kartenwechsel =='
 check('Kaltstart würfelt den Zähler der Startkarte') do
   $game_player.encounter_count == 1 && $game_map.encounter_step == 1

@@ -3,9 +3,13 @@
 #include <ruby.h>
 #include <ruby/version.h>
 
+#include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <new>
+#include <stdexcept>
 #include <string>
 
 #include "app.h"
@@ -30,6 +34,46 @@ bool  g_tick_disabled = false;
 std::string to_std(VALUE v) {
     VALUE s = rb_funcall(v, rb_intern("to_s"), 0);
     return std::string(StringValueCStr(s));
+}
+
+// Keine NUM2INT/NUM2UINT-Konvertierung von ungeprüften Kartenwerten; riesige
+// Ruby-Integer können bei NUM2DBL als Inf enden und werden danach verworfen.
+// Strings/Arrays sind keine Karten-Zahlen (auch wenn sie to_f besitzen).
+bool vm_number(VALUE value, double& out) {
+    if (!RB_INTEGER_TYPE_P(value) && !RB_TYPE_P(value, T_FLOAT)) return false;
+    out = NUM2DBL(value);
+    return true;
+}
+
+// Kartentexte sind Strings; Symbole bleiben für direkte Ruby-Skripte erlaubt.
+// Vor dem Kopieren begrenzen und NUL abweisen, statt StringValueCStr inmitten
+// lebender C++-Container eine Ruby-Exception auslösen zu lassen.
+bool vm_texture_name(VALUE value, std::string& out) {
+    if (SYMBOL_P(value)) value = rb_sym2str(value);
+    if (!RB_TYPE_P(value, T_STRING)) return false;
+    const long n = RSTRING_LEN(value);
+    if (n <= 0 || static_cast<unsigned long>(n) > world::TERRAIN_MAX_TEXTURE_BYTES ||
+        std::memchr(RSTRING_PTR(value), '\0', static_cast<size_t>(n))) return false;
+    out.assign(RSTRING_PTR(value), static_cast<size_t>(n));
+    return true;
+}
+
+void vm_warn_safely(const char* message) noexcept {
+    // Auch das Log baut Strings; im bad_alloc-Pfad darf es nicht erneut werfen.
+    try { core::log_warn(message); } catch (...) {}
+}
+
+VALUE vm_hash_get(VALUE h, const char* key) {
+    VALUE v = rb_hash_aref(h, rb_str_new_cstr(key));
+    if (NIL_P(v)) v = rb_hash_aref(h, ID2SYM(rb_intern(key)));
+    return v;
+}
+
+std::uint32_t vm_color(VALUE v, std::uint32_t fallback, const char* field) {
+    double n;
+    if (vm_number(v, n) && world::atmosphere_valid_color(n)) return static_cast<std::uint32_t>(n);
+    core::log_warn(std::string("[ruby] ") + field + " ungültig; Standardfarbe als Ersatz");
+    return fallback;
 }
 
 int vk_from_name(const char* n) {
@@ -130,27 +174,66 @@ VALUE rune_gfx_texture(VALUE, VALUE name, VALUE w, VALUE h, VALUE pixels) {
     if (!app().renderer) return Qnil;
     const int width  = NUM2INT(w);
     const int height = NUM2INT(h);
-    const long need  = static_cast<long>(width) * height * 4;
-    if (width <= 0 || height <= 0 || RSTRING_LEN(pixels) != need) {
-        rb_raise(rb_eArgError, "Textur '%s': erwartet %ld Bytes, bekommen %ld",
-                 to_std(name).c_str(), need, RSTRING_LEN(pixels));
+    Check_Type(pixels, T_STRING);
+    // Windows-long ist 32 Bit. Erst D3D-Grenzen prüfen, dann multiplizieren.
+    if (width <= 0 || height <= 0 || width > 16384 || height > 16384)
+        rb_raise(rb_eArgError, "Texturbreite und -höhe müssen zwischen 1 und 16384 liegen");
+    const long need = static_cast<long>(width) * height * 4;
+    if (RSTRING_LEN(pixels) != need)
+        rb_raise(rb_eArgError, "Textur: erwartet %ld Bytes, bekommen %ld", need, RSTRING_LEN(pixels));
+    try {
+        std::string texture_name;
+        if (!vm_texture_name(name, texture_name)) {
+            vm_warn_safely("[ruby] Textur: ungültiger oder zu langer Name");
+            return INT2NUM(-1);
+        }
+        const int index = app().renderer->add_texture(texture_name, width, height,
+                                                      reinterpret_cast<const uint8_t*>(RSTRING_PTR(pixels)));
+        return INT2NUM(index);
+    } catch (const std::bad_alloc&) {
+        vm_warn_safely("[ruby] Nicht genügend Speicher für die Textur");
+        return INT2NUM(-1);
+    } catch (const std::length_error&) {
+        vm_warn_safely("[ruby] Textur überschreitet den Speicherbereich");
+        return INT2NUM(-1);
     }
-    const int index = app().renderer->add_texture(to_std(name), width, height,
-                                                  reinterpret_cast<const uint8_t*>(RSTRING_PTR(pixels)));
-    return INT2NUM(index);
 }
 
 // Textur für das Gelände (dessen UV in den Vertices steckt).
 // Etappe 18c: optionales 2. Argument = Kachelgrösse in Metern
 // (Standard 2.0; kleinere Werte = grössere Kacheln).
 VALUE rune_gfx_terrain_texture(int argc, VALUE* argv, VALUE) {
+    rb_check_arity(argc, 1, 2);
     if (!app().renderer) return Qnil;
-    const std::string name = to_std(argv[0]);
-    app().renderer->set_terrain_tex(app().renderer->texture_index(name));
-    if (argc >= 2 && !NIL_P(argv[1])) {
-        app().renderer->set_terrain_tile(static_cast<float>(NUM2DBL(argv[1])));
+    try {
+        std::string name;
+        if (!vm_texture_name(argv[0], name)) {
+            vm_warn_safely("[ruby] terrain.texture ungültig; Gras als Ersatz");
+            name = "gras";
+        }
+        const int index = app().renderer->texture_index(name);
+        if (index < 0) vm_warn_safely("[ruby] terrain.texture nicht geladen; Gelände ohne Textur");
+        app().renderer->set_terrain_tex(index);
+        if (argc >= 2 && !NIL_P(argv[1])) {
+            double tile;
+            if (!vm_number(argv[1], tile) || !world::terrain_valid_tile(tile)) {
+                vm_warn_safely("[ruby] terrain.tile ungültig; 2 m als Ersatz");
+                tile = 2.0;
+            }
+            app().renderer->set_terrain_tile(static_cast<float>(tile));
+        }
+        return Qnil;
+    } catch (const std::bad_alloc&) {
+        app().renderer->set_terrain_tex(-1);
+        app().renderer->set_terrain_tile(2.0f);
+        vm_warn_safely("[ruby] Nicht genügend Speicher für die Bodentextur");
+        return Qfalse;
+    } catch (const std::length_error&) {
+        app().renderer->set_terrain_tex(-1);
+        app().renderer->set_terrain_tile(2.0f);
+        vm_warn_safely("[ruby] Texturname überschreitet den Speicherbereich");
+        return Qfalse;
     }
-    return Qnil;
 }
 
 // Etappe 18d: Boden-Flächen (Splats) der aktuellen Karte anwenden.
@@ -160,69 +243,93 @@ VALUE rune_gfx_terrain_texture(int argc, VALUE* argv, VALUE) {
 // pro-Quad-Atlas-UV neu (Höhenform bleibt: aktueller Terrain-Parameter).
 // Ohne Flächen (leere Liste) wird Qfalse zurückgegeben und nichts geändert.
 VALUE rune_gfx_terrain_splats(VALUE, VALUE v_base, VALUE v_list) {
-    if (!app().renderer || !app().terrain) return Qfalse;
-    if (!RB_TYPE_P(v_list, T_ARRAY)) return Qfalse;
-    const int n = RARRAY_LEN(v_list);
+    if (!app().renderer || !app().terrain || !app().terrain->ready()) return Qfalse;
+    auto fail = [](const char* reason) -> VALUE {
+        app().terrain->clear();
+        app().renderer->clear_terrain();
+        // Auch bei erneutem Allokationsfehler muss das Binding Qfalse liefern.
+        try { core::log_warn(std::string("[ruby] Splat-Boden: ") + reason + "; kein Gelände"); }
+        catch (...) {}
+        return Qfalse;
+    };
+    try {
+    if (!RB_TYPE_P(v_list, T_ARRAY)) return fail("terrain.splats ist keine Liste");
+    const long n = RARRAY_LEN(v_list);
     if (n <= 0) return Qfalse;
+    if (static_cast<unsigned long>(n) > world::TERRAIN_MAX_SPLATS)
+        return fail("zu viele Bodenflächen");
+    const world::TerrainPlan plan = world::terrain_plan(app().terrain->width(), app().terrain->height(),
+        app().terrain->resolution(), app().terrain->seed(), app().terrain->amplitude());
+    if (!plan.ok() || plan.quads() > world::TERRAIN_MAX_SPLAT_CHECKS / static_cast<size_t>(n))
+        return fail("Rechenbudget überschritten");
 
     std::vector<world::SplatRect> splats;
     splats.reserve(static_cast<size_t>(n));
-    // Hash-Schlüssel: JSON.parse liefert Strings, Editor-Skripte können
-    // auch Symbole nutzen - beides versuchen.
-    auto hget = [&](VALUE h, const char* k) -> VALUE {
-        VALUE v = rb_hash_aref(h, rb_str_new_cstr(k));
-        if (NIL_P(v)) v = rb_hash_aref(h, ID2SYM(rb_intern(k)));
-        return v;
-    };
-    for (int i = 0; i < n; ++i) {
+    for (long i = 0; i < n; ++i) {
         const VALUE e = rb_ary_entry(v_list, i);
-        if (!RB_TYPE_P(e, T_HASH)) continue;
-        VALUE v_tex = hget(e, "tex");
-        VALUE v_x   = hget(e, "x");
-        VALUE v_z   = hget(e, "z");
-        VALUE v_w   = hget(e, "w");
-        VALUE v_h   = hget(e, "h");
+        if (!RB_TYPE_P(e, T_HASH)) return fail("ungültiger Eintrag");
+        const VALUE v_tex = vm_hash_get(e, "tex");
+        double x, z, w, h;
+        if ((!RB_TYPE_P(v_tex, T_STRING) && !SYMBOL_P(v_tex)) ||
+            !vm_number(vm_hash_get(e, "x"), x) || !vm_number(vm_hash_get(e, "z"), z) ||
+            !vm_number(vm_hash_get(e, "w"), w) || !vm_number(vm_hash_get(e, "h"), h) ||
+            !world::terrain_valid_splat(x, z, w, h)) return fail("ungültige Fläche");
         world::SplatRect s;
-        s.tex = to_std(v_tex);
-        s.x = static_cast<float>(NIL_P(v_x) ? 0.0 : NUM2DBL(v_x));
-        s.z = static_cast<float>(NIL_P(v_z) ? 0.0 : NUM2DBL(v_z));
-        s.w = static_cast<float>(NIL_P(v_w) ? 0.0 : NUM2DBL(v_w));
-        s.h = static_cast<float>(NIL_P(v_h) ? 0.0 : NUM2DBL(v_h));
-        if (!s.tex.empty() && s.w > 0.0f && s.h > 0.0f) splats.push_back(s);
+        if (!vm_texture_name(v_tex, s.tex)) return fail("ungültiger oder zu langer Texturname");
+        s.x = static_cast<float>(x); s.z = static_cast<float>(z);
+        s.w = static_cast<float>(w); s.h = static_cast<float>(h);
+        splats.push_back(std::move(s));
     }
-    if (splats.empty()) return Qfalse;
-
+    if (world::terrain_check_splats(plan, splats) != world::TerrainProblem::None)
+        return fail("ungültige Fläche oder Rechenbudget überschritten");
+    std::string base;
+    if (!vm_texture_name(v_base, base)) {
+        vm_warn_safely("[ruby] terrain.texture ungültig; Gras als Ersatz");
+        base = "gras";
+    }
     const world::AtlasInfo atlas = app().renderer->update_atlas();
-    if (!atlas.valid) return Qfalse;
-
-    app().terrain->generate_splat(app().terrain->width(), app().terrain->height(),
-                                  app().terrain->resolution(),
-                                  app().terrain->seed(), app().terrain->amplitude(),
-                                  to_std(v_base), splats, atlas);
-    const bool ok = app().renderer->set_terrain(app().terrain->vertices(),
-                                               app().terrain->indices());
-    if (ok) {
-        // Atlas statt Einzeltextur anzeigen; tile-Skalierung ist bei der
-        // pro-Quad-UV wirkungslos (faktor 1).
-        app().renderer->set_terrain_tex(atlas.tex_index);
-        app().renderer->set_terrain_tile(1.0f);
+    if (!world::atlas_has_texture(atlas, base)) {
+        vm_warn_safely("[ruby] Splat-Boden: Atlas oder Basistextur fehlt; Einzeltextur bleibt");
+        return Qfalse;
+    }
+    if (std::any_of(splats.begin(), splats.end(),
+        [&atlas](const world::SplatRect& s) { return !world::atlas_has_texture(atlas, s.tex); }))
+        vm_warn_safely("[ruby] Splat-Boden: Flächentextur fehlt im Atlas; Basis als Ersatz");
+    if (!app().terrain->generate_splat(plan.width, plan.height, plan.res_x, plan.seed, plan.amplitude,
+                                        base, splats, atlas) ||
+        !app().renderer->set_terrain(app().terrain->vertices(), app().terrain->indices()))
+        return fail("Mesh oder GPU-Puffer konnte nicht aufgebaut werden");
+    app().renderer->set_terrain_tex(atlas.tex_index);
+    app().renderer->set_terrain_tile(world::ATLAS_NEUTRAL_TILE);
+    try {
         core::log_info("[ruby] Splat-Boden: " + std::to_string(splats.size()) +
                        " Fläche(n), Atlas-Slot " + std::to_string(atlas.tex_index));
+    } catch (...) {}
+    return Qtrue;
+    } catch (const std::bad_alloc&) {
+        return fail("Nicht genügend Speicher");
+    } catch (const std::length_error&) {
+        return fail("Speicherbereich überschritten");
     }
-    return ok ? Qtrue : Qfalse;
 }
 
 // Himmel-Verlauf: Rune::Gfx.sky(oben_hex, unten_hex)
 VALUE rune_gfx_sky(VALUE, VALUE top, VALUE bottom) {
     if (!app().renderer) return Qnil;
-    app().renderer->set_sky(NUM2UINT(top), NUM2UINT(bottom));
+    app().renderer->set_sky(vm_color(top, 0x3D6FB5, "Himmelfarbe"),
+                            vm_color(bottom, 0xBFD8EC, "Himmelfarbe"));
     return Qnil;
 }
 
 // Distanznebel: Rune::Gfx.fog(an, farbe, distanz) - Etappe 17b.
 VALUE rune_gfx_fog(VALUE, VALUE on, VALUE rgb, VALUE far_dist) {
     if (!app().renderer) return Qnil;
-    app().renderer->set_fog(RTEST(on), NUM2UINT(rgb), static_cast<float>(NUM2DBL(far_dist)));
+    double distance;
+    if (!vm_number(far_dist, distance) || !world::atmosphere_valid_fog_far(distance)) {
+        core::log_warn("[ruby] fog.far ungültig; 180 m als Ersatz");
+        distance = 180.0;
+    }
+    app().renderer->set_fog(RTEST(on), vm_color(rgb, 0xBFD8EC, "Nebelfarbe"), static_cast<float>(distance));
     return Qnil;
 }
 
@@ -478,29 +585,49 @@ VALUE rune_log_error(VALUE, VALUE v) {
 VALUE rune_world_generate(int argc, VALUE* argv, VALUE) {
     VALUE v_width = Qnil, v_height = Qnil, v_res = Qnil, v_seed = Qnil, v_amp = Qnil;
     rb_scan_args(argc, argv, "05", &v_width, &v_height, &v_res, &v_seed, &v_amp);
-
     if (!app().terrain || !app().renderer) return Qfalse;
-
-    const float width = NIL_P(v_width) ? 220.0f : static_cast<float>(NUM2DBL(v_width));
-    const float height = NIL_P(v_height) ? width : static_cast<float>(NUM2DBL(v_height));
-    const int res = NIL_P(v_res) ? 176 : NUM2INT(v_res);
-    const uint32_t seed = NIL_P(v_seed) ? 7u : static_cast<uint32_t>(NUM2UINT(v_seed));
-    const float amp = NIL_P(v_amp) ? 5.0f : static_cast<float>(NUM2DBL(v_amp));
-
-    app().terrain->generate(width, height, res, seed, amp);
-    const bool ok = app().renderer->set_terrain(app().terrain->vertices(), app().terrain->indices());
-
-    core::log_info("[ruby] Gelände: " + std::to_string(static_cast<int>(width)) + " x " +
-                   std::to_string(static_cast<int>(height)) + ", " + std::to_string(res) +
-                   " Zellen, Seed " + std::to_string(seed) + ", Amplitude " +
-                   std::to_string(amp));
-    return ok ? Qtrue : Qfalse;
+    double width = 220.0, height = 220.0, res = 176, seed = 7, amp = 5.0;
+    const bool valid = (NIL_P(v_width) || vm_number(v_width, width)) &&
+                       (NIL_P(v_height) || vm_number(v_height, height)) &&
+                       (NIL_P(v_res) || vm_number(v_res, res)) &&
+                       (NIL_P(v_seed) || vm_number(v_seed, seed)) &&
+                       (NIL_P(v_amp) || vm_number(v_amp, amp));
+    if (NIL_P(v_height)) height = width;
+    world::TerrainPlan p;
+    if (valid) p = world::terrain_plan(width, height, res, seed, amp);
+    else p.problem = world::TerrainProblem::Size;
+    if (!valid || !p.ok()) {
+        app().terrain->clear(); app().renderer->clear_terrain();
+        try { core::log_warn(std::string("[ruby] Gelände ungültig: ") + world::terrain_problem_text(p.problem)); }
+        catch (...) {}
+        return Qfalse;
+    }
+    if (!app().terrain->generate(p.width, p.height, p.res_x, p.seed, p.amplitude) ||
+        !app().renderer->set_terrain(app().terrain->vertices(), app().terrain->indices())) {
+        app().terrain->clear(); app().renderer->clear_terrain();
+        vm_warn_safely("[ruby] Gelände: Höhenpinsel/Rechenbudget oder GPU-Puffer ungültig; kein Gelände");
+        return Qfalse;
+    }
+    try {
+        core::log_info("[ruby] Gelände: " + std::to_string(p.width) + " x " +
+                       std::to_string(p.height) + ", " + std::to_string(p.res_x) +
+                       " Zellen, Seed " + std::to_string(p.seed) + ", Amplitude " +
+                       std::to_string(p.amplitude));
+    } catch (...) {}
+    return Qtrue;
 }
 
 VALUE rune_world_height_at(VALUE, VALUE x, VALUE z) {
-    if (!app().terrain) return DBL2NUM(0.0);
-    return DBL2NUM(app().terrain->height_at(static_cast<float>(NUM2DBL(x)),
-                                           static_cast<float>(NUM2DBL(z))));
+    if (!app().terrain || !app().terrain->ready()) return DBL2NUM(0.0);
+    double dx, dz;
+    if (!vm_number(x, dx) || !vm_number(z, dz) || !std::isfinite(dx) || !std::isfinite(dz))
+        return DBL2NUM(0.0);
+    // Auch endliche Double-Werte können jenseits des float-Bereichs liegen.
+    dx = std::clamp(dx, -static_cast<double>(app().terrain->half_w()),
+                         static_cast<double>(app().terrain->half_w()));
+    dz = std::clamp(dz, -static_cast<double>(app().terrain->half_h()),
+                         static_cast<double>(app().terrain->half_h()));
+    return DBL2NUM(app().terrain->height_at(static_cast<float>(dx), static_cast<float>(dz)));
 }
 
 VALUE rune_world_ready(VALUE) {
@@ -514,24 +641,41 @@ VALUE rune_world_ready(VALUE) {
 // beim Generieren einbaut.
 VALUE rune_world_height_brushes_set(VALUE, VALUE list) {
     if (!app().terrain) return Qfalse;
+    if (NIL_P(list)) { app().terrain->clear_height_brushes(); return Qtrue; }
+    auto fail = []() -> VALUE {
+        app().terrain->invalidate_height_brushes();
+        vm_warn_safely("[ruby] Höhenpinsel ungültig oder zu zahlreich; kein Gelände beim nächsten Aufbau");
+        return Qfalse;
+    };
+    if (!RB_TYPE_P(list, T_ARRAY)) return fail();
+    const long n = RARRAY_LEN(list);
+    if (static_cast<unsigned long>(n) > world::TERRAIN_MAX_BRUSHES) return fail();
+    try {
     std::vector<math::Vec4> brushes;
-    if (!NIL_P(list)) {
-        const long n = RARRAY_LEN(list);
-        brushes.reserve(static_cast<size_t>(n > 0 ? n : 0));
-        for (long i = 0; i < n; ++i) {
-            VALUE e = rb_ary_entry(list, i);
-            if (!RB_TYPE_P(e, T_ARRAY)) continue;
-            if (RARRAY_LEN(e) < 4) continue;
-            math::Vec4 b{};
-            b.x = static_cast<float>(NUM2DBL(rb_ary_entry(e, 0)));
-            b.z = static_cast<float>(NUM2DBL(rb_ary_entry(e, 1)));
-            b.w = static_cast<float>(NUM2DBL(rb_ary_entry(e, 2)));   // Radius
-            b.y = static_cast<float>(NUM2DBL(rb_ary_entry(e, 3)));   // Höhe
-            brushes.push_back(b);
-        }
+    brushes.reserve(static_cast<size_t>(n));
+    for (long i = 0; i < n; ++i) {
+        const VALUE e = rb_ary_entry(list, i);
+        VALUE x, z, r, h;
+        if (RB_TYPE_P(e, T_ARRAY) && RARRAY_LEN(e) >= 4) {
+            x = rb_ary_entry(e, 0); z = rb_ary_entry(e, 1);
+            r = rb_ary_entry(e, 2); h = rb_ary_entry(e, 3);
+        } else if (RB_TYPE_P(e, T_HASH)) {
+            // Karten-JSON enthält Hashes; direkte Ruby-API auch [x,z,r,h].
+            x = vm_hash_get(e, "x"); z = vm_hash_get(e, "z");
+            r = vm_hash_get(e, "r"); h = vm_hash_get(e, "h");
+        } else return fail();
+        double dx, dz, dr, dh;
+        if (!vm_number(x, dx) || !vm_number(z, dz) || !vm_number(r, dr) || !vm_number(h, dh) ||
+            !world::terrain_valid_brush(dx, dz, dr, dh)) return fail();
+        brushes.push_back(math::Vec4{static_cast<float>(dx), static_cast<float>(dh),
+                                     static_cast<float>(dz), static_cast<float>(dr)});
     }
-    app().terrain->set_height_brushes(brushes);
-    return Qtrue;
+    return app().terrain->set_height_brushes(brushes) ? Qtrue : Qfalse;
+    } catch (const std::bad_alloc&) {
+        return fail();
+    } catch (const std::length_error&) {
+        return fail();
+    }
 }
 
 VALUE rune_player_position(VALUE) {

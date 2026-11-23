@@ -1,6 +1,6 @@
-# Handoff für die nächste KI - Rune3D, Stand nach Etappe 19o.6
+# Handoff für die nächste KI - Rune3D, Stand nach Etappe 19p
 
-**Datum des Stands:** 2026-11-19 — Etappe 19o.6: F6-Layout auf kleinen Arbeitsflächen; CI-Status in GitHub Actions prüfen
+**Datum des Stands:** 2026-11-19 — Etappe 19p: Terrain-/Atmosphärenschutz; CI-Status in GitHub Actions prüfen
 **Projekt:** `C:/Users/jusagu/Desktop/Engine` — Windows-Only 3D-RPG-Engine (C++20/Win32/D3D11 + echtes CRuby 3.4.11), Editor = eigenes Programm `RuneEditor.exe`.
 
 ## 0. Auftrag und Fortschritt (RPG-Maker-XP-Überholung)
@@ -36,7 +36,8 @@ Der User beauftragte eine Überarbeitung von Engine und Editor **im Stil von RPG
 | 19d | `e56b692` + Nacharbeit `0660de3` (CI-Grün) | XP-Features Welle 1: Self-Switches A-D pro Event (GameState, Seiten-Bedingung, `self_switch`/`if_self_switch`, Savegame, Editor-Combos im Seite-Kasten) + Bildschirmblende (`fade.rb`, Befehl `fade`, Reset bei Kartenwechsel); 23 Befehlstypen synchron in CMD_TYPES/ISSUE_CMD_TYPES/EV_TYPES; Tests `self_switch_test.rb`, `fade_test.rb` |
 | 19e | `59845c1` (CI-Grün) | RGSS-Schicht (`game/engine/rgss.rb`): `$game_*`-Globale, `Graphics`/`Input`/`Audio`/`load_data`+`save_data` wie RPG Maker XP (Abweichungen: JSON statt Marshal, Namen statt IDs, kein `$scene`-Loop) + Launcher-Ersteinrichtung `:first` (ohne Projekt: Enter/N = erstellen, D = Demo, Esc = beenden; `ensure_demo` nicht mehr automatisch) + Context-Helfer `fade`/`self_switch` + `$game_system.menu_disabled/save_disabled` beachtet; Tests `rgss_test.rb`, script_test-Abschnitt 6 |
 | 19f | `96be63d` (CI-Grün) | Artefakt-Bugfix (User-Konsole): `Rune3D-Windows` enthält jetzt `game/` + `projekte/` neben den EXEs (CI kopiert sie nach `build/`); beide EXEs loggen einen klaren Hinweis, wenn `game/` unter der Wurzel fehlt |
-| 19o.6 | dieser Commit (CI-Status siehe Actions) | F6: Monitor-Arbeitsfläche, DPI-skalierter Scroll-Ausschnitt, Fokus-Nachführung und portable/unsichtbare Windows-Tests |
+| 19p | dieser Commit (CI-Status siehe Actions) | Terrain-/Atmosphärengrenzen, sichtbare F10-/Atlas-Fallbacks, F7-Datentreue, Ruby-Brücke und portable Terrain-Tests |
+| 19o.6 | `326925b` (CI-Grün Run 44640705908) | F6: Monitor-Arbeitsfläche, DPI-skalierter Scroll-Ausschnitt, Fokus-Nachführung und portable/unsichtbare Windows-Tests |
 | 19o.5 | `4635c80` (CI-Grün Run 44628573472) | F6: datentreue Event-/Seiten-/Befehlsformulare, Pending-Schutz, bedarfsweise Altseitenmigration und C++/Ruby-Event-Brücke |
 | 19o.4 | `38ed554` (CI-Grün Run 44614856669) | Objektformular datentreu, Pending-/Drag-Schutz und sicheres Kartenladen; portable Tests |
 | 19o.3 | `19067d4` (CI-Grün Run 44603441976) | F9: unveränderte Felder/Gold datentreu, Validierung, Warnungen und Dateischutz; portable Tests |
@@ -54,7 +55,7 @@ Der User beauftragte eine Überarbeitung von Engine und Editor **im Stil von RPG
 | 19h | `1695951` + Nacharbeit bis `070da7e` (CI-Grün) | RGSS-Vertiefung: `graphics.rb` (Bitmap/Sprite/Window/Viewport, z-sortiert über `Graphics.draw`), `$scene` + `Graphics.scene_update`, `$game_temp`, `$data_actors/items/system`, `passable?` echt (Grenzen + Geländestufe), `RGSS.reset!` bei enter_map; Tests `graphics_test.rb` + rgss_test-Abschnitt |
 | 19g | `e8ac3e5` + Nacharbeit `89eb6d6` (CI-Grün) | Bewegungsrouten (XP Move Routes): `mover.rb` (8 Schritte, repeat, wait, Ersetzung, Spieler/NPC-Ziele), Befehl `move_route` (24 Typen synchron), Editor-Formular ohne neue Controls, Context-Helfer, `Mover.reset!` bei enter_map; Tests `move_route_test.rb` + script_test-Abschnitt 7 |
 
-Stand 19o.6: 613 portable C++-Checks/0 Fehler; ASan/UBSan/float-cast-overflow und Win64-Cross-Kompilierung, Ruby-WASM 25 OK/1 Windows-EXE-Skip. Die C++/Ruby-Event-Brücke prüft 17 Fälle gegen die echte Laufzeit; die JSON-Brücke prüft 14 Dateien ohne Semantik-/Formatabweichung. Beide liefen lokal über C++-Fixtures und Ruby-WASM; die native Open3-Ausführung und den vollständigen Windows-Build prüft CI. Der Windows-C++-Test enthält zusätzlich unsichtbare F6-Controls, ersetzt aber keinen echten Desktop. Grafische Live-/DPI-Tests von F6, Objektformular, F2/F5/F9 und F9-Dateioperationen stehen aus (kein Windows-Desktop/GPU in dieser Umgebung). Arbeitsbaum und CI vor Weiterarbeit prüfen; `opencode.json` ist lokaler Harness-Kram (steht im .gitignore).
+Stand 19p: 671 JSON-/Editor-Checks und 51 echte Terrain-Checks jeweils in Release und ASan/UBSan/float-cast-overflow; Win64-Editor, Renderer, Terrain und Ruby-VM cross-kompiliert; zusätzliche unsichtbare Windows-Listboxprüfungen hier nicht ausgeführt. Natives Ruby 3.0.6: 26 Suiten OK, 1 Windows-EXE-Skip; dieselben 26 Suiten einzeln mit Ruby 3.4-WASM im isolierten WASI-Shim OK (ohne EXE-Test). Native 3.0-JSON-Brücke: 14 Dateien, 0 Semantikfehler, 4 versionsbedingte Formatabweichungen; mit Ruby-3.4-WASM und echten C++-Fixtures: 14 Dateien ohne Semantik-/Formatabweichung und 17 Event-Checks/0 Fehler. WASM nutzt dabei Fixtures statt Open3, die Ruby-Tests nutzen native Stubs. CI baut und linkt unter Windows mit Ruby 3.4 und führt die vorhandenen kopflosen Tests aus; ein echter GUI-/D3D-/GPU- und nativer Binding-Lauf steht aus. CI-Status und Arbeitsbaum vor Weiterarbeit prüfen; `opencode.json` ist lokaler Harness-Kram (ignoriert).
 
 **Nacharbeit 19a (notiert für die Historie):** Der erste CI-Lauf hat genau das getan,
 wofür er da ist: `build.ps1 -Test` übergab g++ Argumente mit angehängtem Komma
@@ -152,6 +153,23 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
 
 **Backlog:** Offene Fehler, Grenzen und Test-Wissen stehen zentral in `docs/BACKLOG.md` — dort nachsehen und neue Erkenntnisse dorthin eintragen (nicht mehr hier listen).
 
+- **Terrain/Atmosphäre (19p):** `world/terrain_limits.h` und
+  `terrain_preview.h` prüfen sichere Raster-, Pinsel-, Splat-, Tile- und
+  Atmosphärenwerte vor Cast/Schleifen. Karten werden dabei nicht verändert;
+  Status/F10 zeigen fehlendes Gelände oder Atlas-Ersatz. F7 nutzt Original-
+  indizes und eine nicht löschbare Auslassungszeile, erhält unberührte
+  Felder und warnt vor Ersetzen ungültiger Werte. F2/F6 sperren das Öffnen
+  in beide Richtungen; F2 prüft seinen Entwurf nach Datenrückfragen erneut.
+  Bei Rückfragen/F5 werden konkurrierende Aktionen und Listenwechsel
+  geschützt. `texture_path.h` lehnt lexikalische Pfade/Gerätenamen bei
+  Editor-RGBA-Zugriffen ab, nicht aber Reparsepunkte oder Dateikonflikte.
+  `AtlasPlan` ist auf 1024 Zellen begrenzt; Cache und
+  private Atlas-Slot-Wiederverwendung sowie stabile Namens-Slots vermeiden
+  wiederholte Kopien. `atlas` bleibt als Projekttextur benutzbar; fehlende
+  Basiszellen fallen auf Einzeltextur zurück. Die doppelte UV-Skalierung
+  ist korrigiert; `terrain.tile` ist im Splatpfad weiterhin wirkungslos.
+  Das spätere XP-Design bleibt ausdrücklich im Backlog, nicht vorziehen.
+  Grenzen für andere Projektdateien und alte Projekttexturen: Backlog.
 - **F6-Datentreue (19o.5):** `event_form.h` liest Event, Seite und Befehl
   nichtmutierend und bereitet gemeinsame Änderungen auf Kopien vor. Alte
   Seiten werden nur für neue Bedingungen/Seiten migriert; Top-Level-
@@ -198,7 +216,8 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
   gemeinsame Datei-Hilfe; echte GUI-/End-to-End-Dateitests stehen aus.
   Der Kartenbaum hält Einfüge-Texte bis zum Win32-Aufruf am Leben;
   `GetAsyncKeyState`-Aktionen laufen nur im Vordergrund-Hauptfenster.
-  Extreme Terrain-/Atmosphärenwerte bleiben gesondert im Backlog offen.
+  Gezielt abgesicherte Terrain-/Atmosphärenpfade siehe 19p; andere
+  Projektdateien und grafische Tests bleiben im Backlog offen.
 - **F9-Datentreue (19o.3):** `database_form.h` bereitet geänderte Felder
   und Gold auf Kopien vor; unberührte Werte, unbekannte Felder und sehr
   große Integer bleiben exakt. Fehlende Auswahl blockiert Gold nicht.
@@ -260,6 +279,30 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
 - Hardware: i5-10400T, 7,7 GB RAM, Intel UHD 630, keine Admin-Rechte.
 
 ## 5. Live-Test-Vorlage
+
+**Noch offen für 19p (echter Windows-Rechner mit D3D11):** Ein gesichertes
+Testprojekt verwenden. Normalen Boden mit Höhenpinseln und mehreren Splats
+im Editor und F4 prüfen: Höhen bleiben beim Neubau, Atlas-Zellen stimmen
+visuell (keine doppelte UV-Skalierung), auch eine Textur namens `atlas`.
+Mehrfach F5/Kartenwechsel und Textur-Neuanmeldung testen; GPU-/CPU-Speicher
+darf für unveränderte bzw. gleichnamig ersetzte Texturen nicht wachsen.
+Fehlende Basis-/Flächentextur und mehr als 1024 Atlas-Eingaben auf Kopien
+prüfen: F10/Status nennen die Einschränkung, kein löchriges altes Mesh.
+
+Separate Kartenkopien mit riesigen Integern, extremen Seitenverhältnissen,
+ungültigen Höhenpinseln und überlangen Splatlisten öffnen: F10 nennt die
+Ursache, das alte Terrain verschwindet, unveränderte JSON-Werte bleiben
+beim Speichern erhalten. In F7 eine gültige Zeile nach ungültigen Zeilen
+entfernen und den Originalindex prüfen; ungültige Zeile nur nach Ja
+löschen, Auslassungszeile nicht. Bei ungültigem Tile nur die Textur ändern
+und umgekehrt; vor Ersetzen kaputter Altdaten Abbrechen/Ja testen. Bei
+offenem F7 A→B→A wechseln: Übernehmen/Entfernen müssen gesperrt sein.
+F2→F6 und F6→F2 sowie Wetter/Nebel-Ersatz und F10-Neuscan prüfen. F7- und
+F3-Auswahl während Rückfragen und F5, Formularentwürfe sowie normale und
+ungültige RGBA-Dateinamen mit gesicherten Kopien prüfen. Reparsepunkte und
+Dateikonflikte sind noch nicht abgesichert. Den vollständigen Ablauf samt
+echten Ruby-Bindings, GPU-Ressourcen und ggf.
+Fehlersimulation testen; Crosscompile/Stubs oder CI behaupten dies nicht.
 
 **Noch offen für 19o.6 (echter Windows-Rechner):** Ein gesichertes
 Testprojekt mit mehreren Events/Seiten und verschiedenen Befehlstypen öffnen.
