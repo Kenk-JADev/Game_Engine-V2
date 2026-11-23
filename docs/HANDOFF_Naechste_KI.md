@@ -42,7 +42,7 @@ Der User beauftragte eine Überarbeitung von Engine und Editor **im Stil von RPG
 | 19s | `6a3b8e1` (CI-Grün Run 45175342986) | Handle-relative Karten-/F9-Dateitransaktionen, erneut geprüfte Rückfragen, Wiederherstellung und 58 echte Windows-Dateitests |
 | 19t | `c7b2f5d` (CI-Grün Run 45178315607) | Ingame-Editor entfernt, Szenenbau für Spiel/Launcher getrennt und echte Ruby-Laufzeit kopflos geprüft |
 | 19u | `bc237b3` (CI-Grün Run 45183821663) | Externer F4-Start mit gewählter Karte, Unicode-/Fehler-/F5-/Projektwechseltests |
-| 19v | `9441733` (CI-Grün Run 45190029051) + Nacharbeit | Party-/Kampfzustand, gezielte Items, Esc, Game Over und Abbruch/F5; Ruby-Regressionen und Live-Anleitung |
+| 19v | `9441733` + `b2f34df` (CI-Grün Run 45192650255) | Party-/Kampfzustand, gezielte Items, Esc, Game Over und Abbruch/F5; Ruby-Regressionen und Live-Anleitung |
 | 19o.6 | `326925b` (CI-Grün Run 44640705908) | F6: Monitor-Arbeitsfläche, DPI-skalierter Scroll-Ausschnitt, Fokus-Nachführung und portable/unsichtbare Windows-Tests |
 | 19o.5 | `4635c80` (CI-Grün Run 44628573472) | F6: datentreue Event-/Seiten-/Befehlsformulare, Pending-Schutz, bedarfsweise Altseitenmigration und C++/Ruby-Event-Brücke |
 | 19o.4 | `38ed554` (CI-Grün Run 44614856669) | Objektformular datentreu, Pending-/Drag-Schutz und sicheres Kartenladen; portable Tests |
@@ -79,8 +79,8 @@ bei Wirkung ausgeführt/abgezogen; vorgemerkte Mengen sind reserviert. Esc,
 KO, erneuter Kampfstart, Game Over vor Event-Folgen sowie direkter Abbruch,
 Kartenwechsel, Titel/F5 und Playtest-Fehler sind abgesichert. Alte zielose
 `use_item`-Aufrufe behalten den Leader-Fallback mit möglichem Verbrauch auch
-bei voller Party. [CI 45190029051](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45190029051)
-auf `9441733` war grün, darunter Windows-Ruby 29/0/0. Die Nacharbeit bildet
+bei voller Party. [CI 45192650255](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45192650255)
+auf `b2f34df` war grün, darunter Windows-Ruby 29/0/0. Die Nacharbeit bildet
 Tastendruckflanken und die native Esc-Mausfreigabe in der Inputattrappe nach;
 `runtime_boot_test.rb` prüft Action-Event, Projekt-Script und einen echten
 Datei-Save-/Load nach Kampf-Item in einer temporären Kopie. Lokal Ruby 3.0.6:

@@ -325,7 +325,7 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
   `encounter_test.rb` und `runtime_boot_test.rb` sichern die Logik ab. Die
   Inputattrappe berücksichtigt Halten/Loslassen; der Bootstrap prüft ein
   Kampf-Item und echtes Slot-Datei-I/O in einer temporären Projektkopie.
-  Auf `9441733` war [CI 45190029051](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45190029051)
+  Auf `b2f34df` war [CI 45192650255](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45192650255)
   grün, Windows-Ruby 29/0/0. Der interaktive Windows-Test bleibt oben offen.
 - Betroffene Stellen: `game/engine/{battle,party,rgss,scripts}.rb`,
   `game/main.rb`, die genannten Tests und `docs/WINDOWS_BATTLE_LIVE_TEST.md`.
