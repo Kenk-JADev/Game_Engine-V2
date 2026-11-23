@@ -1417,8 +1417,8 @@ Truppe. Daten: `database.json` bekommt `enemies` (id/name/hp/mp/atk/def/spi/
 agi/exp/gold/drop/drop_rate/color) und `troops` (id/name/enemies[]) -
 vier Gegner (Goblin/Wolf/Bandit/Kristallwache) und drei Truppen
 (waldweg/banditen/brunnen) liegen bei. `Battle::Battler` ist die gemeinsame
-Game_Battler-Entsprechung für Helden (gespiegelt von Party::Actor, HP/MP
-werden zurückgesynct) und Gegner.
+Game_Battler-Entsprechung für Helden und Gegner. Seit 19v sind HP/MP der
+Helden direkt an den jeweiligen Party::Actor gebunden (siehe oben).
 
 Ablauf (Scene_Battle-Phasen, vereinfacht): `start(troop_id, can_escape:,
 can_lose:)` -> Befehlsphase pro lebendem Helden (Angriff/Item/Flucht,
@@ -1456,7 +1456,7 @@ C++-Issues-Scan prüft `name`-Pflicht beider Typen.
 geführt, Zahleneingabe zusätzlich als RGSS-Zustand (`num_input_*` in
 `$game_temp` vorhanden, der Interpreter nutzt seinen eigenen State).
 
-**Grenzen (Backlog):** keine Skills/Magie (MP ungenutzt), keine Zustände
+**Grenzen (Backlog):** keine Skills/Magie (MP nicht für Skills verbraucht), keine Zustände
 (Vergiftung etc.), keine Gegner-KI außer "Angriff auf zufälligen Helden",
 keine Formationen/Positionen, Kampfhintergrund = abgedunkelte Karte.
 Zufallskämpfe kamen später in Etappe 19l hinzu (siehe unten).
@@ -1686,6 +1686,54 @@ Demo-Datenbank, JSON-Roundtrips und unberührte allgemeine Eigenschaften.
 CI baut/linkt den Win32-Editor und kann WARP in einem unsichtbaren Fenster
 prüfen, ersetzt aber keinen interaktiven GUI-/Hardware-GPU-Test (siehe Backlog
 und Handoff).
+
+## Kampfzustand und gezielte Items (Etappe 19v)
+
+`Battle::Battler` greift bei Party-Helden direkt auf denselben `Party::Actor`
+zu: aktuelle HP/MP und echte Maximalwerte sind keine voneinander abweichenden
+Kopien. 0 HP bleibt 0; ohne lebenden Helden endet der Kampf als Niederlage.
+Ein bereits laufender Kampf wird nicht durch einen zweiten Start ersetzt.
+Die Befehlsreihenfolge verwendet feste Actor-Positionen statt Indizes in
+einer veränderlichen Liste lebender Helden. Wird ein auswählender Held
+kampfunfähig, wird seine offene Auswahl verworfen; KO streicht auch seine
+vorgemerkten Aktionen und Itemreservierungen.
+
+Die Itemliste reserviert eine verfügbare Menge pro bestätigter Aktion, ohne
+das Inventar sofort zu ändern. In `:item_target` wird ein bestimmter Held
+einschließlich KO gewählt; ein volles/ungültiges Ziel wird abgewiesen.
+Bei der Ausführung prüft `Party.use_item(..., target:)` Bestand, positive
+Stärke und Wirkung erneut und verbraucht nur bei Erfolg. Führt eine
+schnellere Aktion zum Sieg, werden spätere Aktionen nicht mehr ausgeführt.
+Das gewählte Angriffsziel fällt bei Bedarf auf den ersten lebenden Gegner
+zurück. Ausführungsreihenfolge bleibt Agilität, Gegner ziehen anschließend.
+
+`Party.use_item(id, target: actor_oder_id)` sowie `use_item(id, ziel)` bzw.
+`use_item(id, target: ziel)` im Script-Context und `$game_party` unterstützen
+gezielte Anwendung. Ohne Ziel bleibt der historische Auto-Fallback auf den
+ersten verletzten Helden bzw. den Leader erhalten; bei einer vollen Party
+kann ein alter Aufruf also weiterhin ohne Wirkung verbrauchen. Mana nimmt
+entsprechend den ersten Helden mit fehlenden MP oder den Leader. Ein
+Heiltrank kann wie früher bei 0 HP wiederbeleben; Skills, Zustände und eine
+XP-vollständige Item-/Gegnerlogik sind weiterhin nicht implementiert.
+
+`Game.update` leitet Esc im Kampf an `Battle` statt an das Weltmenü. Ein
+nicht erlaubter Fluchtversuch öffnet kein Menü; ein fehlgeschlagener löscht
+Aktionen und Reservierungen. Nach Game Over wird der Titelwechsel vor den
+Folgekommandos des wartenden Event-Interpreters verarbeitet; `can_lose`
+setzt die Event-Liste dagegen fort. Kampfende und `abort!` geben auch bei
+direktem Ruby-Aufruf die Simulation frei. Kartenwechsel, Titelrücksprung,
+F5 und Playtest-Fehler brechen aktive Kämpfe ab; der Fehlerbildschirm
+pausiert die Simulation anschließend bewusst wieder. F5 setzt die Party
+wie bisher neu auf und ist kein Speichern.
+
+`battle_state_test.rb` prüft echte Battle-/Party-Logik mit nativen Attrappen,
+`encounter_test.rb` die echte Spielschleife einschließlich Esc, Event-Folgen,
+Abbruch und JSON-Save-/Load-Rundlauf über eine Speicherattrappe. Der echte
+Bootstrap wird in `runtime_boot_test.rb` auch mit Kampf und F5-Fehler in
+einer temporären Kopie geprüft. `party_test.rb` und `rgss_test.rb` prüfen die
+Ruby-Zugänge. Der zentrale Glob-Runner nimmt die neue Suite automatisch in
+CI und `build.ps1 -Test` auf. Kein interaktiver Windows-/GPU-Nachweis; siehe
+`docs/WINDOWS_BATTLE_LIVE_TEST.md`.
 
 ## F4 mit ausgewählter Karte (Etappe 19u)
 

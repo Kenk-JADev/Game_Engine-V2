@@ -162,6 +162,15 @@ $game_party.gain_item('heiltrank', 2)
 check('Item gegeben') { $game_party.item_count('heiltrank') == 2 }
 $game_party.lose_item('heiltrank', 1)
 check('Item genommen') { $game_party.item_count('heiltrank') == 1 }
+Party.setup(Database.database)
+Party.find('arik').hp = 10
+Party.find('mira').hp = 5
+check('$game_party.use_item mit zweitem Argument zielt auf Mira') do
+  $game_party.use_item('heiltrank', 'mira') && Party.find('mira').hp == 45 && Party.find('arik').hp == 10
+end
+check('$game_party.use_item akzeptiert auch das Schlüsselwort target') do
+  $game_party.use_item('heiltrank', target: 'arik') && Party.find('arik').hp == 50 && Party.find('mira').hp == 45
+end
 
 $game_player.moveto(2.0, 3.0)
 check('moveto setzt Spieler + Bodenhöhe') { Rune::Player.position == [2.0, 0.2, 3.0] }

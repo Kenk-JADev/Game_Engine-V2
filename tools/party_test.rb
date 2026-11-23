@@ -172,6 +172,17 @@ ctx.instance_eval('heal(15)', 'test', 1)
 check('Script heal(15)') { Party.find('mira').hp == 25 }
 ctx.instance_eval('heal', 'test', 1)
 check('Script heal (voll)') { Party.find('mira').hp == Party.find('mira').max_hp }
+Party.add_item('heiltrank', 2)
+Party.find('arik').hp = 10
+Party.find('mira').hp = 5
+check('Script use_item mit zweitem Argument zielt auf Mira') do
+  ctx.instance_eval('use_item("heiltrank", "mira")', 'test', 1) &&
+    Party.find('mira').hp == 45 && Party.find('arik').hp == 10
+end
+check('Script use_item akzeptiert auch das Schlüsselwort target') do
+  ctx.instance_eval('use_item("heiltrank", target: "arik")', 'test', 1) &&
+    Party.find('arik').hp == 50 && Party.find('mira').hp == 45
+end
 
 # --- 8) Statuszeilen ---------------------------------------------------------
 lines = Party.status_lines

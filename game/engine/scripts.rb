@@ -124,7 +124,8 @@ module Scripts
     def item_count(name) = Party.item_count(name)
     def add_item(name, count = 1) = Party.add_item(name, count.to_i)
     def take_item(name, count = 1) = Party.take_item(name, count.to_i)
-    def use_item(name) = Party.use_item(name)
+    # Ziel als zweites Argument oder target:; ohne Ziel wie bisher automatisch.
+    def use_item(name, target_id = nil, target: target_id) = Party.use_item(name, target: target)
     def heal(amount = 0) = Party.heal_all(amount.to_i)
 
     # Etappe 17h: Wetter umstellen (kein/regen/schnee); ohne Argument lesen.

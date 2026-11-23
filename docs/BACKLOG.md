@@ -21,6 +21,16 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 ---
 
 ## Offen
+### [Tests/Engine] Kampfsteuerung auf Windows interaktiv prüfen — offen (Live)
+- 19v ergänzt zielgerichtete Items, gemeinsame HP-/MP-Werte, Esc-Routing und
+  saubere Kampf-/Game-Over-Übergänge. Die Ruby-Tests nutzen native Attrappen;
+  keine davon bedient das sichtbare Windows-Fenster oder eine Hardware-GPU.
+- Mit isolierter Projektkopie Items, KO/Wiederbelebung, Flucht, Speichern,
+  F5 und Event-Game-Over gemäß `docs/WINDOWS_BATTLE_LIVE_TEST.md` prüfen.
+  Ergebnisse erst nach tatsächlicher Ausführung eintragen.
+- Betroffene Stellen: `game/engine/{battle,party}.rb`, `game/main.rb`,
+  `tools/{battle_state,encounter,runtime_boot}_test.rb`.
+
 ### [Editor] Oberfläche später am RPG Maker XP ausrichten — offen (Design)
 - Wunsch: Die vom User gezeigten XP-Screenshots dienen als Vorbild für eine
   spätere Überarbeitung; jetzt noch keine Design-Umsetzung.
@@ -126,9 +136,9 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
   `src/core/win_project_cli.h`, `src/main.cpp`, `game/{main.rb,engine/data.rb}`.
 
 ### [Engine] Kampf-Grundgerüst deckt noch nicht alles ab — offen (Feature-Fehlend)
-- Stand 19i: Rundenkampf mit Angriff/Item/Flucht, Sieg/Niederlage/Exp/
-  Gold/Drops, Gegner als 3D-Kästen mit HP-Balken.
-- Es fehlen u. a.: Skills/Magie (MP bleibt ungenutzt), Zustände (Vergiftung,
+- Stand 19v: Rundenkampf mit Angriff, gezielten Heil-/Manaitems und Flucht,
+  Sieg/Niederlage/Exp/Gold/Drops, Gegner als 3D-Kästen mit HP-Balken.
+- Es fehlen u. a.: Skills/Magie (MP wird nicht dafür verbraucht), Zustände (Vergiftung,
   Schlaf ...), Gegner-KI jenseits „Angriff auf zufälligen Helden",
   Formationen/Positionen, Kampf-Hintergrundmusik/-Hintergrundbild,
   Kampftagebuch-Fenster zum Wegklicken. Zufallskämpfe beim Laufen sind
@@ -291,6 +301,23 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Etappe 19a.
 
 ## Erledigt
+### [Engine] Kampfzustand und gezielte Items — implementiert (19v)
+- HP/MP verwenden die Party als einzige Quelle; aktuelle und maximale Werte
+  bleiben erhalten, KO bleibt KO. Ein aktiver Kampf kann nicht ersetzt werden.
+- Itemzielwahl für Party-Helden inklusive KO, Abbruch ohne Verbrauch,
+  Reservierung pro Runde und erneute Wirkungs-/Bestandsprüfung bei Ausführung.
+  Verlorene Ziele bei Angriffen fallen auf lebende Gegner zurück. Script-/
+  RGSS-Helfer akzeptieren ein optionales Ziel; der alte zielose Leader-
+  Fallback bleibt kompatibel und kann bei voller Party ein Item verbrauchen.
+- Esc wird im Kampf nicht vom Weltmenü abgefangen. Flucht, KO, Game Over,
+  Titel/Kartenwechsel, F5 und Playtest-Fehler räumen Aktionen/Pause auf.
+- `battle_state_test.rb`, `battle_test.rb`, `party_test.rb`, `rgss_test.rb`,
+  `encounter_test.rb` und `runtime_boot_test.rb` sichern die Logik ab. Lokal
+  Ruby 3.0.6: 28 Suiten OK, 0 Fehler, 1 Windows-EXE-Test übersprungen;
+  MapCheck sauber. Der interaktive Windows-Test bleibt oben offen.
+- Betroffene Stellen: `game/engine/{battle,party,rgss,scripts}.rb`,
+  `game/main.rb`, die genannten Tests und `docs/WINDOWS_BATTLE_LIVE_TEST.md`.
+
 ### [Editor/Engine] F4 startet die gewählte Karte — implementiert (19u)
 - RuneEditor speichert die aktive Karte, prüft die unveränderte Auswahl
   und übergibt Projekt und Karten-ID UTF-16-sicher an Rune3D. Ohne gewählte

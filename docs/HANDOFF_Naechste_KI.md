@@ -1,6 +1,6 @@
-# Handoff für die nächste KI - Rune3D, Stand nach Etappe 19u
+# Handoff für die nächste KI - Rune3D, Stand nach Etappe 19v
 
-**Stand:** Etappe 19u — F4 startet die gewählte Karte; der Code-Commit `bc237b3` ist in GitHub Actions geprüft
+**Stand:** Etappe 19v — Kampfzustand und gezielte Items; aktuellen Git-/CI-Status vor Weiterarbeit prüfen
 **Projekt:** `C:/Users/jusagu/Desktop/Engine` — Windows-Only 3D-RPG-Engine (C++20/Win32/D3D11 + echtes CRuby 3.4.11), Editor = eigenes Programm `RuneEditor.exe`.
 
 ## 0. Auftrag und Fortschritt (RPG-Maker-XP-Überholung)
@@ -42,6 +42,7 @@ Der User beauftragte eine Überarbeitung von Engine und Editor **im Stil von RPG
 | 19s | `6a3b8e1` (CI-Grün Run 45175342986) | Handle-relative Karten-/F9-Dateitransaktionen, erneut geprüfte Rückfragen, Wiederherstellung und 58 echte Windows-Dateitests |
 | 19t | `c7b2f5d` (CI-Grün Run 45178315607) | Ingame-Editor entfernt, Szenenbau für Spiel/Launcher getrennt und echte Ruby-Laufzeit kopflos geprüft |
 | 19u | `bc237b3` (CI-Grün Run 45183821663) | Externer F4-Start mit gewählter Karte, Unicode-/Fehler-/F5-/Projektwechseltests |
+| 19v | aktueller Stand | Party-/Kampfzustand, gezielte Items, Esc, Game Over und Abbruch/F5; Ruby-Regressionen und Live-Anleitung |
 | 19o.6 | `326925b` (CI-Grün Run 44640705908) | F6: Monitor-Arbeitsfläche, DPI-skalierter Scroll-Ausschnitt, Fokus-Nachführung und portable/unsichtbare Windows-Tests |
 | 19o.5 | `4635c80` (CI-Grün Run 44628573472) | F6: datentreue Event-/Seiten-/Befehlsformulare, Pending-Schutz, bedarfsweise Altseitenmigration und C++/Ruby-Event-Brücke |
 | 19o.4 | `38ed554` (CI-Grün Run 44614856669) | Objektformular datentreu, Pending-/Drag-Schutz und sicheres Kartenladen; portable Tests |
@@ -72,7 +73,19 @@ Stand 19t: Der Ruby-Ingame-Editor und sein interner Playtest-Zyklus sind entfern
 
 Stand 19u: F4 übergibt Projekt und ausgewählte Karten-ID; mit `--project` allein bleibt der normale Start erhalten. F5 liest im Playtest diese Karte erneut, auch nach einem zunächst fehlenden Projekt; manuelle Projektwahl löscht die Vorgabe. Nicht vorhandene, mehrdeutige oder nicht als JSON-Objekt lesbare Karten zeigen einen Fehler statt einer anderen Karte. `Database` und `MapCheck` erkennen auch `.JSON` und ignorieren Verzeichnisse. [CI 45183821663](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45183821663) auf `bc237b3`: alle vier Jobs grün; Windows-Dokumentdateien 58/0, Pfade 39/0, Material 57/0, WARP 36/0, eingebettete Ruby-/WARP-Brücke 31/0 und Ruby-Suite 28/0/0. Lokal: Ruby 3.0.6 27 OK/0 Fehler/1 Windows-EXE-Skip, MapCheck sauber, JSON 671/0, Terrain 51/0, Material 25/0. Interaktiver GUI-/Hardwaretest für 19u bleibt offen.
 
-**Anschließender Userwunsch:** Rune3D funktional ausbauen; RuneEditor ist das einzige vollständige Editorprogramm. Die F4-Kartenauswahl ist in 19u implementiert; weitere konkrete Funktionen sind noch nicht priorisiert.
+Stand 19v: Das Kampf-Grundgerüst wurde nutzbar stabilisiert. Party-Actors sind
+die einzige HP-/MP-Quelle, KO bleibt KO, Items wählen ein Ziel und werden nur
+bei Wirkung ausgeführt/abgezogen; vorgemerkte Mengen sind reserviert. Esc,
+KO, erneuter Kampfstart, Game Over vor Event-Folgen sowie direkter Abbruch,
+Kartenwechsel, Titel/F5 und Playtest-Fehler sind abgesichert. Alte zielose
+`use_item`-Aufrufe behalten den Leader-Fallback mit möglichem Verbrauch auch
+bei voller Party. Lokal Ruby 3.0.6: 28 Suiten OK/0 Fehler/1 Windows-EXE-Skip;
+MapCheck sauber und Lint 0 Fehler/3 bestehende Warnungen. Automatisiert sind
+Logik und Spielschleife mit nativen Attrappen, nicht der interaktive Kampf auf
+Windows/Hardware-GPU. Anleitung: `docs/WINDOWS_BATTLE_LIVE_TEST.md`.
+
+**Userwunsch:** Rune3D funktional ausbauen; RuneEditor bleibt das einzige
+vollständige Editorprogramm. Weitere konkrete Funktionen sind nicht priorisiert.
 
 **Nacharbeit 19a (notiert für die Historie):** Der erste CI-Lauf hat genau das getan,
 wofür er da ist: `build.ps1 -Test` übergab g++ Argumente mit angehängtem Komma

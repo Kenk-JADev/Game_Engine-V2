@@ -58,6 +58,40 @@ $game_map/$game_screen/$game_temp`, `Graphics`, `Input`, `Audio`,
 (Script-Editor, F5 = neu laden). Der frühere Ingame-Editor wurde entfernt:
 Karten werden in `RuneEditor.exe` bearbeitet; F4 im Spiel öffnet keinen Editor.
 
+### Kampf bedienen
+
+Im Kampf wählt jeder lebende Held mit ↑/↓ einen Befehl und bestätigt mit
+**E**, **Enter** oder **Leertaste**. Angriffe wählen mit den Pfeiltasten
+einen lebenden Gegner. Bei **Item** zuerst den Heil- oder Manatrank und
+anschließend mit den Pfeiltasten den gewünschten Party-Helden auswählen;
+die Auswahl ist im Status markiert. Heiltränke können auch Helden mit 0 HP
+wiederbeleben. Ein volles bzw. ungültiges Ziel wird nicht bestätigt.
+
+**Esc** geht von der Zielwahl zur Itemliste bzw. von dort zum Befehl zurück;
+in der Gegnerzielwahl verwirft es den Angriff. Bei der Befehlswahl versucht
+Esc eine Flucht, sofern sie erlaubt ist, und öffnet nicht das Spielmenü.
+Ein fehlgeschlagener Fluchtversuch verwirft die vorgemerkten Aktionen und
+lässt die Gegner ziehen. Items werden für die Runde reserviert und erst bei
+wirksamer Ausführung abgezogen. Nach einem Sieg verbrauchen spätere Aktionen
+kein Item mehr. Besiegte Angriffsziel-Gegner werden durch einen lebenden
+Gegner ersetzt. Aktuelle und maximale HP/MP bleiben mit der Party verbunden.
+
+Ruby-Scripts können ebenfalls gezielt anwenden:
+
+```ruby
+use_item('heiltrank', 'mira')                  # Script-Context
+$game_party.use_item('manatrank', target: 'mira')
+Party.use_item('heiltrank', target: Party.find('mira'))
+```
+
+Ein Ziel ist eine Helden-ID oder eine aktuelle `Party::Actor`-Referenz.
+Gezielt wird nur bei Wirkung verbraucht. Für alte Aufrufe **ohne** Ziel
+bleibt das frühere Verhalten: der erste verletzte Held bzw. Held mit
+fehlenden MP wird gewählt, andernfalls der Party-Anführer; dabei kann auch
+bei vollen Werten ein Item verbraucht werden. Nur positive Heil-/Manastärke
+ist benutzbar. Der grafische Kampf-Live-Test ist noch offen:
+[`docs/WINDOWS_BATTLE_LIVE_TEST.md`](docs/WINDOWS_BATTLE_LIVE_TEST.md).
+
 ## Vergleich mit RPG Maker XP
 
 | XP-Funktion | Rune3D | Stand |
@@ -154,7 +188,7 @@ ruby tools\lint_repo.rb                        # Repo-Hygiene
 | Ebene | Was | Wo |
 |---|---|---|
 | Ruby-Modultests | Engine-Logik mit `Rune::*`-Stubs (Events, Seiten, Interpreter, Party, Kampf, Wetter, Scripte, Projekte, Speichern) + Ruby/C++-Vokabular-Sync | `tools/*_test.rb`, Runner `tools/test_all.rb` |
-| Ruby-Laufzeit | Echter Bootstrap, Launcher, Szenenbau, F4/F5, Karten und Kollisionen mit nativen Attrappen | `tools/runtime_boot_test.rb`, `tools/map_objects_test.rb`, `tools/encounter_test.rb` |
+| Ruby-Laufzeit | Echter Bootstrap, Launcher, Szenenbau, F4/F5, Kampf-Eingabe und Save/Load mit nativen Attrappen | `tools/runtime_boot_test.rb`, `tools/map_objects_test.rb`, `tools/encounter_test.rb` |
 | C++-Logiktest | JSON und portable Editor-Formularmodelle, darunter F6-Transaktionen und Datentreue | `tools/json_test.cpp` |
 | C++-Terrain | Echte Geländegenerierung, Höhen-/Splat-Budgets, Atlasplan und Fehlerpfade ohne D3D | `tools/terrain_test.cpp` |
 | Materialien/Dateien | Verlustfreier JSON-Baum, unter Windows Handle-Konflikte, Junctions und Hardlinks | `tools/material_test.cpp` |
@@ -166,7 +200,7 @@ ruby tools\lint_repo.rb                        # Repo-Hygiene
 | Event-Brücke | C++-F6-Änderungen gegen echte Ruby-Event- und Interpreter-Laufzeit | `tools/event_bridge_check.rb` |
 | Karten-Scan | Daten-Validierung (Befehle, Trigger, Bedingungen, Wegpunkte, Terrain) | `game/engine/mapcheck.rb` |
 | Repo-Hygiene | UTF-8, BOM, Doppelkodierung, Zeilenenden, Requires, Index | `tools/lint_repo.rb` |
-| Live-Tests | Interaktiver GUI-/Hardwaretest in isolierter Kopie | `docs/WINDOWS_MATERIAL_LIVE_TEST.md`, `tools/edclick.psm1` |
+| Live-Tests | Interaktiver GUI-/Hardwaretest in isolierter Kopie (noch offen) | `docs/WINDOWS_MATERIAL_LIVE_TEST.md`, `docs/WINDOWS_BATTLE_LIVE_TEST.md` |
 
 `tools/tex_import_test.rb` braucht eine gebaute `RuneEditor.exe` und wird ohne
 sie übersprungen (der Runner meldet das).

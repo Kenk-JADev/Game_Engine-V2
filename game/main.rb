@@ -295,10 +295,27 @@ end
 
   # Zurück zum Titelbildschirm (19h.2: $game_temp.to_title/gameover wie XP).
   def self.to_title!
+    Battle.abort! if defined?(Battle)
     @menu = nil
     @mode = :launcher
     Launcher.activate
     Rune::Log.info('Zurück zum Titelbildschirm ($game_temp)')
+  end
+
+  # Bereits gesetztes Game Over muss vor weiteren Event-Befehlen greifen;
+  # eine weitere Prüfung später im Frame nimmt neu gesetzte Flags auf.
+  def self.process_temp_scene_change
+    return false unless $game_temp
+
+    if $game_temp.gameover
+      $game_temp.gameover = false
+    elsif $game_temp.to_title
+      $game_temp.to_title = false
+    else
+      return false
+    end
+    to_title!
+    true
   end
 
   # ------------------------------------------------------------- Menü (Esc)
@@ -421,6 +438,7 @@ end
   end
 
   def self.playtest_failed(message)
+    Battle.abort! if defined?(Battle)
     @mode = :playtest_error
     @playtest_error = message
     @menu = nil
@@ -542,6 +560,20 @@ end
       Rune::Log.info("Debug-Anzeige: #{@debug ? 'an' : 'aus'}")
     end
 
+    # Kampfeingaben haben Vorrang vor dem Spielmenü. Esc muss Ziel-/Itemwahl
+    # abbrechen oder im Kampf eine Flucht versuchen, nicht das Menü öffnen.
+    if defined?(Battle) && Battle.active?
+      close_menu if @menu
+      Rune::Simulation.paused = true
+      Battle.update(dt)
+      Effects.update(dt)
+      Fade.update(dt)
+      Rune::Simulation.paused = false unless Battle.active?
+      return
+    end
+
+    return if process_temp_scene_change
+
     # Menü (Esc): friert Spiellogik, Interpreter und Events ein.
     if Rune::Input.pressed?(:escape)
       # Etappe 19e: $game_system.menu_disabled (RGSS) unterdrückt das Öffnen;
@@ -565,17 +597,6 @@ end
         Rune::Log.info(format('Spieler x=%.2f y=%.2f z=%.2f Boden=%s FPS=%.0f',
                               px, py, pz, Rune::Player.on_ground?, Rune::Time.fps))
       end
-    end
-
-    # Etappe 19i: Im Kampf steht die Welt - auch die native Spielerphysik,
-    # die vor Game.update tickt. Nach dem Ende darf sie wieder laufen.
-    if defined?(Battle) && Battle.active?
-      Rune::Simulation.paused = true
-      Battle.update(dt)
-      Effects.update(dt)
-      Fade.update(dt)
-      Rune::Simulation.paused = false unless Battle.active?
-      return
     end
 
     # Interpreter zürst: blockiert er (Textfenster offen), wird nichts Neues
@@ -635,19 +656,8 @@ end
       return
     end
 
-    # 19h.2: XP-Flags aus $game_temp beachten (Scene_Gameover/Title-Abruf).
-    if $game_temp
-      if $game_temp.gameover
-        $game_temp.gameover = false
-        to_title!
-        return
-      end
-      if $game_temp.to_title
-        $game_temp.to_title = false
-        to_title!
-        return
-      end
-    end
+    # 19h.2: Auch in diesem Frame neu gesetzte XP-Flags beachten.
+    return if process_temp_scene_change
     px, py, pz = Rune::Player.position
     Weather.update(dt, px, py, pz)   # Etappe 17h: Regen/Schnee um den Spieler
 

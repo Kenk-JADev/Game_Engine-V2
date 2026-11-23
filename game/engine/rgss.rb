@@ -285,7 +285,7 @@ module RGSS
     def item_count(name) = Party.item_count(name.to_s)
     def gain_item(name, count = 1) = Party.add_item(name.to_s, count.to_i)
     def lose_item(name, count = 1) = Party.take_item(name.to_s, count.to_i)
-    def use_item(name) = Party.use_item(name.to_s)
+    def use_item(name, target_id = nil, target: target_id) = Party.use_item(name.to_s, target: target)
 
     # Rune3D-Zusatz (kein RGSS): ganze Party heilen, wie der heal-Befehl.
     def heal_all(amount = 0) = Party.heal_all(amount.to_i)

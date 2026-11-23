@@ -270,13 +270,20 @@ if ARGV[0] == '--playtest-child'
       end
     when 'delete_retry'
       check('ausgewählte Karte zunächst gestartet') { Game.map_id == PLAYTEST_MAP }
+      check('laufender Kampf pausiert die Simulation vor dem F5-Fehler') do
+        Game.instance_variable_set(:@intro, nil)
+        started = Battle.start('waldweg')
+        Game.update(0.016)
+        started && Battle.active? && $game_temp.in_battle && Rune::Simulation.paused
+      end
       path = File.join(Project.data_path(PLAYTEST_PROJECT), 'maps', PLAYTEST_MAP + '.JSON')
       backup = path + '.test-backup'
       begin
         File.rename(path, backup)
-        check('entfernte F4-Karte führt bei F5 sichtbar zum Fehler statt zur anderen Startkarte') do
+        check('entfernte F4-Karte bricht den Kampf ab und zeigt den pausierten Fehler') do
           load File.join(root, 'game', 'main.rb')
-          Game.instance_variable_get(:@mode) == :playtest_error && Rune::Simulation.paused
+          Game.instance_variable_get(:@mode) == :playtest_error && Rune::Simulation.paused &&
+            !Battle.active? && !$game_temp.in_battle
         end
       ensure
         File.rename(backup, path) if File.exist?(backup)

@@ -107,8 +107,45 @@ class Party
     add_item(id, -count.to_i.abs)
   end
 
-  # Item benutzen: heilende Items wirken auf den ersten verletzten Helden.
-  def self.use_item(id)
+  # Nur positive Stärke kann einen Heil-/Manatrank verwendbar machen.
+  # Fehlerhafte oder negative Werte dürfen keinen versteckten Schaden auslösen.
+  def self.item_power(defi)
+    value = defi && defi['power']
+    return 0 unless value.is_a?(Integer) || value.is_a?(String) ||
+                    (value.is_a?(Float) && value.finite?)
+
+    [value.to_i, 0].max
+  end
+
+  def self.usable_item?(id)
+    defi = item_def(id)
+    defi && %w[heal mana].include?(defi['kind'].to_s) && item_power(defi).positive?
+  end
+
+  # Eine Actor-Referenz muss wirklich zur aktuellen Party gehören; Structs
+  # mit denselben Werten sind nicht automatisch derselbe Held.
+  def self.item_target(target)
+    return nil if target.nil?
+    return @actors.find { |actor| actor.equal?(target) } if target.is_a?(Actor)
+
+    find(target)
+  end
+
+  def self.item_applicable?(id, target)
+    hero = item_target(target)
+    return false unless hero && item_count(id).positive? && usable_item?(id)
+
+    case item_def(id)['kind'].to_s
+    when 'heal' then hero.hp < hero.max_hp
+    when 'mana' then hero.mp < hero.max_mp
+    else false
+    end
+  end
+
+  # Ohne Ziel bleibt die bisherige automatische Auswahl erhalten. Mit Ziel
+  # (Actor oder ID) wird nur bei tatsächlicher Wirkung ein Item verbraucht.
+  # Ein Heiltrank darf wie bisher auch einen Helden mit 0 HP wiederbeleben.
+  def self.use_item(id, target: nil)
     key = id.to_s
     defi = item_def(key)
     unless defi
@@ -116,24 +153,27 @@ class Party
       Issues.report('Party', "unbekanntes Item '#{key}'")
       return false
     end
-    return false unless item_count(key).positive?
+    return false unless item_count(key).positive? && usable_item?(key)
 
-    case defi['kind'].to_s
-    when 'heal'
-      target = @actors.find(&:damaged?) || leader
-      return false unless target
-      amount = (defi['power'] || 0).to_i
-      target.hp = [target.hp + amount, target.max_hp].min
-      Rune::Log.info("Party: #{target.name} benutzt #{item_name(key)} (+#{amount} HP)")
-    when 'mana'
-      target = @actors.find { |a| a.mp < a.max_mp } || leader
-      return false unless target
-      amount = (defi['power'] || 0).to_i
-      target.mp = [target.mp + amount, target.max_mp].min
-      Rune::Log.info("Party: #{target.name} benutzt #{item_name(key)} (+#{amount} MP)")
+    if target.nil?
+      hero = if defi['kind'].to_s == 'heal'
+               @actors.find(&:damaged?) || leader
+             else
+               @actors.find { |actor| actor.mp < actor.max_mp } || leader
+             end
+      return false unless hero
     else
-      Rune::Log.info("Party: #{item_name(key)} kann nicht benutzt werden")
-      return false
+      hero = item_target(target)
+      return false unless item_applicable?(key, hero)
+    end
+
+    amount = item_power(defi)
+    if defi['kind'].to_s == 'heal'
+      hero.hp = [[hero.hp + amount, hero.max_hp].min, 0].max
+      Rune::Log.info("Party: #{hero.name} erhält #{item_name(key)} (+#{amount} HP)")
+    else
+      hero.mp = [[hero.mp + amount, hero.max_mp].min, 0].max
+      Rune::Log.info("Party: #{hero.name} erhält #{item_name(key)} (+#{amount} MP)")
     end
     take_item(key, 1)
     true

@@ -185,6 +185,7 @@ hp0 = goblin.hp
 check('Schaden zieht HP ab') { goblin.hp < hp0 && goblin.hp >= 0 }
 
 puts '== Flucht =='
+Battle.abort!
 Battle.start('waldweg', can_escape: false)
 2.times { druck(:down) }
 check('Cursor auf Flucht') { Battle.command_index == 2 }
@@ -218,6 +219,7 @@ end
 Battle.singleton_class.send(:remove_method, :rand)
 
 puts '== Item =='
+Party.heal_all
 Battle.start('waldweg')
 menge0 = Party.item_count('heiltrank') + 1
 Party.add_item('heiltrank', 1)
@@ -228,13 +230,14 @@ check('Cursor auf Item') { Battle.command_index == 1 }
 druck(:enter)
 check('Item-Auswahl offen') { Battle.phase == :item }
 druck(:enter)
-check('Item gewählt -> nächster Held (Mira)') do
+check('Item gewählt -> Zielwahl') { Battle.phase == :item_target }
+druck(:enter)
+check('Ziel bestätigt -> nächster Held (Mira)') do
   Battle.phase == :command && Battle.current_actor.name == 'Mira'
 end
-# Mira greift an -> Runde beendet; execute im nächsten Frame: Item wirkt
-# (heilt den ersten verletzten Helden = Arik), Gegnerzug, Runde 2 beginnt.
-# Gegnerzug stubben: keine Kritik (0.9), kleinste Streuung -> Arik bleibt
-# berechenbar bei max-20+heilung.
+# Mira greift an; der Heiltrank wirkt auf Arik. Beide Gegner verursachen
+# mit diesem Fixture jeweils genau einen Schaden auf einen zufälligen Helden.
+Battle.enemies.each { |enemy| enemy.instance_variable_set(:@atk, 0) }
 Battle.singleton_class.send(:define_method, :rand) { 0.9 }
 druck(:enter)
 druck(:enter)
@@ -245,8 +248,8 @@ check('Aktionsphase gelaufen (Wieder Befehle, Runde 2)') do
 end
 a0 = Battle.actors[0]
 check("Heiltrank wirkt (ist hp=#{a0.hp}/#{a0.max_hp} menge=#{Party.item_count('heiltrank')} log=#{Battle.instance_variable_get(:@log).last(3).join(' | ')})") do
-  # Heiltrank (+30) auf 100 geheilt, Gegnerzug zieht max. ~6 wieder ab.
-  a0.hp >= a0.max_hp - 26 && Party.item_count('heiltrank') == menge0 - 1
+  a0.hp.between?(a0.max_hp - 2, a0.max_hp) && Party.find('arik').hp == a0.hp &&
+    Party.item_count('heiltrank') == menge0 - 1
 end
 Battle.abort!
 check('abort!: Kampf aus, in_battle zurück') do

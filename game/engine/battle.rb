@@ -29,7 +29,7 @@
 #  Streuung, mindestens 1. Kritik: agi/64-Chance (XP-Formel), x3-Schaden
 #  beim Angriff (Helden), +25 % beim Gegner-Aggressionswert.
 #
-#  Grenzen (Backlog): keine Skills/Magie (MP bleibt ungenutzt), keine
+#  Grenzen (Backlog): keine Skills/Magie (MP wird nicht dafür verbraucht), keine
 #  Zustände (Vergiftung etc.), keine Kampfformationen/Positionen, Gegner
 #  ziehen immer "Angriff auf zufälligen Held", kein Flucht-Textfenster,
 #  Kampfhintergrund = abgedunkelte Karte.
@@ -41,17 +41,17 @@ module Battle
   # Ein Kämpfer (XP: Game_Battler - hier Helden wie Gegner in einer Klasse,
   # actor?/enemy? trennt sie).
   class Battler
-    attr_accessor :hp, :mp, :name, :id
-    attr_reader :max_hp, :max_mp, :atk, :def, :spi, :agi, :actor, :defi
+    attr_accessor :name, :id
+    attr_reader :atk, :def, :spi, :agi, :actor, :defi
 
-    def initialize(id:, name:, hp:, mp: 0, atk: 10, def_: 8, spi: 5, agi: 8,
-                   actor: false, defi: nil)
+    def initialize(id:, name:, hp:, mp: 0, max_hp: nil, max_mp: nil,
+                   atk: 10, def_: 8, spi: 5, agi: 8, actor: false, defi: nil)
       @id = id.to_s
       @name = name.to_s
-      @max_hp = [hp.to_i, 1].max
-      @max_mp = mp.to_i
-      @hp = @max_hp
-      @mp = @max_mp
+      @max_hp = [(max_hp.nil? ? hp : max_hp).to_i, 1].max
+      @max_mp = [(max_mp.nil? ? mp : max_mp).to_i, 0].max
+      @hp = [[hp.to_i, 0].max, @max_hp].min
+      @mp = [[mp.to_i, 0].max, @max_mp].min
       @atk = atk.to_i
       @def = def_.to_i
       @spi = spi.to_i
@@ -62,21 +62,45 @@ module Battle
 
     def actor? = @actor
     def enemy? = !@actor
-    def alive? = @hp > 0
+
+    # Heldenwerte haben genau eine Quelle: den Party-Actor. Ein Item oder
+    # Script darf nicht von einer veralteten Kampfkopie überschrieben werden.
+    def party_actor?
+      @actor && @defi.respond_to?(:hp) && @defi.respond_to?(:hp=) &&
+        @defi.respond_to?(:mp) && @defi.respond_to?(:mp=) &&
+        @defi.respond_to?(:max_hp) && @defi.respond_to?(:max_mp)
+    end
+
+    def max_hp = party_actor? ? [@defi.max_hp.to_i, 1].max : @max_hp
+    def max_mp = party_actor? ? [@defi.max_mp.to_i, 0].max : @max_mp
+    def hp = party_actor? ? [[@defi.hp.to_i, 0].max, max_hp].min : @hp
+    def mp = party_actor? ? [[@defi.mp.to_i, 0].max, max_mp].min : @mp
+
+    def hp=(value)
+      value = [[value.to_i, 0].max, max_hp].min
+      party_actor? ? @defi.hp = value : @hp = value
+    end
+
+    def mp=(value)
+      value = [[value.to_i, 0].max, max_mp].min
+      party_actor? ? @defi.mp = value : @mp = value
+    end
+
+    def alive? = hp > 0
     def dead? = !alive?
 
     def damage(amount)
-      @hp = [@hp - amount.to_i, 0].max
-      @hp
+      self.hp = hp - amount.to_i
+      hp
     end
 
     def heal(amount)
-      @hp = [@hp + amount.to_i, @max_hp].min
-      @hp
+      self.hp = hp + amount.to_i
+      hp
     end
 
     def hp_line
-      "#{name}  HP #{hp}/#{@max_hp}"
+      "#{name}  HP #{hp}/#{max_hp}"
     end
   end
 
@@ -102,12 +126,14 @@ module Battle
   @active = false
   @enemies = []
   @actors = []
-  @phase = nil          # :command | :execute | :item | :target | :done
+  @phase = nil          # :command | :execute | :item | :target | :item_target | :done
   @actor_index = 0
   @command_index = 0
   @item_index = 0
   @target_index = 0
-  @actions = []         # gesammelte {actor:, kind:, item:}
+  @selecting_actor = nil
+  @selected_item = nil
+  @actions = []         # gesammelte {actor:, kind:, item:, target:}
   @can_escape = true
   @can_lose = false
   @result = nil         # :sieg | :flucht | :niederlage | nil
@@ -130,7 +156,12 @@ module Battle
   # Kampf starten. troop_id: ID (oder Name) aus database.json->troops.
   # can_lose: Niederlage endet nicht mit gameover (XP battle_can_lose).
   def self.start(troop_id, can_escape: true, can_lose: false)
-    troop = troop_def(troop_id) || troops_def.find { |h| h['name'].to_s == troop_id.to_s }
+    if @active
+      Rune::Log.warn('Battle: ein Kampf läuft bereits - neuer Start abgelehnt')
+      return false
+    end
+
+    troop = troop_def(troop_id) || troops_def.find { |h| h.is_a?(Hash) && h['name'].to_s == troop_id.to_s }
     unless troop
       Rune::Log.warn("Battle: Truppe '#{troop_id}' nicht in database.json")
       Issues.report('Battle', "Kampf: Truppe '#{troop_id}' unbekannt")
@@ -143,7 +174,7 @@ module Battle
       return false
     end
 
-    @enemies = liste.filter_map do |eid|
+    enemies = liste.filter_map do |eid|
       defi = enemy_def(eid)
       unless defi
         Rune::Log.warn("Battle: Gegner '#{eid}' nicht in database.json (übersprungen)")
@@ -154,20 +185,25 @@ module Battle
                   def_: defi['def'] || 8, spi: defi['spi'] || 5,
                   agi: defi['agi'] || 8, actor: false, defi: defi)
     end
-    if @enemies.empty?
+    if enemies.empty?
       Rune::Log.warn("Battle: Truppe '#{troop_id}' ergibt keine Gegner")
       return false
     end
 
-    @actors = Party.actors.map do |a|
-      Battler.new(id: a.id, name: a.name, hp: a.hp, mp: a.mp, atk: a.atk,
+    actors = Party.actors.map do |a|
+      Battler.new(id: a.id, name: a.name, hp: a.hp, mp: a.mp,
+                  max_hp: a.max_hp, max_mp: a.max_mp, atk: a.atk,
                   def_: a.def, spi: a.spi, agi: a.agi, actor: true, defi: a)
     end
-    if @actors.empty?
+    if actors.empty?
       Rune::Log.warn('Battle: keine Helden in der Party - Kampf abgesagt')
       return false
     end
 
+    # Vor der vollständigen Validierung keinen laufenden/vorherigen Zustand
+    # teilweise ersetzen. 0 HP bleibt 0; alle KO führt zur Niederlageprüfung.
+    @enemies = enemies
+    @actors = actors
     @active = true
     @can_escape = can_escape ? true : false
     @can_lose = can_lose ? true : false
@@ -177,7 +213,11 @@ module Battle
     @result = nil
     @actor_index = 0
     @command_index = 0
-    @phase = :command
+    @item_index = 0
+    @target_index = 0
+    @selecting_actor = nil
+    @selected_item = nil
+    @phase = @actors.any?(&:alive?) ? :command : :execute
     $game_temp.in_battle = true if $game_temp
     Rune::Log.info("Battle: Kampf gegen Truppe '#{troop['name'] || troop_id}' " \
                    "(#{@enemies.size} Gegner, #{@actors.size} Helden)")
@@ -195,8 +235,19 @@ module Battle
     @enemies = []
     @actors = []
     @actions = []
+    @selecting_actor = nil
+    @selected_item = nil
     $game_temp.in_battle = false if $game_temp
+    release_simulation
     Rune::Log.info('Battle: Kampf abgebrochen')
+  end
+
+  # Auch direkte Ruby-Aufrufe von abort!/ende dürfen die Welt nicht pausiert
+  # lassen. Kopflose Tests ohne native Simulation bleiben weiterhin möglich.
+  def self.release_simulation
+    if defined?(Rune::Simulation) && Rune::Simulation.respond_to?(:paused=)
+      Rune::Simulation.paused = false
+    end
   end
 
   # ------------------------------------------------------------- Eingabe
@@ -205,13 +256,43 @@ module Battle
   # Läuft nur in der Befehlsphase; execute läuft ohne Eingabe durch.
   def self.update(dt)
     return unless @active
+    # Auch externe Ruby-Änderungen können eine Seite während der Auswahl
+    # besiegen; dann darf die UI nicht in einer leeren Zielwahl hängen bleiben.
+    return if beende_pruefen
+    # KO hebt vorgemerkte Aktionen und ihre Itemreservierungen auf. Eine
+    # spätere Wiederbelebung startet keinen alten, bereits verlorenen Befehl.
+    @actions.reject! { |action| action[:actor].dead? }
+    return if cancel_invalid_selection
 
     case @phase
-    when :command  then update_command
-    when :item     then update_item
-    when :target   then update_target
-    when :execute  then update_execute(dt)
+    when :command     then update_command
+    when :item        then update_item
+    when :target      then update_target
+    when :item_target then update_item_target
+    when :execute     then update_execute(dt)
     end
+  end
+
+  # Bei äußerem KO/Wechsel eines noch auswählenden Helden die angefangene
+  # Auswahl verwerfen, ohne bestätigte Aktionen anderer Helden anzutasten.
+  def self.cancel_pending_selection
+    if @phase == :target && @selecting_actor
+      @actions.reject! do |action|
+        action[:actor].equal?(@selecting_actor) && action[:kind] == :attack && !action.key?(:target)
+      end
+    end
+    @selecting_actor = nil
+    @selected_item = nil
+  end
+
+  def self.cancel_invalid_selection
+    return false unless %i[item target item_target].include?(@phase)
+    return false if @selecting_actor && @selecting_actor.equal?(current_actor)
+
+    cancel_pending_selection
+    @phase = :command
+    @command_index = 0
+    true
   end
 
   # Befehlsphase: Angriff/Item/Flucht für den aktuellen Helden.
@@ -230,6 +311,7 @@ module Battle
       case COMMANDS[@command_index]
       when 'Angriff'
         @actions << { actor: actor, kind: :attack }
+        @selecting_actor = actor
         log("#{actor.name}: Angriff gewählt")
         @target_index = 0
         @phase = :target
@@ -240,6 +322,7 @@ module Battle
           Rune::Sound.play('ablehnen', 0.6) if defined?(Rune::Sound)
         else
           @item_index = 0
+          @selecting_actor = actor
           @phase = :item
           klick
         end
@@ -255,6 +338,7 @@ module Battle
   def self.update_item
     items = usable_items
     if items.empty?
+      cancel_pending_selection
       @phase = :command
       return
     end
@@ -268,11 +352,49 @@ module Battle
       klick
     elsif Rune::Input.pressed?(:enter) || Rune::Input.pressed?(:e) ||
           Rune::Input.pressed?(:space)
-      @actions << { actor: current_actor, kind: :item, item: items[@item_index] }
-      log("#{current_actor.name}: #{Party.item_name(items[@item_index])} gewählt")
+      @selected_item = items[@item_index]
+      @target_index = 0
+      @phase = :item_target
+      klick
+    elsif Rune::Input.pressed?(:escape)
+      cancel_pending_selection
+      @phase = :command
+      klick
+    end
+  end
+
+  # Itemziel: ein Party-Held einschließlich KO; bestätigen bucht die Aktion,
+  # nicht den Verbrauch. Esc kehrt ohne Reservierung zur Itemliste zurück.
+  def self.update_item_target
+    return finish_round unless current_actor
+    if @actors.empty? || !@selected_item || available_item_count(@selected_item) <= 0
+      @selected_item = nil
+      @phase = :item
+      return
+    end
+    @target_index %= @actors.size
+
+    if Rune::Input.pressed?(:left) || Rune::Input.pressed?(:up)
+      @target_index = (@target_index - 1) % @actors.size
+      klick
+    elsif Rune::Input.pressed?(:right) || Rune::Input.pressed?(:down)
+      @target_index = (@target_index + 1) % @actors.size
+      klick
+    elsif Rune::Input.pressed?(:enter) || Rune::Input.pressed?(:e) ||
+          Rune::Input.pressed?(:space)
+      target = @actors[@target_index]
+      unless Party.item_applicable?(@selected_item, target.defi)
+        log("#{Party.item_name(@selected_item)} hat bei #{target.name} keine Wirkung")
+        Rune::Sound.play('ablehnen', 0.6) if defined?(Rune::Sound)
+        return
+      end
+      @actions << { actor: current_actor, kind: :item, item: @selected_item, target: target }
+      log("#{current_actor.name}: #{Party.item_name(@selected_item)} für #{target.name}")
+      @selected_item = nil
       next_actor
     elsif Rune::Input.pressed?(:escape)
-      @phase = :command
+      @selected_item = nil
+      @phase = :item
       klick
     end
   end
@@ -281,6 +403,7 @@ module Battle
   def self.update_target
     lebendig = living_enemies
     if lebendig.empty?
+      cancel_pending_selection
       @phase = :command
       return
     end
@@ -298,12 +421,14 @@ module Battle
     elsif Rune::Input.pressed?(:enter) || Rune::Input.pressed?(:e) ||
           Rune::Input.pressed?(:space)
       ziel = lebendig[@target_index]
-      letzte = @actions.find { |a| a[:actor].equal?(current_actor) }
+      letzte = @actions.reverse.find do |action|
+        action[:actor].equal?(@selecting_actor) && action[:kind] == :attack && !action.key?(:target)
+      end
       letzte[:target] = ziel if letzte
       log("Ziel: #{ziel.name}")
       next_actor
     elsif Rune::Input.pressed?(:escape)
-      @actions.reject! { |a| a[:actor].equal?(current_actor) }
+      cancel_pending_selection
       @phase = :command
       klick
     end
@@ -319,21 +444,23 @@ module Battle
 
       case act[:kind]
       when :attack
-        ziel = act[:target] || living_enemies.first
+        ziel = act[:target]
+        ziel = living_enemies.first unless ziel && @enemies.any? { |enemy| enemy.equal?(ziel) } && ziel.alive?
         next unless ziel
         angriff(actor, ziel)
       when :item
-        item = act[:item]
-        next unless item && Party.item_count(item).positive?
-        if Party.use_item(item)
-          log("#{actor.name} benutzt #{Party.item_name(item)}")
-          sync_actors!
+        item, ziel = act[:item], act[:target]
+        if item && ziel && @actors.any? { |candidate| candidate.equal?(ziel) } &&
+           Party.use_item(item, target: ziel.defi)
+          log("#{actor.name} benutzt #{Party.item_name(item)} für #{ziel.name}")
+        else
+          log("#{actor.name}: Item konnte nicht benutzt werden")
         end
       end
+      # Nach dem letzten Gegner keine späteren Items mehr verbrauchen.
+      return if beende_pruefen
     end
     @actions = []
-
-    return if beende_pruefen
 
     # Gegnerzug: jeder lebende Gegner schlägt einen zufälligen Helden.
     @enemies.each do |g|
@@ -350,13 +477,15 @@ module Battle
   # ------------------------------------------------------------- intern
 
   def self.current_actor
-    lebendig = living_actors
-    return nil if @actor_index >= lebendig.size
-    lebendig[@actor_index]
+    # Index in der festen Party-Reihenfolge, nicht in einer wechselnden Liste
+    # lebender Helden: Ein späteres KO darf niemanden überspringen.
+    @actors.drop(@actor_index).find(&:alive?)
   end
 
   def self.next_actor
-    @actor_index += 1
+    actor = current_actor
+    @actor_index = actor ? @actors.index(actor) + 1 : @actors.size
+    cancel_pending_selection
     @command_index = 0
     @phase = :command
     klick
@@ -370,22 +499,29 @@ module Battle
   def self.beginn_runde
     @actor_index = 0
     @command_index = 0
+    @selecting_actor = nil
+    @selected_item = nil
     @phase = :command
   end
 
   def self.living_enemies = @enemies.select(&:alive?)
   def self.living_actors  = @actors.select(&:alive?)
 
-  # Benutzbare Items (Menge > 0, Typ heal/mana) - wie XP Window_Item.
+  # Bereits gewählte Aktionen reservieren ihre Menge nur für diese Runde.
+  # Tatsächlich abgezogen wird erst beim erfolgreichen Ausführen.
+  def self.available_item_count(id)
+    key = id.to_s
+    reserved = @actions.count { |act| act[:kind] == :item && act[:item] == key && act[:actor].alive? }
+    [Party.item_count(key) - reserved, 0].max
+  end
+
   def self.usable_items
-    Party.items.select do |id, menge|
-      menge.positive? && %w[heal mana].include?(item_kind(id))
-    end.keys.sort_by { |id| Party.item_name(id) }
+    Party.items.keys.select { |id| available_item_count(id).positive? && Party.usable_item?(id) }
+         .sort_by { |id| Party.item_name(id) }
   end
 
   def self.item_kind(id)
-    defi = Party.item_def(id)
-    defi ? defi['kind'].to_s : ''
+    (Party.item_def(id) || {})['kind'].to_s
   end
 
   # Angriff mit Schaden, Kritik und Tod-Prüfung (XP: Game_Battler#attack).
@@ -426,11 +562,11 @@ module Battle
 
   # Sieg/Niederlage prüfen. true = Kampf entschieden.
   def self.beende_pruefen
-    if living_enemies.empty?
-      sieg
-      true
-    elsif living_actors.empty?
+    if living_actors.empty?
       niederlage
+      true
+    elsif living_enemies.empty?
+      sieg
       true
     else
       false
@@ -477,14 +613,19 @@ module Battle
     sync_actors!
     @active = false
     @phase = :done
+    @actions = []
+    @selecting_actor = nil
+    @selected_item = nil
     $game_temp.in_battle = false if $game_temp
+    release_simulation
     if result == :niederlage && !ohne_gameover && $game_temp
       $game_temp.gameover = true
     end
     Rune::Log.info("Battle: Kampf beendet (#{result})")
   end
 
-  # Helden-HP/MP der Battle-Kopien zurück in die Party-Actors schreiben.
+  # Kompatibilitätshelfer: reguläre Helden delegieren HP/MP bereits direkt
+  # an denselben Party-Actor; es gibt keine veraltete Kampfkopie mehr.
   def self.sync_actors!
     @actors.each do |a|
       pa = a.defi
@@ -551,7 +692,7 @@ module Battle
     Launcher.abdunkeln(w)
 
     # Befehlsfenster (links).
-    if @phase == :command || @phase == :item || @phase == :target
+    if %i[command item target item_target].include?(@phase)
       actor = current_actor
       cw = 220
       ch = 40 + COMMANDS.size * 28
@@ -581,7 +722,7 @@ module Battle
       UI.panel(ix, iy, iw, ih, UI::PANEL, 0.92)
       items.each_with_index do |id, i|
         y = iy + 10 + i * 24
-        text = "#{Party.item_name(id)} x#{Party.item_count(id)}"
+        text = "#{Party.item_name(id)} x#{available_item_count(id)}"
         UI.text(ix + 14, y, i == @item_index ? "> #{text}" : "  #{text}",
                 i == @item_index ? UI::ACCENT : UI::TEXT, 14)
       end
@@ -594,6 +735,9 @@ module Battle
         UI.text(w / 2 - 100, h / 2 - 180, "Ziel: #{ziel.name}  (←/→, E = bestätigen)",
                 UI::ACCENT, 15)
       end
+    elsif @phase == :item_target && (ziel = @actors[@target_index])
+      UI.text(w / 2 - 220, h / 2 - 180,
+              "#{Party.item_name(@selected_item)} — Ziel: #{ziel.name}  (←/→, E / Esc)", UI::ACCENT, 15)
     end
 
     # Party-Status (unten links neben den Befehlen).
@@ -603,8 +747,10 @@ module Battle
     py2 = h - ph - 20
     UI.panel(px2, py2, pw, ph, UI::PANEL, 0.88)
     Party.actors.each_with_index do |a, i|
-      UI.text(px2 + 14, py2 + 8 + i * 26, a.hp_line,
-              a.hp.zero? ? UI::DANGER : UI::TEXT, 14)
+      selected = @phase == :item_target && @actors[@target_index]&.defi&.equal?(a)
+      text = selected ? "> #{a.hp_line}" : "  #{a.hp_line}"
+      color = selected ? UI::ACCENT : (a.hp.zero? ? UI::DANGER : UI::TEXT)
+      UI.text(px2 + 14, py2 + 8 + i * 26, text, color, 14)
     end
 
     # Gegner-Liste (rechts).

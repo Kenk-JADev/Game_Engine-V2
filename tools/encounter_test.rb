@@ -9,6 +9,8 @@
 #  nicht nur die einzelnen Zählermethoden.
 # ============================================================================
 
+require 'json'
+
 module Rune
   ROOT = File.expand_path('..', __dir__)
 
@@ -131,6 +133,8 @@ module Project
   end
   def self.load_save(_name, _slot) = @save_data
   def self.save(_name, _slot, data) = (@save_data = data; true)
+  def self.save_info(_name, _slot) = nil
+  def self.list = []
 end
 
 module Weather
@@ -511,6 +515,231 @@ check('Touch-Event verdrängt kein NPC-Gespräch und hat im selben Frame Vorrang
   Game.interpreter.message == ['Kontakt']
 ensure
   Rune::Input.keys = []
+end
+
+puts '== Kampfsteuerung in der echten Spielschleife =='
+check('Esc bricht Gegnerzielwahl ab statt das Spielmenü zu öffnen') do
+  prepare
+  Battle.start('waldweg', can_escape: false)
+  Rune::Input.keys = [:enter]
+  Game.update(0.016)
+  in_target = Battle.phase == :target
+  Rune::Input.keys = [:escape]
+  Game.update(0.016)
+  in_target && Battle.phase == :command && Battle.actions.empty? &&
+    !Game.instance_variable_get(:@menu) && Battle.active? && Rune::Simulation.paused
+ensure
+  Rune::Input.keys = []
+  Game.instance_variable_set(:@menu, nil)
+  Battle.abort!
+end
+check('Esc im Kampf führt von Itemziel zu Itemliste und dann zum Befehl zurück') do
+  prepare
+  Party.find('arik').hp = 20
+  Battle.start('waldweg', can_escape: false)
+  [:down, :enter, :enter].each do |key|
+    Rune::Input.keys = [key]
+    Game.update(0.016)
+  end
+  in_target = Battle.phase == :item_target
+  Rune::Input.keys = [:escape]
+  Game.update(0.016)
+  in_items = Battle.phase == :item && !Game.instance_variable_get(:@menu)
+  Game.update(0.016)
+  in_target && in_items && Battle.phase == :command && !Game.instance_variable_get(:@menu) &&
+    Party.item_count('heiltrank') == 2
+ensure
+  Rune::Input.keys = []
+  Game.instance_variable_set(:@menu, nil)
+  Battle.abort!
+end
+check('Kampf-Item und HP überleben einen echten Game-Save-/Load-Rundlauf') do
+  prepare
+  Battle.singleton_class.send(:define_method, :rand) { 0.9 }
+  Party.find('arik').hp = 70
+  Party.find('mira').hp = 0
+  Battle.start('waldweg')
+  Battle.enemies.each { |enemy| enemy.instance_variable_set(:@atk, 0) }
+  [:down, :enter, :enter, :right, :enter].each do |key|
+    Rune::Input.keys = [key]
+    Game.update(0.016)
+  end
+  selected = Battle.phase == :execute && Party.item_count('heiltrank') == 2
+  Rune::Input.keys = []
+  Game.update(0.016)
+  healed = Battle.turn == 1 && Party.find('mira').hp.between?(38, 40) && Party.item_count('heiltrank') == 1
+  Battle.enemies.each { |enemy| enemy.hp = 0 }
+  Game.update(0.016)
+  final_party = Party.snapshot
+  saved = Game.save_game(1)
+  serialized = JSON.parse(JSON.generate(Project.save_data))
+  Party.heal_all
+  Party.add_item('heiltrank', 10)
+  Project.save_data = serialized
+  loaded = Game.load_game(1)
+  selected && healed && saved && loaded && Battle.result == :sieg && !Battle.active? &&
+    !Rune::Simulation.paused && Party.snapshot == final_party
+ensure
+  Rune::Input.keys = []
+  Battle.abort!
+  Battle.singleton_class.send(:remove_method, :rand) if Battle.singleton_class.instance_methods(false).include?(:rand)
+end
+check('direkter Kampf-Abbruch gibt die Physik frei und behält Änderungen') do
+  prepare
+  Battle.start('waldweg')
+  Party.find('arik').hp = 35
+  Game.update(0.016)
+  was_paused = Rune::Simulation.paused
+  Battle.abort!
+  released_immediately = !Rune::Simulation.paused
+  Game.update(0.016)
+  was_paused && released_immediately && !Rune::Simulation.paused && !Battle.active? &&
+    !$game_temp.in_battle && Party.find('arik').hp == 35
+ensure
+  Rune::Input.keys = []
+  Battle.abort!
+end
+check('direktes Kampfende durch Ruby gibt die Physik sofort frei') do
+  prepare
+  Battle.singleton_class.send(:define_method, :rand) { 0.0 }
+  Battle.start('waldweg')
+  Game.update(0.016)
+  was_paused = Rune::Simulation.paused
+  Battle.attempt_escape
+  was_paused && !Battle.active? && Battle.result == :flucht && !$game_temp.in_battle && !Rune::Simulation.paused
+ensure
+  Rune::Input.keys = []
+  Battle.abort!
+  Battle.singleton_class.send(:remove_method, :rand) if Battle.singleton_class.instance_methods(false).include?(:rand)
+end
+check('Kartenwechsel bricht einen Kampf ab und gibt die Physik frei') do
+  prepare
+  Battle.start('waldweg')
+  Party.find('arik').hp = 35
+  Game.update(0.016)
+  was_paused = Rune::Simulation.paused
+  Game.change_map('weit')
+  was_paused && Game.map_id == 'weit' && !Battle.active? && !$game_temp.in_battle &&
+    !Rune::Simulation.paused && Party.find('arik').hp == 35
+ensure
+  Rune::Input.keys = []
+  Battle.abort!
+end
+check('direkter Rücksprung zum Titel beendet auch einen aktiven Kampf') do
+  prepare
+  Battle.start('waldweg')
+  Game.update(0.016)
+  was_paused = Rune::Simulation.paused
+  Game.to_title!
+  was_paused && Game.instance_variable_get(:@mode) == :launcher && !Battle.active? &&
+    !$game_temp.in_battle && !Rune::Simulation.paused
+ensure
+  Rune::Input.keys = []
+  $project_root = File.join(Rune::ROOT, 'game', 'data')
+  Database.reset!
+  Battle.abort!
+end
+check('F5 während eines Kampfes gibt nach dem Neustart die Physik frei') do
+  prepare
+  Battle.start('waldweg')
+  Game.update(0.016)
+  was_paused = Rune::Simulation.paused
+  load File.join(Rune::ROOT, 'game', 'main.rb')
+  was_paused && !Battle.active? && !$game_temp.in_battle && !Rune::Simulation.paused && Game.map_id == 'start'
+ensure
+  Rune::Input.keys = []
+  Battle.abort!
+end
+check('Esc außerhalb eines Kampfes öffnet und schließt weiterhin das Spielmenü') do
+  prepare
+  Rune::Input.keys = [:escape]
+  Game.update(0.016)
+  opened = Game.instance_variable_get(:@menu) && !Rune::Input.captured?
+  Game.update(0.016)
+  opened && !Game.instance_variable_get(:@menu) && Rune::Input.captured?
+ensure
+  Rune::Input.keys = []
+  Game.instance_variable_set(:@menu, nil)
+end
+check('Esc bei verbotener Flucht öffnet kein Menü und lässt den Kampf aktiv') do
+  prepare
+  Battle.start('waldweg', can_escape: false)
+  Rune::Input.keys = [:escape]
+  Game.update(0.016)
+  Battle.active? && Battle.phase == :command && !Game.instance_variable_get(:@menu) &&
+    Rune::Simulation.paused && Rune::Input.captured?
+ensure
+  Rune::Input.keys = []
+  Battle.abort!
+end
+check('Esc bei erlaubter Flucht beendet den Kampf und gibt die Physik frei') do
+  prepare
+  Battle.singleton_class.send(:define_method, :rand) { 0.0 }
+  Battle.start('waldweg')
+  Rune::Input.keys = [:escape]
+  Game.update(0.016)
+  !Battle.active? && Battle.result == :flucht && !Game.instance_variable_get(:@menu) &&
+    !Rune::Simulation.paused && Rune::Input.captured?
+ensure
+  Rune::Input.keys = []
+  Battle.abort!
+  Battle.singleton_class.send(:remove_method, :rand) if Battle.singleton_class.instance_methods(false).include?(:rand)
+end
+check('misslungene Esc-Flucht verwirft vorgemerkte Items ohne Verbrauch') do
+  prepare
+  Battle.singleton_class.send(:define_method, :rand) { 0.9 }
+  Party.find('arik').hp = 20
+  Battle.start('waldweg')
+  [:down, :enter, :enter, :enter].each do |key|
+    Rune::Input.keys = [key]
+    Game.update(0.016)
+  end
+  reserved = Battle.current_actor&.id == 'mira' && Battle.actions.one?
+  Rune::Input.keys = [:escape]
+  Game.update(0.016)
+  cancelled = Battle.phase == :execute && Battle.actions.empty? && Party.item_count('heiltrank') == 2
+  Rune::Input.keys = []
+  Game.update(0.016)
+  reserved && cancelled && Battle.turn == 1 && Party.item_count('heiltrank') == 2 &&
+    Party.find('arik').hp <= 20 && !Game.instance_variable_get(:@menu)
+ensure
+  Rune::Input.keys = []
+  Battle.abort!
+  Battle.singleton_class.send(:remove_method, :rand) if Battle.singleton_class.instance_methods(false).include?(:rand)
+end
+check('Game Over nach Event-Kampf hat Vorrang vor den Folgebefehlen') do
+  prepare
+  Game.interpreter.start([{ 'cmd' => 'battle', 'name' => 'waldweg' },
+                          { 'cmd' => 'switch', 'name' => 'nach_niederlage', 'value' => true }])
+  Game.update(0.016)
+  Party.actors.each { |actor| actor.hp = 0 }
+  Battle.finish_round
+  Game.update(0.016)
+  defeated = Battle.result == :niederlage && $game_temp.gameover && !Battle.active?
+  Game.update(0.016)
+  defeated && Game.instance_variable_get(:@mode) == :launcher && !GameState.switch('nach_niederlage') &&
+    !$game_temp.gameover && !Rune::Simulation.paused
+ensure
+  Rune::Input.keys = []
+  $project_root = File.join(Rune::ROOT, 'game', 'data')
+  Database.reset!
+  Battle.abort!
+end
+check('erlaubte Niederlage setzt die Event-Befehle fort') do
+  prepare
+  Game.interpreter.start([{ 'cmd' => 'battle', 'name' => 'waldweg', 'can_lose' => true },
+                          { 'cmd' => 'switch', 'name' => 'nach_pruefung', 'value' => true }])
+  Game.update(0.016)
+  Party.actors.each { |actor| actor.hp = 0 }
+  Battle.finish_round
+  Game.update(0.016)
+  defeated = Battle.result == :niederlage && !$game_temp.gameover
+  Game.update(0.016)
+  defeated && Game.instance_variable_get(:@mode) == :game && GameState.switch('nach_pruefung') &&
+    Party.actors.all? { |actor| actor.hp.zero? } && !Rune::Simulation.paused
+ensure
+  Rune::Input.keys = []
+  Battle.abort!
 end
 
 puts '== Zufallskampf: Schritt, Battle und Sperren =='
