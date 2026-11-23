@@ -76,6 +76,8 @@ float camera_clearance(rune::world::Terrain& terrain,
 } // namespace
 #include "core/log.h"
 #include "core/sound.h"
+#include "core/win_path.h"
+#include "core/win_project_cli.h"
 #include "core/window.h"
 #include "gfx/camera.h"
 #include "gfx/renderer.h"
@@ -85,28 +87,12 @@ float camera_clearance(rune::world::Terrain& terrain,
 
 namespace {
 
-bool dir_exists(const std::string& p) {
-    DWORD attr = GetFileAttributesA(p.c_str());
-    return attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY);
-}
-
-// Projektwurzel = Ordner, der "game/" enthält. Erst im Arbeitsverzeichnis
-// suchen, dann neben und über der Exe (build/Rune3D.exe).
+// Spiel bevorzugt das aktuelle Arbeitsverzeichnis, falls es game/ enthält.
+// Die gemeinsame Suche nutzt Windows-UTF-16 und liefert intern UTF-8.
 std::string find_root() {
-    char cwd[MAX_PATH] = {};
-    GetCurrentDirectoryA(MAX_PATH, cwd);
-    if (dir_exists(std::string(cwd) + "\\game")) return cwd;
-
-    char exe[MAX_PATH] = {};
-    GetModuleFileNameA(nullptr, exe, MAX_PATH);
-    std::string dir = exe;
-    const size_t slash = dir.find_last_of("\\/");
-    if (slash != std::string::npos) dir = dir.substr(0, slash);
-
-    if (dir_exists(dir + "\\game")) return dir;
-    if (dir_exists(dir + "\\..\\game")) return dir + "\\..";
-
-    return cwd;
+    std::string root;
+    rune::core::win_path::find_engine_root(true, root);
+    return root;
 }
 
 double qpc_now() {
@@ -124,8 +110,11 @@ double qpc_now() {
 
 int main(int argc, char** argv) {
     const std::string root = find_root();
-    SetCurrentDirectoryA(root.c_str());
-    CreateDirectoryA("log", nullptr);
+    if (root.empty() || !rune::core::win_path::set_current_directory(root)) {
+        std::fprintf(stderr, "FEHLER: Engine-Wurzel nicht zugänglich\n");
+        return 1;
+    }
+    CreateDirectoryW(L"log", nullptr);
 
     // Etappe 18a: scharfe Darstellung auf skalierten Displays.
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
@@ -138,7 +127,7 @@ int main(int argc, char** argv) {
     // EXE (oder eine Ebene höher) fehlen boot.rb, prefabs.json und Projekte;
     // die Folgefehler (LoadError/„nicht gefunden") sind sonst schwer zu deuten
     // - genau das passierte mit einem Artefakt-Download, der nur EXEs enthielt.
-    if (GetFileAttributesA((root + "\\game").c_str()) == INVALID_FILE_ATTRIBUTES) {
+    if (!rune::core::win_path::path_exists(root + "\\game")) {
         rune::core::log_error(
             "Engine-Daten fehlen: kein game/-Ordner unter der Projektwurzel. "
             "Bitte den KOMPLETTEN Build entpacken (EXEs + game/ + projekte/ "
@@ -149,13 +138,16 @@ int main(int argc, char** argv) {
     //   Rune3D.exe --project <name>
     // Der Name landet in RUNE_PROJECT; main.rb springt damit direkt ins
     // Projekt (kein Titelbildschirm).
-    for (int i = 1; i + 1 < argc; ++i) {
-        if (std::string(argv[i]) == "--project") {
-            SetEnvironmentVariableA("RUNE_PROJECT", argv[i + 1]);
-            rune::core::log_info(std::string("Projekt-Argument: ") + argv[i + 1]);
-            break;
-        }
+    std::string project;
+    const auto project_arg = rune::core::win_project_cli::current_project(project);
+    if (project_arg == rune::core::win_project_cli::ProjectArgument::Invalid ||
+        (project_arg == rune::core::win_project_cli::ProjectArgument::Present &&
+         !rune::core::win_project_cli::set_project_environment(project))) {
+        rune::core::log_error("Ungültiges oder fehlendes --project-Argument");
+        return 1;
     }
+    if (project_arg == rune::core::win_project_cli::ProjectArgument::Present)
+        rune::core::log_info("Projekt-Argument: " + project);
 
     rune::App& app = rune::app();
 

@@ -1,5 +1,6 @@
 #include "gfx/renderer.h"
 #include "core/log.h"
+#include "core/win_path.h"
 
 #include <algorithm>
 #include <cmath>
@@ -1076,7 +1077,10 @@ bool Renderer::save_screenshot(const std::string& path) {
     ih.biSizeImage = row_bytes * static_cast<uint32_t>(h);
 
     bool ok = false;
-    if (std::FILE* f = std::fopen(path.c_str(), "wb")) {
+    std::wstring wide_path;
+    FILE* f = nullptr;
+    if (core::win_path::to_wide(path, wide_path) &&
+        _wfopen_s(&f, wide_path.c_str(), L"wb") == 0 && f) {
         std::fwrite(&fh, sizeof(fh), 1, f);
         std::fwrite(&ih, sizeof(ih), 1, f);
 

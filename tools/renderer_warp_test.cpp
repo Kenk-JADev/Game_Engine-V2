@@ -3,6 +3,7 @@
 // Live-Test und kein Ersatz für die manuelle Prüfung auf dem Zielrechner.
 #include "gfx/renderer.h"
 #include "core/log.h"
+#include "core/win_path.h"
 
 #include <windows.h>
 #include <algorithm>
@@ -46,11 +47,13 @@ void begin_test_frame(rune::gfx::Renderer& renderer) {
 
 // color: 0 rot, 1 grün, 2 blau, 3 schwarz (gelöschtes Terrain).
 bool finish_and_sample(rune::gfx::Renderer& renderer, const std::string& shot, int color) {
-    DeleteFileA(shot.c_str());
+    std::wstring wide_shot;
+    if (!rune::core::win_path::to_wide(shot, wide_shot)) return false;
+    DeleteFileW(wide_shot.c_str());
     renderer.request_screenshot(shot);
     renderer.end_frame();
-    std::FILE* f = std::fopen(shot.c_str(), "rb");
-    if (!f) return false;
+    FILE* f = nullptr;
+    if (_wfopen_s(&f, wide_shot.c_str(), L"rb") != 0 || !f) return false;
     BITMAPFILEHEADER fh{};
     BITMAPINFOHEADER ih{};
     bool ok = std::fread(&fh, sizeof(fh), 1, f) == 1 && std::fread(&ih, sizeof(ih), 1, f) == 1 &&
@@ -59,7 +62,7 @@ bool finish_and_sample(rune::gfx::Renderer& renderer, const std::string& shot, i
     if (ok) ok = std::fseek(f, static_cast<long>(fh.bfOffBits + (32 * 64 + 32) * 4), SEEK_SET) == 0 &&
                  std::fread(bgra, 1, 4, f) == 4;
     std::fclose(f);
-    DeleteFileA(shot.c_str());
+    DeleteFileW(wide_shot.c_str());
     if (!ok) return false;
     const bool matches = color == 0 ? bgra[2] > 100 && bgra[1] < 20 && bgra[0] < 20 :
                          color == 1 ? bgra[1] > 100 && bgra[2] < 20 && bgra[0] < 20 :
@@ -121,11 +124,26 @@ int main() {
     renderer.set_shadows(false);
     renderer.set_clear_color(0);
     renderer.set_sun(rune::math::Vec3{0, 1, 0}, 1.0f);
-    char temp[MAX_PATH + 1]{};
-    const DWORD n = GetTempPathA(MAX_PATH, temp);
-    const std::string shot = n && n < MAX_PATH
-        ? std::string(temp, n) + "rune-warp-" + std::to_string(GetCurrentProcessId()) + ".bmp"
-        : "rune-warp-test.bmp";
+    wchar_t temp[MAX_PATH + 1]{};
+    const DWORD n = GetTempPathW(MAX_PATH, temp);
+    std::wstring dir;
+    bool owned = false;
+    if (n && n < MAX_PATH) {
+        for (int i = 0; i < 100; ++i) {
+            dir = std::wstring(temp, n) + L"rune-warp-\u65e5-" +
+                  std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(i);
+            if (CreateDirectoryW(dir.c_str(), nullptr)) { owned = true; break; }
+            if (GetLastError() != ERROR_ALREADY_EXISTS) break;
+        }
+    }
+    std::string shot;
+    const bool temp_ok = owned && rune::core::win_path::to_utf8(dir + L"\\bild.bmp", shot);
+    check("eigenes Unicode-Temp-Verzeichnis für Screenshots", temp_ok);
+    if (!temp_ok) {
+        if (owned) RemoveDirectoryW(dir.c_str());
+        renderer.shutdown(); DestroyWindow(window);
+        return 1;
+    }
 
     const auto green = solid(0, 255, 0);
     const auto red = solid(255, 0, 0);
@@ -209,6 +227,7 @@ int main() {
     check("Launcher-Basis wirklich grün gerendert", pixel_is(renderer, "gras", shot, 1));
     renderer.shutdown();
     DestroyWindow(window);
+    check("eigenes Screenshot-Verzeichnis wieder entfernt", RemoveDirectoryW(dir.c_str()) != 0);
     std::printf("WARP-TEST: %d Prüfungen, %d Fehler\n", checks, failures);
     if (std::getenv("GITHUB_ACTIONS"))
         std::printf("::notice title=WARP-Test::%d Prüfungen, %d Fehler\n", checks, failures);

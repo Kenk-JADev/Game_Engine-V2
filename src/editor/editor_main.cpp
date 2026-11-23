@@ -47,9 +47,12 @@
 #include "core/log.h"
 #include "core/project_assets_win.h"
 #include "core/sound.h"
+#include "core/win_path.h"
+#include "core/win_project_cli.h"
 #include "editor/json.h"
 #include "editor/atomic_file_win.h"
 #include "editor/database_form.h"
+#include "editor/database_file_win.h"
 #include "editor/encounter_check.h"
 #include "editor/encounter_form.h"
 #include "editor/event_form.h"
@@ -61,6 +64,8 @@
 #include "editor/number_format.h"
 #include "editor/object_props_form.h"
 #include "editor/placement_form.h"
+#include "editor/playtest_win.h"
+#include "editor/project_scan_win.h"
 #include "editor/terrain_preview.h"
 #include "editor/texture_path.h"
 #include "editor/texture_preview.h"
@@ -565,31 +570,14 @@ bool control_text_strict(HWND control, std::string& result) {
     return true;
 }
 
-// Die vorhandene Projekt-/Kartenverwaltung benutzt für Dateinamen Win32s
-// System-Codepage (GetModuleFileNameA/FindFirstFileA/fopen_s). Für die neue
-// Wide-Dateiersetzung denselben Pfad konvertieren, nicht als UTF-8 deuten.
+// Projekt-/Kartennamen und Engine-Wurzel sind intern UTF-8. Vor jedem
+// Windows-Dateizugriff wird strikt zu UTF-16 konvertiert.
 bool file_path_to_wide(const std::string& path, std::wstring& out) {
-    if (path.empty() || path.size() > static_cast<size_t>(INT_MAX)) return false;
-    const int length = static_cast<int>(path.size());
-    const int count = MultiByteToWideChar(CP_ACP, 0, path.data(), length, nullptr, 0);
-    if (count <= 0) return false;
-    std::wstring result(static_cast<size_t>(count), L'\0');
-    if (MultiByteToWideChar(CP_ACP, 0, path.data(), length, result.data(), count) != count) return false;
-    out = std::move(result);
-    return true;
+    return core::win_path::to_wide(path, out);
 }
 
 bool read_file(const std::string& path, std::string& out) {
-    FILE* f = nullptr;
-    if (fopen_s(&f, path.c_str(), "rb") != 0 || !f) return false;
-    out.clear();
-    char buf[65536];
-    size_t n;
-    while ((n = std::fread(buf, 1, sizeof(buf), f)) > 0) out.append(buf, n);
-    const bool read_ok = std::ferror(f) == 0;
-    const bool close_ok = std::fclose(f) == 0;
-    if (!read_ok || !close_ok) out.clear();
-    return read_ok && close_ok;
+    return core::win_path::read_file(path, out);
 }
 
 bool file_path_exists(const std::string& path) {
@@ -616,25 +604,14 @@ FileDiskState file_disk_state(const std::string& path, std::string& out) {
 }
 
 bool write_file(const std::string& path, const std::string& data) {
-    FILE* f = nullptr;
-    if (fopen_s(&f, path.c_str(), "wb") != 0 || !f) return false;
-    const size_t n = std::fwrite(data.data(), 1, data.size(), f);
-    const bool close_ok = std::fclose(f) == 0;
-    return n == data.size() && close_ok;
+    return core::win_path::write_file(path, data);
 }
 
-// Engine-Wurzel finden (Editor exe liegt in build/, Wurzel ist der Parent).
+// Editor bevorzugt die Installation neben bzw. über seiner EXE.
 std::string find_root() {
-    char exe[MAX_PATH];
-    GetModuleFileNameA(nullptr, exe, MAX_PATH);
-    std::string dir = exe;
-    const size_t slash = dir.find_last_of("\\/");
-    if (slash != std::string::npos) dir = dir.substr(0, slash);
-    if (GetFileAttributesA((dir + "\\game").c_str()) != INVALID_FILE_ATTRIBUTES) return dir;
-    if (GetFileAttributesA((dir + "\\..\\game").c_str()) != INVALID_FILE_ATTRIBUTES) return dir + "\\..";
-    char cwd[MAX_PATH];
-    GetCurrentDirectoryA(MAX_PATH, cwd);
-    return cwd;
+    std::string root;
+    core::win_path::find_engine_root(false, root);
+    return root;
 }
 
 // ------------------------------------------------------------
@@ -719,7 +696,7 @@ bool decode_image_wic(const std::string& path, int& out_w, int& out_h,
     bool ok = false;
     try {
         std::wstring wpath;
-        if (assets::to_wide(path, CP_UTF8, wpath)) {
+        if (assets::to_wide(path, wpath)) {
             assets::Handle input(CreateFileW(wpath.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
                                              OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
             if (input.valid() && assets::read_locked(input.get(), world::TEXTURE_MAX_SOURCE_BYTES, source) == assets::Result::Ok &&
@@ -784,7 +761,7 @@ static std::wstring g_material_cli_project;
 
 assets::Result mat_open_store(assets::ProjectStore& store) {
     std::wstring project = g_material_cli_project;
-    if (project.empty() && !assets::to_wide(g.project_name, CP_ACP, project)) return assets::Result::Invalid;
+    if (project.empty() && !assets::to_wide(g.project_name, project)) return assets::Result::Invalid;
     if (!assets::component(project)) return assets::Result::Invalid;
     return store.open(g.root, &project);
 }
@@ -2290,23 +2267,7 @@ void open_tileset_dialog() {
 
 // Alle Projekte unter <root>/projekte/ (Verzeichnisse mit data/system.json).
 std::vector<std::string> scan_projects() {
-    std::vector<std::string> names;
-    const std::string dir = g.root + "\\projekte\\*";
-    WIN32_FIND_DATAA fd;
-    HANDLE h = FindFirstFileA(dir.c_str(), &fd);
-    if (h == INVALID_HANDLE_VALUE) return names;
-    do {
-        if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) continue;
-        if (fd.cFileName[0] == '.') continue;
-        const std::string sys = g.root + "\\projekte\\" + fd.cFileName +
-                                "\\data\\system.json";
-        if (GetFileAttributesA(sys.c_str()) != INVALID_FILE_ATTRIBUTES) {
-            names.push_back(fd.cFileName);
-        }
-    } while (FindNextFileA(h, &fd));
-    FindClose(h);
-    std::sort(names.begin(), names.end());
-    return names;
+    return project_names_on_disk(g.root);
 }
 
 // Neues Projekt anlegen: Verzeichnis-Gerüst + system.json + Startkarte.
@@ -2320,14 +2281,18 @@ bool create_project(const std::string& name) {
         }
     }
     const std::string base = g.root + "\\projekte\\" + name;
-    if (GetFileAttributesA(base.c_str()) != INVALID_FILE_ATTRIBUTES) {
-        core::log_error("Projekt existiert bereits: " + name);
+    // CREATE_DIRECTORY ist exklusiv: ein inzwischen angelegtes Projekt
+    // niemals mit den folgenden Dateien überschreiben.
+    if (!core::win_path::create_directory(base)) {
+        core::log_error("Projektordner existiert bereits oder ist nicht anlegbar: " + name);
         return false;
     }
-    CreateDirectoryA(base.c_str(), nullptr);
-    CreateDirectoryA((base + "\\data").c_str(), nullptr);
-    CreateDirectoryA((base + "\\data\\maps").c_str(), nullptr);
-    CreateDirectoryA((base + "\\saves").c_str(), nullptr);
+    if (!core::win_path::create_directory(base + "\\data") ||
+        !core::win_path::create_directory(base + "\\data\\maps") ||
+        !core::win_path::create_directory(base + "\\saves")) {
+        core::log_error("Projektgerüst unvollständig; bitte prüfen: " + name);
+        return false; // nur die eigene, möglicherweise unvollständige Anlage bleibt zurück
+    }
 
     // system.json: Titel + Startpunkt auf die neue Karte.
     JsonValue sys = JsonValue::make_obj();
@@ -2394,8 +2359,13 @@ bool switch_project(const std::string& name, bool departure_checked) {
     // F9 hält eine eigene Kopie der Datenbank. Ein Projektwechsel bei
     // offenem F9 würde diese sonst unter dem Pfad des neuen Projekts speichern.
     if (database_editor_open()) return false;
+    std::wstring project_component;
+    if (!core::win_path::to_wide(name, project_component) || !assets::component(project_component)) {
+        core::log_error("Ungültiger Projektname: " + name);
+        return false;
+    }
     const std::string data = g.root + "\\projekte\\" + name + "\\data";
-    if (GetFileAttributesA((data + "\\system.json").c_str()) == INVALID_FILE_ATTRIBUTES) {
+    if (!core::win_path::path_exists(data + "\\system.json")) {
         core::log_error("Projekt nicht gefunden: " + name);
         return false;
     }
@@ -2493,9 +2463,10 @@ LRESULT CALLBACK project_dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             if (id == IDPR_OPEN || (id == IDPR_LIST && code == LBN_DBLCLK)) {
                 const int sel = static_cast<int>(SendMessageW(g_prj.list, LB_GETCURSEL, 0, 0));
                 if (sel >= 0) {
-                    wchar_t buf[128];
-                    SendMessageW(g_prj.list, LB_GETTEXT, sel, reinterpret_cast<LPARAM>(buf));
-                    const std::string name = wide_to_utf8(buf);
+                    // Von außen angelegte Namen können länger als 127
+                    // Zeichen sein; vollständig und ohne Ersatzzeichen holen.
+                    std::string name;
+                    if (!listbox_text_utf8(g_prj.list, sel, name) || name.empty()) return 0;
                     if (switch_project(name)) {
                         DestroyWindow(h);
                         status_mode((L"Projekt: " + utf8_to_wide(name)).c_str());
@@ -2606,17 +2577,10 @@ void open_project_dialog() {
 }
 
 void scan_maps() {
-    g.map_files.clear();
+    g.map_files = map_files_on_disk(g.project_dir);
     g.map_names.clear();
-    const std::string dir = g.project_dir + "\\maps\\*.json";
-    WIN32_FIND_DATAA fd;
-    HANDLE h = FindFirstFileA(dir.c_str(), &fd);
-    if (h == INVALID_HANDLE_VALUE) return;
-    do {
-        if (fd.cFileName[0] == '.') continue;
-        std::string file = fd.cFileName;
-        g.map_files.push_back(file);
-        // Anzeigename: "name"-Feld, sonst Dateiname
+    for (const std::string& file : g.map_files) {
+        // Anzeigename: "name"-Feld, sonst UTF-8-Dateiname
         std::string text;
         std::string name = file.substr(0, file.size() - 5);
         if (read_file(g.project_dir + "\\maps\\" + file, text)) {
@@ -2629,8 +2593,7 @@ void scan_maps() {
             }
         }
         g.map_names.push_back(name);
-    } while (FindNextFileA(h, &fd));
-    FindClose(h);
+    }
 }
 
 // Karten-Untermenü neu aufbauen (nach Anlegen/Löschen/Laden).
@@ -8063,7 +8026,7 @@ void open_import_texture() {
     ofn.lpstrFilter = L"Bilder (*.png;*.bmp)\0*.png;*.bmp\0Alle Dateien (*.*)\0*.*\0";
     ofn.lpstrFile = file;
     ofn.nMaxFile = MAX_PATH;
-    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
+    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY | OFN_NOCHANGEDIR;
     ofn.lpstrTitle = L"Grafik importieren (PNG/BMP)";
     if (!GetOpenFileNameW(&ofn)) return;
     if (project_epoch != g.project_epoch) {
@@ -8325,36 +8288,16 @@ void db_status(const std::string& text) {
     if (g_db.lbl_status) ev_set_text(g_db.lbl_status, text);
 }
 
-enum class DatabaseDiskState { Missing, Ready, Error };
-
-DatabaseDiskState db_read_disk(const std::wstring& path, std::string& out) {
-    const DWORD attributes = GetFileAttributesW(path.c_str());
-    if (attributes == INVALID_FILE_ATTRIBUTES) {
-        if (GetLastError() != ERROR_FILE_NOT_FOUND) return DatabaseDiskState::Error;
-        out.clear();
-        return DatabaseDiskState::Missing;
-    }
-    if (attributes & FILE_ATTRIBUTE_DIRECTORY) return DatabaseDiskState::Error;
-    FILE* f = nullptr;
-    if (_wfopen_s(&f, path.c_str(), L"rb") != 0 || !f) return DatabaseDiskState::Error;
-    std::string text;
-    char buf[65536];
-    size_t n = 0;
-    while ((n = std::fread(buf, 1, sizeof(buf), f)) > 0) text.append(buf, n);
-    const bool read_ok = std::ferror(f) == 0;
-    const bool close_ok = std::fclose(f) == 0;
-    if (!read_ok || !close_ok) return DatabaseDiskState::Error;
-    out = std::move(text);
-    return DatabaseDiskState::Ready;
-}
-
 bool db_load() {
     const auto fail = [](const wchar_t* message) {
         MessageBoxW(g_db.win, message, L"Datenbank nicht geladen", MB_OK | MB_ICONERROR);
         return false;
     };
     std::string text;
-    const DatabaseDiskState state = db_read_disk(utf8_to_wide(db_path()), text);
+    std::wstring path;
+    if (!file_path_to_wide(db_path(), path))
+        return fail(L"Der Datenbankpfad ist ungültig. Die bisherigen Daten bleiben erhalten.");
+    const DatabaseDiskState state = db_read_disk(path, text);
     if (state == DatabaseDiskState::Error)
         return fail(L"database.json kann nicht gelesen werden. Die bisherigen Daten bleiben erhalten.");
     JsonValue loaded = JsonValue::make_obj();
@@ -8618,7 +8561,12 @@ void db_delete() {
 
 bool db_save() {
     if (!db_apply()) return false;
-    const std::wstring path = utf8_to_wide(db_path());
+    std::wstring path;
+    if (!file_path_to_wide(db_path(), path)) {
+        MessageBoxW(g_db.win, L"Der Datenbankpfad ist ungültig. Es wurde nichts überschrieben.",
+                    L"Datenbank", MB_OK | MB_ICONERROR);
+        return false;
+    }
     std::string disk_text;
     const DatabaseDiskState state = db_read_disk(path, disk_text);
     if (state == DatabaseDiskState::Error) {
@@ -9030,23 +8978,27 @@ void start_playtest() {
         }
     }
 
-    const std::wstring exe = utf8_to_wide(g.root) + L"\\build\\Rune3D.exe";
-    std::wstring args = L"\"build\\Rune3D.exe\" --project " +
-                        utf8_to_wide(g.project_name);
-
+    std::wstring exe, args, cwd;
+    if (!playtest_command(g.root, g.project_name, exe, args, cwd)) {
+        MessageBoxW(g.main, L"Rune3D.exe wurde nicht gefunden oder der Projektpfad ist ungültig. "
+                            L"Zuerst build.ps1 ausführen.",
+                    L"RuneEditor", MB_OK | MB_ICONERROR);
+        return;
+    }
     STARTUPINFOW si{};
     si.cb = sizeof(si);
     PROCESS_INFORMATION pi{};
+    // Auch nach einem Dateidialog explizit mit der Engine-Wurzel starten.
     if (!CreateProcessW(exe.c_str(), args.data(), nullptr, nullptr, FALSE,
-                        0, nullptr, nullptr, &si, &pi)) {
-        MessageBoxW(g.main, L"build\\Rune3D.exe konnte nicht gestartet werden. "
-                            L"Zürst build.ps1 ausführen.",
+                        0, nullptr, cwd.c_str(), &si, &pi)) {
+        MessageBoxW(g.main, L"Rune3D.exe konnte nicht gestartet werden. "
+                            L"Zuerst build.ps1 ausführen.",
                     L"RuneEditor", MB_OK | MB_ICONERROR);
         return;
     }
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
-    core::log_info("Playtest gestartet: build/Rune3D.exe --project " + g.project_name);
+    core::log_info("Playtest gestartet: Rune3D.exe --project " + g.project_name);
 }
 
 } // namespace rune::editor
@@ -9064,15 +9016,17 @@ int main(int argc, char** argv) {
     // Etappe 18b: --project <name> wie beim Spiel; ohne Angabe wird der
     // Merker log/last_project.txt geladen, sonst "dorf".
     std::string cli_project;
-    for (int i = 1; i < argc; ++i) {
-        if (std::string(argv[i]) == "--project" && i + 1 < argc) {
-            cli_project = argv[++i];
-        }
+    if (core::win_project_cli::current_project(cli_project) == core::win_project_cli::ProjectArgument::Invalid) {
+        std::fprintf(stderr, "FEHLER: Ungültiges oder fehlendes --project-Argument\n");
+        return 1;
     }
 
     g.root = find_root();
-    SetCurrentDirectoryA(g.root.c_str());
-    CreateDirectoryA("log", nullptr);
+    if (g.root.empty() || !core::win_path::set_current_directory(g.root)) {
+        std::fprintf(stderr, "FEHLER: Engine-Wurzel nicht zugänglich\n");
+        return 1;
+    }
+    CreateDirectoryW(L"log", nullptr);
     core::log_open("log\\editor.log");
     core::log_info("=== RuneEditor startet ===");
     core::log_info("Wurzel: " + g.root);
@@ -9080,7 +9034,7 @@ int main(int argc, char** argv) {
     // Etappe 19f: Daten-Check mit klarem Hinweis (siehe main.cpp). Ohne
     // game/-Ordner fehlt dem Editor boot.rb (Ruby-Szene), prefabs.json und
     // das Projekt dorf - die drei Folgefehler wirken sonst unerklärlich.
-    if (GetFileAttributesA((g.root + "\\game").c_str()) == INVALID_FILE_ATTRIBUTES) {
+    if (!core::win_path::path_exists(g.root + "\\game")) {
         core::log_error(
             "Engine-Daten fehlen: kein game/-Ordner unter der Wurzel. "
             "Bitte den KOMPLETTEN Build entpacken (EXEs + game/ + projekte/ "
@@ -9389,7 +9343,10 @@ int main(int argc, char** argv) {
                 while (!last.empty() && (last.back() == '\r' || last.back() == '\n')) {
                     last.pop_back();
                 }
-                if (!last.empty()) startup = last;
+                std::wstring checked;
+                if (!last.empty() && core::win_path::to_wide(last, checked)) startup = last;
+                else if (!last.empty())
+                    core::log_warn("Alter Projektmerker ist kein UTF-8; Projekt erneut auswählen");
             }
         }
         if (!switch_project(startup)) {

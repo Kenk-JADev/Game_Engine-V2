@@ -69,6 +69,12 @@ module Rune
     end
   end
 
+  module Window
+    class << self
+      attr_accessor :title
+    end
+  end
+
   module Input
     @keys = []
     class << self
@@ -579,6 +585,30 @@ check('alle Truppen der Demo-Vorlage lassen sich mit ihrer Datenbank starten') d
     Battle.abort!
     gestartet
   end
+end
+
+puts '== Playtest-Projektname =='
+check('Game.setup erhält Leerzeichen und Unicode im RUNE_PROJECT-Namen exakt') do
+  original_env = ENV['RUNE_PROJECT']
+  original_root = $project_root
+  original_name = $project_name
+  name = " Projekt_ä_日_🚀"
+  ENV['RUNE_PROJECT'] = name
+  # Unter POSIX-C-Locale kann ENV ASCII-8BIT liefern; Windows verwendet UTF-8.
+  # Die echte Projektliste liefert dieselbe Dateinamenkodierung wie ENV.
+  env_name = ENV['RUNE_PROJECT']
+  Project.define_singleton_method(:list) { [env_name] }
+  Project.define_singleton_method(:touch) { |value| @touched_name = value; true }
+  Project.define_singleton_method(:data_path) { |_value| File.join(Rune::ROOT, 'game', 'data') }
+  $project_root = nil
+  $project_name = nil
+  Game.setup
+  $project_name.b == name.b && Project.instance_variable_get(:@touched_name).b == name.b &&
+    $project_root == File.join(Rune::ROOT, 'game', 'data')
+ensure
+  ENV['RUNE_PROJECT'] = original_env
+  $project_root = original_root
+  $project_name = original_name
 end
 
 puts($fail.zero? ? 'ENCOUNTER-TEST OK (0 Fehler)' : "ENCOUNTER-TEST FEHLGESCHLAGEN (#{$fail} Fehler)")

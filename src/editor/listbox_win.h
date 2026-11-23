@@ -6,8 +6,26 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include "core/win_path.h"
+
+#include <string>
 
 namespace rune::editor {
+
+// Nur für Listboxen mit Strings. LB_GETTEXT kennt keine Puffergröße; den
+// Unicode-Text deshalb anhand von LB_GETTEXTLEN vollständig holen.
+inline bool listbox_text_utf8(HWND list, int row, std::string& out) {
+    out.clear();
+    if (!list || !IsWindow(list) || row < 0) return false;
+    const LRESULT length = SendMessageW(list, LB_GETTEXTLEN, static_cast<WPARAM>(row), 0);
+    if (length == LB_ERR || length < 0 || length > 32760) return false;
+    std::wstring text(static_cast<std::size_t>(length) + 1, L'\0');
+    if (SendMessageW(list, LB_GETTEXT, static_cast<WPARAM>(row),
+                     reinterpret_cast<LPARAM>(text.data())) != length) return false;
+    if (length == 0) return true;
+    text.resize(static_cast<std::size_t>(length));
+    return core::win_path::to_utf8(text, out);
+}
 
 // Negative Werte bedeuten keine Auswahl; insbesondere ist -1 nie eine
 // auswählbare Auslassungs-/Fehlerzeile. Nicht gefundene Werte werden gelöscht.

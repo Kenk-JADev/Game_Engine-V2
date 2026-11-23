@@ -3,11 +3,11 @@
 
 namespace rune::ruby {
 
-// Startet die eingebettete CRuby-VM und registriert das Modul "Rune".
+// Startet die eingebettete CRuby-VM; root ist die Engine-Wurzel als UTF-8.
 bool init(int argc, char** argv, const std::string& root);
 
-// Lädt eine Ruby-Datei relativ zum Arbeitsverzeichnis. Fehler landen im Log,
-// die Engine läuft weiter (wichtig für Hot-Reload).
+// Lädt einen UTF-8-Skriptpfad relativ zur Engine-Wurzel oder absolut. Fehler
+// landen im Log; die Engine läuft weiter (wichtig für Hot-Reload).
 bool load_script(const std::string& path);
 
 // Ruft Rune.tick(dt) auf; Exceptions werden abgefangen und geloggt.

@@ -143,16 +143,18 @@ void competing_create(void* ctx) {
 
 void windows_tests() {
     std::puts("== Windows: Materialdateien und Reparsepunkte ==");
-    char tmp[MAX_PATH + 1]{};
-    const DWORD n = GetTempPathA(MAX_PATH, tmp);
+    wchar_t tmp[MAX_PATH + 1]{};
+    const DWORD n = GetTempPathW(MAX_PATH, tmp);
     if (!n || n >= MAX_PATH) { check("Temp-Verzeichnis", false); return; }
-    const std::string root = std::string(tmp, n) + "rune-material-" + std::to_string(GetCurrentProcessId());
-    std::wstring wroot;
-    if (!rune::assets::to_wide(root, CP_ACP, wroot) || !CreateDirectoryW(wroot.c_str(), nullptr)) {
-        check("eigenes Temp-Verzeichnis", false); return;
+    const std::wstring wroot = std::wstring(tmp, n) + L"rune-material-\u00e4-\u65e5-\U0001f680-" +
+                               std::to_wstring(GetCurrentProcessId());
+    std::string root;
+    if (!rune::assets::to_utf8(wroot, root) || !CreateDirectoryW(wroot.c_str(), nullptr)) {
+        check("eigenes Unicode-Temp-Verzeichnis", false); return;
     }
     const std::wstring projects = wroot + L"\\projekte";
-    const std::wstring project = projects + L"\\A";
+    const std::wstring project_a = L"A_\u00e4_\u65e5_\U0001f680";
+    const std::wstring project = projects + L"\\" + project_a;
     const std::wstring data = project + L"\\data";
     const std::wstring texdir = data + L"\\textures";
     const std::wstring json = data + L"\\textures.json";
@@ -173,7 +175,6 @@ void windows_tests() {
     const bool cwd_changed = cwd_ok && put(cwd_sentinel, "CWD UNBERUEHRT", CREATE_NEW) &&
                              SetCurrentDirectoryW(outside.c_str());
     check("abweichendes Arbeitsverzeichnis mit fremdem Manifest", cwd_changed);
-    const std::wstring project_a = L"A";
     ProjectStore store;
     check("verankerte Projektwurzel öffnen", store.open(root, &project_a) == Result::Ok);
     const std::wstring moved_data = project + L"\\data-moved";
@@ -260,8 +261,8 @@ void windows_tests() {
     store = ProjectStore{}; b = ProjectStore{}; c = ProjectStore{}; d = ProjectStore{};
     DeleteFileW((texdir + L"\\stein.rgba").c_str());
     std::wstring second_wide, hard_wide;
-    rune::assets::to_wide(second_name, CP_UTF8, second_wide);
-    rune::assets::to_wide(hard_name, CP_UTF8, hard_wide);
+    rune::assets::to_wide(second_name, second_wide);
+    rune::assets::to_wide(hard_name, hard_wide);
     if (!second_wide.empty()) DeleteFileW((texdir + L"\\" + second_wide).c_str());
     if (!hard_wide.empty()) DeleteFileW((texdir + L"\\" + hard_wide).c_str());
     DeleteFileW(hard.c_str());

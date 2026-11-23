@@ -425,7 +425,9 @@ end
     # Ausnahme (Etappe 17h): RUNE_PROJECT aus --project startet direkt -
     # Playtests aus dem Editor springen ohne Titelbildschirm ins Projekt.
     if $project_root.nil?
-      env_project = ENV['RUNE_PROJECT'].to_s.strip
+      # Projektverzeichnisnamen sind exakt; führende Leerzeichen sind auf
+      # Windows zulässig und dürfen bei --project/F4 nicht entfernt werden.
+      env_project = ENV['RUNE_PROJECT'].to_s
       known = Project.list.include?(env_project)
       Rune::Log.warn("RUNE_PROJECT '#{env_project}' ist unbekannt") if
         !env_project.empty? && !known

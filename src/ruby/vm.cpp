@@ -257,7 +257,7 @@ VALUE rune_assets_read_texture(VALUE, VALUE data_root, VALUE project, VALUE file
         std::wstring project_wide;
         const std::wstring* project_ptr = has_project ? &project_wide : nullptr;
         const bool project_ok = !has_project ||
-            (assets::to_wide(project_name, CP_UTF8, project_wide) && assets::component(project_wide));
+            (assets::to_wide(project_name, project_wide) && assets::component(project_wide));
         if (project_ok && assets::matches_data_root(app().root, root, project_ptr)) {
             if (!g_asset_store || g_asset_root != root || g_asset_project != project_name ||
                 g_asset_has_project != has_project) {
@@ -921,14 +921,9 @@ void register_bindings() {
 
     rb_define_const(mRune, "VERSION", rb_str_new_cstr("0.1.0"));
     rb_define_const(mRune, "RUBY_VERSION_EMBEDDED", rb_str_new_cstr(ruby_version));
-    // find_root() liefert Windows-Systemcodepage. Ruby-Pfade und die sichere
-    // Materialbrücke benötigen dagegen UTF-8, auch bei Umlauten im Installationspfad.
-    std::wstring root_wide;
-    std::string root_utf8;
-    if (assets::to_wide(app().root, CP_ACP, root_wide) && assets::to_utf8(root_wide, root_utf8))
-        rb_define_const(mRune, "ROOT", rb_utf8_str_new(root_utf8.data(), static_cast<long>(root_utf8.size())));
-    else
-        rb_define_const(mRune, "ROOT", rb_str_new_cstr(app().root.c_str()));
+    // Die Engine-Wurzel ist bereits gültiges UTF-8; Ruby erhält denselben
+    // Pfad ohne Umweg über die Windows-Systemcodepage.
+    rb_define_const(mRune, "ROOT", rb_utf8_str_new(app().root.data(), static_cast<long>(app().root.size())));
 
     VALUE mGfx = rb_define_module_under(mRune, "Gfx");
     rb_define_module_function(mGfx, "clear_color=", RUBY_METHOD_FUNC(rune_gfx_clear_color_set), 1);
@@ -1043,6 +1038,11 @@ namespace rune::ruby {
 
 
 bool init(int argc, char** argv, const std::string& root) {
+    std::wstring root_wide;
+    if (!core::win_path::to_wide(root, root_wide)) {
+        core::log_error("Ruby-VM: ungültiger UTF-8-Installationspfad");
+        return false;
+    }
     app().root = root;
 
     // XCopy-Deployment: Liegt die Ruby-DLL neben der EXE (build/), berechnet
@@ -1119,7 +1119,9 @@ bool load_script(const std::string& path) {
     for (char& c : p) {
         if (c == '\\') c = '/';
     }
-    if (p.size() < 2 || p[1] != ':') {
+    const bool drive_absolute = p.size() >= 3 && p[1] == ':' && p[2] == '/';
+    const bool unc_absolute = p.size() >= 2 && p[0] == '/' && p[1] == '/';
+    if (!drive_absolute && !unc_absolute) {
         p = app().root;
         for (char& c : p) {
             if (c == '\\') c = '/';
@@ -1131,8 +1133,13 @@ bool load_script(const std::string& path) {
         }
     }
 
+    std::wstring checked;
+    if (!core::win_path::to_wide(p, checked)) {
+        core::log_error("Ruby-Skriptpfad ist kein gültiges UTF-8");
+        return false;
+    }
     int state = 0;
-    rb_load_protect(rb_str_new_cstr(p.c_str()), 0, &state);
+    rb_load_protect(rb_utf8_str_new(p.data(), static_cast<long>(p.size())), 0, &state);
 
     if (state != 0) {
         report_error(("Ruby-Fehler in " + path).c_str());

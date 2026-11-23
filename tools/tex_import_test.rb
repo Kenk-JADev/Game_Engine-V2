@@ -24,8 +24,9 @@ rescue StandardError => e
   $fail += 1
 end
 
-def run_import(source, name, project)
-  output, status = Open3.capture2e(EXE, '--import-tex', source, name, '--project', project)
+def run_import(source, name, project, exe: EXE, cwd: nil)
+  options = cwd ? { chdir: cwd } : {}
+  output, status = Open3.capture2e(exe, '--import-tex', source, name, '--project', project, **options)
   puts "  ... Exit #{status.exitstatus}: #{output.strip}"
   status.exitstatus
 end
@@ -34,14 +35,15 @@ tmp = nil
 project_dir = nil
 begin
   tmp = Dir.mktmpdir('rune_tex_source_')
-  # Unicode sowohl im Projekt- als auch im Quelldateinamen übt die UTF-16-CLI.
-  project_dir = Dir.mktmpdir('rune_ä_', File.join(ROOT, 'projekte'))
+  # Umlaute, CJK und ergänzende Unicode-Zeichen liegen sowohl im Projekt-
+  # als auch im Quelldateinamen; sie müssen die UTF-16-CLI exakt passieren.
+  project_dir = Dir.mktmpdir('rune_ä_日_🚀_', File.join(ROOT, 'projekte'))
   project = File.basename(project_dir)
   data_dir = File.join(project_dir, 'data')
   tex_dir = File.join(data_dir, 'textures')
   json_path = File.join(data_dir, 'textures.json')
   FileUtils.mkdir_p(tex_dir)
-  bmp = File.join(tmp, 'bild_ä.bmp')
+  bmp = File.join(tmp, 'bild_ä_日_🚀.bmp')
 
   # 8x8-BMP (24 Bit): obere Hälfte rot, untere blau. BMP-Dateizeilen sind
   # bottom-up, die von WIC gelesenen RGBA-Zeilen müssen top-down bleiben.
@@ -110,6 +112,38 @@ begin
   check('beschädigtes Manifest bleibt bytegenau erhalten') do
     run_import(bmp, 'kein_import', project) != 0 && File.binread(json_path) == corrupt &&
       Dir.children(tex_dir).sort == names_after
+  end
+
+  # Eine Kopie der echten Editor-EXE aus einer Unicode-Installation starten,
+  # absichtlich mit einem anderen Arbeitsverzeichnis. Nichts im Repository oder
+  # in einem bestehenden Projekt wird dafür verschoben oder überschrieben.
+  install = File.join(tmp, 'Engine_ä_日_🚀')
+  copy_build = File.join(install, 'build')
+  FileUtils.mkdir_p([copy_build, File.join(install, 'game')])
+  copy_exe = File.join(copy_build, 'RuneEditor.exe')
+  FileUtils.cp(EXE, copy_exe)
+  Dir.glob(File.join(ROOT, 'build', '*.dll')).each { |dll| FileUtils.cp(dll, copy_build) }
+  %w[RuneEditor.exe.manifest ruby_builtin_dlls].each do |part|
+    src = File.join(ROOT, 'build', part)
+    FileUtils.cp_r(src, copy_build) if File.exist?(src)
+  end
+  copy_project = ' Projekt_ä_日_🚀'
+  copy_data = File.join(install, 'projekte', copy_project, 'data')
+  FileUtils.mkdir_p(copy_data)
+  copy_manifest = File.join(copy_data, 'textures.json')
+  copy_initial = { 'future' => { 'keep' => true }, 'textures' => [] }
+  File.write(copy_manifest, JSON.generate(copy_initial), encoding: 'UTF-8')
+  copy_code = run_import(bmp, 'unicode_bild', copy_project, exe: copy_exe, cwd: tmp)
+  check('echte Editor-CLI findet Unicode-Installation und Projekt trotz fremdem CWD') do
+    copy_code.zero? && File.binread(json_path) == corrupt
+  end
+  check('Unicode-Installation: Manifest und tatsächliche RGBA-Pixel erhalten') do
+    copy_meta = JSON.parse(File.read(copy_manifest, encoding: 'UTF-8'))
+    item = copy_meta.fetch('textures').find { |e| e['name'] == 'unicode_bild' }
+    pixels = item && File.binread(File.join(copy_data, 'textures', item['file']))
+    copy_meta['future'] == copy_initial['future'] && pixels && pixels.bytesize == 256 &&
+      pixels.byteslice(0, 4).bytes == [255, 0, 0, 255] &&
+      pixels.byteslice(224, 4).bytes == [0, 0, 255, 255]
   end
 ensure
   # Nur eigene temporäre Verzeichnisse bereinigen, niemals dorf oder andere Projekte.

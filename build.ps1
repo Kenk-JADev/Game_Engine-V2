@@ -262,6 +262,22 @@ if ($Test) {
     & $MaterialTestExe
     if ($LASTEXITCODE -ne 0) { throw 'Material-/Dateitest fehlgeschlagen' }
 
+    Write-Step 'Windows-Projektpfade und Playtest-Kommando prüfen ...'
+    $PathTestExe = Join-Path $BuildDir 'windows_path_test.exe'
+    $PathTestFlags = @(
+        '-std=c++20', '-O1', '-Wall', '-Wextra', '-Wno-unused-parameter',
+        '-Wno-missing-field-initializers',
+        '-DUNICODE', '-D_UNICODE', '-DNOMINMAX', '-DWIN32_LEAN_AND_MEAN',
+        "-I$ProjectRoot\src", "$ProjectRoot\src\editor\json.cpp",
+        "$ProjectRoot\tools\windows_path_test.cpp",
+        '-o', $PathTestExe, '-lshell32', '-luser32', '-lgdi32',
+        '-static-libgcc', '-static-libstdc++'
+    )
+    & $Gcc @PathTestFlags
+    if ($LASTEXITCODE -ne 0) { throw 'windows_path_test.exe konnte nicht gebaut werden' }
+    & $PathTestExe
+    if ($LASTEXITCODE -ne 0) { throw 'Windows-Pfadtest fehlgeschlagen' }
+
     Write-Step 'Ruby-Testsuite (tools/test_all.rb) ...'
     $SuiteArgs = @((Join-Path $ProjectRoot 'tools\test_all.rb'))
     if ($Clean -or (Test-Path $EdExe)) { $SuiteArgs += '--strict' }   # mit EXE muss auch tex_import laufen

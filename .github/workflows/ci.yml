@@ -153,7 +153,7 @@ jobs:
         shell: pwsh
         run: .\build.ps1 -Clean
 
-      - name: Tests (C++-Logik, Windows-Dateien, Ruby, JSON- und Event-Brücke)
+      - name: Tests (C++-Logik, Windows-Dateien und Unicode-Pfade, Ruby-Brücken)
         shell: pwsh
         run: |
           try { .\build.ps1 -Test }

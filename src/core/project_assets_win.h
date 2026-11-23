@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "core/win_path.h"
 #include "editor/texture_path.h"
 #include "world/texture_limits.h"
 
@@ -60,30 +61,12 @@ private:
     HANDLE h_ = INVALID_HANDLE_VALUE;
 };
 
-inline bool to_wide(const std::string& input, UINT codepage, std::wstring& output) {
-    output.clear();
-    if (input.empty() || input.size() > 32760 || input.find('\0') != std::string::npos) return false;
-    const DWORD flags = codepage == CP_UTF8 ? MB_ERR_INVALID_CHARS : 0;
-    const int n = MultiByteToWideChar(codepage, flags, input.data(), static_cast<int>(input.size()), nullptr, 0);
-    if (n <= 0) return false;
-    std::wstring result(static_cast<std::size_t>(n), L'\0');
-    if (MultiByteToWideChar(codepage, flags, input.data(), static_cast<int>(input.size()), result.data(), n) != n)
-        return false;
-    output = std::move(result);
-    return true;
+inline bool to_wide(const std::string& input, std::wstring& output) {
+    return core::win_path::to_wide(input, output);
 }
 
 inline bool to_utf8(const std::wstring& input, std::string& output) {
-    output.clear();
-    if (input.empty() || input.size() > 32760 || input.find(L'\0') != std::wstring::npos) return false;
-    const int n = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, input.data(),
-                                      static_cast<int>(input.size()), nullptr, 0, nullptr, nullptr);
-    if (n <= 0) return false;
-    std::string result(static_cast<std::size_t>(n), '\0');
-    if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, input.data(), static_cast<int>(input.size()),
-                            result.data(), n, nullptr, nullptr) != n) return false;
-    output = std::move(result);
-    return true;
+    return core::win_path::to_utf8(input, output);
 }
 
 inline bool absolute_path(const std::wstring& path, std::wstring& full) {
@@ -107,7 +90,7 @@ inline bool component(const std::wstring& name) {
             c == L'*' || c == L'?' || c == L'"' || c == L'<' || c == L'>' || c == L'|') return false;
     }
     std::string utf8;
-    return to_utf8(name, utf8) && editor::texture_file_is_flat(utf8);
+    return to_utf8(name, utf8) && !editor::windows_device_name(utf8);
 }
 
 // Die Ruby-Datenwurzel darf nur exakt der gewählten Projekt- bzw. Demo-
@@ -115,7 +98,7 @@ inline bool component(const std::wstring& name) {
 inline bool matches_data_root(const std::string& engine_root, const std::string& data_root,
                               const std::wstring* project) {
     std::wstring engine, requested, expected, actual;
-    if (!to_wide(engine_root, CP_ACP, engine) || !to_wide(data_root, CP_UTF8, requested) ||
+    if (!to_wide(engine_root, engine) || !to_wide(data_root, requested) ||
         (project && !component(*project))) return false;
     expected = engine + (project ? L"\\projekte\\" + *project + L"\\data" : L"\\game\\data");
     if (!absolute_path(expected, expected) || !absolute_path(requested, actual)) return false;
@@ -283,12 +266,12 @@ inline std::wstring unique_name(const wchar_t* suffix) {
 class ProjectStore {
 public:
     // root_path ist der bestehende, vertrauenswürdige Engine-Installationsordner
-    // (System-Codepage); project ist ein UTF-16-Einzelname. project == nullptr
+    // in UTF-8; project ist ein UTF-16-Einzelname. project == nullptr
     // wählt die Demo-Daten unter game/data statt projekte/<name>/data.
     Result open(const std::string& root_path, const std::wstring* project) {
         texture_dir_.reset(); data_.reset(); project_.reset(); container_.reset(); root_.reset();
         std::wstring root;
-        if (!to_wide(root_path, CP_ACP, root)) return Result::Invalid;
+        if (!to_wide(root_path, root)) return Result::Invalid;
         std::wstring full;
         if (!absolute_path(root, full)) return Result::Invalid;
         root_.reset(CreateFileW(full.c_str(), FILE_LIST_DIRECTORY | FILE_TRAVERSE | FILE_READ_ATTRIBUTES,
@@ -315,7 +298,7 @@ public:
     Result read_texture(const std::string& filename, std::size_t expected, std::string& out) {
         if (!editor::texture_file_is_flat(filename) || expected > world::TEXTURE_MAX_BYTES) return Result::Invalid;
         std::wstring name;
-        if (!to_wide(filename, CP_UTF8, name)) return Result::Invalid;
+        if (!to_wide(filename, name)) return Result::Invalid;
         Result r = texture_directory(false);
         if (r != Result::Ok) return r;
         r = read_child(texture_dir_.get(), name, expected, out);
@@ -339,7 +322,7 @@ public:
         for (unsigned i = 1; i <= 10000; ++i) {
             const std::string candidate = i == 1 ? preferred : stem + "_" + std::to_string(i) + ext;
             std::wstring name;
-            if (!editor::texture_file_is_flat(candidate) || !to_wide(candidate, CP_UTF8, name)) return Result::Invalid;
+            if (!editor::texture_file_is_flat(candidate) || !to_wide(candidate, name)) return Result::Invalid;
             actual = candidate; // mögliche Allokation vor dem exklusiven Anlegen
             r = open_relative(texture_dir_.get(), name, FILE_WRITE_DATA | FILE_READ_ATTRIBUTES | DELETE,
                               0, FILE_CREATE, FILE_NON_DIRECTORY_FILE, created);

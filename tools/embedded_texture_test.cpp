@@ -6,8 +6,10 @@
 
 #include "app.h"
 #include "core/project_assets_win.h"
+#include "core/win_project_cli.h"
 
 #include <windows.h>
+#include <shellapi.h>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -57,27 +59,37 @@ bool write_new(const std::wstring& path, const std::string& data) {
 }
 
 struct Fixture {
-    std::string root;
-    std::wstring wide, game, demo, projects, a, adata, atex, b, bdata, btex;
+    std::string root, project;
+    std::wstring wide, game, demo, engine, projects, a, adata, atex, amaps, b, bdata, btex;
     bool owned = false;
 
-    bool create() {
-        char temp[MAX_PATH + 1]{};
-        const DWORD n = GetTempPathA(MAX_PATH, temp);
+    bool create(const std::wstring& repo) {
+        wchar_t temp[MAX_PATH + 1]{};
+        const DWORD n = GetTempPathW(MAX_PATH, temp);
         if (!n || n >= MAX_PATH) return false;
-        root = std::string(temp, n) + "rune-embedded-textures-" + std::to_string(GetCurrentProcessId());
-        if (!rune::assets::to_wide(root, CP_ACP, wide) || !CreateDirectoryW(wide.c_str(), nullptr)) return false;
-        owned = true;
-        game = wide + L"\\game"; demo = game + L"\\data";
+        wide = std::wstring(temp, n) + L"rune-ruby-\u00e4-\u65e5-\U0001f680-" +
+               std::to_wstring(GetCurrentProcessId());
+        game = wide + L"\\game"; demo = game + L"\\data"; engine = game + L"\\engine";
         projects = wide + L"\\projekte";
-        a = projects + L"\\A_\u00e4"; adata = a + L"\\data"; atex = adata + L"\\textures";
+        const std::wstring a_name = L" A_\u00e4_\u65e5_\U0001f680";
+        a = projects + L"\\" + a_name; adata = a + L"\\data";
+        atex = adata + L"\\textures"; amaps = adata + L"\\maps";
         b = projects + L"\\B"; bdata = b + L"\\data"; btex = bdata + L"\\textures";
-        for (const auto* d : {&game, &demo, &projects, &a, &adata, &atex, &b, &bdata, &btex}) {
+        if (!rune::assets::to_utf8(wide, root) || !rune::assets::to_utf8(a_name, project) ||
+            !CreateDirectoryW(wide.c_str(), nullptr)) return false;
+        owned = true;
+        for (const auto* d : {&game, &demo, &engine, &projects, &a, &adata, &atex, &amaps, &b, &bdata, &btex}) {
             if (!CreateDirectoryW(d->c_str(), nullptr)) return false;
+        }
+        for (const auto* name : {L"data.rb", L"project.rb", L"textures.rb"}) {
+            if (!CopyFileW((repo + L"\\game\\engine\\" + name).c_str(),
+                           (engine + L"\\" + name).c_str(), TRUE)) return false;
         }
         const std::string a_manifest = R"({"textures":[{"name":"gras","file":"rot.rgba","w":64,"h":64},{"name":"nur_a","file":"blau.rgba","w":64,"h":64}]})";
         const std::string b_manifest = R"({"textures":[{"name":"nur_b","file":"blau.rgba","w":64,"h":64}]})";
         return write_new(demo + L"\\textures.json", R"({"textures":[]})") &&
+               write_new(adata + L"\\system.json", R"({"name":"Unicode-Projekt","start":{"map":"karte_\u65e5"}})") &&
+               write_new(amaps + L"\\karte_\u65e5.json", R"({"name":"Unicode-Karte","objects":[]})") &&
                write_new(adata + L"\\textures.json", a_manifest) &&
                write_new(atex + L"\\rot.rgba", solid(255, 0, 0)) &&
                write_new(atex + L"\\blau.rgba", solid(0, 0, 255)) &&
@@ -89,14 +101,21 @@ struct Fixture {
         if (!owned) return false;
         DeleteFileW((wide + L"\\shot.bmp").c_str());
         DeleteFileW((demo + L"\\textures.json").c_str());
+        DeleteFileW((engine + L"\\data.rb").c_str());
+        DeleteFileW((engine + L"\\project.rb").c_str());
+        DeleteFileW((engine + L"\\textures.rb").c_str());
+        DeleteFileW((adata + L"\\system.json").c_str());
+        DeleteFileW((amaps + L"\\karte_\u65e5.json").c_str());
         DeleteFileW((adata + L"\\textures.json").c_str());
         DeleteFileW((atex + L"\\rot.rgba").c_str());
         DeleteFileW((atex + L"\\blau.rgba").c_str());
         DeleteFileW((bdata + L"\\textures.json").c_str());
         DeleteFileW((btex + L"\\blau.rgba").c_str());
-        RemoveDirectoryW(atex.c_str()); RemoveDirectoryW(adata.c_str()); RemoveDirectoryW(a.c_str());
+        RemoveDirectoryW(atex.c_str()); RemoveDirectoryW(amaps.c_str());
+        RemoveDirectoryW(adata.c_str()); RemoveDirectoryW(a.c_str());
         RemoveDirectoryW(btex.c_str()); RemoveDirectoryW(bdata.c_str()); RemoveDirectoryW(b.c_str());
-        RemoveDirectoryW(projects.c_str()); RemoveDirectoryW(demo.c_str()); RemoveDirectoryW(game.c_str());
+        RemoveDirectoryW(projects.c_str()); RemoveDirectoryW(demo.c_str());
+        RemoveDirectoryW(engine.c_str()); RemoveDirectoryW(game.c_str());
         const bool removed = RemoveDirectoryW(wide.c_str()) != 0;
         owned = false;
         return removed;
@@ -114,8 +133,10 @@ bool pixel_is(rune::gfx::Renderer& renderer, const std::string& shot, const char
     renderer.push_box(Vec3{}, Vec3{1, 1, 1}, Vec3{}, 0xffffff, index);
     renderer.request_screenshot(shot);
     renderer.end_frame();
-    std::FILE* f = std::fopen(shot.c_str(), "rb");
-    if (!f) return false;
+    std::wstring wide_shot;
+    FILE* f = nullptr;
+    if (!rune::core::win_path::to_wide(shot, wide_shot) ||
+        _wfopen_s(&f, wide_shot.c_str(), L"rb") != 0 || !f) return false;
     BITMAPFILEHEADER fh{};
     BITMAPINFOHEADER ih{};
     bool ok = std::fread(&fh, sizeof(fh), 1, f) == 1 && std::fread(&ih, sizeof(ih), 1, f) == 1 &&
@@ -124,7 +145,7 @@ bool pixel_is(rune::gfx::Renderer& renderer, const std::string& shot, const char
     if (ok) ok = std::fseek(f, static_cast<long>(fh.bfOffBits + (32 * 64 + 32) * 4), SEEK_SET) == 0 &&
                  std::fread(bgra, 1, 4, f) == 4;
     std::fclose(f);
-    DeleteFileA(shot.c_str());
+    DeleteFileW(wide_shot.c_str());
     if (!ok) return false;
     return color == 0 ? bgra[2] > 100 && bgra[1] < 20 && bgra[0] < 20 :
            color == 1 ? bgra[1] > 100 && bgra[2] < 20 && bgra[0] < 20 :
@@ -135,10 +156,17 @@ bool pixel_is(rune::gfx::Renderer& renderer, const std::string& shot, const char
 
 int main(int argc, char** argv) {
     std::puts("== Eingebettetes Ruby: Projekttexturen und D3D11-WARP ==");
-    if (argc != 2) { check("Repository-Pfad übergeben", false); return 1; }
-    const std::string repo = argv[1];
+    int wide_argc = 0;
+    wchar_t** wide_argv = CommandLineToArgvW(GetCommandLineW(), &wide_argc);
+    if (!wide_argv || wide_argc != 2) {
+        if (wide_argv) LocalFree(wide_argv);
+        check("Repository-Pfad übergeben", false);
+        return 1;
+    }
+    const std::wstring repo = wide_argv[1];
+    LocalFree(wide_argv);
     Fixture f;
-    if (!f.create()) {
+    if (!f.create(repo)) {
         check("isolierte temporäre Testprojekte", false);
         if (f.owned) f.cleanup();
         return 1;
@@ -159,16 +187,33 @@ int main(int argc, char** argv) {
         const std::string green = solid(0, 255, 0);
         const int base = renderer.add_texture("gras", 64, 64, reinterpret_cast<const std::uint8_t*>(green.data()));
         check("eingebaute Basis registriert", base >= 0);
+        // Wie Rune3D.exe vor dem VM-Start setzen; Ruby liest die Wide-Umgebung.
+        const bool env_set = rune::core::win_project_cli::set_project_environment(f.project);
+        check("Projektname verlustfrei in Windows-Umgebung gesetzt", env_set);
         char* ruby_argv[] = {argv[0], nullptr};
-        ruby_started = rune::ruby::init(1, ruby_argv, f.root);
+        ruby_started = env_set && rune::ruby::init(1, ruby_argv, f.root);
         check("echte eingebettete Ruby-VM gestartet", ruby_started);
         if (ruby_started) {
-            const bool data_loaded = rune::ruby::load_script(repo + "\\game\\engine\\data.rb");
-            const bool textures_loaded = rune::ruby::load_script(repo + "\\game\\engine\\textures.rb");
-            check("echte Database- und Textures-Module geladen", data_loaded && textures_loaded);
-            if (data_loaded && textures_loaded) {
+            rb_gv_set("$expected_root", rb_utf8_str_new(f.root.data(), static_cast<long>(f.root.size())));
+            rb_gv_set("$expected_project", rb_utf8_str_new(f.project.data(), static_cast<long>(f.project.size())));
+            check("Rune::ROOT und RUNE_PROJECT erreichen Ruby exakt als UTF-8", ruby_true(
+                "Rune::ROOT.encoding == Encoding::UTF_8 && Rune::ROOT == $expected_root && "
+                "ENV['RUNE_PROJECT'] == $expected_project && File.directory?(Rune::ROOT)"));
+            const bool data_loaded = rune::ruby::load_script("game\\engine\\data.rb");
+            const bool textures_loaded = rune::ruby::load_script(f.root + "\\game\\engine\\textures.rb");
+            const bool project_loaded = ruby_true(
+                "$LOAD_PATH.unshift(File.join(Rune::ROOT, 'game', 'engine')); require 'project'; defined?(Project)");
+            check("echte Database-/Textures-/Project-Module aus Unicode-Wurzel geladen",
+                  data_loaded && textures_loaded && project_loaded);
+            if (data_loaded && textures_loaded && project_loaded) {
+                check("Ruby findet und aktualisiert den Unicode-Projektnamen exakt", ruby_true(
+                    "Project.list.include?($expected_project) && Project.touch($expected_project) && "
+                    "Project.read_system($expected_project)['last_played'].is_a?(String)"));
+                check("Ruby liest Unicode-Karten-ID und Systemdaten", ruby_true(
+                    "$project_name = ENV['RUNE_PROJECT']; $project_root = Project.data_path($project_name); Database.reset!; "
+                    "Database.system.dig('start', 'map') == \"karte_\\u65e5\" && "
+                    "Database.map_ids == [\"karte_\\u65e5\"] && Database.map(\"karte_\\u65e5\")['name'] == 'Unicode-Karte'"));
                 check("Ruby liest Unicode-Projekt A und meldet zwei echte Texturen an", ruby_true(
-                    "$project_name = \"A_\\u00e4\"; $project_root = File.join(Rune::ROOT, 'projekte', $project_name, 'data'); "
                     "Textures.begin_project; Textures.register_project == 2"));
                 check("A überschreibt Basis nur in der Projektebene", renderer.texture_index("gras") != base &&
                       renderer.texture_index("nur_a") >= 0 && renderer.texture_index("nur_b") < 0);
@@ -190,7 +235,7 @@ int main(int argc, char** argv) {
                       renderer.texture_index("gras") == base && renderer.texture_index("nur_b") >= 0);
                 check("B rendert eingebautes Gras grün", pixel_is(renderer, f.root + "\\shot.bmp", "gras", 1));
                 check("Ruby wechselt zurück nach A", ruby_true(
-                    "$project_name = \"A_\\u00e4\"; $project_root = File.join(Rune::ROOT, 'projekte', $project_name, 'data'); "
+                    "$project_name = ENV['RUNE_PROJECT']; $project_root = File.join(Rune::ROOT, 'projekte', $project_name, 'data'); "
                     "Textures.begin_project; Textures.register_project == 2") &&
                       renderer.texture_index("nur_b") < 0 && pixel_is(renderer, f.root + "\\shot.bmp", "gras", 0));
                 check("Launcher-Ende räumt Projekttexturen, Demo-Manifest bleibt lesbar", ruby_true(

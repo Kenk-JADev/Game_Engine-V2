@@ -9,18 +9,26 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <atomic>
 #include <string>
 
 namespace rune::editor {
 
 inline bool editor_write_file_atomic(const std::wstring& path, const std::string& data,
                                      bool replace_existing = true) {
-    static unsigned serial = 0;
+    static std::atomic<unsigned> serial{0};
     HANDLE file = INVALID_HANDLE_VALUE;
+    const std::size_t slash = path.find_last_of(L"\\/");
+    const std::wstring directory = slash == std::wstring::npos
+        ? (path.size() >= 2 && path[1] == L':' ? path.substr(0, 2) : L"")
+        : path.substr(0, slash + 1);
     std::wstring temp;
     for (int attempt = 0; attempt < 100; ++attempt) {
-        temp = path + L".rune-" + std::to_wstring(GetCurrentProcessId()) +
-               L"-" + std::to_wstring(++serial) + L".tmp";
+        // Nicht an den Zieldateinamen anhängen: auch ein langer gültiger
+        // Windows-Kartenname muss noch eine kurze temporäre Datei erlauben.
+        const unsigned id = serial.fetch_add(1, std::memory_order_relaxed) + 1;
+        temp = directory + L".rune-" + std::to_wstring(GetCurrentProcessId()) +
+               L"-" + std::to_wstring(id) + L".tmp";
         file = CreateFileW(temp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
                            FILE_ATTRIBUTE_NORMAL, nullptr);
         if (file != INVALID_HANDLE_VALUE) break;
