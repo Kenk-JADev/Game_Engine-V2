@@ -183,11 +183,11 @@ Pull Request:
 | `cpp-logik` | ubuntu | JSON-/Editor-, Terrain- und Material-C++-Tests mit `-Werror`, danach JSON- und Event-Brücke |
 | `windows` | windows-2022 | Build, kopflose Datei-/Importtests und `-WarpTest`, EXEs als Artefakt |
 
-Für die editorlose Laufzeit war [CI 45178315607](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45178315607) auf `c7b2f5d` grün; den aktuellen Commit separat prüfen.
-
-Windows-CI für Commit `6a3b8e1`, Lauf [45175342986](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45175342986):
-58 Karten-/F9-Datei-, 28 Pfad-, 57 Material-/Datei-, 36 WARP- und 28
-eingebettete Ruby-/WARP-Prüfungen sowie 27 Ruby-Suiten jeweils ohne Fehler.
+CI für die F4-Kartenübergabe auf Commit `bc237b3`, Lauf
+[45183821663](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45183821663):
+alle vier Jobs grün; unter Windows 58 Karten-/F9-Datei-, 39 Pfad-, 57
+Material-/Datei-, 36 WARP- und 31 eingebettete Ruby-/WARP-Prüfungen sowie
+28 Ruby-Testsuiten, jeweils ohne Fehler oder übersprungene Tests.
 Der Dateitest nutzt echte Windows-Dateisystem-Handles und deterministisch
 ausgelöste Konkurrenz, aber keine sichtbaren Editorfenster. Der Pfadtest nutzt
 echte Windows-W-APIs und einen eigenen F4-Kindprozess, aber nicht das

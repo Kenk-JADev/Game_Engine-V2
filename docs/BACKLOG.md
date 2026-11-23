@@ -304,8 +304,9 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - `windows_path_test.cpp` prüft Parser, Validierung, Unicode, Prozessstart
   und geerbte Umgebung; `embedded_texture_test.cpp` die Ruby-Umgebung;
   `runtime_boot_test.rb` prüft getrennte Projekt-/Kartenszenarien mit echten
-  Ruby-Scripts und nativen Attrappen. Aktuellen CI-Lauf und offenen Live-Test
-  oben separat prüfen; weder Sandbox noch Hardware-/GUI-Nachweis.
+  Ruby-Scripts und nativen Attrappen. [CI 45183821663](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45183821663)
+  auf `bc237b3` ist grün; der Live-Test oben bleibt offen. Keine Sandbox und
+  kein Hardware-/GUI-Nachweis.
 - Betroffene Stellen: `src/editor/{editor_main.cpp,playtest_win.h}`,
   `src/core/{win_component,win_project_cli}.h`, `src/main.cpp`,
   `game/{main.rb,engine/data.rb,engine/launcher.rb,engine/mapcheck.rb}`

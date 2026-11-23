@@ -1717,8 +1717,9 @@ die Karte nach dem Editor-Speichern separat; externe Änderungen oder
 Dateilinks sind damit nicht allgemein ausgeschlossen. Normale Spielstände,
 Scripts und `last_played` bleiben aktiv. Die Windows-Pfadtests nutzen einen
 echten Test-Kindprozess, die Ruby-Boot-Tests native Attrappen; sie sind kein
-sichtbarer F4-GUI-/Hardwaretest. Den aktuellen CI-Lauf und die noch offene
-Zwei-Karten-Live-Anleitung in `docs/WINDOWS_MATERIAL_LIVE_TEST.md` prüfen.
+sichtbarer F4-GUI-/Hardwaretest. [CI 45183821663](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45183821663)
+für `bc237b3` ist grün. Die Zwei-Karten-Live-Prüfung nach
+`docs/WINDOWS_MATERIAL_LIVE_TEST.md` bleibt offen.
 
 ## Rune3D-Laufzeit ohne Ingame-Editor (Etappe 19t)
 
