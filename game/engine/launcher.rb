@@ -53,6 +53,7 @@ module Launcher
     map = Database.map(Database.map_ids.first || 'dorf') || {}
     # Derselbe geprüfte Aufbau wie beim Kartenwechsel, auch für kaputte
     # Höhenpinsel/Bodenflächen und extreme Raster des Demodorfes.
+    Textures.end_project
     Textures.register_all
     Game.build_terrain(map)
     Rune::Gfx.sky(0x3D6FB5, 0xBFD8EC)

@@ -8,12 +8,14 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <new>
 #include <stdexcept>
 #include <string>
 
 #include "app.h"
 #include "core/log.h"
+#include "core/project_assets_win.h"
 #include "core/sound.h"
 
 // In der DLL exportiert, aber nicht in ruby.h deklariert.
@@ -28,6 +30,20 @@ VALUE g_rune = Qnil;
 bool  g_ruby_ready = false;
 int   g_tick_errors = 0;
 bool  g_tick_disabled = false;
+
+// Die in einer Spielsession geprüften Ordner bleiben bis F5/Projektwechsel
+// gebunden; einzelne Ruby-Reads dürfen nicht plötzlich ein gleich benanntes,
+// zwischenzeitlich ausgetauschtes Projektverzeichnis öffnen.
+std::unique_ptr<assets::ProjectStore> g_asset_store;
+std::string g_asset_root, g_asset_project;
+bool g_asset_has_project = false;
+
+void reset_project_assets() noexcept {
+    g_asset_store.reset();
+    g_asset_root.clear();
+    g_asset_project.clear();
+    g_asset_has_project = false;
+}
 
 // ---------------------------------------------------------------- Helpers
 
@@ -175,10 +191,11 @@ VALUE rune_gfx_texture(VALUE, VALUE name, VALUE w, VALUE h, VALUE pixels) {
     const int width  = NUM2INT(w);
     const int height = NUM2INT(h);
     Check_Type(pixels, T_STRING);
-    // Windows-long ist 32 Bit. Erst D3D-Grenzen prüfen, dann multiplizieren.
-    if (width <= 0 || height <= 0 || width > 16384 || height > 16384)
-        rb_raise(rb_eArgError, "Texturbreite und -höhe müssen zwischen 1 und 16384 liegen");
-    const long need = static_cast<long>(width) * height * 4;
+    // Vor dem Multiplizieren dieselben Grenzen wie Import und Renderer prüfen.
+    std::size_t count = 0;
+    if (!world::texture_byte_count(width, height, count))
+        rb_raise(rb_eArgError, "Texturbreite und -höhe müssen zwischen 1 und 4096 liegen");
+    const long need = static_cast<long>(count);
     if (RSTRING_LEN(pixels) != need)
         rb_raise(rb_eArgError, "Textur: erwartet %ld Bytes, bekommen %ld", need, RSTRING_LEN(pixels));
     try {
@@ -197,6 +214,88 @@ VALUE rune_gfx_texture(VALUE, VALUE name, VALUE w, VALUE h, VALUE pixels) {
         vm_warn_safely("[ruby] Textur überschreitet den Speicherbereich");
         return INT2NUM(-1);
     }
+}
+
+// Projektwechsel und F5 räumen nur die projektspezifische Ebene auf;
+// eingebaute Texturen und ihre Slots bleiben erhalten.
+VALUE rune_gfx_begin_project_textures(VALUE) {
+    reset_project_assets();
+    if (app().renderer) app().renderer->begin_project_textures();
+    return Qnil;
+}
+
+VALUE rune_gfx_end_project_textures(VALUE) {
+    reset_project_assets();
+    if (app().renderer) app().renderer->end_project_textures();
+    return Qnil;
+}
+
+// Gemeinsamer, begrenzter Material-Lesepfad für Ruby und Editor. Die
+// Rückgabe ist [Statussymbol, Bytes oder nil]; keine ungesicherten File.binread-
+// Fallbacks in der eingebetteten Engine.
+VALUE rune_assets_read_texture(VALUE, VALUE data_root, VALUE project, VALUE filename, VALUE expected) {
+    if (!RB_TYPE_P(data_root, T_STRING) || (!NIL_P(project) && !RB_TYPE_P(project, T_STRING)) ||
+        (!NIL_P(filename) && !RB_TYPE_P(filename, T_STRING)))
+        return rb_ary_new_from_args(2, ID2SYM(rb_intern("invalid")), Qnil);
+    const long root_len = RSTRING_LEN(data_root);
+    const long project_len = NIL_P(project) ? 0 : RSTRING_LEN(project);
+    const long filename_len = NIL_P(filename) ? 0 : RSTRING_LEN(filename);
+    if (root_len <= 0 || root_len > 32760 || project_len < 0 || project_len > 1024 ||
+        filename_len < 0 || filename_len > 255)
+        return rb_ary_new_from_args(2, ID2SYM(rb_intern("invalid")), Qnil);
+    const long byte_count = NIL_P(filename) ? 0 : NUM2LONG(expected);
+    if (byte_count < 0 || static_cast<std::size_t>(byte_count) > world::TEXTURE_MAX_BYTES)
+        return rb_ary_new_from_args(2, ID2SYM(rb_intern("invalid")), Qnil);
+
+    assets::Result result = assets::Result::Invalid;
+    std::string bytes;
+    try {
+        const std::string root(RSTRING_PTR(data_root), static_cast<std::size_t>(root_len));
+        const bool has_project = !NIL_P(project);
+        const std::string project_name = has_project
+            ? std::string(RSTRING_PTR(project), static_cast<std::size_t>(project_len)) : std::string{};
+        std::wstring project_wide;
+        const std::wstring* project_ptr = has_project ? &project_wide : nullptr;
+        const bool project_ok = !has_project ||
+            (assets::to_wide(project_name, CP_UTF8, project_wide) && assets::component(project_wide));
+        if (project_ok && assets::matches_data_root(app().root, root, project_ptr)) {
+            if (!g_asset_store || g_asset_root != root || g_asset_project != project_name ||
+                g_asset_has_project != has_project) {
+                reset_project_assets();
+                auto store = std::make_unique<assets::ProjectStore>();
+                result = store->open(app().root, project_ptr);
+                if (result == assets::Result::Ok) {
+                    g_asset_root = root;
+                    g_asset_project = project_name;
+                    g_asset_has_project = has_project;
+                    g_asset_store = std::move(store);
+                }
+            } else result = assets::Result::Ok;
+            if (result == assets::Result::Ok && g_asset_store) {
+                if (NIL_P(filename)) result = g_asset_store->read_manifest(bytes);
+                else {
+                    const std::string file(RSTRING_PTR(filename), static_cast<std::size_t>(filename_len));
+                    result = g_asset_store->read_texture(file, static_cast<std::size_t>(byte_count), bytes);
+                }
+            }
+        } else reset_project_assets();
+    } catch (const std::bad_alloc&) {
+        result = assets::Result::Io;
+    } catch (const std::length_error&) {
+        result = assets::Result::TooLarge;
+    }
+    const char* symbol = "io";
+    switch (result) {
+        case assets::Result::Ok: symbol = "ok"; break;
+        case assets::Result::Missing: symbol = "missing"; break;
+        case assets::Result::Conflict: symbol = "conflict"; break;
+        case assets::Result::Invalid: symbol = "invalid"; break;
+        case assets::Result::TooLarge: symbol = "too_large"; break;
+        case assets::Result::Reparse: symbol = "reparse"; break;
+        case assets::Result::Io: break;
+    }
+    const VALUE data = result == assets::Result::Ok ? rb_str_new(bytes.data(), static_cast<long>(bytes.size())) : Qnil;
+    return rb_ary_new_from_args(2, ID2SYM(rb_intern(symbol)), data);
 }
 
 // Textur für das Gelände (dessen UV in den Vertices steckt).
@@ -822,12 +921,21 @@ void register_bindings() {
 
     rb_define_const(mRune, "VERSION", rb_str_new_cstr("0.1.0"));
     rb_define_const(mRune, "RUBY_VERSION_EMBEDDED", rb_str_new_cstr(ruby_version));
-    rb_define_const(mRune, "ROOT", rb_str_new_cstr(app().root.c_str()));
+    // find_root() liefert Windows-Systemcodepage. Ruby-Pfade und die sichere
+    // Materialbrücke benötigen dagegen UTF-8, auch bei Umlauten im Installationspfad.
+    std::wstring root_wide;
+    std::string root_utf8;
+    if (assets::to_wide(app().root, CP_ACP, root_wide) && assets::to_utf8(root_wide, root_utf8))
+        rb_define_const(mRune, "ROOT", rb_utf8_str_new(root_utf8.data(), static_cast<long>(root_utf8.size())));
+    else
+        rb_define_const(mRune, "ROOT", rb_str_new_cstr(app().root.c_str()));
 
     VALUE mGfx = rb_define_module_under(mRune, "Gfx");
     rb_define_module_function(mGfx, "clear_color=", RUBY_METHOD_FUNC(rune_gfx_clear_color_set), 1);
     rb_define_module_function(mGfx, "box", RUBY_METHOD_FUNC(rune_gfx_box), -1);
     rb_define_module_function(mGfx, "texture", RUBY_METHOD_FUNC(rune_gfx_texture), 4);
+    rb_define_module_function(mGfx, "begin_project_textures", RUBY_METHOD_FUNC(rune_gfx_begin_project_textures), 0);
+    rb_define_module_function(mGfx, "end_project_textures", RUBY_METHOD_FUNC(rune_gfx_end_project_textures), 0);
     rb_define_module_function(mGfx, "terrain_texture", RUBY_METHOD_FUNC(rune_gfx_terrain_texture), -1);
     rb_define_module_function(mGfx, "terrain_splats", RUBY_METHOD_FUNC(rune_gfx_terrain_splats), 2);
     rb_define_module_function(mGfx, "sky", RUBY_METHOD_FUNC(rune_gfx_sky), 2);
@@ -836,6 +944,9 @@ void register_bindings() {
     rb_define_module_function(mGfx, "shadows=", RUBY_METHOD_FUNC(rune_gfx_shadows_set), 1);
     rb_define_module_function(mGfx, "rect", RUBY_METHOD_FUNC(rune_gfx_rect), -1);
     rb_define_module_function(mGfx, "text", RUBY_METHOD_FUNC(rune_gfx_text), -1);
+
+    VALUE mAssets = rb_define_module_under(mRune, "Assets");
+    rb_define_module_function(mAssets, "read_texture", RUBY_METHOD_FUNC(rune_assets_read_texture), 4);
 
     VALUE mCam = rb_define_module_under(mRune, "Camera");
     rb_define_module_function(mCam, "mode", RUBY_METHOD_FUNC(rune_camera_mode), 0);
@@ -1055,6 +1166,7 @@ void tick(float dt) {
 }
 
 void shutdown() {
+    reset_project_assets();
     if (!g_ruby_ready) return;
     g_ruby_ready = false;
     ruby_finalize();

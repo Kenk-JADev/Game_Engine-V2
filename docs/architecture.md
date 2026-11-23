@@ -1712,6 +1712,39 @@ Demo-Datenbank, JSON-Roundtrips und unberührte allgemeine Eigenschaften.
 CI baut/linkt den Win32-Editor, hat aber keine GPU/Fenster für einen echten
 grafischen Live-Test (siehe Backlog und Handoff).
 
+## Projektgebundene Materialien und Texturen (Etappe 19q)
+
+`texture_limits.h` begrenzt Dimensionen/Bytes, Slots, Manifest und Eingabebild.
+`material_document.h` hält den vollständigen JSON-Baum: unbekannte und
+ungültige Einträge bleiben erhalten, doppelte Schlüssel/Namen, ungültiges
+UTF-8 und nicht speicherbare Zahlen sperren das Dokument. F3 ändert gezielt
+Tile oder entfernt nur Metadaten; F7 bestätigt Ersatz und erhält altes RGBA.
+
+`project_assets_win.h` verankert unter der ausdrücklich vertrauten Engine-
+Wurzel jede Material-Pfadkomponente mit einem Windows-Verzeichnishandle ohne
+Delete-Sharing. Reparsepunkte, Hardlinks und Pfad-/Gerätenamen werden
+abgewiesen; Reads und WIC sind begrenzt. Editor und Ruby halten diese
+Projektbindung bis zum Wechsel. Import legt RGBA exklusiv neu an; der
+Manifest-Commit vergleicht die Originalbytes unter Dateisperre, verschiebt
+bei Bedarf das Original in eine Sicherung und hängt die vorbereitete Datei
+ohne Überschreiben ein. Das ist kein atomarer Namensaustausch: bei Absturz
+oder blockierter Rücksetzung bleibt eine Sicherung zur Wiederherstellung.
+Der Schutz umfasst nicht andere Projektdateien und vertraut dem Engine-Anker.
+
+Der Renderer hält Basis- und Projekt-Namensräume separat; Projekt-Overrides
+gewinnen bei der Auflösung und im Atlas. Projektwechsel/F5 verwerfen Projekt-
+Slots, Draw-Kommandos und Terrain-/Atlasreferenzen, während Basisslots
+unverändert bleiben; freie Slots werden wiederverwendet. Prefabs speichern
+Namen statt langlebiger Slotnummern. Änderungen oder Löschungen räumen
+betroffene Atlas-Terrainreferenzen ab, bevor der Aufrufer neu aufbaut.
+
+`material_test.cpp` testet den portablen Baum und unter Windows Dateisperren,
+Hardlinks, Junctions und einen deterministischen Konflikt. Der WIC-Test nutzt
+nur ein temporäres Projekt. `renderer_warp_test.cpp` rendert auf D3D11-WARP
+(Software) und liest echte Pixel, einschließlich Atlas-Terrain und A→B→A.
+Ein interaktiver Hardware-/GUI-/DPI-Test bleibt separat erforderlich:
+`docs/WINDOWS_MATERIAL_LIVE_TEST.md`.
+
 ## Sichere Terrain-/Atmosphärenvorschau (Etappe 19p)
 
 `world/terrain_limits.h` definiert einen portablen Plan: Breite/Höhe
@@ -1748,16 +1781,16 @@ F5 sperrt konkurrierende F7-/Material-/Script-/F9-Datenaktionen.
 
 `texture_path.h` weist beim Editor-Lesen und -Schreiben/Löschen von RGBA-
 Dateien Pfadtrenner, Datenströme, Windows-Gerätenamen und zu lange Namen
-lexikalisch ab. Verknüpfungen/Reparsepunkte und Dateikonflikte sind damit
-nicht geprüft; auch die Material-Metadaten bleiben ein eigener offener Punkt.
+lexikalisch ab. In 19p allein waren Reparsepunkte und Dateikonflikte damit
+nicht geprüft; 19q ergänzt den oben beschriebenen Material-Dateistore.
 
 `AtlasPlan` begrenzt 64×64-Tiles auf 1024 (maximal 2048×2048, 16 MiB pro
 RGBA-Kopie). `Renderer::update_atlas` verwendet bei unveränderten
 Eingaben den Cache, bei Änderungen einen privaten wiederverwendeten Slot;
 eine öffentliche Textur namens `atlas` bleibt eine normale Eingabe.
 Auch wiederholtes Registrieren desselben Textur-Namens ersetzt den Slot
-statt alte CPU-/GPU-Kopien anzuhäufen. Neue einzigartige Namen und andere
-Projektdateien haben damit noch keine globale Speicherobergrenze.
+statt alte CPU-/GPU-Kopien anzuhäufen. 19q ergänzt Projekt-Lebensdauer und
+Speichergrenzen für Texturen; andere Projektdateien sind davon nicht erfasst.
 Fehlt Atlas oder Basiszelle, zeigen Editor und Spiel Einzeltextur-Boden;
 unbekannte Flächentexturen fallen auf die Basis zurück und werden gemeldet.
 Der Shader-Faktor 2/tile steht für Atlas-UV neutral auf 1 (`tile` = 2),

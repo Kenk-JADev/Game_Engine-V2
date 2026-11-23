@@ -1,6 +1,6 @@
-# Handoff für die nächste KI - Rune3D, Stand nach Etappe 19p
+# Handoff für die nächste KI - Rune3D, Stand nach Etappe 19q
 
-**Datum des Stands:** 2026-11-19 — Etappe 19p: Terrain-/Atmosphärenschutz; CI-Status in GitHub Actions prüfen
+**Datum des Stands:** 2026-11-19 — Etappe 19q: Projekttexturen und Materialdateien; CI-Status in GitHub Actions prüfen
 **Projekt:** `C:/Users/jusagu/Desktop/Engine` — Windows-Only 3D-RPG-Engine (C++20/Win32/D3D11 + echtes CRuby 3.4.11), Editor = eigenes Programm `RuneEditor.exe`.
 
 ## 0. Auftrag und Fortschritt (RPG-Maker-XP-Überholung)
@@ -36,7 +36,8 @@ Der User beauftragte eine Überarbeitung von Engine und Editor **im Stil von RPG
 | 19d | `e56b692` + Nacharbeit `0660de3` (CI-Grün) | XP-Features Welle 1: Self-Switches A-D pro Event (GameState, Seiten-Bedingung, `self_switch`/`if_self_switch`, Savegame, Editor-Combos im Seite-Kasten) + Bildschirmblende (`fade.rb`, Befehl `fade`, Reset bei Kartenwechsel); 23 Befehlstypen synchron in CMD_TYPES/ISSUE_CMD_TYPES/EV_TYPES; Tests `self_switch_test.rb`, `fade_test.rb` |
 | 19e | `59845c1` (CI-Grün) | RGSS-Schicht (`game/engine/rgss.rb`): `$game_*`-Globale, `Graphics`/`Input`/`Audio`/`load_data`+`save_data` wie RPG Maker XP (Abweichungen: JSON statt Marshal, Namen statt IDs, kein `$scene`-Loop) + Launcher-Ersteinrichtung `:first` (ohne Projekt: Enter/N = erstellen, D = Demo, Esc = beenden; `ensure_demo` nicht mehr automatisch) + Context-Helfer `fade`/`self_switch` + `$game_system.menu_disabled/save_disabled` beachtet; Tests `rgss_test.rb`, script_test-Abschnitt 6 |
 | 19f | `96be63d` (CI-Grün) | Artefakt-Bugfix (User-Konsole): `Rune3D-Windows` enthält jetzt `game/` + `projekte/` neben den EXEs (CI kopiert sie nach `build/`); beide EXEs loggen einen klaren Hinweis, wenn `game/` unter der Wurzel fehlt |
-| 19p | dieser Commit (CI-Status siehe Actions) | Terrain-/Atmosphärengrenzen, sichtbare F10-/Atlas-Fallbacks, F7-Datentreue, Ruby-Brücke und portable Terrain-Tests |
+| 19p | `84ad7b5` (CI grün) | Terrain-/Atmosphärengrenzen, sichtbare F10-/Atlas-Fallbacks, F7-Datentreue, Ruby-Brücke und portable Terrain-Tests |
+| 19q | dieser Stand (CI-Status siehe Actions) | Projektgebundene Texturen, sicherer Materialstore, WARP-/Dateitests und vorbereiteter Windows-Live-Test |
 | 19o.6 | `326925b` (CI-Grün Run 44640705908) | F6: Monitor-Arbeitsfläche, DPI-skalierter Scroll-Ausschnitt, Fokus-Nachführung und portable/unsichtbare Windows-Tests |
 | 19o.5 | `4635c80` (CI-Grün Run 44628573472) | F6: datentreue Event-/Seiten-/Befehlsformulare, Pending-Schutz, bedarfsweise Altseitenmigration und C++/Ruby-Event-Brücke |
 | 19o.4 | `38ed554` (CI-Grün Run 44614856669) | Objektformular datentreu, Pending-/Drag-Schutz und sicheres Kartenladen; portable Tests |
@@ -161,15 +162,25 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
   Felder und warnt vor Ersetzen ungültiger Werte. F2/F6 sperren das Öffnen
   in beide Richtungen; F2 prüft seinen Entwurf nach Datenrückfragen erneut.
   Bei Rückfragen/F5 werden konkurrierende Aktionen und Listenwechsel
-  geschützt. `texture_path.h` lehnt lexikalische Pfade/Gerätenamen bei
-  Editor-RGBA-Zugriffen ab, nicht aber Reparsepunkte oder Dateikonflikte.
+  geschützt. `texture_path.h` prüft lexikalische Namen; 19q ergänzt
+  gebundene Windows-Handles und Konfliktprüfung für Materialdateien.
   `AtlasPlan` ist auf 1024 Zellen begrenzt; Cache und
   private Atlas-Slot-Wiederverwendung sowie stabile Namens-Slots vermeiden
   wiederholte Kopien. `atlas` bleibt als Projekttextur benutzbar; fehlende
   Basiszellen fallen auf Einzeltextur zurück. Die doppelte UV-Skalierung
   ist korrigiert; `terrain.tile` ist im Splatpfad weiterhin wirkungslos.
   Das spätere XP-Design bleibt ausdrücklich im Backlog, nicht vorziehen.
-  Grenzen für andere Projektdateien und alte Projekttexturen: Backlog.
+  Grenzen für andere Projektdateien und grafische Live-Tests: Backlog.
+- **Material-/Projekttexturen (19q):** Editor und Ruby halten geprüfte
+  Projektverzeichnis-Handles, begrenzen JSON/RGBA/WIC, lehnen Reparsepunkte
+  und Hardlinks ab und vergleichen beim Speichern die ursprünglichen Bytes.
+  Neue RGBA-Dateien werden exklusiv angelegt, Altdaten erhalten. Der
+  Backup-/Rename-Commit ist kein atomarer Austausch; Wiederherstellungsdateien
+  nach Absturz/Konflikt beachten. Basis-/Projekt-Slots sind getrennt; F5 und
+  A→B→A löschen alte Slots, Draws und Atlas-Terrainreferenzen. Tests:
+  `material_test.cpp`, `project_tex_test.rb`, `tex_import_test.rb` und
+  `renderer_warp_test.cpp`; WARP ist Software, kein Hardware-/GUI-Nachweis.
+  Reproduzierbare Kopie und Ablauf: `docs/WINDOWS_MATERIAL_LIVE_TEST.md`.
 - **F6-Datentreue (19o.5):** `event_form.h` liest Event, Seite und Befehl
   nichtmutierend und bereitet gemeinsame Änderungen auf Kopien vor. Alte
   Seiten werden nur für neue Bedingungen/Seiten migriert; Top-Level-
@@ -299,10 +310,10 @@ und umgekehrt; vor Ersetzen kaputter Altdaten Abbrechen/Ja testen. Bei
 offenem F7 A→B→A wechseln: Übernehmen/Entfernen müssen gesperrt sein.
 F2→F6 und F6→F2 sowie Wetter/Nebel-Ersatz und F10-Neuscan prüfen. F7- und
 F3-Auswahl während Rückfragen und F5, Formularentwürfe sowie normale und
-ungültige RGBA-Dateinamen mit gesicherten Kopien prüfen. Reparsepunkte und
-Dateikonflikte sind noch nicht abgesichert. Den vollständigen Ablauf samt
-echten Ruby-Bindings, GPU-Ressourcen und ggf.
-Fehlersimulation testen; Crosscompile/Stubs oder CI behaupten dies nicht.
+ungültige RGBA-Dateinamen mit gesicherten Kopien prüfen. 19q ergänzt
+Material-Reparsepunkt-/Konfliktschutz und dazu automatisierte Tests; den
+vollständigen Ablauf mit echten Ruby-Bindings, Hardware-GPU und GUI trotzdem
+interaktiv prüfen. Siehe `docs/WINDOWS_MATERIAL_LIVE_TEST.md`.
 
 **Noch offen für 19o.6 (echter Windows-Rechner):** Ein gesichertes
 Testprojekt mit mehreren Events/Seiten und verschiedenen Befehlstypen öffnen.

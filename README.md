@@ -95,7 +95,8 @@ Offene Punkte mit Symptom und betroffener Datei stehen in
 .\build.ps1              # build\Rune3D.exe + build\RuneEditor.exe
 .\build.ps1 -Clean       # komplett neu
 .\build.ps1 -Run         # bauen und das Spiel starten
-.\build.ps1 -Test        # C++-/Ruby-Tests und JSON-/Event-Brücke
+.\build.ps1 -Test        # C++-/Windows-Datei-/Ruby-Tests und JSON-/Event-Brücke
+.\build.ps1 -WarpTest    # D3D11-Softwaretest mit WARP (optional)
 .\build.ps1 -RubyRoot D:\Ruby34-x64   # andere Ruby-Installation
 ```
 
@@ -126,11 +127,13 @@ ruby tools\lint_repo.rb                        # Repo-Hygiene
 | Ruby-Modultests | Engine-Logik mit `Rune::*`-Stubs (Events, Seiten, Interpreter, Party, Kampf, Wetter, Scripte, Projekte, Speichern) + Ruby/C++-Vokabular-Sync | `tools/*_test.rb`, Runner `tools/test_all.rb` |
 | C++-Logiktest | JSON und portable Editor-Formularmodelle, darunter F6-Transaktionen und Datentreue | `tools/json_test.cpp` |
 | C++-Terrain | Echte Geländegenerierung, Höhen-/Splat-Budgets, Atlasplan und Fehlerpfade ohne D3D | `tools/terrain_test.cpp` |
+| Materialien/Dateien | Verlustfreier JSON-Baum, unter Windows Handle-Konflikte, Junctions und Hardlinks | `tools/material_test.cpp` |
+| D3D11-WARP | Software-Renderer, Pixel, Projektwechsel und Atlas-/Terrainreferenzen | `tools/renderer_warp_test.cpp` (`-WarpTest`) |
 | JSON-Brücke | Schreibt C++ bytegleich zu Ruby `JSON.pretty_generate`? | `tools/json_bridge_check.rb` |
 | Event-Brücke | C++-F6-Änderungen gegen echte Ruby-Event- und Interpreter-Laufzeit | `tools/event_bridge_check.rb` |
 | Karten-Scan | Daten-Validierung (Befehle, Trigger, Bedingungen, Wegpunkte, Terrain) | `game/engine/mapcheck.rb` |
 | Repo-Hygiene | UTF-8, BOM, Doppelkodierung, Zeilenenden, Requires, Index | `tools/lint_repo.rb` |
-| Live-Tests | Fenster-Injektion am echten Editor (nur Windows, manüll) | `tools/edclick.psm1` |
+| Live-Tests | Interaktiver GUI-/Hardwaretest in isolierter Kopie | `docs/WINDOWS_MATERIAL_LIVE_TEST.md`, `tools/edclick.psm1` |
 
 `tools/tex_import_test.rb` braucht eine gebaute `RuneEditor.exe` und wird ohne
 sie übersprungen (der Runner meldet das).
@@ -144,12 +147,12 @@ Pull Request:
 |---|---|---|
 | `hygiene` | ubuntu | `tools/lint_repo.rb` |
 | `engine` | ubuntu | `tools/test_all.rb` + Karten-Scan |
-| `cpp-logik` | ubuntu | JSON-/Editor- und Terrain-C++-Tests mit `-Werror`, danach JSON- und Event-Brücke |
-| `windows` | windows-2022 | `build.ps1 -Clean` **und** `-Test`, EXEs als Artefakt |
+| `cpp-logik` | ubuntu | JSON-/Editor-, Terrain- und Material-C++-Tests mit `-Werror`, danach JSON- und Event-Brücke |
+| `windows` | windows-2022 | Build, kopflose Datei-/Importtests und `-WarpTest`, EXEs als Artefakt |
 
-Der Windows-Job ist der einzige Ort, an dem D3D11/Win32 wirklich kompiliert und
-gelinkt wird — die EXEs lassen sich dort nicht starten (keine GPU im Runner),
-es geht um Bau und Tests. Artefakt: **Rune3D-Windows**.
+WARP testet den echten D3D11-Renderer mit Software, aber keine Hardware-GPU,
+Bedienung oder DPI. Dafür ist der [Windows-Live-Test](docs/WINDOWS_MATERIAL_LIVE_TEST.md)
+auf einem interaktiven Rechner nötig. Artefakt: **Rune3D-Windows**.
 
 ## Projektstruktur
 
@@ -320,10 +323,20 @@ löschbar. Auch nach dem Löschen des letzten Eintrags bleibt eine vorhandene
 leere Flächenliste erhalten. Nach Karten-/Projektwechsel F7 schließen und neu
 öffnen, bevor Daten geändert werden.
 
-Der Editor erwartet für Projekt-RGBA-Dateien einfache Dateinamen ohne
-Pfadtrenner, Datenstrom oder Windows-Gerätenamen. Die Prüfung ist lexikalisch:
-Verknüpfungen und Dateikonflikte sind damit nicht vollständig abgesichert.
-Für Materialarbeiten Sicherungskopien verwenden (siehe Backlog).
+Projekttexturen haben eine eigene Lebensdauer und überlagern eingebaute
+Texturen nur im geöffneten Projekt. Projektwechsel/F5 entfernen alte Slots und
+Atlas-Referenzen. Materialien werden begrenzt gelesen (maximal 4096×4096,
+64 MiB je RGBA, 128 MiB verwaltete Texturpixel, 2 MiB Manifest); das
+Materialdokument erhält unbekannte und ungültige Einträge. Defektes JSON bleibt
+schreibgeschützt. Import/F7 legen neue RGBA-Dateien an, ersetzen keine fremden
+Dateien und erhalten alte RGBA-Dateien. F3 entfernt nur Metadaten.
+
+Materialpfade werden über gebundene Windows-Verzeichnishandles geprüft; einfache
+Dateinamen sind Pflicht, Reparsepunkte und mehrfach verlinkte Dateien werden
+abgewiesen. Speichern vergleicht die Originalbytes und legt eine Sicherung an;
+bei Konflikt wird nicht überschrieben. Es ist kein atomarer Namensaustausch:
+bei Absturz kann eine `.rune-*.bak` verbleiben. Andere Projektdateien sind
+nicht durch diesen Mechanismus geschützt; Sicherungskopien bleiben ratsam.
 
 Der Atlas ist auf 1024 Texturen à 64×64 begrenzt (höchstens 16 MiB pro
 RGBA-Kopie). Ohne Atlas oder ohne passende Basistextur bleibt der Boden als

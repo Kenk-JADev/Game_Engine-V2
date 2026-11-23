@@ -7,7 +7,8 @@
     .\build.ps1                     nur bauen
     .\build.ps1 -Run                bauen und Rune3D starten
     .\build.ps1 -Clean              alles neu bauen
-    .\build.ps1 -Test               Testsuite (C++-Logik, Ruby-Tests, JSON- und Event-Brücke)
+    .\build.ps1 -Test               C++-/Datei- und Ruby-Tests, JSON-/Event-Brücke
+    .\build.ps1 -WarpTest           D3D11-WARP-Integrationstest (Software)
     .\build.ps1 -RubyRoot C:\Ruby34-x64   andere Ruby-Installation benutzen
 
     Werkzeug-Suche (seit Etappe 19a):
@@ -24,6 +25,7 @@ param(
     [switch]$Run,
     [switch]$Clean,
     [switch]$Test,
+    [switch]$WarpTest,
     [string]$RubyRoot = ''
 )
 
@@ -140,6 +142,31 @@ $EdExe    = Join-Path $BuildDir 'RuneEditor.exe'
 Write-Step "Ruby:      $RubyRootGefunden  ($($Ruby.SoName))"
 Write-Step "Toolchain: $Toolchain"
 
+# ------------------------------------------------------------ D3D11-WARP (optional)
+# Software-Rendering mit verstecktem Fenster; nicht mit einem interaktiven
+# Hardware-/GUI-Test verwechseln. Dieser Test wird nur auf Wunsch ausgeführt.
+if ($WarpTest) {
+    New-Item -ItemType Directory -Force -Path $BuildDir | Out-Null
+    $WarpExe = Join-Path $BuildDir 'renderer_warp_test.exe'
+    Write-Step 'Baue D3D11-WARP-Test ...'
+    $WarpFlags = @(
+        '-std=c++20', '-O1', '-Wall', '-Wextra', '-Wno-unused-parameter',
+        '-Wno-missing-field-initializers',
+        '-DUNICODE', '-D_UNICODE', '-DNOMINMAX', '-DWIN32_LEAN_AND_MEAN',
+        "-I$ProjectRoot\src",
+        "$ProjectRoot\tools\renderer_warp_test.cpp",
+        "$ProjectRoot\src\gfx\renderer.cpp",
+        "$ProjectRoot\src\gfx\ui.cpp",
+        '-o', $WarpExe, '-ld3d11', '-ldxgi', '-ld3dcompiler', '-ldxguid',
+        '-luuid', '-luser32', '-lgdi32'
+    )
+    & $Gcc @WarpFlags
+    if ($LASTEXITCODE -ne 0) { throw 'renderer_warp_test.exe konnte nicht gebaut werden' }
+    & $WarpExe
+    if ($LASTEXITCODE -ne 0) { throw 'D3D11-WARP-Test fehlgeschlagen' }
+    if (-not $Test) { return }
+}
+
 # ------------------------------------------------------------ Tests (-Test)
 # Bewusst VOR dem EXE-Bau: die Tests brauchen keine Grafik und laufen auch,
 # wenn der Build gerade kaputt ist. tex_import_test.rb braucht allerdings
@@ -179,6 +206,22 @@ if ($Test) {
     if ($LASTEXITCODE -ne 0) { throw 'terrain_test.exe konnte nicht gebaut werden' }
     & $TerrainTestExe
     if ($LASTEXITCODE -ne 0) { throw 'C++-Terrain-Test fehlgeschlagen' }
+
+    Write-Step 'Materialdokument und Windows-Dateihandles prüfen ...'
+    $MaterialTestExe = Join-Path $BuildDir 'material_test.exe'
+    $MaterialTestFlags = @(
+        '-std=c++20', '-O1', '-Wall', '-Wextra', '-Wno-unused-parameter',
+        '-Wno-missing-field-initializers',
+        '-DUNICODE', '-D_UNICODE', '-DNOMINMAX', '-DWIN32_LEAN_AND_MEAN',
+        "-I$ProjectRoot\src",
+        "$ProjectRoot\src\editor\json.cpp",
+        "$ProjectRoot\tools\material_test.cpp",
+        '-o', $MaterialTestExe
+    )
+    & $Gcc @MaterialTestFlags
+    if ($LASTEXITCODE -ne 0) { throw 'material_test.exe konnte nicht gebaut werden' }
+    & $MaterialTestExe
+    if ($LASTEXITCODE -ne 0) { throw 'Material-/Dateitest fehlgeschlagen' }
 
     Write-Step 'Ruby-Testsuite (tools/test_all.rb) ...'
     $SuiteArgs = @((Join-Path $ProjectRoot 'tools\test_all.rb'))

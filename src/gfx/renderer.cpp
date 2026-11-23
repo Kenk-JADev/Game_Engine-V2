@@ -287,7 +287,7 @@ const uint16_t kCubeIndices[36] = {
 
 } // namespace
 
-bool Renderer::init(HWND hwnd, int width, int height) {
+bool Renderer::init(HWND hwnd, int width, int height, bool warp) {
     m_hwnd = hwnd;
     m_width = width;
     m_height = height;
@@ -295,7 +295,8 @@ bool Renderer::init(HWND hwnd, int width, int height) {
     D3D_FEATURE_LEVEL wanted[] = {D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_1, D3D_FEATURE_LEVEL_10_0};
     D3D_FEATURE_LEVEL got = D3D_FEATURE_LEVEL_10_0;
 
-    HRESULT hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, wanted,
+    HRESULT hr = D3D11CreateDevice(nullptr, warp ? D3D_DRIVER_TYPE_WARP : D3D_DRIVER_TYPE_HARDWARE,
+                                   nullptr, 0, wanted,
                                    static_cast<UINT>(sizeof(wanted) / sizeof(wanted[0])),
                                    D3D11_SDK_VERSION, &m_device, &got, &m_context);
     if (FAILED(hr)) {
@@ -724,22 +725,33 @@ int Renderer::add_texture(const std::string& name, int w, int h, const uint8_t* 
 }
 
 int Renderer::add_texture_impl(const std::string& name, int w, int h, const uint8_t* rgba, bool internal_atlas) {
-    if (!m_device || !world::terrain_valid_texture_name(name) ||
-        w <= 0 || h <= 0 || w > 16384 || h > 16384 || !rgba) return -1;
-    // Ein Name behält seinen Slot: F5, erneuter Import und Atlas-Neubau
-    // dürfen keine unreferenzierten GPU-/CPU-Kopien ansammeln. Der interne
-    // Atlas-Slot ist separat und kann keine Projekttextur überschreiben.
-    const auto found = m_tex_ids.find(name);
-    const int existing = internal_atlas ? m_atlas_slot : found == m_tex_ids.end() ? -1 : found->second;
+    std::size_t byte_count = 0;
+    if (!m_device || !world::terrain_valid_texture_name(name) || !rgba ||
+        !world::texture_byte_count(w, h, byte_count)) return -1;
+
+    // Ein neu hinzukommender Override kann den bisher verwendeten Basis-Slot
+    // ersetzen; Atlas-UV sind bei jeder Änderung der Namensmenge veraltet.
+    const int previous_effective = internal_atlas ? -1 : texture_index(name);
+    auto& ids = m_project_textures ? m_project_tex_ids : m_base_tex_ids;
+    const auto found = ids.find(name);
+    const int existing = internal_atlas ? m_atlas_slot : found == ids.end() ? -1 : found->second;
     const bool replace_slot = existing >= 0 && static_cast<size_t>(existing) < m_tex_srvs.size() &&
         static_cast<size_t>(existing) < m_tex_pixels.size() &&
-        static_cast<size_t>(existing) < m_tex_sizes.size();
-    if (!replace_slot && m_tex_srvs.size() >= static_cast<size_t>(std::numeric_limits<int>::max())) return -1;
-    const size_t byte_count = static_cast<size_t>(w) * static_cast<size_t>(h) * 4;
+        static_cast<size_t>(existing) < m_tex_sizes.size() && m_tex_srvs[static_cast<size_t>(existing)];
     if (replace_slot && m_tex_sizes[static_cast<size_t>(existing)] == std::pair<int, int>{w, h} &&
         m_tex_pixels[static_cast<size_t>(existing)].size() == byte_count &&
         std::memcmp(m_tex_pixels[static_cast<size_t>(existing)].data(), rgba, byte_count) == 0)
         return existing;
+    const std::size_t old_bytes = replace_slot ? m_tex_pixels[static_cast<size_t>(existing)].size() : 0;
+    if (m_tex_resident_bytes < old_bytes ||
+        byte_count > world::TEXTURE_MAX_RESIDENT_BYTES - (m_tex_resident_bytes - old_bytes)) {
+        log_warn_safely("Textur-Speicherbudget erreicht");
+        return -1;
+    }
+    if (!replace_slot && m_tex_free.empty() && m_tex_srvs.size() >= world::TEXTURE_MAX_SLOTS) {
+        log_warn_safely("Textur-Slotbudget erreicht");
+        return -1;
+    }
 
     D3D11_TEXTURE2D_DESC td{};
     td.Width = static_cast<UINT>(w);
@@ -750,7 +762,6 @@ int Renderer::add_texture_impl(const std::string& name, int w, int h, const uint
     td.SampleDesc.Count = 1;
     td.Usage = D3D11_USAGE_IMMUTABLE;
     td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-
     D3D11_SUBRESOURCE_DATA sd{};
     sd.pSysMem = rgba;
     sd.SysMemPitch = static_cast<UINT>(w) * 4;
@@ -761,9 +772,8 @@ int Renderer::add_texture_impl(const std::string& name, int w, int h, const uint
         try { log_error("Textur '" + name + "' konnte nicht erstellt werden"); } catch (...) {}
         return -1;
     }
-
     ID3D11ShaderResourceView* srv = nullptr;
-    HRESULT hr = m_device->CreateShaderResourceView(tex, nullptr, &srv);
+    const HRESULT hr = m_device->CreateShaderResourceView(tex, nullptr, &srv);
     tex->Release();
     if (FAILED(hr) || !srv) {
         if (srv) srv->Release();
@@ -771,17 +781,13 @@ int Renderer::add_texture_impl(const std::string& name, int w, int h, const uint
         return -1;
     }
 
-    const int index = replace_slot ? existing : static_cast<int>(m_tex_srvs.size());
+    const bool reuse = !replace_slot && !m_tex_free.empty();
+    const int index = replace_slot ? existing : reuse ? m_tex_free.back() : static_cast<int>(m_tex_srvs.size());
     try {
-        // Alles Allokierende vor dem Eintrag erledigen, damit ein Fehlschlag
-        // weder die drei Slot-Vektoren auseinanderlaufen lässt noch srv leckt.
+        // Vor dem Einfügen alle potenziellen Allokationen erledigen. Die
+        // parallelen Vektoren und die Freiliste behalten so denselben Stand.
         std::vector<uint8_t> copy(rgba, rgba + byte_count);
-        if (replace_slot) {
-            if (m_tex_srvs[static_cast<size_t>(index)]) m_tex_srvs[static_cast<size_t>(index)]->Release();
-            m_tex_srvs[static_cast<size_t>(index)] = srv;
-            m_tex_pixels[static_cast<size_t>(index)] = std::move(copy);
-            m_tex_sizes[static_cast<size_t>(index)] = {w, h};
-        } else {
+        if (!replace_slot && !reuse) {
             const size_t next = m_tex_srvs.size() + 1;
             auto reserve_slot = [next](auto& slots) {
                 if (slots.capacity() >= next) return;
@@ -792,12 +798,23 @@ int Renderer::add_texture_impl(const std::string& name, int w, int h, const uint
             reserve_slot(m_tex_srvs);
             reserve_slot(m_tex_pixels);
             reserve_slot(m_tex_sizes);
-            if (!internal_atlas) m_tex_ids.insert_or_assign(name, index);
+            reserve_slot(m_tex_free); // auch Freigabe darf nicht allokieren
+        }
+        if (!replace_slot && !internal_atlas) ids.emplace(name, index);
+        if (replace_slot || reuse) {
+            if (replace_slot && m_tex_srvs[static_cast<size_t>(index)])
+                m_tex_srvs[static_cast<size_t>(index)]->Release();
+            m_tex_srvs[static_cast<size_t>(index)] = srv;
+            m_tex_pixels[static_cast<size_t>(index)] = std::move(copy);
+            m_tex_sizes[static_cast<size_t>(index)] = {w, h};
+            if (reuse) m_tex_free.pop_back();
+        } else {
             m_tex_srvs.push_back(srv);
             m_tex_pixels.push_back(std::move(copy));
             m_tex_sizes.emplace_back(w, h);
-            if (internal_atlas) m_atlas_slot = index;
         }
+        if (internal_atlas) m_atlas_slot = index;
+        m_tex_resident_bytes = m_tex_resident_bytes - old_bytes + byte_count;
     } catch (const std::bad_alloc&) {
         srv->Release();
         log_error_safely("Nicht genügend Speicher für Texturpixel");
@@ -807,23 +824,95 @@ int Renderer::add_texture_impl(const std::string& name, int w, int h, const uint
         log_error_safely("Texturpixel überschreiten den Speicherbereich");
         return -1;
     }
+    if (!internal_atlas && m_terrain_tex >= 0 &&
+        (m_terrain_tex == m_atlas_slot ||
+         (previous_effective >= 0 && m_terrain_tex == previous_effective && previous_effective != index))) {
+        // Keine alten Atlas-UV mit einem neu gebauten Atlas mischen. Der
+        // Aufrufer baut das Terrain nach der Änderung ausdrücklich neu auf.
+        clear_terrain();
+        m_terrain_tex = -1;
+    }
     m_atlas_dirty = true;
     try { log_info("Textur '" + name + "' registriert (" + std::to_string(w) + "x" + std::to_string(h) + ")"); }
     catch (...) {}
     return index;
 }
 
+void Renderer::unbind_texture() {
+    if (m_context) {
+        ID3D11ShaderResourceView* empty = nullptr;
+        m_context->PSSetShaderResources(0, 1, &empty);
+    }
+}
+
+void Renderer::release_texture_slot(int index) {
+    if (index < 0 || static_cast<size_t>(index) >= m_tex_srvs.size() || !m_tex_srvs[index]) return;
+    m_tex_srvs[index]->Release();
+    m_tex_srvs[index] = nullptr;
+    m_tex_resident_bytes -= m_tex_pixels[index].size();
+    std::vector<uint8_t>().swap(m_tex_pixels[index]);
+    m_tex_sizes[index] = {0, 0};
+    m_tex_free.push_back(index); // beim Anlegen des Slots bereits reserviert
+}
+
+void Renderer::end_project_textures() {
+    unbind_texture();
+    // Ein zuvor gebautes Terrain kann Atlas-UV oder einen jetzt freigegebenen
+    // Slot enthalten. Der Aufrufer baut es für das nächste Projekt neu auf.
+    clear_terrain();
+    m_terrain_tex = -1;
+    m_cmds.clear();
+    for (const auto& entry : m_project_tex_ids) release_texture_slot(entry.second);
+    m_project_tex_ids.clear();
+    release_texture_slot(m_atlas_slot);
+    m_atlas_slot = -1;
+    m_atlas_cache = {};
+    m_atlas_dirty = true;
+    m_project_textures = false;
+}
+
+void Renderer::begin_project_textures() {
+    end_project_textures();
+    m_project_textures = true;
+}
+
+bool Renderer::remove_project_texture(const std::string& name) {
+    const auto it = m_project_tex_ids.find(name);
+    if (it == m_project_tex_ids.end()) return false;
+    unbind_texture();
+    if (m_terrain_tex == it->second || (m_atlas_slot >= 0 && m_terrain_tex == m_atlas_slot)) {
+        clear_terrain();
+        m_terrain_tex = -1;
+    }
+    m_cmds.clear();
+    release_texture_slot(it->second);
+    m_project_tex_ids.erase(it);
+    m_atlas_cache = {};
+    m_atlas_dirty = true;
+    return true;
+}
+
 int Renderer::texture_index(const std::string& name) const {
-    auto it = m_tex_ids.find(name);
-    return it == m_tex_ids.end() ? -1 : it->second;
+    const auto project = m_project_tex_ids.find(name);
+    if (project != m_project_tex_ids.end()) return project->second;
+    const auto base = m_base_tex_ids.find(name);
+    return base == m_base_tex_ids.end() ? -1 : base->second;
+}
+
+std::vector<std::string> Renderer::texture_names() const {
+    std::vector<std::string> names;
+    names.reserve(m_base_tex_ids.size() + m_project_tex_ids.size());
+    for (const auto& entry : m_base_tex_ids) names.push_back(entry.first);
+    for (const auto& entry : m_project_tex_ids)
+        if (m_base_tex_ids.find(entry.first) == m_base_tex_ids.end()) names.push_back(entry.first);
+    std::sort(names.begin(), names.end());
+    return names;
 }
 
 bool Renderer::texture_rgba(const std::string& name, std::vector<uint8_t>& out,
                            int& w, int& h) const {
-    auto it = m_tex_ids.find(name);
-    if (it == m_tex_ids.end()) return false;
-    const int index = it->second;
-    if (index < 0 || index >= static_cast<int>(m_tex_pixels.size())) return false;
+    const int index = texture_index(name);
+    if (index < 0 || index >= static_cast<int>(m_tex_pixels.size()) || !m_tex_srvs[index]) return false;
     out = m_tex_pixels[index];
     w = m_tex_sizes[index].first;
     h = m_tex_sizes[index].second;
@@ -836,7 +925,11 @@ world::AtlasInfo Renderer::update_atlas() {
     try {
     if (!m_atlas_dirty && m_atlas_cache.valid) return m_atlas_cache;
     world::AtlasInfo info;
-    const world::AtlasSources sources = world::atlas_sources(m_tex_ids, m_tex_sizes);
+    // Projekt-Overrides gewinnen auch im Atlas. Eingebaute Texturen bleiben
+    // in eigenen Slots erhalten und erscheinen nach dem Projektende wieder.
+    std::map<std::string, int> effective = m_base_tex_ids;
+    for (const auto& entry : m_project_tex_ids) effective.insert_or_assign(entry.first, entry.second);
+    const world::AtlasSources sources = world::atlas_sources(effective, m_tex_sizes);
     if (sources.too_many) {
         log_warn_safely("Atlas: mehr als 1024 Kacheln; Einzeltextur als Ersatz");
         return info;
@@ -1204,7 +1297,11 @@ void Renderer::shutdown() {
     if (m_shadow_vs) { m_shadow_vs->Release(); m_shadow_vs = nullptr; }
     for (ID3D11ShaderResourceView* srv : m_tex_srvs) if (srv) srv->Release();
     m_tex_srvs.clear();
-    m_tex_ids.clear();
+    m_base_tex_ids.clear();
+    m_project_tex_ids.clear();
+    m_tex_free.clear();
+    m_tex_resident_bytes = 0;
+    m_project_textures = false;
     m_tex_pixels.clear();
     m_tex_sizes.clear();
     m_atlas_cache = {};

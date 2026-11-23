@@ -13,6 +13,7 @@
 #include "gfx/ui.h"
 #include "world/atlas.h"
 #include "world/terrain_limits.h"
+#include "world/texture_limits.h"
 
 namespace rune::gfx {
 
@@ -29,7 +30,8 @@ struct DrawCmd {
 // danach in einem Rutsch (Ruby füllt die Draw-List).
 class Renderer {
 public:
-    bool init(HWND hwnd, int width, int height);
+    // WARP ist ein expliziter Software-Testpfad; normale Programme verwenden Hardware.
+    bool init(HWND hwnd, int width, int height, bool warp = false);
     void shutdown();
     void resize(int width, int height);
 
@@ -42,6 +44,16 @@ public:
     // Rückgabe: Index für push_box, -1 bei Fehler.
     int  add_texture(const std::string& name, int w, int h, const uint8_t* rgba);
     int  texture_index(const std::string& name) const;
+    std::vector<std::string> texture_names() const;
+
+    // Projekttexturen überlagern eingebaute Namen, verändern deren Slots aber
+    // nicht. Beim Wechsel werden Projekt-Slots und Atlas freigegeben; vor
+    // weiteren Draws muss das Terrain neu aufgebaut werden.
+    void begin_project_textures();
+    void end_project_textures();
+    bool remove_project_texture(const std::string& name);
+    std::size_t texture_storage_slots() const { return m_tex_srvs.size(); }
+    std::size_t texture_resident_bytes() const { return m_tex_resident_bytes; }
 
     // Himmel-Verlauf (Screen-Space) und Sonnenlicht; beides von Ruby aus gesetzt.
     void set_sky(uint32_t top_rgb, uint32_t bottom_rgb) { m_sky_top = top_rgb; m_sky_bottom = bottom_rgb; m_sky_on = true; }
@@ -86,6 +98,8 @@ private:
     // Der interne Atlas hat einen eigenen Slot und keinen öffentlichen Namen;
     // eine Projekttextur namens "atlas" bleibt dadurch unberührt.
     int add_texture_impl(const std::string& name, int w, int h, const uint8_t* rgba, bool internal_atlas);
+    void release_texture_slot(int index);
+    void unbind_texture();
     bool create_shaders();
     bool create_cube();
     bool create_targets(int width, int height);
@@ -134,7 +148,12 @@ private:
 
     // Texturen: RGBA8, von Ruby aus angemeldet (Name -> Slot).
     std::vector<ID3D11ShaderResourceView*> m_tex_srvs;
-    std::map<std::string, int>             m_tex_ids;
+    std::map<std::string, int>             m_base_tex_ids;
+    std::map<std::string, int>             m_project_tex_ids;
+    bool                                    m_project_textures = false;
+    // Freie Slots werden wiederverwendet; Prefabs speichern keine Slotnummern.
+    std::vector<int>                        m_tex_free;
+    std::size_t                             m_tex_resident_bytes = 0;
     // Etappe 18c: Pixel + Grössen für Vorschauen/G_tileset-Zugriff.
     std::vector<std::vector<uint8_t>>       m_tex_pixels;
     std::vector<std::pair<int, int>>         m_tex_sizes;

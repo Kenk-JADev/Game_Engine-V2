@@ -41,36 +41,34 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
   Tileset- und Script-Dialoge in `src/editor/`.
 - Gefunden in: User-Screenshots des RPG Maker XP.
 
-### [Editor/Engine] Textur-Metadaten und Projektwechsel brauchen eigenen Datenschutz — offen
-- Symptom: Beschädigte/extreme `textures.json`-Größen können im Editor noch
-  vor dem Renderer ungeprüft nach `int` konvertiert oder multipliziert
-  werden; Editor und Ruby lesen rohe RGBA-Dateien vor einer allgemeinen
-  Größenbegrenzung. `mat_save` baut die Metadaten neu auf und bewahrt nicht
-  alle unbekannten/ungültigen Felder. RGBA-Ziele können bestehende Dateien
-  überschreiben; Reparsepunkte/Verknüpfungen werden nicht geprüft. Nur mit
-  Sicherungskopien testen, beschädigte Metadaten nicht im Editor speichern.
-- Analyse: 19p schützt den Terrain-/Atlasplan und die native Texturbyte-
-  Rechnung; Editor-Lesen, F7-Speichern, Import und F3-Löschen weisen zudem
-  lexikalische Pfade und Gerätenamen in RGBA-Dateinamen ab. Dies ist keine
-  vollständige Absicherung von Dateizielen, Materialimport, Projektdateien
-  oder JSON-Einlesen. Ein eigener Schritt muss Größen vor Cast/Dateilesen,
-  Dateikonflikte und Reparsepunkte prüfen sowie Metadaten nichtdestruktiv
-  behandeln; Fehlermeldungen und Ruby/C++-Parität mitprüfen.
-- Betroffene Stellen: `src/editor/editor_main.cpp` (`mat_load`,
-  `mat_register`, `mat_save`, WIC), `game/engine/textures.rb`.
-- Gefunden in: Terrain-/Atlas-Audit 19p.
+### [Tests/Editor/Engine] Material-Dateischutz auf Windows breit prüfen — offen (Live)
+- 19q implementiert handle-relative Materialzugriffe, Größen-/UTF-8-/JSON-
+  Grenzen, bytegenauen Konfliktvergleich und einen nichtdestruktiven
+  Sicherungs-/Rename-Commit; F3/F7 erhalten unbekannte Daten und alte RGBA.
+  Geöffnete Projektverzeichnisse bleiben bis zum Wechsel gebunden.
+- Offene Grenzen: Backup und Promotion sind kein atomarer Namensaustausch;
+  nach Absturz oder blockierter Wiederherstellung kann `.rune-*.bak` bleiben.
+  Das gilt nur für Materialdaten, nicht pauschal für Karten/Datenbank. Lokale
+  NTFS-Tests ersetzen keine Tests auf Netzlaufwerken, anderen Dateisystemen,
+  bei Stromausfall oder in der interaktiven GUI. Sicherungskopien nutzen.
+- Automatisierung: `tools/material_test.cpp` (Windows-Handle-/Reparse-/Race-
+  Fälle), `tools/tex_import_test.rb` (isolierter WIC-Import). Ergebnis des
+  Windows-CI-Laufs prüfen; interaktive Anleitung:
+  `docs/WINDOWS_MATERIAL_LIVE_TEST.md`.
+- Betroffene Stellen: `src/core/project_assets_win.h`,
+  `src/editor/material_document.h`, `src/editor/editor_main.cpp`,
+  `game/engine/textures.rb`, `src/ruby/vm.cpp`.
 
-### [Editor/Engine] Alte Projekttexturen bleiben im Renderer — offen
-- Symptom: Wiederholtes Registrieren desselben Namens verwendet seit 19p
-  denselben Slot, aber Texturen mit unterschiedlichen Namen können bei
-  Projektwechseln im Renderer verbleiben. Alte Namen können später noch
-  auflösbar sein und Speicher bzw. Atlasplätze belegen.
-- Analyse: Es fehlt eine projektbezogene Lebensdauer/Entfernung, die auch
-  eingebaute Texturen und Namensüberschreibungen sicher behandelt. Eine
-  Lösung braucht Tests für A→B→A, F5 und laufende GPU-Ressourcen.
-- Betroffene Stellen: `src/gfx/renderer.cpp`, `src/editor/editor_main.cpp`
-  (`mat_load`), `game/engine/textures.rb` und Projektwechsel.
-- Gefunden in: Terrain-/Atlas-Audit 19p.
+### [Tests/Engine] Projekttextur-Wechsel grafisch validieren — offen (Live)
+- 19q trennt Basis-/Projekt-Slots, räumt F5/Projektwechsel/Atlas/Terrain ab
+  und lässt Prefabs Namen dynamisch auflösen. Das vermeidet das zuvor
+  beobachtete Behalten fremder Namen und Überschreiben der Basis-Slots.
+- Ruby-Stubs testen Ablauf und Validierung, der D3D11-WARP-Test rendert
+  Pixel sowie Atlas-Terrain auf Software. GPU-Ressourcen, Bedienung und
+  Darstellung müssen zusätzlich am Windows-Zielrechner mit A→B→A, F5 und
+  Launcher geprüft und protokolliert werden; WARP ist kein Hardwarebeleg.
+- Betroffene Stellen: `src/gfx/renderer.*`, `game/engine/textures.rb`,
+  `tools/renderer_warp_test.cpp`, `docs/WINDOWS_MATERIAL_LIVE_TEST.md`.
 
 ### [Editor] Projekt-Dateipfade mischen System-Codepage und UTF-8 — offen
 - Symptom: Bei nicht-ASCII-Zeichen in Engine-Wurzel oder fremd angelegten
@@ -273,8 +271,8 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
   Atmosphäre gibt es gewarnte Ersatzwerte. F2/F7 bewahren unberührte und
   uneindeutige Altdaten; das Ersetzen ungültiger F7-Werte erfordert Zustimmung.
 - Der Editor lehnt Pfade und Windows-Gerätenamen als RGBA-Dateinamen ab.
-  Das ist nur ein lexikalischer Schutz, keine Reparsepunkt-/Konfliktprüfung;
-  die vollständige Materialabsicherung bleibt im offenen Eintrag oben.
+  19p war nur ein lexikalischer Schutz; 19q ergänzt handle-relative
+  Reparsepunkt-/Konfliktprüfungen für Materialdateien (Grenzen oben).
 - Der Atlas hat höchstens 1024 64×64-Zellen, nutzt einen privaten Slot und
   cacht unveränderte Inhalte; auch erneut registrierte Texturen behalten
   ihren Namens-Slot. Fehlen Atlas/Basiszelle, bleibt Einzeltextur-Terrain;

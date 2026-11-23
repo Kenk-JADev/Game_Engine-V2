@@ -37,6 +37,7 @@
 #include <cstdlib>   // Etappe 19k.2: std::atof (Block-Zonen-Feld)
 #include <cstring>
 #include <cwchar>
+#include <memory>
 #include <new>
 #include <stdexcept>
 #include <string>
@@ -44,6 +45,7 @@
 
 #include "app.h"
 #include "core/log.h"
+#include "core/project_assets_win.h"
 #include "core/sound.h"
 #include "editor/json.h"
 #include "editor/atomic_file_win.h"
@@ -55,11 +57,13 @@
 #include "editor/listbox_win.h"
 #include "editor/map_document.h"
 #include "editor/map_props_form.h"
+#include "editor/material_document.h"
 #include "editor/number_format.h"
 #include "editor/object_props_form.h"
 #include "editor/placement_form.h"
 #include "editor/terrain_preview.h"
 #include "editor/texture_path.h"
+#include "editor/texture_preview.h"
 #include "editor/tile_form.h"
 #include "gfx/camera.h"      // nur fuer Kamera-Konstanten, falls noetig
 #include "gfx/renderer.h"
@@ -145,7 +149,7 @@ struct PrefabPart {
     math::Vec3 d;          // Versatz relativ zur Standfläche
     math::Vec3 s;          // Grösse
     uint32_t   c = 0xFFFFFF;
-    int        tex = -1;   // Index im Renderer (nach Texturen-Boot)
+    std::string tex;       // Name statt Slot: Projekt-Overrides können wechseln
     float      tile = 0.0f;
 };
 
@@ -156,17 +160,8 @@ struct Prefab {
     float radius = 0.0f;   // grober Bodenradius (Nahe-Löschung, Anzeige)
 };
 
-// ------------------------------------------------------------ Materialien (17f)
-// Importierte Grafiken liegen als rohe RGBA-Datei unter data/textures/, die
-// Metadaten (Name, Grösse, Kachel, Quelle) in data/textures.json.
-struct MaterialInfo {
-    std::string name;
-    std::string file;      // Dateiname in data/textures/
-    std::string source;    // Originaldatei beim Import
-    int w = 0, h = 0;
-    double tile = 2.0;
-    bool imported = false;
-};
+// Das vollständige Materialdokument und seine sicheren Ansichten liegen in
+// editor/material_document.h; unbekannte Einträge bleiben im JSON erhalten.
 
 // ------------------------------------------------------------
 //  Eigene Fenster-Icons (Etappe 18a): klein 16x16 und gross 32x32,
@@ -502,6 +497,7 @@ bool script_editor_focused();
 // Etappe 17f: Grafik-Import + Materialbase.
 void open_import_texture();
 void open_material_dialog();
+void close_material_dialog();
 bool material_editor_focused();
 
 // Etappe 17g: Datenbank-Dialog (Helden/Items/Gold).
@@ -676,7 +672,7 @@ void load_prefabs() {
                 }
                 if (const JsonValue* c = q.find("c")) part.c = static_cast<uint32_t>(c->number());
                 if (const JsonValue* t = q.find("tex")) {
-                    part.tex = g.renderer->texture_index(t->str);
+                    part.tex = t->str;
                     if (std::find(g.tex_names.begin(), g.tex_names.end(), t->str) ==
                         g.tex_names.end()) {
                         g.tex_names.push_back(t->str);
@@ -707,130 +703,309 @@ void load_prefabs() {
 // ------------------------------------------------------------
 static std::vector<MaterialInfo> g_materials;
 
-std::string mat_dir() {
-    return g.project_dir + "\\textures";
-}
-
-std::string mat_json_path() {
-    return g.project_dir + "\\textures.json";
-}
-
 // Beliebige Bilddatei (PNG/BMP/JPG) -> 8-Bit-RGBA, Zeilen von oben nach unten.
+// Auch die komprimierte Eingabe ist begrenzt. WIC sieht die stabil gelesenen
+// Bytes, und die Bilddimensionen werden vor Konverter und Pixelallokation geprüft.
 bool decode_image_wic(const std::string& path, int& out_w, int& out_h,
                       std::vector<uint8_t>& out_rgba) {
     out_w = out_h = 0;
     out_rgba.clear();
-    if (path.empty()) return false;
-
-    const std::wstring wpath = utf8_to_wide(path);
     IWICImagingFactory* factory = nullptr;
+    IWICStream* stream = nullptr;
     IWICBitmapDecoder* decoder = nullptr;
     IWICBitmapFrameDecode* frame = nullptr;
     IWICFormatConverter* conv = nullptr;
+    std::string source; // bleibt bis nach dem Freigeben des WIC-Streams gültig
     bool ok = false;
-
-    HRESULT hr = CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
-                                  IID_PPV_ARGS(&factory));
-    if (SUCCEEDED(hr)) {
-        hr = factory->CreateDecoderFromFilename(wpath.c_str(), nullptr, GENERIC_READ,
-                                                WICDecodeMetadataCacheOnDemand, &decoder);
-    }
-    if (SUCCEEDED(hr)) hr = decoder->GetFrame(0, &frame);
-    if (SUCCEEDED(hr)) hr = factory->CreateFormatConverter(&conv);
-    if (SUCCEEDED(hr)) {
-        hr = conv->Initialize(frame, GUID_WICPixelFormat32bppRGBA,
-                              WICBitmapDitherTypeNone, nullptr, 0.0,
-                              WICBitmapPaletteTypeCustom);
-    }
-    UINT w = 0, h = 0;
-    if (SUCCEEDED(hr)) hr = conv->GetSize(&w, &h);
-    if (SUCCEEDED(hr) && w > 0 && h > 0 && w <= 4096 && h <= 4096) {
-        const UINT stride = w * 4;
-        std::vector<uint8_t> px(static_cast<size_t>(stride) * h);
-        hr = conv->CopyPixels(nullptr, stride, static_cast<UINT>(px.size()), px.data());
-        if (SUCCEEDED(hr)) {
-            out_w = static_cast<int>(w);
-            out_h = static_cast<int>(h);
-            out_rgba = std::move(px);
-            ok = true;
+    try {
+        std::wstring wpath;
+        if (assets::to_wide(path, CP_UTF8, wpath)) {
+            assets::Handle input(CreateFileW(wpath.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+                                             OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
+            if (input.valid() && assets::read_locked(input.get(), world::TEXTURE_MAX_SOURCE_BYTES, source) == assets::Result::Ok &&
+                !source.empty()) {
+                HRESULT hr = CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+                                              IID_PPV_ARGS(&factory));
+                if (SUCCEEDED(hr)) hr = factory->CreateStream(&stream);
+                if (SUCCEEDED(hr)) hr = stream->InitializeFromMemory(
+                    reinterpret_cast<BYTE*>(source.data()), static_cast<DWORD>(source.size()));
+                if (SUCCEEDED(hr)) hr = factory->CreateDecoderFromStream(
+                    stream, nullptr, WICDecodeMetadataCacheOnDemand, &decoder);
+                if (SUCCEEDED(hr)) hr = decoder->GetFrame(0, &frame);
+                UINT w = 0, h = 0;
+                if (SUCCEEDED(hr)) hr = frame->GetSize(&w, &h);
+                std::size_t bytes = 0;
+                if (SUCCEEDED(hr) && w <= static_cast<UINT>(world::TEXTURE_MAX_DIMENSION) &&
+                    h <= static_cast<UINT>(world::TEXTURE_MAX_DIMENSION) &&
+                    world::texture_byte_count(static_cast<int>(w), static_cast<int>(h), bytes)) {
+                    hr = factory->CreateFormatConverter(&conv);
+                    if (SUCCEEDED(hr)) hr = conv->Initialize(frame, GUID_WICPixelFormat32bppRGBA,
+                        WICBitmapDitherTypeNone, nullptr, 0.0, WICBitmapPaletteTypeCustom);
+                    if (SUCCEEDED(hr)) {
+                        std::vector<uint8_t> pixels(bytes);
+                        hr = conv->CopyPixels(nullptr, w * 4, static_cast<UINT>(pixels.size()), pixels.data());
+                        if (SUCCEEDED(hr)) {
+                            out_w = static_cast<int>(w);
+                            out_h = static_cast<int>(h);
+                            out_rgba = std::move(pixels);
+                            ok = true;
+                        }
+                    }
+                }
+            }
         }
+    } catch (const std::bad_alloc&) {
+        core::log_error("Import: nicht genügend Speicher für das Bild");
+    } catch (const std::length_error&) {
+        core::log_error("Import: Bild überschreitet den Speicherbereich");
     }
-
     if (conv) conv->Release();
     if (frame) frame->Release();
     if (decoder) decoder->Release();
+    if (stream) stream->Release();
     if (factory) factory->Release();
     return ok;
 }
 
-void mat_register(const MaterialInfo& m) {
+// Der vollständige Baum und die Originalbytes bleiben bis zu einem
+// erfolgreichen, konfliktgeprüften Commit erhalten.
+static JsonValue g_material_document;
+static bool g_material_writable = false;
+static bool g_material_disk_present = false;
+static std::string g_material_disk_text;
+static std::string g_material_error;
+// Die beim Laden geprüften Ordnerhandles bleiben bis zum Projektwechsel offen.
+// So kann ein zwischen Lesen und Speichern ausgetauschtes Projektverzeichnis
+// nicht trotz identischer Manifestbytes als anderes Ziel akzeptiert werden.
+static std::unique_ptr<assets::ProjectStore> g_material_store;
+static std::uint64_t g_material_store_epoch = 0;
+// Nur der kopflose Import erhält seinen Projektnamen direkt aus der UTF-16-CLI.
+static std::wstring g_material_cli_project;
+
+assets::Result mat_open_store(assets::ProjectStore& store) {
+    std::wstring project = g_material_cli_project;
+    if (project.empty() && !assets::to_wide(g.project_name, CP_ACP, project)) return assets::Result::Invalid;
+    if (!assets::component(project)) return assets::Result::Invalid;
+    return store.open(g.root, &project);
+}
+
+void mat_error(const std::string& message) {
+    g_material_error = message;
+    core::log_warn("Material: " + message);
+}
+
+const char* mat_parse_problem(MaterialParse status) {
+    switch (status) {
+        case MaterialParse::InvalidJson: return "ungültiges JSON";
+        case MaterialParse::InvalidRoot: return "textures ist keine Liste";
+        case MaterialParse::InvalidUtf8: return "ungültiges UTF-8";
+        case MaterialParse::Duplicate: return "doppelte Schlüssel oder Materialnamen";
+        case MaterialParse::Nonfinite: return "nicht darstellbare Kommazahl";
+        case MaterialParse::TooLarge: return "Datei oder Materialliste zu gross";
+        case MaterialParse::TooDeep: return "JSON zu tief verschachtelt";
+        case MaterialParse::Ok: return "";
+    }
+    return "unbekannter Fehler";
+}
+
+void mat_register(assets::ProjectStore& store, const MaterialInfo& m) {
     if (!g.renderer) return;
-    if (!texture_file_is_flat(m.file)) {
-        core::log_warn("Material: ungültiger Dateiname in textures.json; Datei wird nicht gelesen");
-        return;
-    }
+    std::size_t need = 0;
+    if (!world::texture_byte_count(m.w, m.h, need)) return;
     std::string bytes;
-    if (!read_file(mat_dir() + "\\" + m.file, bytes)) return;
-    if (static_cast<int>(bytes.size()) != m.w * m.h * 4) {
-        core::log_warn("Textur '" + m.name + "': Grösse passt nicht zur Datei");
+    const assets::Result result = store.read_texture(m.file, need, bytes);
+    if (result != assets::Result::Ok) {
+        core::log_warn("Textur '" + m.name + "' nicht sicher lesbar: " + assets::result_text(result));
         return;
     }
-    g.renderer->add_texture(m.name, m.w, m.h,
-                            reinterpret_cast<const uint8_t*>(bytes.data()));
+    if (g.renderer->add_texture(m.name, m.w, m.h, reinterpret_cast<const uint8_t*>(bytes.data())) < 0)
+        core::log_warn("Textur '" + m.name + "' konnte nicht im Renderer angemeldet werden");
 }
 
-// textures.json + .rgba-Dateien laden; Texturen im Renderer anmelden.
+// Fehlende Datei ist ein leerer NEUER Katalog; eine unlesbare oder defekte
+// vorhandene Datei ist dagegen schreibgeschützt und wird nie ersetzt.
 void mat_load() {
+    g_material_store.reset();
     g_materials.clear();
-    std::string text;
-    if (!read_file(mat_json_path(), text) || text.empty()) return;
-
-    JsonValue root;
+    g_material_document = JsonValue{};
+    g_material_writable = false;
+    g_material_disk_present = false;
+    g_material_disk_text.clear();
+    g_material_error.clear();
     try {
-        root = json_parse(text);
-    } catch (const std::exception&) {
-        core::log_error("textures.json: ungültiges JSON");
-        return;
+        auto store = std::make_unique<assets::ProjectStore>();
+        assets::Result result = mat_open_store(*store);
+        if (result != assets::Result::Ok) {
+            mat_error(std::string("Projektpfad nicht sicher: ") + assets::result_text(result));
+            return;
+        }
+        std::string text;
+        result = store->read_manifest(text);
+        if (result == assets::Result::Missing) {
+            g_material_document = JsonValue::make_obj();
+            g_material_document.set("textures", JsonValue::make_arr());
+            g_material_store_epoch = g.project_epoch;
+            g_material_store = std::move(store);
+            g_material_writable = true;
+            return;
+        }
+        if (result != assets::Result::Ok) {
+            mat_error(std::string("textures.json nicht sicher lesbar: ") + assets::result_text(result));
+            return;
+        }
+        JsonValue parsed;
+        const MaterialParse status = material_parse(text, parsed);
+        if (status != MaterialParse::Ok) {
+            mat_error(std::string("textures.json bleibt unverändert: ") + mat_parse_problem(status));
+            return;
+        }
+        g_material_document = std::move(parsed);
+        g_material_disk_present = true;
+        g_material_disk_text = std::move(text);
+        g_materials = material_entries(g_material_document);
+        const JsonValue* list = material_array(g_material_document);
+        if (list && list->arr.size() != g_materials.size())
+            core::log_warn("Material: ungültige Einträge bleiben im Dokument erhalten und werden nicht geladen");
+        for (const MaterialInfo& m : g_materials) mat_register(*store, m);
+        core::log_info("Materialien geladen: " + std::to_string(g_materials.size()));
+        g_material_store_epoch = g.project_epoch;
+        g_material_store = std::move(store);
+        g_material_writable = true;
+    } catch (const std::bad_alloc&) {
+        g_material_writable = false;
+        mat_error("nicht genügend Speicher beim Laden");
+    } catch (const std::length_error&) {
+        g_material_writable = false;
+        mat_error("Materialdatei überschreitet den Speicherbereich");
     }
-    const JsonValue* arr = root.is_arr() ? &root : root.find("textures");
-    if (!arr || !arr->is_arr()) return;
-
-    for (const JsonValue& e : arr->arr) {
-        if (!e.is_obj()) continue;
-        MaterialInfo m;
-        if (const JsonValue* v = e.find("name")) m.name = v->str;
-        if (const JsonValue* v = e.find("file")) m.file = v->str;
-        if (const JsonValue* v = e.find("source")) m.source = v->str;
-        if (const JsonValue* v = e.find("w")) m.w = static_cast<int>(v->number());
-        if (const JsonValue* v = e.find("h")) m.h = static_cast<int>(v->number());
-        if (const JsonValue* v = e.find("tile")) m.tile = v->number(2.0);
-        m.imported = true;
-        if (m.name.empty()) continue;
-        if (m.file.empty()) m.file = m.name + ".rgba";
-        if (m.w <= 0) m.w = 64;
-        if (m.h <= 0) m.h = 64;
-        g_materials.push_back(m);
-        mat_register(m);
-    }
-    core::log_info("Materialien geladen: " + std::to_string(g_materials.size()));
 }
 
-bool mat_save() {
-    JsonValue root = JsonValue::make_obj();
-    JsonValue arr = JsonValue::make_arr();
-    for (const MaterialInfo& m : g_materials) {
-        if (!m.imported) continue;
-        JsonValue e = JsonValue::make_obj();
-        e.set("name", JsonValue::make_str(m.name));
-        e.set("file", JsonValue::make_str(m.file));
-        e.set("w", JsonValue::make_num(m.w, true));
-        e.set("h", JsonValue::make_num(m.h, true));
-        e.set("tile", JsonValue::make_num(m.tile, false));
-        e.set("source", JsonValue::make_str(m.source));
-        arr.arr.push_back(std::move(e));
+bool mat_commit_with_store(assets::ProjectStore& store, JsonValue candidate) {
+    if (!g_material_writable) {
+        mat_error("Materialdatei ist schreibgeschützt; Projekt erneut öffnen und extern prüfen");
+        return false;
     }
-    root.set("textures", std::move(arr));
-    return write_file(mat_json_path(), json_write(root));
+    std::string output = json_write(candidate);
+    // Vor dem Commit alles Allokierende vorbereiten. Nach dem Dateitausch
+    // dürfen weder ein OOM noch ein Rückbau die referenzierte RGBA entfernen.
+    std::vector<MaterialInfo> prepared = material_entries(candidate);
+    if (output.size() > world::TEXTURE_MAX_MANIFEST_BYTES) {
+        mat_error("textures.json würde die Grössengrenze überschreiten");
+        return false;
+    }
+    std::wstring recovery;
+    const assets::Result result = store.save_manifest(g_material_disk_present, g_material_disk_text, output, recovery);
+    if (result != assets::Result::Ok) {
+        if (result == assets::Result::Conflict) g_material_writable = false;
+        std::string message = std::string("nicht gespeichert: ") + assets::result_text(result);
+        std::string recovery_utf8;
+        if (!recovery.empty() && assets::to_utf8(recovery, recovery_utf8))
+            message += "; Sicherung unter data\\" + recovery_utf8 + " erhalten";
+        mat_error(message);
+        return false;
+    }
+    g_material_document = std::move(candidate);
+    g_material_disk_text = std::move(output);
+    g_material_disk_present = true;
+    g_materials = std::move(prepared);
+    g_material_error.clear();
+    if (!recovery.empty()) {
+        try {
+            std::string recovery_utf8;
+            if (assets::to_utf8(recovery, recovery_utf8))
+                core::log_warn("Material: Sicherung konnte nicht entfernt werden: data\\" + recovery_utf8);
+        } catch (...) {} // erfolgreiche Änderung darf nicht nachträglich scheitern
+    }
+    return true;
+}
+
+bool mat_commit(JsonValue candidate) {
+    try {
+        if (!g_material_store || g_material_store_epoch != g.project_epoch) {
+            mat_error("Projektverzeichnis nicht mehr gebunden; Projekt erneut öffnen");
+            return false;
+        }
+        return mat_commit_with_store(*g_material_store, std::move(candidate));
+    } catch (const std::bad_alloc&) {
+        mat_error("nicht genügend Speicher; keine Änderung übernommen");
+    } catch (const std::length_error&) {
+        mat_error("Materialdaten überschreiten den Speicherbereich");
+    }
+    return false;
+}
+
+// Ein OOM zwischen Dateianlage und Katalog-Commit darf keine eigene
+// unreferenzierte Datei still zurücklassen; niemals fremde Pfade löschen.
+struct MatNewFileGuard {
+    assets::Handle& file;
+    const std::string& name;
+    bool committed = false;
+    ~MatNewFileGuard() {
+        if (!committed && file.valid() && !assets::delete_owned_handle(file.get())) {
+            try { core::log_warn("Material: unbenutzte neue Datei erhalten: textures\\" + name); }
+            catch (...) {}
+        }
+    }
+};
+
+// Eine neue RGBA-Datei wird exklusiv angelegt und bleibt gesperrt, bis der
+// Katalog erfolgreich gespeichert ist. Beim Fehlschlag nur das eigene Handle
+// löschen; niemals einen fremden Pfad überschreiben oder löschen.
+bool mat_store_texture(MaterialInfo material, const std::string& data, bool replace) {
+    try {
+        if (!g_material_writable) {
+            if (g_material_error.empty()) mat_error("textures.json ist schreibgeschützt");
+            return false;
+        }
+        g_material_error.clear();
+        std::size_t count = 0;
+        if (!material_name_valid(material.name) || !texture_file_is_flat(material.file) ||
+            !world::texture_byte_count(material.w, material.h, count) || count != data.size()) {
+            mat_error("Texturname, Dateiname oder Bildgrösse ungültig");
+            return false;
+        }
+        const JsonValue* list = material_array(g_material_document);
+        if (!list) { mat_error("Materialliste nicht verfügbar"); return false; }
+        for (const JsonValue& entry : list->arr) {
+            const JsonValue* name = entry.is_obj() ? entry.find("name") : nullptr;
+            if (name && name->is_str() && name->str == material.name && !replace) {
+                mat_error("Materialname bereits vorhanden; bestehende Daten bleiben erhalten");
+                return false;
+            }
+        }
+        if (!g_material_store || g_material_store_epoch != g.project_epoch) {
+            mat_error("Projektverzeichnis nicht mehr gebunden; Projekt erneut öffnen");
+            return false;
+        }
+        assets::ProjectStore& store = *g_material_store;
+        assets::Handle created;
+        std::string actual;
+        assets::Result r = store.create_texture(material.file, data, actual, created);
+        if (r != assets::Result::Ok) {
+            mat_error(std::string("RGBA-Datei nicht angelegt: ") + assets::result_text(r));
+            return false;
+        }
+        MatNewFileGuard guard{created, actual};
+        material.file = actual;
+        JsonValue candidate = g_material_document;
+        if (!material_upsert(candidate, material) || !mat_commit_with_store(store, std::move(candidate))) {
+            if (g_material_error.empty()) mat_error("ungültiger Alteintrag wurde nicht ersetzt");
+            return false;
+        }
+        guard.committed = true;
+        created.reset();
+        try {
+            if (g.renderer && g.renderer->add_texture(material.name, material.w, material.h,
+                    reinterpret_cast<const uint8_t*>(data.data())) < 0)
+                core::log_warn("Material gespeichert, aber im Renderer nicht angemeldet: " + material.name);
+        } catch (...) {} // der Dateicommit ist bereits erfolgreich
+        return true;
+    } catch (const std::bad_alloc&) {
+        mat_error("nicht genügend Speicher beim Import");
+    } catch (const std::length_error&) {
+        mat_error("Textur überschreitet den Speicherbereich");
+    }
+    return false;
 }
 
 // Dateiname -> eindeutiger Materialname (klein, nur a-z/0-9/_).
@@ -839,24 +1014,20 @@ std::string mat_slug(std::string base) {
     if (slash != std::string::npos) base = base.substr(slash + 1);
     const size_t dot = base.find_last_of('.');
     if (dot != std::string::npos) base = base.substr(0, dot);
-
-    std::string out;
-    for (char c : base) {
-        if (c >= 'A' && c <= 'Z') out += static_cast<char>(c - 'A' + 'a');
-        else if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_') out += c;
-        else out += '_';
-    }
     std::string cleaned;
-    for (char c : out) {
+    for (char c : base) {
+        if (cleaned.size() >= 96) break;
+        if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+        else if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_')) c = '_';
         if (c == '_' && (cleaned.empty() || cleaned.back() == '_')) continue;
         cleaned += c;
     }
-    if (!cleaned.empty() && cleaned.front() == '_') cleaned.erase(cleaned.begin());
     if (cleaned.empty()) cleaned = "textur";
-
     auto used = [&](const std::string& name) {
-        for (const MaterialInfo& m : g_materials) {
-            if (m.name == name) return true;
+        const JsonValue* list = material_array(g_material_document);
+        if (list) for (const JsonValue& entry : list->arr) {
+            const JsonValue* n = entry.is_obj() ? entry.find("name") : nullptr;
+            if (n && n->is_str() && n->str == name) return true;
         }
         return g.renderer && g.renderer->texture_index(name) >= 0;
     };
@@ -866,20 +1037,19 @@ std::string mat_slug(std::string base) {
     return candidate;
 }
 
-// Bild importieren: dekodieren, .rgba + textures.json schreiben, anmelden.
+// Bild importieren: decode, neue Datei und nichtdestruktiven Katalog committen.
 bool mat_import_file(const std::string& src, std::string& out_name) {
-    if (g.project_dir.empty()) {
-        core::log_error("Import: kein Projektverzeichnis");
+    if (g.project_dir.empty() || !g_material_writable) {
+        if (g_material_error.empty())
+            mat_error("kein sicher geöffnetes Projekt oder schreibgeschützte Materialdatei");
         return false;
     }
     int w = 0, h = 0;
     std::vector<uint8_t> rgba;
     if (!decode_image_wic(src, w, h, rgba)) {
-        core::log_error("Import: Bild nicht lesbar: " + src);
+        mat_error("Bild nicht sicher lesbar, zu gross oder ungültig: " + src);
         return false;
     }
-    CreateDirectoryA(mat_dir().c_str(), nullptr);
-
     MaterialInfo m;
     m.name = out_name.empty() ? mat_slug(src) : out_name;
     m.file = m.name + ".rgba";
@@ -888,28 +1058,12 @@ bool mat_import_file(const std::string& src, std::string& out_name) {
     m.h = h;
     m.tile = 2.0;
     m.imported = true;
-    if (!texture_file_is_flat(m.file)) {
-        core::log_warn("Import: ungültiger Material-Dateiname");
-        return false;
-    }
-
     const std::string data(reinterpret_cast<const char*>(rgba.data()), rgba.size());
-    if (!write_file(mat_dir() + "\\" + m.file, data)) {
-        core::log_error("Import: Schreiben fehlgeschlagen: " + m.file);
-        return false;
-    }
-
-    bool replaced = false;
-    for (MaterialInfo& old : g_materials) {
-        if (old.name == m.name) { old = m; replaced = true; break; }
-    }
-    if (!replaced) g_materials.push_back(m);
-
-    mat_register(m);
-    mat_save();
+    if (!mat_store_texture(m, data, false)) return false;
     out_name = m.name;
     core::log_info("Textur importiert: " + m.name + " (" + std::to_string(w) + "x" +
                    std::to_string(h) + ") aus " + src);
+    if (g.renderer && g.cur_map >= 0) regen_terrain();
     return true;
 }
 
@@ -917,6 +1071,11 @@ bool mat_import_file(const std::string& src, std::string& out_name) {
 std::vector<std::string> mat_all_names() {
     std::vector<std::string> names = g.tex_names;
     if (std::find(names.begin(), names.end(), "gras") == names.end()) names.push_back("gras");
+    // Auch noch nicht gespeicherte F7-Kacheln gehören zur aktuellen
+    // Projekt-Ebene; nach Projektwechsel verschwinden sie automatisch.
+    if (g.renderer) for (const std::string& name : g.renderer->texture_names()) {
+        if (std::find(names.begin(), names.end(), name) == names.end()) names.push_back(name);
+    }
     for (const MaterialInfo& m : g_materials) {
         if (std::find(names.begin(), names.end(), m.name) == names.end()) {
             names.push_back(m.name);
@@ -1626,7 +1785,9 @@ void draw_tileset_preview(HWND hwnd) {
     if (!g_ts.sel.empty()) {
         std::vector<uint8_t> px;
         int w = 0, h = 0;
-        if (g.renderer && g.renderer->texture_rgba(g_ts.sel, px, w, h) && !px.empty()) {
+        std::size_t expected = 0;
+        if (g.renderer && g.renderer->texture_rgba(g_ts.sel, px, w, h) &&
+            world::texture_byte_count(w, h, expected) && px.size() == expected) {
             BITMAPINFO bi{};
             bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
             bi.bmiHeader.biWidth = w;
@@ -1637,7 +1798,7 @@ void draw_tileset_preview(HWND hwnd) {
             void* bits = nullptr;
             HBITMAP dib = CreateDIBSection(dc, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
             if (dib && bits) {
-                std::memcpy(bits, px.data(), px.size());
+                texture_rgba_to_bgra(px.data(), static_cast<std::uint8_t*>(bits), px.size() / 4);
                 HDC mem = CreateCompatibleDC(dc);
                 HGDIOBJ old = SelectObject(mem, dib);
                 const int W = rc.right - rc.left, H = rc.bottom - rc.top;
@@ -1914,6 +2075,11 @@ LRESULT CALLBACK tileset_dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                                 L"Terrain", MB_OK | MB_ICONWARNING);
                     return 0;
                 }
+                if (g.renderer && g.renderer->texture_index(name) >= 0 && data_prompt(g_ts.win,
+                        L"Dieser Name ist bereits geladen. Die Vorschau wird bis zum Projektwechsel ersetzt; "
+                        L"vorhandene Dateien bleiben unverändert. Fortfahren?",
+                        L"Kachel erzeugen", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) return 0;
+                if (!ts_same_project()) return 0;
                 wchar_t wpat[32];
                 GetDlgItemTextW(h, IDTS_PAT, wpat, 32);
                 const std::vector<uint8_t> px = make_pattern_tile(
@@ -1927,6 +2093,7 @@ LRESULT CALLBACK tileset_dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 g_ts.sel = name;
                 ts_fill_list();
                 InvalidateRect(g_ts.preview, nullptr, TRUE);
+                if (g.cur_map >= 0) regen_terrain();
                 core::log_info("Tileset: neue Kachel '" + name +
                                "' erzeugt (speichern mit 'Als Projekt-Textur speichern')");
                 status_mode((L"Neue Kachel: " + utf8_to_wide(name)).c_str());
@@ -1960,19 +2127,22 @@ LRESULT CALLBACK tileset_dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 m.h = h;
                 m.tile = 2.0;
                 m.imported = true;
-                CreateDirectoryA(mat_dir().c_str(), nullptr);
+                const bool replace = mat_find(selected) != nullptr;
+                if (replace && data_prompt(g_ts.win,
+                        L"Das vorhandene Material erhält neue Bilddaten. Die alte RGBA-Datei bleibt erhalten. Fortfahren?",
+                        L"Projekt-Textur speichern", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) return 0;
+                if (!ts_same_project()) return 0;
                 const std::string data(reinterpret_cast<const char*>(px.data()), px.size());
-                if (!write_file(mat_dir() + "\\" + m.file, data)) {
-                    core::log_error("Tileset: .rgba nicht schreibbar: " + m.file);
+                if (!mat_store_texture(m, data, replace)) {
+                    data_prompt(g_ts.win, utf8_to_wide("Textur nicht gespeichert: " + g_material_error).c_str(),
+                                L"Projekt-Textur", MB_OK | MB_ICONWARNING);
+                    status_mode(L"Kachel nicht gespeichert");
                     return 0;
                 }
                 g_ts.sel = selected;
-                bool replaced = false;
-                for (MaterialInfo& old : g_materials) {
-                    if (old.name == m.name) { old = m; replaced = true; break; }
-                }
-                if (!replaced) g_materials.push_back(m);
-                mat_save();
+                ts_fill_list();
+                InvalidateRect(g_ts.preview, nullptr, TRUE);
+                if (g.cur_map >= 0) regen_terrain();
                 core::log_info("Tileset: Kachel als Projekt-Textur gespeichert: " + m.name);
                 status_mode(L"Kachel als Projekt-Textur gespeichert");
                 return 0;
@@ -2235,6 +2405,7 @@ bool switch_project(const std::string& name, bool departure_checked) {
     // Offene Dialoge schliessen (Zeiger werden ungültig).
     if (g.props_dlg) { DestroyWindow(g.props_dlg); g.props_dlg = nullptr; }
     close_event_editor();
+    close_material_dialog(); // kein alter F3-Entwurf im neuen Projekt
 
     g.project_dir = data;
     g.project_name = name;
@@ -2259,7 +2430,9 @@ bool switch_project(const std::string& name, bool departure_checked) {
     g.terrain->clear();
     g.renderer->clear_terrain();
 
-    // Importierte Texturen des Projekts laden.
+    // Vor dem Laden alle alten Projekt-Slots und den Atlas freigeben;
+    // eingebaute Texturen (auch bei gleichnamigen Overrides) bleiben erhalten.
+    g.renderer->begin_project_textures();
     g_materials.clear();
     mat_load();
 
@@ -3819,7 +3992,7 @@ void push_object(int i) {
                               by + part.d.y,
                               z - dx * sd + dz * cd };
         g.renderer->push_box(pos, part.s, math::Vec3{ 0, rot, 0 }, part.c,
-                             override_tex >= 0 ? override_tex : part.tex,
+                             override_tex >= 0 ? override_tex : g.renderer->texture_index(part.tex),
                              part.tile);
     }
 }
@@ -4429,9 +4602,9 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             for (UINT i = 0; i < n; ++i) {
                 if (DragQueryFileW(drop, i, wpath, MAX_PATH) == 0) continue;
                 std::wstring wv(wpath);
-                const std::string path(wv.begin(), wv.end());
+                const std::string path = wide_to_utf8(wv);
                 std::string lower = path;
-                for (char& c : lower) c = static_cast<char>(std::tolower(c));
+                for (char& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
                 const bool ok_ext = lower.size() >= 4 &&
                     (lower.compare(lower.size() - 4, 4, ".png") == 0 ||
                      lower.compare(lower.size() - 4, 4, ".bmp") == 0);
@@ -7628,6 +7801,8 @@ struct MaterialDlgState {
     HWND lbl_status = nullptr;
     std::vector<std::string> names;
     std::string sel;
+    std::string tile_before;
+    bool tile_editable = false;
     bool indices_safe = true;
 };
 
@@ -7643,9 +7818,11 @@ void ma_refresh_info() {
     const bool has_sel = g_md.indices_safe && !g_md.sel.empty();
     const bool is_imported = g_md.indices_safe && m != nullptr;
 
-    EnableWindow(GetDlgItem(g_md.win, IDMA_TILE), is_imported ? TRUE : FALSE);
-    EnableWindow(GetDlgItem(g_md.win, IDMA_TILESET), is_imported ? TRUE : FALSE);
-    EnableWindow(GetDlgItem(g_md.win, IDMA_DEL), is_imported ? TRUE : FALSE);
+    EnableWindow(GetDlgItem(g_md.win, IDMA_TILE), is_imported && g_material_writable ? TRUE : FALSE);
+    EnableWindow(GetDlgItem(g_md.win, IDMA_TILESET), is_imported && g_material_writable ? TRUE : FALSE);
+    EnableWindow(GetDlgItem(g_md.win, IDMA_DEL), is_imported && g_material_writable ? TRUE : FALSE);
+    g_md.tile_before.clear();
+    g_md.tile_editable = false;
     EnableWindow(GetDlgItem(g_md.win, IDMA_APPLY),
                  (has_sel && g.sel_obj >= 0) ? TRUE : FALSE);
     EnableWindow(GetDlgItem(g_md.win, IDMA_CLEAR), g.sel_obj >= 0 ? TRUE : FALSE);
@@ -7662,10 +7839,21 @@ void ma_refresh_info() {
                            "Grösse: " + std::to_string(m->w) + " x " +
                            std::to_string(m->h) + " Pixel\n" +
                            "Quelle: " + m->source;
+        if (!m->tile_valid) info += "\nKachelwert ungültig; ein Ersatz erfordert Bestätigung.";
         ev_set_text(g_md.lbl_info, info);
-        wchar_t buf[32];
-        std::swprintf(buf, 32, L"%.2f", m->tile);
-        SetWindowTextW(g_md.ed_tile, buf);
+        if (m->tile_valid) {
+            const JsonValue* list = material_array(g_material_document);
+            const JsonValue* original = list && m->document_index < list->arr.size()
+                ? list->arr[m->document_index].find("tile") : nullptr;
+            g_md.tile_before = original ? json_write(*original) : "2.0";
+            if (!g_md.tile_before.empty() && g_md.tile_before.back() == '\n') g_md.tile_before.pop_back();
+        }
+        ev_set_text(g_md.ed_tile, g_md.tile_before);
+        std::string displayed;
+        g_md.tile_editable = g_material_writable && control_text_strict(g_md.ed_tile, displayed) &&
+                             displayed == g_md.tile_before;
+        EnableWindow(g_md.ed_tile, g_md.tile_editable ? TRUE : FALSE);
+        EnableWindow(GetDlgItem(g_md.win, IDMA_TILESET), g_md.tile_editable ? TRUE : FALSE);
     } else {
         ev_set_text(g_md.lbl_info,
                     "Prozedurale Textur (fest eingebaut):\n" + g_md.sel +
@@ -7699,17 +7887,33 @@ void ma_refresh_list() {
 }
 
 void ma_apply_tile() {
-    MaterialInfo* m = const_cast<MaterialInfo*>(mat_find(g_md.sel));
-    if (!m || !m->imported) return;
-    wchar_t buf[32];
-    GetWindowTextW(g_md.ed_tile, buf, 32);
-    std::string s = wide_to_utf8(buf);
-    std::replace(s.begin(), s.end(), ',', '.');
-    const double tile = std::atof(s.c_str());
-    if (tile <= 0.0) { ma_status("Kachel muss grösser als 0 sein"); return; }
-    m->tile = tile;
-    mat_save();
-    ma_status("Kachel gespeichert: " + g_md.sel);
+    const MaterialInfo* selected = mat_find(g_md.sel);
+    if (!selected || !selected->imported || !g_md.tile_editable || !g_material_writable) return;
+    const std::string name = selected->name;
+    const std::size_t index = selected->document_index;
+    const bool old_valid = selected->tile_valid;
+    const std::uint64_t epoch = g.project_epoch;
+    std::string text;
+    if (!control_text_strict(g_md.ed_tile, text)) { ma_status("Kachelwert nicht lesbar"); return; }
+    if (text == g_md.tile_before) { ma_status("Kachel unverändert"); return; }
+    JsonValue number;
+    if (!database_decimal(text, number) || !world::terrain_valid_tile(number.number())) {
+        ma_status("Kachel muss zwischen 0,01 und 10000 liegen");
+        return;
+    }
+    if (!old_valid && data_prompt(g_md.win,
+            L"Der bisherige Kachelwert ist ungültig. Soll nur dieser Wert ersetzt werden?",
+            L"Material-Kachel", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) return;
+    const MaterialInfo* current = mat_find(name);
+    if (g.project_epoch != epoch || g_md.sel != name || !current || current->document_index != index) return;
+    JsonValue candidate = g_material_document;
+    if (!material_set_tile(candidate, index, number.number()) || !mat_commit(std::move(candidate))) {
+        ma_status("Nicht gespeichert: " + g_material_error);
+        ma_refresh_info();
+        return;
+    }
+    ma_refresh_info();
+    ma_status("Kachel gespeichert: " + name);
 }
 
 // Die Auswahl vor einer möglichen Rückfrage als Wert sichern.
@@ -7751,26 +7955,30 @@ void ma_apply_to_object() {
 void ma_clear_object() { ma_set_object_material(""); }
 
 void ma_delete() {
-    const MaterialInfo* m = mat_find(g_md.sel);
-    if (!m || !m->imported) return;
-    if (!texture_file_is_flat(m->file)) {
-        MessageBoxW(g_md.win, L"Der Material-Dateiname ist kein einfacher Dateiname. "
-                              L"Datei und Metadaten bleiben unverändert; bitte extern prüfen.",
-                    L"Material", MB_OK | MB_ICONWARNING);
+    const MaterialInfo* selected = mat_find(g_md.sel);
+    if (!selected || !selected->imported || !g_material_writable) return;
+    const std::string name = selected->name;
+    const std::size_t index = selected->document_index;
+    const std::uint64_t epoch = g.project_epoch;
+    if (data_prompt(g_md.win,
+            L"Materialeintrag entfernen? Die RGBA-Datei bleibt zur Sicherheit erhalten. "
+            L"Karten und Objekte können weiterhin auf den Namen verweisen.",
+            L"Material entfernen", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) return;
+    const MaterialInfo* current = mat_find(name);
+    if (g.project_epoch != epoch || g_md.sel != name || !current || current->document_index != index) return;
+    JsonValue candidate = g_material_document;
+    if (!material_remove(candidate, index) || !mat_commit(std::move(candidate))) {
+        ma_status("Nicht entfernt: " + g_material_error);
+        ma_refresh_info();
         return;
     }
-    DeleteFileA((mat_dir() + "\\" + m->file).c_str());
-    const std::string name = m->name;
-    for (size_t i = 0; i < g_materials.size(); ++i) {
-        if (g_materials[i].name == name) {
-            g_materials.erase(g_materials.begin() + i);
-            break;
-        }
+    if (g.renderer) {
+        g.renderer->remove_project_texture(name);
+        if (g.cur_map >= 0) regen_terrain();
     }
-    mat_save();
     g_md.sel.clear();
     ma_refresh_list();
-    ma_status("Material gelöscht: " + name);
+    ma_status("Materialeintrag entfernt; RGBA-Datei erhalten: " + name);
 }
 
 HWND ma_control(const wchar_t* cls, const wchar_t* text, DWORD style,
@@ -7847,6 +8055,7 @@ LRESULT CALLBACK material_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
 }
 
 void open_import_texture() {
+    const std::uint64_t project_epoch = g.project_epoch;
     wchar_t file[MAX_PATH] = L"";
     OPENFILENAMEW ofn{};
     ofn.lStructSize = sizeof(ofn);
@@ -7857,6 +8066,11 @@ void open_import_texture() {
     ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
     ofn.lpstrTitle = L"Grafik importieren (PNG/BMP)";
     if (!GetOpenFileNameW(&ofn)) return;
+    if (project_epoch != g.project_epoch) {
+        data_prompt(g.main, L"Das Projekt wurde während der Dateiauswahl gewechselt. Import abgebrochen.",
+                    L"Grafik-Import", MB_OK | MB_ICONWARNING);
+        return;
+    }
 
     std::string name;
     if (mat_import_file(wide_to_utf8(file), name)) {
@@ -7868,7 +8082,7 @@ void open_import_texture() {
         }
         // Vorschau-Objekte neu zeichnen lassen (nächster Frame genügt).
     } else {
-        MessageBoxW(g.main, L"Das Bild konnte nicht gelesen werden.",
+        data_prompt(g.main, utf8_to_wide("Import abgebrochen: " + g_material_error).c_str(),
                     L"Grafik-Import", MB_OK | MB_ICONWARNING);
     }
 }
@@ -7909,6 +8123,7 @@ void open_material_dialog() {
     ma_control(L"Static", L"Kachel (m)", 0, 308, 152, 70, 20, 0);
     g_md.ed_tile = ma_control(L"Edit", nullptr, WS_BORDER | ES_RIGHT,
                               380, 148, 90, 24, IDMA_TILE);
+    SendMessageW(g_md.ed_tile, EM_SETLIMITTEXT, 1024, 0);
     ma_control(L"Button", L"Kachel setzen", BS_PUSHBUTTON,
                480, 146, 148, 28, IDMA_TILESET);
 
@@ -7932,8 +8147,13 @@ void open_material_dialog() {
     }
     if (g_md.sel.empty() && !g.tex_names.empty()) g_md.sel = g.tex_names.front();
     ma_refresh_list();
+    if (!g_material_error.empty()) ma_status(g_material_error);
     ShowWindow(g_md.win, SW_SHOW);
     SetForegroundWindow(g_md.win);
+}
+
+void close_material_dialog() {
+    if (g_md.win) DestroyWindow(g_md.win);
 }
 
 bool material_editor_focused() {
@@ -8872,18 +9092,41 @@ int main(int argc, char** argv) {
 
     // Kopfloser Import für Tests/Werkzeuge:
     //   RuneEditor.exe --import-tex <bild> [name]
-    if (argc >= 3 && std::string(argv[1]) == "--import-tex") {
-        std::string tex_project = "dorf";
-        for (int i = 3; i + 1 < argc; ++i) {
-            if (std::string(argv[i]) == "--project") tex_project = argv[i + 1];
+    if (argc >= 2 && std::string(argv[1]) == "--import-tex") {
+        int wide_argc = 0;
+        wchar_t** wide_argv = CommandLineToArgvW(GetCommandLineW(), &wide_argc);
+        bool valid = wide_argv && wide_argc >= 3;
+        std::wstring project = L"dorf";
+        std::string source, name;
+        bool named = false;
+        if (valid) valid = assets::to_utf8(wide_argv[2], source);
+        for (int i = 3; valid && i < wide_argc; ++i) {
+            const std::wstring arg = wide_argv[i];
+            if (arg == L"--project") {
+                if (++i >= wide_argc) { valid = false; break; }
+                project = wide_argv[i];
+            } else if (!named && arg.rfind(L"--", 0) != 0) {
+                valid = assets::to_utf8(arg, name);
+                named = true;
+            } else valid = false;
         }
-        g.project_dir = g.root + "\\projekte\\" + tex_project + "\\data";
-        g.project_name = tex_project;
+        if (wide_argv) LocalFree(wide_argv);
+        valid = valid && assets::component(project);
+        if (!valid) {
+            std::fprintf(stderr, "FEHLER: --import-tex <bild> [name] [--project <projekt>]\n");
+            CoUninitialize();
+            core::log_close();
+            return 1;
+        }
+        g_material_cli_project = project;
+        assets::to_utf8(project, g.project_name);
+        g.project_dir = g.root + "\\projekte\\" + g.project_name + "\\data";
         mat_load();
-        std::string name = argc >= 4 ? argv[3] : std::string();
-        const bool ok = mat_import_file(argv[2], name);
+        const bool ok = mat_import_file(source, name);
         if (ok) std::printf("OK: Textur '%s' importiert\n", name.c_str());
-        else    std::printf("FEHLER: Import fehlgeschlagen (%s)\n", argv[2]);
+        else    std::printf("FEHLER: Import fehlgeschlagen: %s\n", g_material_error.c_str());
+        CoUninitialize();
+        core::log_close();
         return ok ? 0 : 1;
     }
 

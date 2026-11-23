@@ -12,9 +12,9 @@
 #    windows    der echte Bau: Rune3D.exe + RuneEditor.exe mit MSYS2-ucrt64-g++
 #               und CRuby, danach dieselbe Testsuite wie build.ps1 -Test
 #
-#  Die EXEs können im Runner NICHT gestartet werden (keine GPU, kein D3D11) —
-#  der Windows-Job prüft Bau + Linken + headless Tests. Grafisches wird weiter
-#  mit tools/edclick.psm1 am echten Rechner verifiziert.
+#  Der Windows-Job prüft Bau, kopflose Datei-/Importtests und D3D11-WARP
+#  (Software, verstecktes Fenster). Das ersetzt keinen interaktiven GUI-/DPI-
+#  oder Hardware-GPU-Test auf dem echten Rechner.
 # ============================================================================
 name: CI
 
@@ -86,6 +86,13 @@ jobs:
             -Isrc src/world/terrain.cpp tools/terrain_test.cpp -o terrain_test
           ./terrain_test
 
+      - name: Materialdokument portabel prüfen
+        run: |
+          g++ -std=c++20 -O2 -Wall -Wextra -Werror \
+            -Wno-unused-parameter -Wno-missing-field-initializers \
+            -Isrc src/editor/json.cpp tools/material_test.cpp -o material_test
+          ./material_test
+
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.4'
@@ -146,9 +153,13 @@ jobs:
         shell: pwsh
         run: .\build.ps1 -Clean
 
-      - name: Tests (C++-Logik, Ruby-Suite, JSON- und Event-Brücke)
+      - name: Tests (C++-Logik, Windows-Dateien, Ruby, JSON- und Event-Brücke)
         shell: pwsh
         run: .\build.ps1 -Test
+
+      - name: D3D11-WARP (Software-Rendering und Atlasreferenzen)
+        shell: pwsh
+        run: .\build.ps1 -WarpTest
 
       # Etappe 19f: Das Artefakt muss SELBSTLAUFEND sein - die EXEs finden
       # ihre Daten (game/, projekte/) neben sich oder eine Ebene höher. Ein

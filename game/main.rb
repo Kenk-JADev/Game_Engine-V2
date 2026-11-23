@@ -455,7 +455,9 @@ end
     map_id = Database.system.dig('start', 'map') || Database.map_ids.first || 'welt01'
 
     # Optik: prozedurale Texturen, Himmel/Nebel/Panorama aus der Startkarte.
+    Textures.end_project
     Textures.register_all
+    Textures.begin_project
     Textures.register_project
     # Etappe 18l: Terrain-Bau ist nach enter_map gewandert (Kartenwechsel
     # baut es ebenfalls auf, damit Kartengrenze und gemalte Berge stimmen).

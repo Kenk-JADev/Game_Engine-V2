@@ -97,6 +97,8 @@ end
 module Textures
   def self.register_all; end
   def self.register_project; end
+  def self.begin_project; end
+  def self.end_project; end
 end
 
 module Project
