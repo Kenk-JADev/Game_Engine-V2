@@ -1,6 +1,6 @@
-# Handoff für die nächste KI - Rune3D, Stand nach Implementierung 19w
+# Handoff für die nächste KI - Rune3D, Stand nach Implementierung 19x
 
-**Stand:** 19w Hauptfenster & Karten implementiert; interaktiver Windows-/DPI-/Hardwaretest offen. Aktuellen Git-/CI-Status vor Weiterarbeit prüfen.
+**Stand:** 19x Ruby-Deployment und isolierte Starttests implementiert. Aktuellen Git-/CI-Status prüfen; interaktiver Windows-/DPI-/Hardwaretest und Bestätigung auf dem Rechner des Users sind offen.
 **Projekt:** `C:/Users/jusagu/Desktop/Engine` — Windows-Only 3D-RPG-Engine (C++20/Win32/D3D11 + echtes CRuby 3.4.11), Editor = eigenes Programm `RuneEditor.exe`.
 
 ## 0. Auftrag und Fortschritt (RPG-Maker-XP-Überholung)
@@ -43,7 +43,8 @@ Der User beauftragte eine Überarbeitung von Engine und Editor **im Stil von RPG
 | 19t | `c7b2f5d` (CI-Grün Run 45178315607) | Ingame-Editor entfernt, Szenenbau für Spiel/Launcher getrennt und echte Ruby-Laufzeit kopflos geprüft |
 | 19u | `bc237b3` (CI-Grün Run 45183821663) | Externer F4-Start mit gewählter Karte, Unicode-/Fehler-/F5-/Projektwechseltests |
 | 19v | `9441733` + `b2f34df` (CI-Grün Run 45192650255) | Party-/Kampfzustand, gezielte Items, Esc, Game Over und Abbruch/F5; Ruby-Regressionen und Live-Anleitung |
-| 19w | aktueller Commit; CI-Status prüfen | Hauptfenster: Palette über Kartenbaum, Splitter/Scrollen/DPI und geschützte Kartenaktionen; Windows-Live-Test offen |
+| 19w | `d9a236c` (CI-Grün Run 45224317716) | Hauptfenster: Palette über Kartenbaum, Splitter/Scrollen/DPI und geschützte Kartenaktionen; Windows-Live-Test offen |
+| 19x | aktueller Commit; CI-Status prüfen | Ruby-Stdlib paketieren, fehlendes JSON diagnostizieren und isolierten Start von Editor/Spiel testen |
 | 19o.6 | `326925b` (CI-Grün Run 44640705908) | F6: Monitor-Arbeitsfläche, DPI-skalierter Scroll-Ausschnitt, Fokus-Nachführung und portable/unsichtbare Windows-Tests |
 | 19o.5 | `4635c80` (CI-Grün Run 44628573472) | F6: datentreue Event-/Seiten-/Befehlsformulare, Pending-Schutz, bedarfsweise Altseitenmigration und C++/Ruby-Event-Brücke |
 | 19o.4 | `38ed554` (CI-Grün Run 44614856669) | Objektformular datentreu, Pending-/Drag-Schutz und sicheres Kartenladen; portable Tests |
@@ -99,8 +100,24 @@ Lokal: Ruby 3.4.13 28 OK/0 Fehler/1 Windows-EXE-Skip, MapCheck sauber;
 portable JSON-Suite 686/0, Terrain 51/0, Material 25/0, JSON-Brücke 14/0 und
 Event-Brücke 17/0; Repo-Hygiene 0 Fehler/2 bestehende Warnungen. Win64-
 Hauptfenster und Windows-Test wurden crosskompiliert und der Test verlinkt;
-das ist keine Windows-Ausführung. Aktuellen CI-Status prüfen. Interaktive
+das ist keine Windows-Ausführung. CI 45224317716 war in allen vier Jobs grün. Interaktive
 Windows-/DPI-/Hardwareprüfung ist offen: `docs/WINDOWS_MAIN_LIVE_TEST.md`.
+
+Stand 19x: Der User meldete beim tatsächlichen Editor-Start `LoadError: cannot
+load such file -- json`. DLLs ohne die passende Stdlib und ein fester
+`C:/Ruby34-x64`-Fallback waren die Deployment-Lücke; die 19w-CI verdeckte sie
+durch ein gesetztes `RUBYLIB`. `build.ps1` kopiert nun die Ruby-Stdlib samt
+nativen JSON-Dateien nach `build/lib/ruby`; `vm.cpp` priorisiert sie, verwirft
+unvollständige Pakete und verändert `RUBYLIB` nicht. Fehlgeschlagenen Editor-
+Boot meldet ein Dialog. `-WarpTest` prüft die verlegte Unicode-Laufzeit,
+fremdes RUBYLIB und fehlende Dateien; `tools/windows_runtime_smoke.ps1` startet
+echte Editor-/Spiel-EXEs mit Software-WARP und ohne Ruby-PATH. [CI 45230664729](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45230664729) auf
+`f4b39e1` war in vier Jobs grün: Windows 30 Ruby-Suiten/0, WARP 36/0,
+Ruby-Brücke zweimal 35/0 und zwei Negativtests je 7/0; beide echten EXEs
+starteten aus der Paketkopie. Danach wurde die CI um das erneute Herunterladen
+des veröffentlichten Artefakts vor dem EXE-Test ergänzt; aktuellen Lauf
+prüfen. Hardware-/DPI-/User-Rechner-Test bleibt offen:
+`docs/WINDOWS_RUBY_LIVE_TEST.md`. Zusätzliche Gems sind nicht garantiert.
 
 **Userwunsch:** Das eigenständige RuneEditor-Programm funktional und optisch
 an den gezeigten XP-Screenshots orientieren, ohne den 3D-Viewport oder
@@ -175,7 +192,7 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
   der Ruby-Bibliothek) ändert das nichts.
 - Live-Verifikation über Fenster-Injektion: `tools/edclick.psm1` + Vorlage `log/live17h.ps1` (Wichtig: Fenster per `EnumWindows` nach Klassenname suchen, **nicht** `FindWindowW` über Prozessgrenzen — das ist unzuverlässig; Befehle per `SendMessage` statt `PostMessage`).
 - Editor-Dialoge sind **modeless**; Screenshots via `CopyFromScreen` gehen auf dem isolierten Desktop **nicht** — stattdessen F12 im Editor (`request_screenshot`).
-- **Editor startet nur mit Ruby im PATH** (x64-ucrt-ruby340.dll); sonst kein Fenster und kein `log/editor.log` — ~~das ist kein Bug~~ **seit Etappe 18e+ behoben:** build.ps1 kopiert `x64-ucrt-ruby340.dll`, `libgmp-10.dll`, `libwinpthread-1.dll` + `ruby_builtin_dlls\` nach `build/` (SxS-Assembly, sonst 0xc0150002), winpthread wird statisch gelinkt (`-Wl,-Bstatic,--whole-archive -lwinpthread`), und `vm.cpp` setzt `RUBYLIB` falls unbelegt auf Ruby-3.4-Stdlib-Pfade unter `C:/Ruby34-x64` (sonst `LoadError: json`). Andere Ruby-Installationen benötigen einen passenden `RUBYLIB`; kopierte DLLs allein belegen kein installationsunabhängiges Deployment.
+- **Ruby-Deployment (19x):** DLLs, `ruby_builtin_dlls` und die zum Build-Ruby passende `lib/ruby/<API>/<Plattform>` zusammen ausliefern. `vm.cpp` setzt `RUBYLIB` nicht mehr auf `C:/Ruby34-x64`; unvollständige mitgelieferte Laufzeiten werden abgewiesen. Den isolierten WARP-/EXE-Starttest und den aktuellen CI-Lauf prüfen. Andere Gems/optionale DLLs sowie Hardware-/Benutzertest sind nicht pauschal abgedeckt.
 - Keine Wiederhol-Schleifen: gleiches Problem zweimal → Quelle lesen, Ansatz wechseln. Jede Runde endet mit Status (fertig / blockiert + Grund).
 - **Backlog-Disziplin (seit 18g):** Fehler/Grenzen, die NICHT sofort in der laufenden Etappe behoben werden, gehören in `docs/BACKLOG.md` (Symptom, Vermutung, betroffene Stellen) — nicht in wiederholte Test-Läufe. Tests laufen pro Etappe genau einmal (Testsuite + ein Live-Test); nur bei rotem Test wird nachgelesen, nicht blind neu gestartet.
 

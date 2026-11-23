@@ -71,7 +71,7 @@ bool write_new(const std::wstring& path, const std::string& data) {
 
 struct Fixture {
     std::string root, project;
-    std::wstring wide, game, demo, engine, projects, a, adata, atex, amaps, b, bdata, btex;
+    std::wstring wide, game, demo, engine, editor, projects, a, adata, atex, amaps, b, bdata, btex;
     bool owned = false;
 
     bool create(const std::wstring& repo) {
@@ -81,7 +81,7 @@ struct Fixture {
         wide = std::wstring(temp, n) + L"rune-ruby-\u00e4-\u65e5-\U0001f680-" +
                std::to_wstring(GetCurrentProcessId());
         game = wide + L"\\game"; demo = game + L"\\data"; engine = game + L"\\engine";
-        projects = wide + L"\\projekte";
+        editor = game + L"\\editor"; projects = wide + L"\\projekte";
         const std::wstring a_name = L" A_\u00e4_\u65e5_\U0001f680";
         a = projects + L"\\" + a_name; adata = a + L"\\data";
         atex = adata + L"\\textures"; amaps = adata + L"\\maps";
@@ -89,13 +89,15 @@ struct Fixture {
         if (!rune::assets::to_utf8(wide, root) || !rune::assets::to_utf8(a_name, project) ||
             !CreateDirectoryW(wide.c_str(), nullptr)) return false;
         owned = true;
-        for (const auto* d : {&game, &demo, &engine, &projects, &a, &adata, &atex, &amaps, &b, &bdata, &btex}) {
+        for (const auto* d : {&game, &demo, &engine, &editor, &projects, &a, &adata, &atex, &amaps, &b, &bdata, &btex}) {
             if (!CreateDirectoryW(d->c_str(), nullptr)) return false;
         }
-        for (const auto* name : {L"data.rb", L"project.rb", L"textures.rb"}) {
+        for (const auto* name : {L"data.rb", L"project.rb", L"textures.rb", L"sounds.rb"}) {
             if (!CopyFileW((repo + L"\\game\\engine\\" + name).c_str(),
                            (engine + L"\\" + name).c_str(), TRUE)) return false;
         }
+        if (!CopyFileW((repo + L"\\game\\editor\\boot.rb").c_str(),
+                       (editor + L"\\boot.rb").c_str(), TRUE)) return false;
         const std::string a_manifest = R"({"textures":[{"name":"gras","file":"rot.rgba","w":64,"h":64},{"name":"nur_a","file":"blau.rgba","w":64,"h":64}]})";
         const std::string b_manifest = R"({"textures":[{"name":"nur_b","file":"blau.rgba","w":64,"h":64}]})";
         return write_new(demo + L"\\textures.json", R"({"textures":[]})") &&
@@ -115,6 +117,8 @@ struct Fixture {
         DeleteFileW((engine + L"\\data.rb").c_str());
         DeleteFileW((engine + L"\\project.rb").c_str());
         DeleteFileW((engine + L"\\textures.rb").c_str());
+        DeleteFileW((engine + L"\\sounds.rb").c_str());
+        DeleteFileW((editor + L"\\boot.rb").c_str());
         DeleteFileW((adata + L"\\system.json").c_str());
         DeleteFileW((a + L"\\saves\\slot1.json").c_str());
         DeleteFileW((amaps + L"\\karte_\u65e5.json").c_str());
@@ -128,7 +132,7 @@ struct Fixture {
         RemoveDirectoryW(adata.c_str()); RemoveDirectoryW(a.c_str());
         RemoveDirectoryW(btex.c_str()); RemoveDirectoryW(bdata.c_str()); RemoveDirectoryW(b.c_str());
         RemoveDirectoryW(projects.c_str()); RemoveDirectoryW(demo.c_str());
-        RemoveDirectoryW(engine.c_str()); RemoveDirectoryW(game.c_str());
+        RemoveDirectoryW(editor.c_str()); RemoveDirectoryW(engine.c_str()); RemoveDirectoryW(game.c_str());
         const bool removed = RemoveDirectoryW(wide.c_str()) != 0;
         owned = false;
         return removed;
@@ -171,7 +175,10 @@ int main(int argc, char** argv) {
     std::puts("== Eingebettetes Ruby: Projekttexturen und D3D11-WARP ==");
     int wide_argc = 0;
     wchar_t** wide_argv = CommandLineToArgvW(GetCommandLineW(), &wide_argc);
-    if (!wide_argv || wide_argc != 2) {
+    const std::wstring mode = wide_argv && wide_argc == 3 ? wide_argv[2] : L"";
+    const bool expect_incomplete = mode == L"--expect-incomplete";
+    const bool expect_foreign = mode == L"--expect-foreign";
+    if (!wide_argv || (wide_argc != 2 && !(wide_argc == 3 && (expect_incomplete || expect_foreign)))) {
         if (wide_argv) LocalFree(wide_argv);
         check("Repository-Pfad übergeben", false);
         return 1;
@@ -197,9 +204,6 @@ int main(int argc, char** argv) {
         renderer.set_clear_color(0);
         renderer.set_sun(rune::math::Vec3{0, 1, 0}, 1.0f);
         rune::app().renderer = &renderer;
-        const std::string green = solid(0, 255, 0);
-        const int base = renderer.add_texture("gras", 64, 64, reinterpret_cast<const std::uint8_t*>(green.data()));
-        check("eingebaute Basis registriert", base >= 0);
         // Wie Rune3D.exe vor dem VM-Start setzen; Ruby liest die Wide-Umgebung.
         const bool env_set = rune::core::win_project_cli::set_project_environment(f.project);
         check("Projektname verlustfrei in Windows-Umgebung gesetzt", env_set);
@@ -209,8 +213,9 @@ int main(int argc, char** argv) {
         check("Karten-ID verlustfrei in Windows-Umgebung gesetzt", map_env_set);
         char* ruby_argv[] = {argv[0], nullptr};
         ruby_started = env_set && map_env_set && rune::ruby::init(1, ruby_argv, f.root);
-        check("echte eingebettete Ruby-VM gestartet", ruby_started);
-        if (ruby_started) {
+        check(expect_incomplete ? "unvollständiges Paket abgelehnt" : "echte eingebettete Ruby-VM gestartet",
+              expect_incomplete ? !ruby_started && env_set && map_env_set : ruby_started);
+        if (ruby_started && !expect_incomplete) {
             rb_gv_set("$expected_root", rb_utf8_str_new(f.root.data(), static_cast<long>(f.root.size())));
             rb_gv_set("$expected_project", rb_utf8_str_new(f.project.data(), static_cast<long>(f.project.size())));
             rb_gv_set("$expected_map", rb_utf8_str_new(expected_map.data(), static_cast<long>(expected_map.size())));
@@ -223,8 +228,43 @@ int main(int argc, char** argv) {
                 "ENV['RUNE_PLAYTEST_MAP'] == $expected_map && ENV['RUNE_PLAYTEST_MAP'].encoding == Encoding::UTF_8"));
             check("Ruby übernimmt und löscht die einmalige Kartenumgebung exakt", ruby_true(
                 "ENV.delete('RUNE_PLAYTEST_MAP') == $expected_map && !ENV.key?('RUNE_PLAYTEST_MAP')"));
+
+            // Der beim Nutzer fehlgeschlagene echte Editor-Boot läuft hier
+            // aus der Kopie mit den echten Bindings und WARP, nicht als Stub.
+            const bool boot_loaded = rune::ruby::load_script("game\\editor\\boot.rb");
+            check("echter Editor-Boot lädt Texturen und Sounds", boot_loaded &&
+                  renderer.texture_index("gras") >= 0 && renderer.texture_index("dach") >= 0);
+            check("JSON-Parser, Generator und fileutils funktionieren", ruby_true(
+                "require 'json'; require 'fileutils'; "
+                "JSON.parse(JSON.generate({'zahl' => 9007199254740993}))['zahl'] == 9007199254740993 && "
+                "defined?(FileUtils)"));
+            std::wstring exe_dir;
+            std::string runtime_root;
+            const bool runtime_path = rune::core::win_path::executable_directory(exe_dir) &&
+                rune::core::win_path::to_utf8(exe_dir + L"\\lib\\ruby", runtime_root);
+            if (runtime_path)
+                rb_gv_set("$test_runtime_root", rb_utf8_str_new(runtime_root.data(), static_cast<long>(runtime_root.size())));
+            check("JSON und fileutils stammen aus der kopierten Standardbibliothek", runtime_path && ruby_true(
+                "prefix = File.expand_path($test_runtime_root).tr(92.chr, '/').downcase + '/'; "
+                "files = $LOADED_FEATURES.filter_map { |entry| "
+                "p = entry.dup.force_encoding(Encoding::UTF_8); "
+                "File.expand_path(p).tr(92.chr, '/').downcase if p.valid_encoding? }; "
+                "%w[json.rb json/ext/parser.so json/ext/generator.so fileutils.rb].all? { |part| "
+                "files.any? { |p| p.start_with?(prefix) && p.end_with?('/' + part) } }"));
+            check(expect_foreign ? "zusätzliches RUBYLIB bleibt erhalten" : "kein RUBYLIB für den isolierten Start",
+                  expect_foreign ? ruby_true(
+                "p = ENV['RUNE_TEST_RUBYLIB']; p && !p.empty? && $LOAD_PATH.any? { |entry| "
+                "s = entry.dup.force_encoding(Encoding::UTF_8); s.valid_encoding? && "
+                "File.expand_path(s).tr(92.chr, '/').downcase == File.expand_path(p).tr(92.chr, '/').downcase }") :
+                  ruby_true("[ENV['RUBYLIB'], ENV['RUNE_TEST_RUBYLIB']].all? { |p| !p || p.empty? }"));
+
+            // Die weitere Texturprüfung nutzt eine bewusst grüne Basis, damit
+            // A/B-Overrides eindeutig über echte Pixel geprüft werden können.
+            const std::string green = solid(0, 255, 0);
+            const int base = renderer.add_texture("gras", 64, 64, reinterpret_cast<const std::uint8_t*>(green.data()));
+            check("eingebaute Basis registriert", base >= 0);
             const bool data_loaded = rune::ruby::load_script("game\\engine\\data.rb");
-            const bool textures_loaded = rune::ruby::load_script(f.root + "\\game\\engine\\textures.rb");
+            const bool textures_loaded = ruby_true("defined?(Textures)");
             const bool project_loaded = ruby_true(
                 "$LOAD_PATH.unshift(File.join(Rune::ROOT, 'game', 'engine')); require 'project'; defined?(Project)");
             check("echte Database-/Textures-/Project-Module aus Unicode-Wurzel geladen",
@@ -275,8 +315,8 @@ int main(int argc, char** argv) {
                       renderer.texture_index("nur_a") < 0 && renderer.texture_index("gras") == base &&
                       pixel_is(renderer, f.root + "\\shot.bmp", "gras", 1));
             }
-            rune::ruby::shutdown();
         }
+        if (ruby_started) rune::ruby::shutdown();
         rune::app().renderer = nullptr;
     }
     renderer.shutdown();

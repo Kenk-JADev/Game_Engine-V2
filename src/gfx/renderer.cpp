@@ -293,6 +293,13 @@ bool Renderer::init(HWND hwnd, int width, int height, bool warp) {
     m_width = width;
     m_height = height;
 
+    // Für den isolierten Starttest der echten EXEs und als langsamer
+    // Diagnosemodus: nur ein ausdrücklich gesetztes "1" erzwingt WARP.
+    wchar_t software[2]{};
+    if (GetEnvironmentVariableW(L"RUNE_D3D_WARP", software, 2) == 1 && software[0] == L'1')
+        warp = true;
+    if (warp) log_info("D3D11: WARP-Software-Renderer");
+
     D3D_FEATURE_LEVEL wanted[] = {D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_1, D3D_FEATURE_LEVEL_10_0};
     D3D_FEATURE_LEVEL got = D3D_FEATURE_LEVEL_10_0;
 

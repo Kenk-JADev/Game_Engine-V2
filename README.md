@@ -140,18 +140,32 @@ Offene Punkte mit Symptom und betroffener Datei stehen in
 .\build.ps1 -Clean       # komplett neu
 .\build.ps1 -Run         # bauen und das Spiel starten
 .\build.ps1 -Test        # C++-/Windows-Datei-/Ruby-Tests und JSON-/Event-Brücke
-.\build.ps1 -WarpTest    # D3D11-WARP + eingebettete Ruby-Texturbrücke (optional)
+.\build.ps1 -WarpTest    # WARP + isolierte eingebettete Ruby-Laufzeit
+.\tools\windows_runtime_smoke.ps1   # echte EXEs in temporärer Paketkopie starten
 .\build.ps1 -RubyRoot D:\Ruby34-x64   # andere Ruby-Installation
 ```
 
-`build.ps1` kopiert die Laufzeit-DLLs (`x64-ucrt-ruby340.dll`, `libgmp-10.dll`,
-`libwinpthread-1.dll`, `ruby_builtin_dlls\`) neben die EXEs; für diese DLLs
-muss Ruby beim Start nicht im PATH stehen. Die Ruby-Standardbibliothek muss
-dennoch auffindbar sein: Ohne vorhandenes `RUBYLIB` verwendet `vm.cpp` feste
-Ruby-3.4-Pfade unter `C:/Ruby34-x64`. Bei anderer Installation `RUBYLIB` auf
-den Load-Pfad des **passenden** Ruby setzen. Der WARP-Brückentest setzt ihn
-für die beim Build ausgewählte Ruby-Installation automatisch. Das ist kein
-Nachweis eines völlig installationsunabhängigen Deployments.
+`build.ps1` kopiert die DLLs **und** die Standardbibliothek der ausgewählten
+Ruby-Installation nach `build/lib/ruby/<API-Version>/`, einschließlich der
+nativen JSON-Erweiterungen. Editor und Spiel bevorzugen diese Bibliothek
+unabhängig von `PATH` und einem fremden `RUBYLIB`. Ein unvollständig kopiertes
+Paket wird als Fehler gemeldet, statt Ruby-Versionen unbemerkt zu mischen.
+Ein vorhandener, nicht vom Build markierter Bibliotheksordner wird beim
+normalen Build nicht überschrieben; `-Clean` löscht dagegen ganz `build/`.
+
+Bei einer bestehenden Fehlermeldung `LoadError: cannot load such file -- json`
+Editor und Spiel schließen, aus dem **aktualisierten Quellstand** neu bauen
+(`.\build.ps1 -Clean`) und erneut starten. Bei einem Download das gesamte neue
+`Rune3D-Windows`-Artefakt entpacken: EXEs, DLLs, `lib/ruby/`, `game/` und
+`projekte/` gehören zusammen. Eigene Projekte vorher sichern; nicht einen
+alten Projektordner durch die Demo aus einem Archiv überschreiben.
+
+Für die von Engine/Editor benötigten Module `json` und `fileutils` wird zur
+Laufzeit keine separate Ruby-Installation benötigt. Zusätzliche Gems und
+native Erweiterungen mit weiteren DLL-Abhängigkeiten werden dadurch nicht
+pauschal mitgeliefert oder garantiert. Ruby und DevKit bleiben zum **Bauen**
+erforderlich. Für Diagnose/automatisierte Tests erzwingt die Prozessvariable
+`RUNE_D3D_WARP=1` langsames D3D11-Software-Rendering statt Hardware.
 
 Vor dem Bauen laufende Instanzen beenden, sonst schlägt das Linken mit
 „Permission denied" fehl:
@@ -200,7 +214,8 @@ ruby tools\lint_repo.rb                        # Repo-Hygiene
 | Windows-Projektpfade | UTF-8/UTF-16, Projekt-/Kartenscan, F9-Datei-I/O, F4-Kindprozess | `tools/windows_path_test.cpp` (`-Test`) |
 | Windows-Karten/F9 | Echte Dateihandles, simulierte Bestätigungen, Konkurrenz, Unicode, Hardlinks und Junctions | `tools/document_store_test.cpp` (`-Test`) |
 | D3D11-WARP | Software-Renderer, Pixel, Projektwechsel und Atlas-/Terrainreferenzen | `tools/renderer_warp_test.cpp` (`-WarpTest`) |
-| Eingebettete Texturbrücke | Echtes CRuby, Projektdateien, A→B→A und WARP-Pixel | `tools/embedded_texture_test.cpp` (`-WarpTest`) |
+| Eingebettete Ruby-Brücke | Echter Editor-Boot, JSON-Erweiterungen, `fileutils`, isolierte Unicode-Laufzeit und WARP-Pixel | `tools/embedded_texture_test.cpp` (`-WarpTest`) |
+| Windows-Start | Echte Editor-/Spiel-EXEs im Unicode-Paket ohne Ruby-PATH und `RUBYLIB`, mit WARP | `tools/windows_runtime_smoke.ps1` |
 | JSON-Brücke | Schreibt C++ bytegleich zu Ruby `JSON.pretty_generate`? | `tools/json_bridge_check.rb` |
 | Event-Brücke | C++-F6-Änderungen gegen echte Ruby-Event- und Interpreter-Laufzeit | `tools/event_bridge_check.rb` |
 | Karten-Scan | Daten-Validierung (Befehle, Trigger, Bedingungen, Wegpunkte, Terrain) | `game/engine/mapcheck.rb` |
@@ -220,7 +235,7 @@ Pull Request:
 | `hygiene` | ubuntu | `tools/lint_repo.rb` |
 | `engine` | ubuntu | `tools/test_all.rb` + Karten-Scan |
 | `cpp-logik` | ubuntu | JSON-/Editor-, Terrain- und Material-C++-Tests mit `-Werror`, danach JSON- und Event-Brücke |
-| `windows` | windows-2022 | Build, kopflose Datei-/Importtests und `-WarpTest`, EXEs als Artefakt |
+| `windows` | windows-2022 | Build, Datei-/Importtests, WARP und Start des erneut entpackten Artefakts |
 
 CI für die F4-Kartenübergabe auf Commit `bc237b3`, Lauf
 [45183821663](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45183821663):
@@ -232,10 +247,11 @@ ausgelöste Konkurrenz, aber keine sichtbaren Editorfenster. Der Pfadtest nutzt
 echte Windows-W-APIs und einen eigenen F4-Kindprozess, aber nicht das
 komplette Spiel. WARP testet den echten D3D11-Renderer mit Software, aber
 keine Hardware-GPU, Bedienung oder DPI.
-Der Brückentest verwendet den Load-Pfad der ausgewählten Ruby-Installation;
-er belegt daher nicht das Deployment ohne diese Installation. Für die
-vollständigen Abläufe ist der [Windows-Live-Test](docs/WINDOWS_MATERIAL_LIVE_TEST.md)
-auf einem interaktiven Rechner nötig. Artefakt: **Rune3D-Windows**.
+Dieser ältere 19u-Lauf bezog die Standardbibliothek noch aus dem Build-Ruby.
+Der aktuelle Windows-Job lädt das erzeugte Artefakt wieder herunter und startet
+beide echten EXEs aus einer verlegten Paketkopie mit WARP. Interaktive Bedienung, DPI und Hardware-GPU
+bleiben dennoch offen; Anleitungen: [Ruby-Start](docs/WINDOWS_RUBY_LIVE_TEST.md)
+und [Materialien](docs/WINDOWS_MATERIAL_LIVE_TEST.md). Artefakt: **Rune3D-Windows**.
 
 ## Projektstruktur
 

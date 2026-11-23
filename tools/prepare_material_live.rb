@@ -20,6 +20,8 @@ abort "Ziel existiert bereits; nichts überschrieben: #{target}" if File.exist?(
 %w[RuneEditor.exe Rune3D.exe].each do |name|
   abort "build/#{name} fehlt; erst .\\build.ps1 -Clean ausführen" unless File.file?(File.join(SOURCE, 'build', name))
 end
+ruby_lib = File.join(SOURCE, 'build', 'lib', 'ruby')
+abort 'build/lib/ruby fehlt; erst .\\build.ps1 -Clean ausführen' unless Dir.exist?(ruby_lib)
 
 # Dir.mkdir ist exklusiv: auch ein konkurrierend angelegtes Ziel wird nie benutzt.
 Dir.mkdir(target)
@@ -37,6 +39,8 @@ begin
       FileUtils.cp_r(path, build)
     end
   end
+  FileUtils.mkdir_p(File.join(build, 'lib'))
+  FileUtils.cp_r(ruby_lib, File.join(build, 'lib'))
   projects = File.join(target, 'projekte')
   Dir.mkdir(projects)
 

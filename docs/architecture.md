@@ -19,6 +19,42 @@ Rune3D.exe  ──┬── src/core    Win32-Fenster, Input, Log, Zeit
                             main.rb        dein Spiel (F5 = neu laden)
 ```
 
+## Mitgelieferte Ruby-Laufzeit (19x)
+
+Der gemeldete Editor-Startfehler `LoadError: cannot load such file -- json`
+entstand, weil DLLs allein keine Ruby-Standardbibliothek enthalten und der
+bisherige Fallback fest auf `C:/Ruby34-x64` zeigte. Dass die CI bisher grün
+war, belegte das Paket nicht: der Brückentest setzte dort `RUBYLIB` auf die
+Build-Installation. Auch das Spiel benutzt `json` und `fileutils`.
+
+`build.ps1` ermittelt Konfiguration und Architektur von genau dem zum Linken
+gewählten Ruby und kopiert dessen `rubylibdir` nach `build/lib/ruby/<API-Version>/`.
+Native `.so`-Erweiterungen liegen darin unter `<RUBY_PLATFORM>`; der Build kontrolliert JSON,
+Parser, Generator, `fileutils` und `encdb`. Die Konfigurationsabfrage gibt
+Pfade Base64-kodiert aus, damit auch PowerShell 5.1 Unicode erhält. Ein
+markierter Build-Ordner wird gestuft ersetzt; nicht markierte Bibliotheken
+werden verweigert. Wie beim bisherigen Build löscht `-Clean` ganz `build/`.
+Der Austausch ist nicht als atomare Transaktion bei Absturz garantiert.
+
+`vm.cpp` stellt die passende, EXE-relative Bibliothek an den Anfang des
+`$LOAD_PATH`; vorhandenes `RUBYLIB` bleibt als Zusatz erhalten. Ein teilweise
+vorhandenes Paket mit fehlenden Kernmodulen wird abgewiesen, damit keine
+fremde Ruby-Version hineingemischt wird. Ohne Paket bleibt ein explizit
+passender externer Load-Pfad als Kompatibilitätsweg möglich. Editor und
+Spiel benutzen dieselbe VM; der Editor zeigt bei Bootfehlern eine Warnung.
+Default-Gem-Spezifikationen, eigene Gems und zusätzliche DLLs für andere
+native Erweiterungen werden nicht vollständig paketiert oder garantiert.
+
+`-WarpTest` startet die echte eingebettete VM samt Editor-Boot in einer
+Unicode-Kopie, ohne Ruby im PATH und ohne `RUBYLIB`, anschließend mit fremdem
+`RUBYLIB` und mit absichtlich fehlenden JSON-Dateien. Der Test prüft Ursprung
+und Roundtrip der nativen JSON-Erweiterungen sowie `fileutils`. Zusätzlich
+startet `tools/windows_runtime_smoke.ps1` die echten Editor- und Spiel-EXEs
+aus einer isolierten Paketkopie bis zur Hauptschleife; dabei wird nur für
+die Grafik `RUNE_D3D_WARP=1` gesetzt. Die CI lädt das hochgeladene Artefakt
+erneut herunter und testet diese entpackten Dateien. Den aktuellen Lauf prüfen;
+Software-WARP ersetzt keinen interaktiven Zielrechner-/Hardware-GPU-Test.
+
 ## Hauptfenster und Karten (19w)
 
 Das separate `RuneEditor.exe` hat eine gruppierte Werkzeugleiste mit
@@ -948,9 +984,9 @@ läuft — und findet dabei einen echten Datenfehler.
 | `windows` | windows-2022 | `build.ps1 -Clean` und `-Test`, EXEs als Artefakt |
 
 Getrennt statt in einem Job, damit ein Fehlschlag sofort sagt, WELCHE Ebene
-kaputt ist. Der Windows-Job ist der einzige Ort, an dem Win32/D3D11 wirklich
-kompiliert und gelinkt wird; starten lassen sich die EXEs dort nicht (keine GPU
-im Runner), grafische Prüfung bleibt bei `tools/edclick.psm1` am echten Rechner.
+kaputt ist. Seit 19x startet der Windows-Job die echten EXEs mit WARP aus
+einer isolierten Paketkopie. Interaktive Bedienung und Hardware-GPU bleiben
+trotzdem am echten Rechner zu prüfen.
 
 ### Portabler Build
 
@@ -961,11 +997,12 @@ im Runner), grafische Prüfung bleibt bei `tools/edclick.psm1` am echten Rechner
   `RbConfig::CONFIG['prefix']`) > `C:\Ruby34-x64`/`33`/`32`.
 - **Toolchain**: `$env:RUNE_MSYS_ROOT\ucrt64` > `<Ruby>\msys64\ucrt64` >
   `C:\msys64\ucrt64` > ein `ucrt64`-g++ aus dem PATH.
-- **Header, libdir, Importbibliothek, DLL-Name** kommen aus `RbConfig`
-  (`rubyhdrdir`, `rubyarchhdrdir`, `libdir`, `LIBRUBYARG_SHARED`,
-  `RUBY_SO_NAME`), mit RubyInstaller-3.4-Fallback, falls die Abfrage leer ist.
-- Neu: `-Test` = C++-JSON-Test + Ruby-Suite + JSON-Brücke (seit 19o.5 auch
-  Event-Brücke). Fehlende Laufzeit-DLLs warnen nur noch statt den Build abzubrechen.
+- **Header, libdir, Importbibliothek, DLL-Name und Stdlib** kommen aus
+  `RbConfig`; seit 19x bricht eine unvollständige Konfiguration ab, statt
+  fremde 3.4-Pfade zu raten. Die Ruby-DLL und die Kernmodule sind Pflicht;
+  bei anderen fehlenden Laufzeit-DLLs gibt der Build eine Warnung aus.
+- `-Test` prüft C++-Logik, Windows-Dateipfade und Ruby-Suite mit JSON-/
+  Event-Brücke; `-WarpTest` testet Renderer und eingebettetes Ruby isoliert.
 
 Die Reihenfolge `-lucrtbase` VOR der Ruby-Importbibliothek bleibt unantastbar
 (siehe `fclose`-Falle im Handoff).
@@ -2678,16 +2715,12 @@ kopiert deshalb diese drei Dateien plus den Ordner
 nach build/. Fehlt der Ordner: Fehler 0xc0150002 (Ereignisprotokoll
 SideBySide, Quelle der Diagnose).
 
-**3. RUBYLIB in vm.cpp:** Die Ruby-DLL berechnet ihr lib-Präfix
-relativ zum eigenen Speicherort. Liegt sie in build/, findet sie
-stdlib und Gems ('json') nicht mehr — das Spiel startet dann ohne
-Spielskripte („LoadError: json", 0 Draws). ruby::ruby::init() setzt
-deshalb RUBYLIB auf acht Pfade unter `C:/Ruby34-x64` (site_ruby,
-vendor_ruby, 3.4.0, x64-mingw-ucrt) — nur falls RUBYLIB nicht schon
-gesetzt ist. Andere Ruby-Installationen brauchen einen passenden RUBYLIB;
-ruby_init_loadpath() nimmt die Variable in $LOAD_PATH auf. Der WARP-Test
-setzt den Load-Pfad der ausgewählten Installation und prüft daher kein
-installationsunabhängiges Deployment.
+**3. RUBYLIB (historischer Stand 18e+):** Die Ruby-DLL berechnete ihr
+lib-Präfix relativ zu `build/`; der damalige Fallback setzte `RUBYLIB` auf
+feste Pfade unter `C:/Ruby34-x64`. Das war bei anderen Installationen oder
+vorgegebenem `RUBYLIB` unzuverlässig und löste erneut `LoadError: json` aus.
+Seit 19x wird die passende Bibliothek mitgeliefert und bevorzugt; Details
+und Grenzen stehen im aktuellen Abschnitt „Mitgelieferte Ruby-Laufzeit“.
 
 **Tauefalle für manülle Link-Tests:** g++/gcc ohne den Toolchain-PATH
 schlagen mit Exit 1 und VOLLKOMMEN leerer Ausgabe fehl (cc1.exe kann

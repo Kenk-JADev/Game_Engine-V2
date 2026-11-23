@@ -185,6 +185,21 @@ jobs:
             build/*.dll
             build/RuneEditor.exe.manifest
             build/ruby_builtin_dlls/
+            build/lib/ruby/
             build/game/
             build/projekte/
           if-no-files-found: error
+
+      # Nicht nur build/, sondern das tatsächlich hochgeladene und erneut
+      # entpackte Artefakt ohne installiertes Ruby starten.
+      - name: Veröffentlichtes Artefakt erneut entpacken
+        uses: actions/download-artifact@v8
+        with:
+          name: Rune3D-Windows
+          path: ${{ runner.temp }}/rune-artifact-pruefung
+
+      - name: Isolierter Start der echten Editor- und Spiel-EXEs
+        shell: pwsh
+        run: |
+          try { .\tools\windows_runtime_smoke.ps1 -PackagePath (Join-Path $env:RUNNER_TEMP 'rune-artifact-pruefung') }
+          catch { Write-Host "::error title=Isolierter Windows-Start::$($_.Exception.Message)"; throw }

@@ -9846,8 +9846,18 @@ int main(int argc, char** argv) {
     // Texturen: einmalig per eingebettetem Ruby erzeugen (game/editor/boot.rb).
     if (!rune::ruby::init(0, nullptr, g.root)) {
         core::log_warn("Ruby nicht gestartet - Editor läuft mit untexturierten Objekten");
-    } else {
-        rune::ruby::load_script("game\\editor\\boot.rb");
+        MessageBoxW(g.main, L"Die Ruby-Laufzeit konnte nicht gestartet werden. "
+                            L"Der Editor läuft ohne Ruby-Texturen und Sounds weiter.\n\n"
+                            L"Bitte log\\editor.log prüfen und den vollständigen Build erneut "
+                            L"erstellen oder entpacken.",
+                    L"RuneEditor: Ruby-Start", MB_OK | MB_ICONWARNING);
+    } else if (!rune::ruby::load_script("game\\editor\\boot.rb")) {
+        core::log_error("Editor-Texturen und Sounds konnten nicht vollständig registriert werden");
+        MessageBoxW(g.main, L"Die Ruby-Skripte für Editor-Texturen und Sounds konnten nicht "
+                            L"vollständig geladen werden. Der Editor läuft ohne diese Inhalte weiter.\n\n"
+                            L"Bitte log\\editor.log prüfen und sicherstellen, dass die zur EXE "
+                            L"gehörige Standardbibliothek neben ihr unter lib\\ruby vorhanden ist.",
+                    L"RuneEditor: Ruby-Start", MB_OK | MB_ICONWARNING);
     }
     load_prefabs();
     renderer.set_terrain_tex(renderer.texture_index("gras"));
@@ -9898,6 +9908,7 @@ int main(int argc, char** argv) {
 
     ShowWindow(g.main, SW_SHOWDEFAULT);
     UpdateWindow(g.main);
+    core::log_info("Editor-Hauptschleife läuft");
 
     // ------------------------------------------------------ Hauptschleife
     double last = qpc_now();

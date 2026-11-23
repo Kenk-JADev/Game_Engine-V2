@@ -21,10 +21,10 @@ Ersatz für den GPU-/Bedientest.
    Projekt und den Windows-Dateistore. `-WarpTest` rendert mit WARP in einem
    unsichtbaren Fenster, liest Pixel aus dem Backbuffer und prüft zusätzlich
    die echte eingebettete Ruby-Texturbrücke mit temporären A/B-Projekten.
-   Der Brückentest verwendet den Load-Pfad der ausgewählten Ruby-Installation;
-   das ist kein Test des installationsunabhängigen Deployments. Ein Fehlschlag
-   oder nicht verfügbares WARP ist kein bestandener Test. Die EXE-Bauartefakte
-   brauchen weiterhin die im README beschriebenen Ruby-Laufzeitkomponenten.
+   Der Brückentest verwendet seit 19x eine verlegte Ruby-Laufzeitkopie ohne
+   Ruby-PATH und RUBYLIB sowie einen Durchlauf mit fremdem RUBYLIB. Ein
+   Fehlschlag oder nicht verfügbares WARP ist kein bestandener Test. Die
+   Testkopie benötigt die vollständigen im README beschriebenen Komponenten.
 2. Nur eine **neue** Kopie außerhalb des Repositorys verwenden, z. B.:
 
    ```powershell
@@ -34,7 +34,7 @@ Ersatz für den GPU-/Bedientest.
 
    Der Generator verweigert ein vorhandenes Ziel und verändert keine echten
    Projekte. Falls es existiert, einen anderen neuen Namen wählen; nicht blind
-   löschen. Er kopiert Build und `game/` und legt nur `A_material`, `B_material`
+   löschen. Er kopiert Build einschließlich `lib/ruby` und `game/` und legt nur `A_material`, `B_material`
    und `rot_blau.bmp` an. Vor dem Test ggf. die beiden `textures.json` und die
    RGBA-Dateien der Kopie separat sichern, damit jede Änderung überprüfbar ist.
 3. Bei jedem Ergebnis notieren: Datum, Commit, Windows-Version, GPU/Treiber,

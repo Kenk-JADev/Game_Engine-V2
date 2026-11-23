@@ -45,11 +45,14 @@ function Resolve-RubyRoot {
     if ($Vorgabe)             { $kandidaten += $Vorgabe }
     if ($env:RUNE_RUBY_ROOT)  { $kandidaten += $env:RUNE_RUBY_ROOT }
 
-    # ruby.exe im PATH nach seinem Installationsprefix fragen.
+    # Base64 hält auch Unicode-Pfade beim Umweg über PowerShell 5.1 intakt.
     $imPath = Get-Command ruby.exe -ErrorAction SilentlyContinue
     if ($imPath) {
-        $prefix = (& $imPath.Source -e "require 'rbconfig'; print RbConfig::CONFIG['prefix']") -join ''
-        if ($prefix) { $kandidaten += $prefix }
+        $encoded = (& $imPath.Source -e "require 'rbconfig'; print [RbConfig::CONFIG['prefix'].to_s.encode('UTF-8')].pack('m0')") -join ''
+        if ($LASTEXITCODE -eq 0 -and $encoded) {
+            try { $kandidaten += [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($encoded)) }
+            catch { Write-Warning 'Ruby-Prefix im PATH konnte nicht dekodiert werden.' }
+        }
     }
     $kandidaten += @('C:\Ruby34-x64', 'C:\Ruby33-x64', 'C:\Ruby32-x64')
 
@@ -62,40 +65,44 @@ function Resolve-RubyRoot {
           'Abhilfe: .\build.ps1 -RubyRoot <pfad> oder $env:RUNE_RUBY_ROOT setzen.'
 }
 
-# Header-/Bibliotheks-Pfade aus RbConfig lesen (mit RubyInstaller-Fallback).
+# Header, Laufzeitbibliothek und Architektur aus dem ausgewählten Ruby lesen.
 function Get-RubyInfo {
     param([string]$Root)
 
     $rubyExe = Join-Path $Root 'bin\ruby.exe'
     if (-not (Test-Path $rubyExe)) { throw "ruby.exe fehlt: $rubyExe" }
 
+    # Die gesamte Abfrage bleibt ASCII; Dateipfade werden in PowerShell erst
+    # nach der Ausgabe aus Base64 als UTF-8 zurückgewandelt.
     $abfrage = "require 'rbconfig'; c = RbConfig::CONFIG; " +
                "print [c['rubyhdrdir'], c['rubyarchhdrdir'], c['libdir'], " +
-               "c['LIBRUBYARG_SHARED'], c['RUBY_SO_NAME']].join('|')"
+               "c['LIBRUBYARG_SHARED'], c['RUBY_SO_NAME'], c['rubylibdir'], " +
+               "c['rubyarchdir'], c['ruby_version'], c['DLEXT'], RUBY_PLATFORM]" +
+               ".map { |v| [v.to_s.encode('UTF-8')].pack('m0') }.join('|')"
     $out = (& $rubyExe -e $abfrage) -join ''
-
-    if ($out -and $out.Contains('|')) {
-        $t = $out.Split('|')
-        return [pscustomobject]@{
-            Exe       = $rubyExe
-            HeaderDir = $t[0]
-            ArchDir   = $t[1]
-            LibDir    = $t[2]
-            LibArg    = $t[3]
-            SoName    = $t[4]
-        }
+    if ($LASTEXITCODE -ne 0 -or -not $out) {
+        throw 'Ruby-Konfiguration konnte nicht ermittelt werden; Ruby-Installation und RUBYOPT prüfen.'
     }
-
-    # Fallback: RubyInstaller-Standardlayout für Ruby 3.4 (ucrt).
-    Write-Warning 'RbConfig-Abfrage leer — Standardpfade (Ruby 3.4, ucrt) werden benutzt.'
-    $hdr = Join-Path $Root 'include\ruby-3.4.0'
+    try {
+        $t = @($out.Split('|') | ForEach-Object {
+            [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($_))
+        })
+    } catch { throw 'Ruby-Konfiguration ist nicht lesbar.' }
+    if ($t.Count -ne 10 -or @($t | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -gt 0) {
+        throw 'Ruby-Konfiguration ist unvollständig; es wird keine fremde Standardbibliothek geraten.'
+    }
     return [pscustomobject]@{
-        Exe       = $rubyExe
-        HeaderDir = $hdr
-        ArchDir   = (Join-Path $hdr 'x64-mingw-ucrt')
-        LibDir    = (Join-Path $Root 'lib')
-        LibArg    = '-lx64-ucrt-ruby340'
-        SoName    = 'x64-ucrt-ruby340'
+        Exe          = $rubyExe
+        HeaderDir    = $t[0]
+        ArchDir      = $t[1]
+        LibDir       = $t[2]
+        LibArg       = $t[3]
+        SoName       = $t[4]
+        StdLibDir    = $t[5]
+        StdArchDir   = $t[6]
+        StdVersion   = $t[7]
+        DlExt        = $t[8]
+        Platform     = $t[9]
     }
 }
 
@@ -127,7 +134,7 @@ $Ruby             = Get-RubyInfo -Root $RubyRootGefunden
 $Toolchain        = Resolve-Toolchain -Root $RubyRootGefunden
 $Gcc              = Join-Path $Toolchain 'bin\g++.exe'
 
-foreach ($p in @($Gcc, $Ruby.HeaderDir, $Ruby.ArchDir, $Ruby.LibDir)) {
+foreach ($p in @($Gcc, $Ruby.HeaderDir, $Ruby.ArchDir, $Ruby.LibDir, $Ruby.StdLibDir, $Ruby.StdArchDir)) {
     if (-not (Test-Path $p)) { throw "Fehlt: $p" }
 }
 
@@ -138,6 +145,95 @@ $BuildDir = Join-Path $ProjectRoot 'build'
 $ObjDir   = Join-Path $BuildDir 'obj'
 $Exe      = Join-Path $BuildDir 'Rune3D.exe'
 $EdExe    = Join-Path $BuildDir 'RuneEditor.exe'
+
+# Die Ruby-DLL liegt neben den EXEs. Ihre Standardbibliothek muss daher zu
+# dieser Kopie passen, nicht zu einem hart codierten Installationspfad.
+# Nur die Standardbibliothek wird kopiert, keine fremden site_ruby-/Gem-Daten.
+function Install-RubyRuntime {
+    if ($Ruby.StdVersion -notmatch '^\d+\.\d+\.\d+$' -or
+        $Ruby.Platform -notmatch '^[A-Za-z0-9_.-]+$' -or $Ruby.DlExt -notmatch '^[A-Za-z0-9]+$') {
+        throw 'Ruby-Version oder Plattform für das Laufzeitpaket ist ungültig.'
+    }
+    if ($Ruby.DlExt -ne 'so') { throw 'Dieses Windows-Ruby benutzt keine unterstützten .so-Erweiterungen.' }
+    $source = [IO.Path]::GetFullPath($Ruby.StdLibDir).TrimEnd([char[]]'\/')
+    $arch = [IO.Path]::GetFullPath($Ruby.StdArchDir).TrimEnd([char[]]'\/')
+    $expectedArch = [IO.Path]::GetFullPath((Join-Path $source $Ruby.Platform)).TrimEnd([char[]]'\/')
+    if (-not [string]::Equals($arch, $expectedArch, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Ruby-Architektur liegt nicht unter der Standardbibliothek: $arch"
+    }
+    $dll = Join-Path $RubyRootGefunden "bin\$($Ruby.SoName).dll"
+    if (-not (Test-Path -LiteralPath $dll -PathType Leaf)) { throw "Ruby-Laufzeit-DLL fehlt: $dll" }
+
+    $libraryRoot = Join-Path $BuildDir 'lib\ruby'
+    $destination = Join-Path $libraryRoot $Ruby.StdVersion
+    $destFull = [IO.Path]::GetFullPath($destination).TrimEnd([char[]]'\/')
+    if ($source.Equals($destFull, [StringComparison]::OrdinalIgnoreCase) -or
+        $source.StartsWith($destFull + '\', [StringComparison]::OrdinalIgnoreCase) -or
+        $destFull.StartsWith($source + '\', [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Ruby-Quelle und generierter Zielordner dürfen sich nicht überschneiden.'
+    }
+    New-Item -ItemType Directory -Force -Path $libraryRoot | Out-Null
+    $stage = Join-Path $libraryRoot ('.rune-stage-' + [guid]::NewGuid().ToString('N'))
+    $stagedVersion = Join-Path $stage $Ruby.StdVersion
+    $markerName = '.rune-managed-runtime'
+    New-Item -ItemType Directory -Path $stage | Out-Null
+    try {
+        Copy-Item -LiteralPath $source -Destination $stagedVersion -Recurse -Force
+        $checks = @(
+            (Join-Path $stagedVersion 'json.rb'),
+            (Join-Path $stagedVersion 'fileutils.rb'),
+            (Join-Path $stagedVersion "$($Ruby.Platform)\json\ext\parser.$($Ruby.DlExt)"),
+            (Join-Path $stagedVersion "$($Ruby.Platform)\json\ext\generator.$($Ruby.DlExt)"),
+            (Join-Path $stagedVersion "$($Ruby.Platform)\enc\encdb.$($Ruby.DlExt)")
+        )
+        foreach ($item in $checks) {
+            if (-not (Test-Path -LiteralPath $item -PathType Leaf)) {
+                throw "Ruby-Standardbibliothek unvollständig: $item"
+            }
+        }
+        Set-Content -LiteralPath (Join-Path $stagedVersion $markerName) -Value 'Von build.ps1 erzeugt.' -Encoding Ascii
+        $backup = $null
+        if (Test-Path -LiteralPath $destination) {
+            if (-not (Test-Path -LiteralPath (Join-Path $destination $markerName) -PathType Leaf)) {
+                throw "Vorhandene Ruby-Bibliothek ist nicht als generiert markiert; nichts überschrieben: $destination"
+            }
+            $backup = Join-Path $libraryRoot ('.rune-old-' + [guid]::NewGuid().ToString('N'))
+            Move-Item -LiteralPath $destination -Destination $backup
+        }
+        try {
+            Move-Item -LiteralPath $stagedVersion -Destination $destination
+        } catch {
+            if ($backup -and -not (Test-Path -LiteralPath $destination)) {
+                try { Move-Item -LiteralPath $backup -Destination $destination }
+                catch { Write-Warning "Vorige Ruby-Bibliothek bleibt zur Wiederherstellung unter $backup" }
+            }
+            throw
+        }
+        if ($backup) {
+            try { Remove-Item -LiteralPath $backup -Recurse -Force }
+            catch { Write-Warning "Vorige Ruby-Bibliothek bleibt unter $backup" }
+        }
+    } finally {
+        if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
+    }
+
+    $laufzeitDlls = @($dll, (Join-Path $Toolchain 'bin\libgmp-10.dll'),
+                           (Join-Path $Toolchain 'bin\libwinpthread-1.dll'))
+    foreach ($item in $laufzeitDlls) {
+        if (-not (Test-Path -LiteralPath $item -PathType Leaf)) {
+            Write-Warning "Laufzeit-DLL fehlt: $item (Doppelklick-Start könnte scheitern)"
+            continue
+        }
+        Copy-Item -LiteralPath $item -Destination $BuildDir -Force
+    }
+    $builtin = Join-Path $RubyRootGefunden 'bin\ruby_builtin_dlls'
+    if (Test-Path -LiteralPath $builtin -PathType Container) {
+        $dst = Join-Path $BuildDir 'ruby_builtin_dlls'
+        if (Test-Path -LiteralPath $dst) { Remove-Item -LiteralPath $dst -Recurse -Force }
+        Copy-Item -LiteralPath $builtin -Destination $dst -Recurse -Force
+    }
+    Write-Host "Ruby-Standardbibliothek und Laufzeit-DLLs: build\lib\ruby\$($Ruby.StdVersion)" -ForegroundColor DarkGray
+}
 
 Write-Step "Ruby:      $RubyRootGefunden  ($($Ruby.SoName))"
 Write-Step "Toolchain: $Toolchain"
@@ -186,22 +282,78 @@ if ($WarpTest) {
         '-ld3d11', '-ldxgi', '-ld3dcompiler', '-ldxguid', '-luuid',
         '-lole32', '-loleaut32', '-luxtheme', '-lcomctl32', '-luser32', '-lgdi32',
         '-ladvapi32', '-lshell32', '-lshlwapi', '-lwinmm', '-lws2_32',
-        '-liphlpapi', '-lwindowscodecs', '-lcomdlg32'
+        '-liphlpapi', '-lwindowscodecs', '-lcomdlg32',
+        '-static-libgcc', '-static-libstdc++',
+        '-Wl,-Bstatic,--whole-archive', '-lwinpthread', '-Wl,--no-whole-archive,-Bdynamic'
     )
     & $Gcc @EmbeddedFlags
     if ($LASTEXITCODE -ne 0) { throw 'embedded_texture_test.exe konnte nicht gebaut werden' }
-    # Die kopierte Ruby-DLL berechnet ihr Präfix relativ zur Test-EXE. Für
-    # diesen Test die Stdlib der tatsächlich ausgewählten Ruby-Installation
-    # verwenden; die Umgebung danach wiederherstellen.
-    $AltRubyLib = $env:RUBYLIB
+    Install-RubyRuntime
+
+    # Ein umgezogenes Paket mit Unicode-Pfad simuliert den Doppelklick auf
+    # einem Rechner ohne Ruby-PATH. Es enthält nur die gebaute Laufzeit und
+    # startet zunächst ohne RUBYLIB, danach mit einem fremden RUBYLIB.
+    $temp = Join-Path ([IO.Path]::GetTempPath()) ('Rune-Ruby-ä-日-🚀-' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $temp | Out-Null
+    $names = @('PATH', 'RUBYLIB', 'RUBYOPT', 'RUBY_HOME', 'GEM_HOME', 'GEM_PATH',
+               'BUNDLE_GEMFILE', 'RUNE_TEST_RUBYLIB')
+    $saved = @{}
+    foreach ($name in $names) { $saved[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
+    $pushed = $false
     try {
-        $env:RUBYLIB = ((& $Ruby.Exe -e 'print $LOAD_PATH.join(File::PATH_SEPARATOR)') -join '')
-        if ($LASTEXITCODE -ne 0 -or -not $env:RUBYLIB) { throw 'Ruby-Load-Pfad nicht ermittelbar' }
-        & $EmbeddedExe $ProjectRoot
-        if ($LASTEXITCODE -ne 0) { throw 'Eingebettete Ruby-Texturbrücke fehlgeschlagen' }
+        $copy = Join-Path $temp 'build'
+        New-Item -ItemType Directory -Path $copy | Out-Null
+        Copy-Item -LiteralPath $EmbeddedExe -Destination $copy
+        Get-ChildItem -LiteralPath $BuildDir -Filter '*.dll' -File | ForEach-Object {
+            Copy-Item -LiteralPath $_.FullName -Destination $copy
+        }
+        $builtin = Join-Path $BuildDir 'ruby_builtin_dlls'
+        if (Test-Path -LiteralPath $builtin -PathType Container) {
+            Copy-Item -LiteralPath $builtin -Destination $copy -Recurse
+        }
+        $copyRuby = Join-Path $copy 'lib\ruby'
+        New-Item -ItemType Directory -Path $copyRuby -Force | Out-Null
+        Copy-Item -LiteralPath (Join-Path $BuildDir "lib\ruby\$($Ruby.StdVersion)") -Destination $copyRuby -Recurse
+        foreach ($name in $names) { [Environment]::SetEnvironmentVariable($name, $null, 'Process') }
+        $system = [Environment]::GetFolderPath('System')
+        if (-not $system) { throw 'Windows-Systemverzeichnis für isolierten Test fehlt.' }
+        $env:PATH = "$system;$env:SystemRoot"
+        Push-Location $temp
+        $pushed = $true
+        $copyExe = Join-Path $copy 'embedded_texture_test.exe'
+        Write-Step 'Prüfe kopierte Ruby-Laufzeit ohne Ruby-PATH und RUBYLIB ...'
+        & $copyExe $ProjectRoot
+        if ($LASTEXITCODE -ne 0) { throw 'Isolierte Ruby-Texturbrücke fehlgeschlagen' }
+
+        $foreign = Join-Path $temp 'fremdes-rubylib'
+        New-Item -ItemType Directory -Path $foreign | Out-Null
+        Set-Content -LiteralPath (Join-Path $foreign 'json.rb') -Encoding Ascii -Value "raise 'falsches RUBYLIB verwendet'"
+        $env:RUBYLIB = $foreign
+        $env:RUNE_TEST_RUBYLIB = $foreign
+        Write-Step 'Prüfe Vorrang der mitgelieferten Bibliothek vor fremdem RUBYLIB ...'
+        & $copyExe $ProjectRoot --expect-foreign
+        if ($LASTEXITCODE -ne 0) { throw 'Isolierte Ruby-Brücke mit fremdem RUBYLIB fehlgeschlagen' }
+
+        # Fehlende Ruby- bzw. native Dateien dürfen nicht aus einem fremden
+        # RUBYLIB ergänzt werden: nur diese Testkopie jeweils kurz verändern.
+        $versionDir = Join-Path $copyRuby $Ruby.StdVersion
+        $missingFiles = @((Join-Path $versionDir 'json.rb'),
+                          (Join-Path $versionDir "$($Ruby.Platform)\json\ext\parser.$($Ruby.DlExt)"))
+        foreach ($missing in $missingFiles) {
+            $parked = $missing + '.rune-test'
+            Move-Item -LiteralPath $missing -Destination $parked
+            try {
+                Write-Step "Prüfe Ablehnung bei fehlender Datei $(Split-Path $missing -Leaf) ..."
+                & $copyExe $ProjectRoot --expect-incomplete
+                if ($LASTEXITCODE -ne 0) { throw 'Unvollständiges Ruby-Paket wurde nicht sicher abgelehnt' }
+            } finally {
+                Move-Item -LiteralPath $parked -Destination $missing
+            }
+        }
     } finally {
-        if ($null -eq $AltRubyLib) { Remove-Item Env:RUBYLIB -ErrorAction SilentlyContinue }
-        else { $env:RUBYLIB = $AltRubyLib }
+        if ($pushed) { Pop-Location }
+        foreach ($name in $names) { [Environment]::SetEnvironmentVariable($name, $saved[$name], 'Process') }
+        if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp -Recurse -Force }
     }
     if (-not $Test) { return }
 }
@@ -405,32 +557,8 @@ Build-Target 'editor' $EditorExcludes $EdExe
 # Manifest für moderne Windows-Steuerelemente neben den Editor legen.
 Copy-Item (Join-Path $ProjectRoot 'src\editor\RuneEditor.exe.manifest') $BuildDir -Force
 
-# Laufzeit-DLLs neben die EXEs kopieren (XCopy-Deployment): Die Ruby-DLL
-# importiert libgmp-10.dll und libwinpthread-1.dll und fordert per Manifest
-# die private SxS-Assembly "ruby_builtin_dlls" an (RubyInstaller-Standards).
-# Ohne diesen Ordner startet nichts per Doppelklick (0xc0150002 bzw.
-# "libwinpthread-1.dll nicht gefunden"); im Shell-Test lief es nur, weil der
-# Ruby-PATH die DLLs verbirgt.
-$laufzeitDlls = @(
-    (Join-Path $RubyRootGefunden "bin\$($Ruby.SoName).dll"),
-    (Join-Path $Toolchain 'bin\libgmp-10.dll'),
-    (Join-Path $Toolchain 'bin\libwinpthread-1.dll')
-)
-foreach ($dll in $laufzeitDlls) {
-    if (-not (Test-Path $dll)) {
-        Write-Warning "Laufzeit-DLL fehlt: $dll (Doppelklick-Start könnte scheitern)"
-        continue
-    }
-    Copy-Item $dll $BuildDir -Force
-    Write-Host "kopiere $(Split-Path $dll -Leaf) nach build/" -ForegroundColor DarkGray
-}
-$builtin = Join-Path $RubyRootGefunden 'bin\ruby_builtin_dlls'
-if (Test-Path $builtin) {
-    $dst = Join-Path $BuildDir 'ruby_builtin_dlls'
-    if (Test-Path $dst) { Remove-Item $dst -Recurse -Force }   # idempotent: kein Schachteln
-    Copy-Item $builtin $dst -Recurse -Force
-    Write-Host 'kopiere ruby_builtin_dlls\ nach build/' -ForegroundColor DarkGray
-}
+# Ruby-DLLs und die passende Standardbibliothek neben den EXEs bereitstellen.
+Install-RubyRuntime
 
 if ($Run) {
     Write-Host '  starte Rune3D ...' -ForegroundColor DarkGray

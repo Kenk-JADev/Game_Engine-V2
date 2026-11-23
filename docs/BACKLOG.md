@@ -21,6 +21,18 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 ---
 
 ## Offen
+### [Tests/Ruby/Engine] Ruby-Start auf dem Zielrechner bestätigen — offen (Live)
+- Symptom: Der User sah beim Editorstart `LoadError: cannot load such file -- json`.
+  19x paketiert die zugehörige Stdlib und prüft den Start automatisiert mit
+  WARP. Die Installation und Hardware des Users sind damit nicht geprüft.
+- Eine neue vollständige Paketkopie bzw. einen aktuellen Build verwenden,
+  eigene Projekte erhalten, Editortexturen und einen Spielstart interaktiv
+  prüfen und Logs/Ergebnis gemäß `docs/WINDOWS_RUBY_LIVE_TEST.md` festhalten.
+  Zusätzliche Gems/optionale native DLL-Abhängigkeiten sind nicht abgedeckt.
+- Betroffene Stellen: `build.ps1`, `src/ruby/vm.cpp`,
+  `tools/windows_runtime_smoke.ps1`, `tools/embedded_texture_test.cpp`.
+- Gefunden in: User-Fehlermeldung nach 19w (2026-11-19).
+
 ### [Tests/Editor] Hauptfenster und Karten auf Windows interaktiv prüfen — offen (Live)
 - Symptom/Status: Die 19w-Oberfläche mit Palette über Kartenbaum, Splitter,
   scrollbarem Inspektor, Toolbar und gezielten Kartenaktionen ist implementiert,
@@ -103,9 +115,9 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Windows-2022-CI für Commit `776044d`, Lauf 45162482261: Der D3D11-WARP-
   Test rendert Pixel und Atlas-Terrain (34/0); ein zweiter Test verwendet
   eingebettetes Ruby, echte Projektdateien, A→B→A und WARP-Pixel (19/0).
-  Beide nutzen Software-Rendering; `-WarpTest` setzt für den Brückentest den
-  Load-Pfad der gewählten Ruby-Installation. Hardware-GPU, Bedienung und die
-  vollständigen Editor-/Spielabläufe müssen am Zielrechner geprüft werden.
+  Beide nutzten damals Software-Rendering und den Load-Pfad der gewählten
+  Ruby-Installation. Seit 19x prüft `-WarpTest` eine isolierte Ruby-Kopie;
+  Hardware-GPU, Bedienung und vollständige Abläufe bleiben am Zielrechner offen.
 - Betroffene Stellen: `src/gfx/renderer.*`, `game/engine/textures.rb`,
   `tools/renderer_warp_test.cpp`, `tools/embedded_texture_test.cpp`,
   `docs/WINDOWS_MATERIAL_LIVE_TEST.md`.
@@ -327,6 +339,17 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Etappe 19a.
 
 ## Erledigt
+### [Ruby/Editor/Engine] Fehlende JSON-Standardbibliothek — implementiert (19x)
+- Symptom: `game/editor/boot.rb` → `textures.rb` meldete `LoadError: json`.
+- Ursache: DLLs wurden kopiert, die Ruby-Standardbibliothek nicht; feste
+  `C:/Ruby34-x64`-Pfade und ein CI-`RUBYLIB` verdeckten die Lücke.
+- `build.ps1` liefert die passende Bibliothek inkl. nativer JSON-Module aus;
+  die VM bevorzugt diese und weist unvollständige Pakete zurück. Ein Dialog
+  macht Fehler beim Editor-Boot sichtbar. Tests und Artefakt wurden ergänzt;
+  aktuellen Windows-CI-Lauf prüfen. Zielrechner-Live-Test bleibt oben offen.
+- Betroffene Stellen: `build.ps1`, `src/ruby/vm.cpp`,
+  `src/editor/editor_main.cpp`, `.github/workflows/ci.yml`, `tools/`.
+
 ### [Editor] XP-orientiertes Hauptfenster und Karten — implementiert (19w)
 - Palette über Kartenbaum, verstellbare Trennleiste, skalierte Toolbar,
   scrollbare Seitenleisten und zentrale 3D-Ansicht; bestehende Kartenaktionen
@@ -888,7 +911,7 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Behoben in: Etappe 18a.
 
 ### [Engine] Editor startete ohne Ruby-PATH nicht (0xc0150002 / LoadError json) — erledigt (18e+)
-- Ursache: fehlende DLLs + RUBYLIB; build.ps1 kopiert jetzt Ruby-DLLs + `ruby_builtin_dlls\`, winpthread statisch, `vm.cpp` setzt RUBYLIB.
+- Historisch 18e+: DLLs und `ruby_builtin_dlls\` wurden kopiert, winpthread statisch gelinkt und `RUBYLIB` fest gesetzt. Die verbleibende Stdlib-Lücke wurde in 19x gesondert bearbeitet.
 - Behoben in: Etappe 18e+.
 
 ### [Engine] Splat-UVs schlug fehl, weil JSON.parse String-Schlüssel liefert — erledigt (18d)

@@ -1023,6 +1023,56 @@ void register_bindings() {
     rb_define_module_function(mPhys, "solid_at?", RUBY_METHOD_FUNC(rune_physics_solid_at), 3);
 }
 
+enum class RubyBundle { Missing, Incomplete, Ready };
+
+// Die mit der EXE ausgelieferte Standardbibliothek gehört zur verlinkten
+// Ruby-DLL. Sie muss auch dann Vorrang haben, wenn ein fremdes RUBYLIB auf
+// eine andere Ruby-Version zeigt. Andere zusätzliche Load-Pfade bleiben
+// erhalten; es wird keine Umgebungsvariable verändert.
+RubyBundle prefer_bundled_ruby_library() {
+    std::wstring exe, version, platform;
+    const std::string api = std::to_string(RUBY_API_VERSION_MAJOR) + "." +
+                            std::to_string(RUBY_API_VERSION_MINOR) + "." +
+                            std::to_string(RUBY_API_VERSION_TEENY);
+    if (!core::win_path::executable_directory(exe) ||
+        !core::win_path::to_wide(api, version) ||
+        !core::win_path::to_wide(ruby_platform, platform)) return RubyBundle::Incomplete;
+    const std::wstring library = exe + L"\\lib\\ruby\\" + version;
+    const std::wstring native = library + L"\\" + platform;
+    const DWORD attrs = GetFileAttributesW(library.c_str());
+    if (attrs == INVALID_FILE_ATTRIBUTES) {
+        const DWORD error = GetLastError();
+        return error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND ?
+            RubyBundle::Missing : RubyBundle::Incomplete;
+    }
+    if ((attrs & FILE_ATTRIBUTE_DIRECTORY) == 0 || !core::win_path::directory_exists(native))
+        return RubyBundle::Incomplete;
+    // Ein halb kopiertes Paket darf nicht unbemerkt mit einer fremden Ruby-
+    // Installation vermischt werden. Windows-Ruby benutzt .so-Erweiterungen.
+    for (const auto& file : {library + L"\\json.rb", library + L"\\fileutils.rb",
+                             native + L"\\json\\ext\\parser.so", native + L"\\json\\ext\\generator.so",
+                             native + L"\\enc\\encdb.so"}) {
+        const DWORD file_attrs = GetFileAttributesW(file.c_str());
+        if (file_attrs == INVALID_FILE_ATTRIBUTES || (file_attrs & FILE_ATTRIBUTE_DIRECTORY) != 0) {
+            std::string name;
+            if (core::win_path::to_utf8(file, name)) core::log_error("Ruby-Laufzeitdatei fehlt: " + name);
+            return RubyBundle::Incomplete;
+        }
+    }
+
+    std::string library_utf8, native_utf8;
+    if (!core::win_path::to_utf8(library, library_utf8) ||
+        !core::win_path::to_utf8(native, native_utf8)) return RubyBundle::Incomplete;
+    std::replace(library_utf8.begin(), library_utf8.end(), '\\', '/');
+    std::replace(native_utf8.begin(), native_utf8.end(), '\\', '/');
+    const VALUE paths = rb_gv_get("$LOAD_PATH");
+    if (!RB_TYPE_P(paths, T_ARRAY)) return RubyBundle::Incomplete;
+    rb_ary_unshift(paths, rb_utf8_str_new(library_utf8.data(), static_cast<long>(library_utf8.size())));
+    rb_ary_unshift(paths, rb_utf8_str_new(native_utf8.data(), static_cast<long>(native_utf8.size())));
+    core::log_info("Ruby-VM: mitgelieferte Standardbibliothek " + library_utf8);
+    return RubyBundle::Ready;
+}
+
 struct TickArgs {
     VALUE receiver;
     VALUE dt;
@@ -1046,34 +1096,6 @@ bool init(int argc, char** argv, const std::string& root) {
     }
     app().root = root;
 
-    // XCopy-Deployment: Liegt die Ruby-DLL neben der EXE (build/), berechnet
-    // sie ihr lib-Präfix relativ zu ihrem eigenen Speicherort und findet die
-    // stdlib ('json', Gems) der Ruby-Installation nicht mehr. RUBYLIB zeigt
-    // den Load-Pfad zurück dorthin; ruby_init_loadpath() liest die Variable.
-    // Nur setzen, wenn nicht schon vom Nutzer belegt.
-    {
-        size_t len = 0;
-        getenv_s(&len, nullptr, 0, "RUBYLIB");
-        if (len == 0) {
-            const char* dirs[] = {
-                "C:/Ruby34-x64/lib/ruby/site_ruby/3.4.0",
-                "C:/Ruby34-x64/lib/ruby/site_ruby/3.4.0/x64-ucrt",
-                "C:/Ruby34-x64/lib/ruby/site_ruby",
-                "C:/Ruby34-x64/lib/ruby/vendor_ruby/3.4.0",
-                "C:/Ruby34-x64/lib/ruby/vendor_ruby/3.4.0/x64-ucrt",
-                "C:/Ruby34-x64/lib/ruby/vendor_ruby",
-                "C:/Ruby34-x64/lib/ruby/3.4.0",
-                "C:/Ruby34-x64/lib/ruby/3.4.0/x64-mingw-ucrt",
-            };
-            std::string val;
-            for (const char* d : dirs) {
-                if (!val.empty()) val += ';';
-                val += d;
-            }
-            _putenv_s("RUBYLIB", val.c_str());
-        }
-    }
-
     ruby_sysinit(&argc, &argv);
 
     {
@@ -1093,6 +1115,18 @@ bool init(int argc, char** argv, const std::string& root) {
     }
 
     ruby_init_loadpath();
+    const RubyBundle bundle = prefer_bundled_ruby_library();
+    if (bundle == RubyBundle::Incomplete) {
+        core::log_error("Ruby-VM: Mitgelieferte Standardbibliothek ist unvollständig; "
+                        "bitte den vollständigen Build erneut erstellen oder entpacken.");
+        ruby_finalize();
+        return false;
+    }
+    if (bundle == RubyBundle::Missing) {
+        core::log_warn("Ruby-VM: Mitgelieferte Standardbibliothek fehlt. "
+                       "Bitte build.ps1 erneut ausführen und lib/ruby neben die EXE kopieren; "
+                       "alternativ ein passendes RUBYLIB setzen.");
+    }
     ruby_script("rune3d");
 
     // WICHTIG: ruby_init() allein führt die eingebauten Ruby-Skripte nicht aus.
