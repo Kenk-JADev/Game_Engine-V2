@@ -457,6 +457,20 @@ if ($Test) {
     & $PathTestExe
     if ($LASTEXITCODE -ne 0) { throw 'Windows-Pfadtest fehlgeschlagen' }
 
+    # Der ausführbare UI-Smoke benutzt später die isolierte Artefaktkopie,
+    # nicht den Quell-Projektordner. Er wird im Smoke-Skript gestartet.
+    Write-Step 'Windows-Editor-UI-Smoke vorbereiten ...'
+    $UiSmokeExe = Join-Path $BuildDir 'editor_ui_smoke.exe'
+    $UiSmokeFlags = @(
+        '-std=c++20', '-O1', '-Wall', '-Wextra', '-Werror', '-Wno-unused-parameter',
+        '-DUNICODE', '-D_UNICODE', '-DNOMINMAX', '-DWIN32_LEAN_AND_MEAN',
+        "-I$ProjectRoot\src", "$ProjectRoot\src\editor\json.cpp",
+        "$ProjectRoot\tools\editor_ui_smoke.cpp", '-o', $UiSmokeExe,
+        '-static', '-lshell32', '-luser32'
+    )
+    & $Gcc @UiSmokeFlags
+    if ($LASTEXITCODE -ne 0) { throw 'editor_ui_smoke.exe konnte nicht gebaut werden' }
+
     Write-Step 'Ruby-Testsuite (tools/test_all.rb) ...'
     $SuiteArgs = @((Join-Path $ProjectRoot 'tools\test_all.rb'))
     if ($Clean -or (Test-Path $EdExe)) { $SuiteArgs += '--strict' }   # mit EXE muss auch tex_import laufen

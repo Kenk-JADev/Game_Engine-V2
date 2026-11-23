@@ -199,13 +199,29 @@ jobs:
       # Nicht nur build/, sondern das tatsächlich hochgeladene und erneut
       # entpackte Artefakt ohne installiertes Ruby starten.
       - name: Veröffentlichtes Artefakt erneut entpacken
+        id: artifact_download
+        continue-on-error: true
         uses: actions/download-artifact@v8
         with:
           name: Rune3D-Windows
           path: ${{ runner.temp }}/rune-artifact-pruefung
 
-      - name: Isolierter Start der echten Editor- und Spiel-EXEs
+      # Direkt nach dem Upload kann die Artifact-API die ID kurzzeitig noch
+      # nicht ausliefern. Ein zweiter Versuch bleibt ein echter Downloadtest.
+      - name: Artefakt-Bereitstellung abwarten
+        if: steps.artifact_download.outcome == 'failure'
+        shell: pwsh
+        run: Start-Sleep -Seconds 15
+
+      - name: Artefakt-Download erneut versuchen
+        if: steps.artifact_download.outcome == 'failure'
+        uses: actions/download-artifact@v8
+        with:
+          name: Rune3D-Windows
+          path: ${{ runner.temp }}/rune-artifact-pruefung
+
+      - name: Isolierter Start und Windows-Editor-UI-Smoke
         shell: pwsh
         run: |
-          try { .\tools\windows_runtime_smoke.ps1 -PackagePath (Join-Path $env:RUNNER_TEMP 'rune-artifact-pruefung') }
+          try { .\tools\windows_runtime_smoke.ps1 -PackagePath (Join-Path $env:RUNNER_TEMP 'rune-artifact-pruefung') -RequireUiTest }
           catch { Write-Host "::error title=Isolierter Windows-Start::$($_.Exception.Message)"; throw }

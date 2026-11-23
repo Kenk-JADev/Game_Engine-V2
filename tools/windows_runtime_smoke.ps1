@@ -11,7 +11,7 @@
     .\tools\windows_runtime_smoke.ps1 -PackagePath D:\RunePaket
 #>
 [CmdletBinding()]
-param([string]$PackagePath, [switch]$RequirePackage)
+param([string]$PackagePath, [switch]$RequirePackage, [switch]$RequireUiTest)
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -144,6 +144,19 @@ try {
         ($common + @('Editor-Texturen und Sounds registriert', 'Editor-Hauptschleife läuft')) $startordner
     Test-ProgrammStart (Join-Path $copy 'Rune3D.exe') (Join-Path $copy 'log\engine.log') `
         ($common + @('Bootstrap fertig, lade game/main.rb', 'Hauptschleife läuft')) $startordner
+
+    # Der Test erzeugt sein eigenes neues Projekt in der temporären Kopie und
+    # bedient die echte EXE über synthetische Win32-Nachrichten. Kein Ersatz
+    # für interaktive DPI-, Hardware-GPU- und Maus-/Tastaturprüfungen.
+    $uiTest = Join-Path $root 'build\editor_ui_smoke.exe'
+    if (Test-Path -LiteralPath $uiTest -PathType Leaf) {
+        & $uiTest $copy
+        if ($LASTEXITCODE -ne 0) { throw 'Windows-Editor-UI-Smoke fehlgeschlagen' }
+    } elseif ($RequireUiTest) {
+        throw 'editor_ui_smoke.exe fehlt: zuerst .\build.ps1 -Test ausführen.'
+    } else {
+        Write-Warning 'UI-Smoke übersprungen: .\build.ps1 -Test baut den Test.'
+    }
     Write-Host 'ISOLIERTER WINDOWS-STARTTEST OK (Editor und Spiel)' -ForegroundColor Green
 } finally {
     foreach ($name in $names) { [Environment]::SetEnvironmentVariable($name, $saved[$name], 'Process') }
