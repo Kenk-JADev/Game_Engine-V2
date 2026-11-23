@@ -9,8 +9,8 @@
 #  Alpha), der Renderer braucht dafür keine Änderung.
 #
 #  Event-Befehl: {"cmd":"fade","direction":"aus","seconds":0.5}
-#  Kartenwechsel/Playtest-Ende setzen die Blende zurück (Fade.reset!), damit
-#  man nie mit schwarzem Bildschirm in einer Karte landet.
+#  Ein Kartenwechsel setzt die Blende zurück (Fade.reset!), damit man nie
+#  mit schwarzem Bildschirm in einer Karte landet.
 #
 #  Kopflos testbar: ruby -I game/engine tools/fade_test.rb
 # ============================================================================
@@ -76,7 +76,7 @@ module Fade
     @rate  = 0.0
   end
 
-  # Sofort auf "hell" zurücksetzen (Kartenwechsel, Playtest-Ende).
+  # Sofort auf "hell" zurücksetzen (Kartenwechsel).
   def self.reset!
     @alpha = 0.0
     @ziel  = 0.0

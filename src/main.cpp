@@ -229,8 +229,8 @@ int main(int argc, char** argv) {
         if (window.consume_resize()) renderer.resize(window.width(), window.height());
 
         // Erst Physik (Spieler bewegen), dann Kamera daran ausrichten.
-        // Im Editor-Modus (sim_paused) steht die Simulation komplett still —
-        // nichts kann kaputtgehen, während man editiert (Etappe 16b).
+        // Bei sim_paused, etwa während eines Kampfes, steht die Physik still;
+        // Kamera und Ruby-Oberfläche laufen weiter.
         if (!app.sim_paused) {
             physics.update(dt, in, camera.yaw, terrain);
         }

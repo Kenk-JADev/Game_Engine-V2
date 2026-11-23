@@ -560,9 +560,8 @@ module RGSS
   end
   private_class_method :liste_als_hash
 
-  # Alle $game_*-Globalen (neu) besetzen. Läuft aus Game.setup (Start, F5,
-  # Playtest) - die Wrapper delegieren live, ein Neuaufbau der Karte
-  # (enter_map) braucht also kein erneutes setup.
+  # Alle $game_*-Globalen bei Game.setup (Start/F5) neu besetzen. Die
+  # Wrapper delegieren live; enter_map braucht kein erneutes setup.
   def self.setup
     $game_temp          = GameTemp.new
     $game_system        = GameSystem.new
@@ -578,7 +577,7 @@ module RGSS
     Rune::Log.info("RGSS-Schicht bereit (#{VERSION})")
   end
 
-  # Flüchtige RGSS-Dinge verwerfen (Kartenwechsel, F5, Playtest-Ende):
+  # Flüchtige RGSS-Dinge verwerfen (Kartenwechsel, F5):
   # Sprites/Fenster/$scene und $game_temp sind nicht speicherbar.
   def self.reset!
     Graphics.scene_reset! if defined?(Graphics) && Graphics.respond_to?(:scene_reset!)

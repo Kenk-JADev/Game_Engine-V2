@@ -59,7 +59,8 @@ module Launcher
     Rune::Gfx.sky(0x3D6FB5, 0xBFD8EC)
     Rune::Gfx.sun(-0.55, 0.75, 0.25, 0.35)
     @scene = Scene.new(map['name'] || 'Dorf')
-    Editor.rebuild(map['objects'] || [], @scene)
+    @map_objects = MapObjects.new(@scene, height_at: Game.method(:gy))
+    @map_objects.rebuild(map['objects'] || [])
     Rune::Camera.mode = :third
     Rune::Camera.distance = 28
   end

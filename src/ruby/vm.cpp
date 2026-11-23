@@ -579,7 +579,7 @@ VALUE rune_input_captured(VALUE) {
     return (app().window && app().window->input().mouse_captured) ? Qtrue : Qfalse;
 }
 
-// Mausfang durch Ruby steuern (Editor schaltet ihn selbst um).
+// Mausfang durch Ruby steuern (z. B. für Launcher und Spielmenü).
 VALUE rune_input_captured_set(VALUE, VALUE v) {
     if (app().window) app().window->set_mouse_capture(RTEST(v));
     return v;
@@ -628,8 +628,8 @@ VALUE rune_app_quit(VALUE) {
 VALUE rune_time_fps(VALUE) { return DBL2NUM(app().fps); }
 VALUE rune_time_dt(VALUE) { return DBL2NUM(app().dt); }
 
-// Simulations-Pause (Etappe 16b): im Editor steht alles — Physik, Schwerkraft,
-// Spielerbewegung. Die Kamera und die UI laufen weiter.
+// Simulations-Pause: Physik, Schwerkraft und Spielerbewegung anhalten;
+// Kamera und UI laufen weiter. Die Spiellogik nutzt dies z. B. im Kampf.
 VALUE rune_sim_paused_set(VALUE, VALUE v) {
     app().sim_paused = RTEST(v) ? true : false;
     return v;
@@ -981,7 +981,7 @@ void register_bindings() {
     rb_define_module_function(mTime, "fps", RUBY_METHOD_FUNC(rune_time_fps), 0);
     rb_define_module_function(mTime, "dt", RUBY_METHOD_FUNC(rune_time_dt), 0);
 
-    // Simulations-Schalter (Etappe 16b): true = Physik eingefroren (Editor).
+    // Simulations-Schalter: true = Physik eingefroren.
     VALUE mSim = rb_define_module_under(mRune, "Simulation");
     rb_define_module_function(mSim, "paused=", RUBY_METHOD_FUNC(rune_sim_paused_set), 1);
     rb_define_module_function(mSim, "paused?", RUBY_METHOD_FUNC(rune_sim_paused), 0);

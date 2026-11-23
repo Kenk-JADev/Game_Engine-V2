@@ -1,6 +1,6 @@
 #encoding: utf-8
-# Einfache 2D-Oberflaeche: Panels, Texte, Nachrichtenfenster — plus ein
-# kleines Button-Framework für den Editor (Etappe 16a).
+# Einfache 2D-Oberfläche: Panels, Texte, Nachrichtenfenster und ein kleines
+# Button-Framework, das auch eigene Ruby-Skripte verwenden können.
 #
 # Klick-Erkennung: Jede gezeichnete Fläche registriert sich für den
 # NÄCHSTEN Frame (draw läuft nach update). UI.clicked prüft den Klick

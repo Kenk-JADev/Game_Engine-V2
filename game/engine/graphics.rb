@@ -46,7 +46,7 @@ module RGSSGfx
     nil
   end
 
-  # Alles verwerfen (Kartenwechsel, F5, Playtest-Ende).
+  # Alles verwerfen (Kartenwechsel, F5).
   def self.reset!
     @objects = []
     nil
@@ -381,7 +381,7 @@ module Graphics
     RGSSGfx.sorted.each(&:draw)
   end
 
-  # Kartenwechsel/F5/Playtest-Ende: Objekte und Szene verwerfen.
+  # Kartenwechsel/F5: Objekte und Szene verwerfen.
   def self.scene_reset!
     RGSSGfx.reset!
     $scene = nil

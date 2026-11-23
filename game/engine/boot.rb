@@ -42,7 +42,7 @@ require 'rgss'       # Etappe 19e: RPG-Maker-XP-Schicht ($game_*, Graphics, ...)
 require 'graphics'   # Etappe 19h: Sprite/Window/Viewport/$scene (RGSS-Vertiefung)
 require 'pick'
 require 'prefabs'
-require 'editor'
+require 'map_objects'
 require 'textures'
 require 'sounds'
 require 'project'

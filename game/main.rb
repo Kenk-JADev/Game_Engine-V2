@@ -42,8 +42,8 @@ end
     @npcs || []
   end
 
-  # Der Ingame-Höhenpinsel baut das Terrain neu. Statische Schilder und
-  # stehende NPCs müssen danach ebenfalls der neuen Bodenhöhe folgen.
+  # Nach einem Terrain-Neubau durch ein Spielscript können statische
+  # Schilder und NPCs der neuen Bodenhöhe folgen.
   def self.refresh_placement_visuals(scene = @scene)
     return unless scene && scene.respond_to?(:root)
 
@@ -65,8 +65,6 @@ end
     @time || 0.0
   end
 
-  # Karte laden: ID, Events, Objekte, Editor - und Spieler an den Startpunkt.
-  # Wird vom ersten Setup und vom Kartenwechsel im Editor benutzt.
   # Himmel/Nebel/Panorama aus der Karte übernehmen (Etappe 17b).
   # Panorama-Farbe ersetzt den Himmelverlauf (Vollfarbe), Nebel blendet
   # die Ferne zur Nebelfarbe. Ohne Angaben: Standard-Himmel, kein Nebel.
@@ -135,6 +133,8 @@ end
     @was_air = nil
   end
 
+  # Karte mit Terrain, Objekten, Events und NPCs aufbauen und den Spieler
+  # an ihren Startpunkt setzen; auch beim Laden eines Spielstands verwendet.
   def self.enter_map(id)
     @map_id = id
     @map = Database.map(id)
@@ -186,8 +186,8 @@ end
       MapCheck.report!(funde) unless funde.empty?
     end
 
-    @editor = Editor.new(@map_id, @map['objects'])
-    Editor.rebuild(@map['objects'], @scene)
+    @map_objects = MapObjects.new(@scene, height_at: method(:gy))
+    @map_objects.rebuild(@map['objects'])
     @hover = nil
     @hover_prev = nil
     @hover_dist = 0.0
@@ -206,9 +206,9 @@ end
                    "#{@map['objects'].size} Objekte, #{Rune::Physics.solid_count} Hindernisse")
   end
 
-  # Karte im Editor wechseln (z. B. nach N = neue Karte oder V/B).
+  # Öffentlicher Kartenwechsel für Spielscripts; kein Editorzustand wird
+  # automatisch gespeichert.
   def self.change_map(id)
-    @editor.save(@editor.objects, @map) if @editor.dirty?
     enter_map(id)
   end
 
@@ -573,10 +573,9 @@ end
     Mover.update(dt)  # Etappe 19g: Bewegungsrouten laufen IMMER (auch bei Text)
     Graphics.update         # Etappe 19h.2: RGSS-Frame-Zähler (frame_count)
     $game_system.update(dt) if $game_system   # 19h.2: XP-Timer tickt
-    # Einen Schritt nur dann für Begegnungen vormerken, wenn er im Spiel und
-    # nicht bereits im Editor oder einem soeben gestarteten Kampf stattfand.
-    # Ob er zählt, entscheiden wir nach Events und dem F4-Moduswechsel.
-    encounter_schritt = @step_event && $game_player && !@editor.active? &&
+    # Einen Schritt für Begegnungen vormerken. Ob er zählt, entscheiden wir
+    # nach Events und laufenden Kämpfen; F4 hat im Spiel keine Editorfunktion.
+    encounter_schritt = @step_event && $game_player &&
                         !(defined?(Battle) && Battle.active?)
     $game_player.increase_steps if $game_player && @step_event
     @step_event = nil
@@ -665,34 +664,9 @@ end
       end
     end
 
-    # Editor-/Playtest-Modus (F4): Editor = alles eingefroren, Playtest =
-    # Spiel läuft; F4 im Playtest springt zurück in den Editor (Etappe 16b).
-    if Rune::Input.pressed?(:f4)
-      if @playtest
-        playtest_stop
-      else
-        @editor.toggle(@scene)
-      end
-    end
-
-    if @editor.active?
-      # Scene-Editor-Prinzip (Etappe 16b): Der Editor arbeitet auf den
-      # Kartendaten, die Game-Engine-Simulation steht. Ist der Spieler noch
-      # in der Luft (z.B. nach dem Playtest), darf er erst landen, dann
-      # friert die Physik endgültig ein — nie schwebt er eingefroren.
-      if Rune::Player.on_ground?
-        Rune::Simulation.paused = true
-      else
-        Rune::Simulation.paused = false
-      end
-      @editor.update(dt, @scene, @map)
-      # Szene NICHT updaten: Animationen (Kristall ...) stehen im Editor still.
-      update_hover_only
-      return
-    end
     Rune::Simulation.paused = false
 
-    # Events und F4 haben Vorrang: ein im selben Schritt ausgelöstes Event
+    # Events haben Vorrang: ein im selben Schritt ausgelöstes Event
     # darf nicht zusammen mit einem Zufallskampf starten. Ein gesperrter oder
     # fehlgeschlagener Kampf lässt den Zähler bei 0; der nächste Schritt
     # versucht es erneut. Nach Erfolg steht die Welt sofort still.
@@ -717,34 +691,6 @@ end
     update_picking
   end
 
-  # ---------------------------------------------------- Playtest (Etappe 16b)
-
-  # Aus dem Editor heraus testen: ungespeicherte Änderungen zürst sichern
-  # (der Editierstand bleibt heilig), dann normal spielen.
-  def self.playtest_start
-    @editor.save(@editor.objects, @map) if @editor.dirty?
-    @editor.toggle(@scene) if @editor.active?
-    @playtest_state = GameState.snapshot   # Testzustand später verwerfen
-    @playtest = true
-    Rune::Simulation.paused = false
-    Rune::Log.info('Playtest gestartet (F4 zurück zum Editor)')
-  end
-
-  # Zurück in den Editor: Karte frisch laden = unveränderter Editierstand;
-  # alles, was der Test am Spielzustand verändert hat, wird verworfen.
-  def self.playtest_stop
-    @playtest = nil
-    GameState.restore!(@playtest_state) if @playtest_state
-    @playtest_state = nil
-    enter_map(@map_id)
-    @editor.toggle(@scene)
-    Rune::Log.info('Zurück im Editor (Karte neu geladen, Testzustand verworfen)')
-  end
-
-  def self.playtest?
-    @playtest ? true : false
-  end
-
   # ------------------------------------------------------------- Maus-Picking
 
   # Alle anklickbaren Dinge: Szenenknoten + Events + NPCs.
@@ -764,7 +710,7 @@ end
     list
   end
 
-  # Zuletzt unter dem Zeiger getroffener Knoten (für den Editor, 1 Frame alt).
+  # Zuletzt unter dem Zeiger getroffener Knoten bzw. getroffenes Event.
   def self.hover
     @hover
   end
@@ -783,22 +729,6 @@ end
       @hover_prev = @hover
       Rune::Log.info(format("Hover: %s (%.1f m)", @hover.name, @hover_dist)) if @hover
     end
-  end
-
-  # Im Editor: Rechtsklick löscht. Zürst das genau getroffene Objekt; wenn
-  # der Strahl nur Boden getroffen hat (dünne Teile!), das nächstliegende
-  # Editor-Objekt zum Bodenpunkt.
-  def self.update_hover_only
-    compute_hover
-    return unless Rune::Input.mouse_pressed?(1)
-    if @hover && Editor.object_index(@hover.name)
-      @editor.delete_node(@hover, @scene)
-    elsif @hover.nil?
-      h = @editor.hit
-      @editor.delete_near(h[0], h[2], @scene) if h
-    end
-    @hover = nil
-    @hover_prev = nil
   end
 
   def self.update_picking
@@ -848,9 +778,9 @@ end
     else
       s = @hover.scale
       label = @hover.name
-      if label.start_with?('ed_')
-        idx = Editor.object_index(label)
-        obj = idx && @map['objects'][idx]
+      idx = @map_objects.object_index(@hover)
+      if idx
+        obj = @map['objects'][idx]
         label = obj ? Prefabs.name_of(obj['type']) : 'Objekt'
       end
       UI.text(x, y, format('%s  %.1f x %.1f x %.1f  (%.1f m)',
@@ -904,10 +834,6 @@ end
 
     # 2D-Overlay zuletzt
     UI.hud
-    if @playtest
-      UI.panel(1000, 12, 264, 30, UI::PANEL, 0.6)
-      UI.text(1012, 18, 'PLAYTEST — F4 = zurück zum Editor', UI::WARN, 15)
-    end
     UI.message(@interpreter.message) if @interpreter.busy_text?
     if @interpreter.busy_choices?
       c = @interpreter.choices
@@ -916,14 +842,8 @@ end
     UI.nummer_eingabe(@interpreter.num_input) if @interpreter.busy_number?
     Battle.draw if defined?(Battle) && (Battle.active? || @interpreter.busy_battle?)
     UI.text(16, 54, "> #{@prompt}  (E)") if @prompt && !@interpreter.running?
-    draw_hover_label(@editor.active? ? 248 : 16, @editor.active? ? 88 : 78) if zeige
+    draw_hover_label if zeige
     draw_crosshair
-
-    if @editor.active?
-      @editor.draw_hit_marker
-      @editor.draw_selection
-      @editor.draw_ui
-    end
 
     # Etappe 19d: Bildschirmblende über Spiel und UI (das Menü-Overlay bleibt
     # sichtbar, sonst könnte man im abgedunkelten Zustand nichts mehr wählen).

@@ -181,42 +181,15 @@ stoppt also vor dem Spieler statt durch ihn zu laufen.
 
 
 
-## Scene-Editor: Editor-Engine und Playtest (Etappe 16)
+## Früherer Ingame-Szeneneditor (Etappe 16; entfernt in 19t)
 
-Der Editor ist ein **Scene-Editor**: Er arbeitet ausschliesslich auf den
-Kartendaten (JSON-Modell in `@objects`). Die 3D-Vorschau (Nodes mit
-Präfix `ed_*`) ist reine Anzeige, kein Spielzustand. Events, NPCs,
-Interpreter und GameState existieren im Editor-Modus nicht als
-Spielobjekte — sie werden erst beim Playtest aus den Daten gebaut.
-
-**Zwei Engines, eine Trennung:**
-
-| Scene-Editor                        | Game-Engine (Playtest)            |
-| ----------------------------------- | --------------------------------- |
-| editiert Kartendaten                | interpretiert Kartendaten         |
-| Simulation eingefroren              | Simulation läuft                 |
-| Maus frei, UI klickbar              | Maus gefangen, WASD/Esc           |
-| Änderungen landen im JSON          | Änderungen werden verworfen      |
-
-**Einfrieren:** `Rune::Simulation.paused = true` stoppt in `main.cpp`
-komplett `physics.update` (Bewegung, Schwerkraft). Ruby-seitig ruft der
-Editor-Zweig `scene.update` nicht mehr auf — Animationen (z. B. der
-Kristall) stehen, NPCs und Events werden nicht aktualisiert. Wichtig:
-Ist der Spieler beim Umschalten noch in der Luft, läuft die Physik
-erst weiter, bis `Player.on_ground?` erfüllt ist, und friert **dann**
-ein — sonst schwebt der Spieler eingefroren in der Luft (Fallstrick 38).
-
-**Playtest-Zyklus:** Der Button `▶ Testen` in der Tab-Leiste (oder F4
-aus dem Editor) startet den Test: ungespeicherte Änderungen werden
-zürst gesichert, `GameState` wird gesnapshottet, die Simulation
-startet. F4 im Playtest springt zurück: `GameState.restore!`, Karte
-frisch per `enter_map` laden, Editor an. Alles, was der Test am Spiel
-geändert hat (gelaufene NPCs, geschaltete Events, Variablen), wird
-verworfen — der Editierstand bleibt heilig.
-
-**UI-Bausteine:** `UI.button` kennt neben `active:` und `danger:` jetzt
-`ok:` (grün, für Positive-Aktionen wie den Test-Button). Buttons mit
-gleicher Beschriftung brauchen eigene `id:`-Kennungen.
+Der historische Ruby-Szeneneditor mit F4-Editorzweig und internem
+Playtest-/Snapshot-Wechsel wurde in 19t entfernt. Karten werden im separaten
+`RuneEditor.exe` bearbeitet; dessen F4 startet einen eigenen Rune3D-Prozess.
+Der Laufzeit-Szenenbau für Spiel und Launcher lebt nun in `MapObjects`.
+Das bisherige interne `Editor` und `Game.playtest_start/stop` sind keine
+verfügbaren Ruby-APIs mehr. Der getrennte Prozess ist keine Sandbox und
+verwendet reguläre Spielstände und Script-Dateizugriffe.
 
 ## Scene-Editor als eigenes Programm (Etappe 17)
 
@@ -1196,7 +1169,7 @@ passieren damit automatisch (touch/auto feuern auf der neuen Seite erneut).
 Vollbild-Abdunklung (Alpha 0..1) mit Ziel und Rate; `Game.update` dreht sie
 weiter, `Game.draw` legt sie über Spiel und UI, aber unter das Menü-Overlay
 (damit ein abgedunkeltes Bild nie die Menü-Bedienung frisst). Kartenwechsel
-und Playtest-Ende rufen `Fade.reset!` — man landet nie mit schwarzem
+rufen `Fade.reset!` — man landet nie mit schwarzem
 Bildschirm in einer Karte. Der Interpreter-Befehl `fade`
 (`direction` ein/aus, `seconds`) ist nicht blockierend, wie bei XP läuft das
 Spiel während der Blende weiter.
@@ -1306,7 +1279,7 @@ Patrouille weiter. Eine neue Route ersetzt die alte desselben Ziels (wie XP
 
 **Unabhängigkeit:** `Game.update` dreht `Mover.update(dt)` neben
 Effects/Fade - Routen laufen auch während Textfenstern/Wahlen weiter (XP-
-Verhalten). Kartenwechsel (`enter_map`) und Playtest-Ende rufen
+Verhalten). Kartenwechsel (`enter_map`) rufen
 `Mover.reset!`: Routen sind flüchtig, Ziel-NPCs sind nach dem Neuaufbau
 andere Objekte (Savegames nehmen Routen nicht mit - wie bei XP).
 
@@ -1712,6 +1685,28 @@ Demo-Datenbank, JSON-Roundtrips und unberührte allgemeine Eigenschaften.
 CI baut/linkt den Win32-Editor und kann WARP in einem unsichtbaren Fenster
 prüfen, ersetzt aber keinen interaktiven GUI-/Hardware-GPU-Test (siehe Backlog
 und Handoff).
+
+## Rune3D-Laufzeit ohne Ingame-Editor (Etappe 19t)
+
+`boot.rb` lädt `map_objects.rb` statt des entfernten `editor.rb`.
+`Game.enter_map` und `Launcher.build_backdrop` erzeugen je eine eigene
+`MapObjects`-Instanz, die mit `Prefabs.instantiate`, Geländehöhe und
+`Scene.refresh_solids` die Spiel- bzw. Kulissenszene aufbaut. Die alten
+`ed_*`-Knotennamen bleiben für Scripts bestehen; die Zuordnung und das
+Entfernen früherer Knoten erfolgen über Identität, sodass namensgleiche
+Script-Nodes erhalten bleiben. Picking zeigt weiter Prefab-Namen an.
+
+F4 hat in Rune3D keine Editorfunktion mehr. `Game.change_map`, Terrain,
+Events, NPCs, Laufzeit-Picking, Kampfpausen und F5 bleiben erhalten;
+beim Encounter hat ein laufendes Event Vorrang. F4 im eigenständigen
+RuneEditor speichert die Karte und startet das Spiel als eigenen Prozess.
+Es übergibt derzeit noch nicht die ausgewählte Karten-ID (Backlog). Der
+Prozess benutzt reguläre Projekt-Spielstände und ist keine Sandbox.
+
+`map_objects_test.rb` prüft echte Ruby-Knoten/Szenen und eine Physikattrappe,
+`runtime_boot_test.rb` lädt echten Bootstrap, Launcher und Spiel in einer
+temporären Kopie mit nativen Attrappen, `encounter_test.rb` prüft F4/F5,
+Kartenwechsel, Picking und Kampfvorrang. Kein GUI-/Hardware-GPU-Test.
 
 ## Windows-Karten-/F9-Dateitransaktionen (Etappe 19s)
 
@@ -2161,7 +2156,7 @@ Events nicht mit Körperknoten. Script-Nodes werden unabhängig vom Namen
 nicht als Schildgrafik behandelt. Einmalig ausgelöste NPC-Auto-/Touch-Events
 überleben Spielstände; ältere Spielstände ohne `fired` bleiben gültig.
 MapCheck und F10 prüfen ungültiges `y`.
-Tests: `json_test.cpp`, `npc_test.rb`, `editor_test.rb`, `mapcheck_test.rb`
+Tests: `json_test.cpp`, `npc_test.rb`, `map_objects_test.rb`, `mapcheck_test.rb`
 und `encounter_test.rb` (echter Spielablauf). Ein grafischer Windows-Test
 für F5, Layout/Tab und Playtest steht noch aus.
 
@@ -2201,9 +2196,8 @@ für F5, Layout/Tab und Playtest steht noch aus.
 
 ## Tasten
 
-`F4` Editor an/aus · im Editor: `1..9` Typ, Linksklick setzen, Rechtsklick
-löschen, `R` drehen, `G` Raster, `N` neue Karte, `V`/`B` Karte zurück/vor,
-`Strg+S` speichern ·
+RuneEditor: `F4` startet den Playtest als eigenen Prozess. Im Spiel gibt es
+seit 19t keinen Editor-Modus mehr.
 `WASD` laufen · `Shift` rennen · `Leertaste` springen · `E` reden/benutzen ·
 `F1` First-Person · `F3` Third-Person · `F2` Debug-Position ins Log ·
 `F5` Ruby neu laden · `F12` Screenshot nach `log/screenshot_N.bmp` ·
@@ -2260,7 +2254,7 @@ geprüft — `t` bleibt in Weltmetern, weil nur gedreht, nicht skaliert wird.
 | Modus | Mauszeiger | Strahl kommt aus | Zweck |
 |---|---|---|---|
 | Gefangen | versteckt, Mitte | Fadenkreuz in der Bildschirmmitte | Egoperspektive: schauen + zielen |
-| Frei | sichtbar, echtes Koordinatenpaar | Position des echten Zeigers | Menü/Editor: hover + klicken |
+| Frei | sichtbar, echtes Koordinatenpaar | Position des echten Zeigers | Menü/Spiel: hover + klicken |
 
 Im gefangenen Modus steht `mouse_position` immer in der Bildschirmmitte
 (das Fadenkreuz). `wm_mousemove` und `update_mouse_delta` pflegen die
@@ -2274,23 +2268,10 @@ Objekte schreiben Name/Größe/Abstand ins Log.
 
 Test ohne Engine: `ruby -I game/engine tools/pick_test.rb` (19 Prüfungen).
 
-## Editor (Etappe 5)
+## Prefabs und Kartenobjekte (Etappe 5, Szenenbau seit 19t)
 
-`F4` schaltet den Editor an: Mausfang aus, Palette links, Zielmarker (gelber
-Drahtkasten) auf dem Boden unter dem Zeiger.
-
-| Taste | Wirkung |
-|---|---|
-| `1` … `9` | Objekttyp aus der Palette wählen |
-| Linksklick | Objekt auf den Boden setzen (Raster 1.0 m, `G` = 0.25 m) |
-| Rechtsklick | Objekt unter dem Zeiger löschen |
-| `R` | Drehung in 30-Grad-Schritten (für neue Objekte) |
-| `Strg+S` | Karte speichern (`game/data/maps/<id>.json`) |
-
-**Ablauf:** Der Strahl aus der Mausposition wird alle 0.4 m am Gelände
-entlangmarschiert, bis er die Höhenfläche durchstößt (`Editor.terrain_hit`).
-Der Treffer wird auf das Raster gerundet. Gespeichert wird nur die Objektliste;
-die Geometrie steht in den Prefabs.
+Der damalige Ingame-Editor ist seit 19t entfernt; bearbeitet wird in
+RuneEditor. Die Prefabs und der gemeinsame Laufzeit-Szenenbau bleiben.
 
 **Prefabs** (`game/engine/prefabs.rb`) — 9 Typen mit je einer Liste von Kästen
 (Versatz `d`, Größe `s`, Farbe `c`, `solid`):
@@ -2303,7 +2284,7 @@ Schweben); die Animation hängt dann in `Prefabs.instantiate` am Knoten.
 ```json
 "objects": [ { "type": "haus", "x": -4.0, "z": -2.0, "rot": 0.0 } ]
 ```
-Beim Laden baut `Editor.rebuild` alle Objekte in die Szene ein und meldet die
+Beim Laden baut `MapObjects#rebuild` alle Objekte in die Szene ein und meldet die
 Hindernisse neu an die Physik; sie sind also sofort begehbar/fest.
 
 Das ganze Dorf ist Datenmaterial: Weg (18 Stücke), Zaun (7 Segmente),
@@ -2313,7 +2294,7 @@ Brunnen, sechs Häuser, drei Kristalle, vier Laternen liegen als 39 Objekte in
 Konvertiert wurde einmalig mit `tools/village_to_json.rb` (Positionen 1:1 aus
 dem alten Code übernommen).
 
-Test ohne Engine: `ruby -I game/engine tools/editor_test.rb` (26 Prüfungen).
+Tests ohne native Engine: `ruby -I game/engine tools/map_objects_test.rb` und `ruby tools/runtime_boot_test.rb`.
 
 ## Versionsverwaltung
 
@@ -2350,7 +2331,7 @@ Startpunkt 0/0) — keine Objekte, keine Events.
 
 Der Titelbildschirm zeigt das **Demodorf als 3D-Kulisse**: `Launcher.activate`
 generiert das Terrain aus `game/data` und baut die Szene mit
-`Editor.rebuild`; die Kamera kreist, indem der Spieler (unsichtbar) auf einem
+`MapObjects#rebuild`; die Kamera kreist, indem der Spieler (unsichtbar) auf einem
 Kreis um das Dorf teleportiert wird und `Camera.yaw` entgegen zeigt. Die Maus
 ist im Menü frei (`Rune::Input.capture = false` — die Engine startet
 gefangen!), Einträge per Hoch/Runter **oder** Mausklick wählbar.
@@ -2361,10 +2342,9 @@ Start). `D` löscht das markierte Projekt nach Rückfrage (`Project.delete`).
 Beim Spielstart fängt der Launcher die Maus wieder ein, damit der Mausblick
 wie bisher sofort funktioniert.
 
-Im **Editor** kamen Kartenbefehle dazu: `N` legt `welt02`, `welt03`, … an und
-wechselt hin, `V`/`B` blättern zurück/vor (ungespeicherte Änderungen werden
-dabei automatisch gesichert). `Game.change_map` sichert die schmutzige Karte,
-bevor sie entladen wird.
+Kartenbearbeitung und Kartenwechsel im Editor erfolgen über RuneEditor.
+`Game.change_map` bleibt als Spielscript-Aufruf für einen Laufzeitwechsel
+erhalten, speichert dabei aber keine Editor-Entwürfe.
 
 ## Datenformat
 

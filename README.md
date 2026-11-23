@@ -38,7 +38,9 @@ Laufzeit neu geladen werden.
 - Script-Editor, Materialbase (PNG/BMP-Import per WIC, auch per Drag & Drop),
   Datenbank (Helden, Items, Gegner, Truppen, Gold), Sound-Test,
   Probleme-Dialog (F10)
-- Playtest: startet `Rune3D.exe --project <name>` mit der gespeicherten Karte
+- Playtest: speichert die aktuelle Karte und startet
+  `Rune3D.exe --project <name>` als eigenen Prozess. Derzeit beginnt das Spiel an der Startkarte
+  aus `system.json`, nicht zwingend an der ausgewählten Karte (siehe Backlog).
 
 **Engine**: Third-Person-Spieler mit Physik (Schwerkraft, Sprung, `solid`-Teile
 als Hindernisse, Kartengrenze), Event-Interpreter mit Verzweigungen und
@@ -51,7 +53,8 @@ Spielstände in drei Slots, Projektverwaltung. Dazu eine **RGSS-Schicht**:
 `$game_system/$game_switches/$game_variables/$game_party/$game_player/
 $game_map/$game_screen/$game_temp`, `Graphics`, `Input`, `Audio`,
 `Sprite/Window/Viewport`, `$scene` — eigene Scripte laufen wie beim Vorbild
-(Script-Editor, F5 = neu laden).
+(Script-Editor, F5 = neu laden). Der frühere Ingame-Editor wurde entfernt:
+Karten werden in `RuneEditor.exe` bearbeitet; F4 im Spiel öffnet keinen Editor.
 
 ## Vergleich mit RPG Maker XP
 
@@ -64,7 +67,7 @@ $game_map/$game_screen/$game_temp`, `Graphics`, `Input`, `Audio`,
 | Datenbank (Helden, Items, Gegner, Truppen …) | alle vier Sammlungen + Gold per GUI editierbar; keine Skills/Waffen/Zustände | ✅ teilweise |
 | Tileset / Boden | Splat-Böden, Höhen-Malwerkzeug | ✅ |
 | Script-Editor (Ruby) | `Scripts`-Sandbox + Editor | ✅ |
-| Playtest | F4 | ✅ |
+| Playtest | F4 im RuneEditor startet eigenen Spielprozess; aktuell Startkarte statt ausgewählter Karte | ✅ teilweise |
 | Nebel / Panorama / Wetter | Karten-JSON + Interpreter | ✅ |
 | Kampfsystem | Rundenkampf-Grundgerüst (`battle.rb`): Angriff/Item/Flucht, Exp/Gold/Drops; Zufallskämpfe pro Karte im F2-Dialog; keine Skills/Zustände | ✅ teilweise |
 | Bewegungsfolgen (Move Routes) | `mover.rb`, XP-Schrittnamen + Codes, Routen im Event-Befehl | ✅ |
@@ -149,6 +152,7 @@ ruby tools\lint_repo.rb                        # Repo-Hygiene
 | Ebene | Was | Wo |
 |---|---|---|
 | Ruby-Modultests | Engine-Logik mit `Rune::*`-Stubs (Events, Seiten, Interpreter, Party, Kampf, Wetter, Scripte, Projekte, Speichern) + Ruby/C++-Vokabular-Sync | `tools/*_test.rb`, Runner `tools/test_all.rb` |
+| Ruby-Laufzeit | Echter Bootstrap, Launcher, Szenenbau, F4/F5, Karten und Kollisionen mit nativen Attrappen | `tools/runtime_boot_test.rb`, `tools/map_objects_test.rb`, `tools/encounter_test.rb` |
 | C++-Logiktest | JSON und portable Editor-Formularmodelle, darunter F6-Transaktionen und Datentreue | `tools/json_test.cpp` |
 | C++-Terrain | Echte Geländegenerierung, Höhen-/Splat-Budgets, Atlasplan und Fehlerpfade ohne D3D | `tools/terrain_test.cpp` |
 | Materialien/Dateien | Verlustfreier JSON-Baum, unter Windows Handle-Konflikte, Junctions und Hardlinks | `tools/material_test.cpp` |
@@ -202,7 +206,7 @@ src/
   world/             Terrain, Physik, Atlas
   core/              Fenster, Sound, Log
 game/
-  main.rb            Game.setup/update/draw, Menü, Playtest
+  main.rb            Game.setup/update/draw, Menü, Kartenlaufzeit
   engine/            Module: Event, Interpreter, Party, Npc, Weather, ...
   data/              Vorlage-Daten (Karten, Datenbank, Prefabs, Scripte)
 projekte/<name>/     ein Projekt: data/ (Karten, Datenbank, Texturen), saves/
@@ -230,8 +234,12 @@ docs/                architecture.md, BACKLOG.md, HANDOFF_Naechste_KI.md
 | F1 Hilfe · F2 Karten-Eigenschaften · F3 Materialbase · F4 Playtest · F5 Platzier-Editor · F6 Event-Editor · F7 Tileset · F8 Sound-Test · F9 Datenbank · F10 Probleme · F11 Script-Editor · F12 Screenshot | |
 
 **Spiel**: WASD laufen, Shift rennen, Leertaste springen, E benutzen/reden,
-Maussteuerung Blick, Esc Menü, F2 Debug-Ausgabe, F4 Playtest umschalten,
-F5 Scripte neu laden.
+Maussteuerung Blick, Esc Menü, F2 Debug-Ausgabe, F5 Scripte neu laden.
+F4 startet nur im RuneEditor einen separaten Spielprozess. Das Spiel schließen,
+um zum weiter geöffneten Editor zurückzukehren. Dieser Prozess ist keine
+Sandbox: Spielstände und Scripts nutzen die gewöhnlichen Projektdateien.
+Alte Scripts, die `Editor` oder den internen Playtest-Zyklus direkt aufrufen,
+müssen angepasst werden; `Game.change_map` bleibt als Laufzeitaufruf erhalten.
 
 ## Datenformate
 

@@ -153,7 +153,9 @@ bereits bestandener Test. Er ergänzt die automatisierten W-API-/Ruby-Tests.
    ```
 4. F4 im Editor auslösen: Das **echte** Spiel muss direkt das gleiche
    Projekt und `karte_日` öffnen, ohne wegen des Leerzeichens/Unicode in
-   den Launcher zurückzufallen. F12-Screenshot und Logpfade prüfen. Optional
+   den Launcher zurückzufallen. Hier sind ausgewählte Karte und `start.map`
+   bewusst identisch; F4 übergibt aktuell keine andere Kartenauswahl (Backlog).
+   F12-Screenshot und Logpfade prüfen. Optional
    F3-Import mit einem Bild mit Unicode-Dateinamen ausführen. Namen, Logs,
    Windows-Version, Systemcodepage, DPI und GPU sowie Erfolg/Fehler notieren;
    bei Fehlern die Testkopie und Sicherungen zur Diagnose erhalten.

@@ -109,6 +109,17 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Betroffene Stellen: `src/editor/document_store_win.h`, `editor_main.cpp`,
   `src/core/project_assets_win.h`, `tools/document_store_test.cpp`.
 
+### [Editor/Engine] F4 übergibt nicht die ausgewählte Karte — offen (Funktion)
+- RuneEditor speichert die aktuelle Karte, übergibt aber nur `--project`;
+  `Game.setup` startet `system.json` → `start.map`. Ist im Editor eine andere
+  Karte ausgewählt, testet F4 daher die falsche Karte. Ein Unicode-Test mit
+  identischer Start-/Auswahlkarte deckt diesen Unterschied nicht auf.
+- Das Spiel läuft als separater Prozess und nutzt gewöhnliche Projekt-
+  Spielstände und Script-Dateizugriffe; es ist keine isolierte Sandbox.
+- Betroffene Stellen: `src/editor/{editor_main.cpp,playtest_win.h}`,
+  `src/core/win_project_cli.h`, `src/main.cpp`, `game/main.rb`.
+- Gefunden bei der Trennung des Ingame-Editors (19t).
+
 ### [Engine] Kampf-Grundgerüst deckt noch nicht alles ab — offen (Feature-Fehlend)
 - Stand 19i: Rundenkampf mit Angriff/Item/Flucht, Sieg/Niederlage/Exp/
   Gold/Drops, Gegner als 3D-Kästen mit HP-Balken.
@@ -275,6 +286,22 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Etappe 19a.
 
 ## Erledigt
+### [Engine] Eingebauten Szeneneditor aus Rune3D entfernt — implementiert (19t)
+- `RuneEditor.exe` bleibt das Bearbeitungsprogramm. Der frühere Ruby-Editor,
+  sein F4-Modus und der interne Playtest-Zyklus wurden aus Rune3D entfernt;
+  F4 bietet im Spiel keine eingebaute Kartenbearbeitung. Start eines separaten Spielprozesses
+  per F4 im RuneEditor bleibt erhalten.
+- `MapObjects` baut Prefabs für Spiel und Launcher, mit Bodenhöhe, Material,
+  Animationen und Physik. Die bekannten Knotennamen `ed_*` bleiben erhalten;
+  Zuordnung und Wiederaufbau verwenden tatsächliche Knotenidentitäten statt
+  fremde Script-Nodes wegen ihres Namens zu löschen. `Game.change_map` bleibt.
+- Tests: `map_objects_test.rb` (echte Ruby-Szene/Physikattrappe),
+  `runtime_boot_test.rb` (echter Bootstrap/Launcher/F5 in temporärer Kopie,
+  native APIs als Attrappen), `encounter_test.rb` (Spielablauf/Kampf/F4).
+  Grafischer Windows-/Hardwaretest des Gesamtablaufs steht aus.
+- Betroffene Stellen: `game/engine/{boot,launcher,map_objects,prefabs}.rb`,
+  `game/main.rb`, `tools/{map_objects,runtime_boot,encounter}_test.rb`.
+
 ### [Editor] F9-/Karten-Dateikonfliktfenster — implementiert (19s)
 - Zuvor konnten Änderungen zwischen Konfliktvergleich und Ersetzen/Löschen
   verloren gehen. Karten laden/anlegen/speichern/löschen und F9 laden/
@@ -452,7 +479,7 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
   Game.update-Integration. Grafischer Windows-Live-Test steht noch aus;
   3D-Direktmanipulation und komplexe NPC-Befehle siehe Ausbau-Eintrag oben.
 - Betroffene Stellen: `placement_form.h`, `placement_dialog.h`, `editor_main.cpp`,
-  `game/engine/{npc,event,prefabs,mapcheck,editor}.rb`, `game/main.rb`.
+  `game/engine/{npc,event,prefabs,mapcheck,map_objects}.rb`, `game/main.rb`.
 
 ### [Editor] Zufallskämpfe pro Karte bearbeiten — erledigt (19m)
 - Wunsch: Truppen und mittlere Schrittzahl ohne JSON-Handarbeit über F2
@@ -479,8 +506,9 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Umsetzung: optionales Karten-JSON `"encounters": {"troops": [...],
   "steps": 30}`; RGSS-Kartenwerte und XP-Würfel `rand(n)+rand(n)+1`.
   Boden-Schritte zählen herunter; bei 0 und freier Spielwelt startet ein
-  zufälliger Kampf. Events/F4 haben Vorrang, der Editor zählt nicht,
-  fehlgeschlagene Kämpfe werden erst beim nächsten Schritt erneut versucht.
+  zufälliger Kampf. Events haben Vorrang; F4 hat seit 19t im Spiel keine
+  Editorfunktion mehr. Fehlgeschlagene Kämpfe werden erst beim nächsten
+  Schritt erneut versucht.
   Kaltstart, F5 und Kartenwechsel würfeln korrekt; Karten-, Event-, RGSS-
   und Script-Teleports werden nicht als Schritt gezählt. MapCheck und der
   C++-Editor prüfen dieselben
@@ -656,7 +684,7 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
   `self_switch`, Interpreter-Befehle `self_switch`/`if_self_switch`,
   Savegame-Mitnahme, Editor-Formular und Self-Switch-Combos im Seite-Kasten)
   sowie Bildschirmblende (`game/engine/fade.rb`, Interpreter-Befehl `fade`,
-  Vollbild-Alpha über die UI-Schicht, Reset bei Kartenwechsel/Playtest-Ende).
+  Vollbild-Alpha über die UI-Schicht, Reset bei Kartenwechsel).
 - Betroffene Stellen: `game/engine/{state,event,interpreter,mapcheck,fade}.rb`,
   `game/main.rb`, `game/engine/boot.rb`, `src/editor/editor_main.cpp`,
   `tools/{self_switch_test,fade_test,mapcheck_test}.rb`.

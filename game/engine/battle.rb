@@ -186,7 +186,7 @@ module Battle
     true
   end
 
-  # Kampf beenden (ohne Wertung) - Kartenwechsel/Playtest-Ende rufen das.
+  # Kampf beenden (ohne Wertung), etwa beim Kartenwechsel.
   def self.abort!
     return unless @active
 

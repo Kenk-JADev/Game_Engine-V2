@@ -26,6 +26,7 @@ module Rune
       attr_accessor :result, :last_args, :ready
     end
     def self.ready? = !!ready
+    def self.height_at(x, z) = 1.0 + x * 0.1 + z * 0.01
     def self.generate(**kwargs)
       self.last_args = kwargs
       result
@@ -39,7 +40,12 @@ module Rune
     end
     def self.reset_calls = @calls.clear
     def self.sky(*args) = (@calls << [:sky, *args])
+    def self.sun(*args) = (@calls << [:sun, *args])
     def self.fog(*args) = (@calls << [:fog, *args])
+    def self.box(*args) = (@calls << [:box, *args])
+    def self.rect(*args) = (@calls << [:rect, *args])
+    def self.text(*args) = (@calls << [:text, *args])
+    def self.clear_color=(_color); end
     def self.terrain_texture(*args) = (@calls << [:texture, *args])
     def self.terrain_splats(*args)
       @calls << [:splats, *args]
@@ -67,12 +73,20 @@ module Rune
     class << self
       attr_accessor :yaw, :mode, :distance
     end
+    def self.info = 'Testkamera'
+    def self.ray(_x, _y) = []
   end
 
   module Window
     class << self
       attr_accessor :title
     end
+    def self.width = 1280
+    def self.height = 720
+  end
+
+  module Time
+    def self.fps = 60.0
   end
 
   module Input
@@ -82,6 +96,9 @@ module Rune
     end
     def self.pressed?(key) = @keys.include?(key)
     def self.down?(key) = @keys.include?(key)
+    def self.captured? = !!capture
+    def self.mouse_position = [640, 360]
+    def self.mouse_pressed?(_button) = false
   end
 
   module Sound
@@ -105,6 +122,7 @@ module Textures
   def self.register_project; end
   def self.begin_project; end
   def self.end_project; end
+  def self.tile_of(_name) = 3.5
 end
 
 module Project
@@ -118,6 +136,7 @@ end
 module Weather
   def self.load_map(_map); end
   def self.update(*_args); end
+  def self.draw; end
 end
 
 module Issues
@@ -139,14 +158,7 @@ class Scene
   def walk(node, &block) = (block.call(node); node.children.each { |c| walk(c, &block) })
   def refresh_solids; end
   def update(_dt) = (@updates += 1)
-end
-
-class Editor
-  def initialize(*_args) = (@active = false)
-  def self.rebuild(*_args); end
-  def active? = @active
-  def toggle(_scene) = (@active = !@active)
-  def update(*_args); end
+  def draw; end
 end
 
 $LOAD_PATH.unshift(File.join(Rune::ROOT, 'game', 'engine'))
@@ -155,6 +167,9 @@ require 'state'
 require 'party'
 require 'battle'
 require 'node'
+require 'prefabs'
+require 'map_objects'
+require 'ui'
 require 'event'
 require 'npc'
 require 'interpreter'
@@ -186,16 +201,14 @@ module Graphics
   end
   def self.scene_update = @callback&.call
   def self.scene_reset!; end
+  def self.draw; end
 end
 
 # main.rb ruft beim Laden Game.setup auf: Genau diesen Kaltstart mit nil-
 # Globalen wollen wir prüfen, nicht ein nachträgliches RGSS.setup im Test.
 $project_root = File.join(Rune::ROOT, 'game', 'data')
 load File.join(Rune::ROOT, 'game', 'main.rb')
-module Game
-  def self.update_picking; end
-  def self.update_hover_only; end
-end
+require 'launcher'
 
 $fail = 0
 def check(name)
@@ -281,6 +294,71 @@ check('Atmosphärenwerte werden zur nativen Prüfung weitergereicht') do
     Rune::Log.warnings.any? { |message| message.include?('fog.on') }
 end
 Rune::World.ready = false
+
+puts '== Laufzeit-Szenen ohne Ingame-Editor =='
+check('Spielstart baut echte Karten-Prefabs mit Höhe und Projektmaterial auf') do
+  karte = Database.map('start')
+  karte['objects'] = [{ 'type' => 'haus', 'x' => 2, 'y' => 3, 'z' => 4, 'tex' => 'eigen' }]
+  original = Marshal.dump(karte)
+  Rune::World.ready = true
+  prepare
+  scene = Game.instance_variable_get(:@scene)
+  objekte = scene.root.children.select { |node| node.name.start_with?('ed_0_') }
+  objekte.size == 3 && (objekte.first.position[1] - (1.24 + 3 + 2)).abs < 1e-6 &&
+    objekte.all? { |node| node.texture == 'eigen' && node.tile == 3.5 } &&
+    Game.instance_variable_get(:@map_objects).object_index(objekte.first) == 0 &&
+    Marshal.dump(karte) == original
+ensure
+  karte['objects'] = [] if karte
+  Rune::World.ready = false
+end
+check('Launcher-Kulisse verwendet denselben Szenenaufbau ohne Editor') do
+  karte = Database.map('start')
+  karte['objects'] = [{ 'type' => 'haus', 'x' => 0, 'z' => 0 }]
+  Launcher.build_backdrop
+  scene = Launcher.instance_variable_get(:@scene)
+  builder = Launcher.instance_variable_get(:@map_objects)
+  knoten = scene.root.children.find { |node| node.name == 'ed_0_0' }
+  knoten && builder.object_index(knoten) == 0 && !defined?(Editor)
+ensure
+  karte['objects'] = [] if karte
+end
+check('Spiel und Laufzeit-Picking zeichnen ohne Editor; Namensgleichheit täuscht nicht') do
+  karte = Database.map('start')
+  karte['objects'] = [{ 'type' => 'haus', 'x' => 0, 'z' => 0 }]
+  prepare
+  scene = Game.instance_variable_get(:@scene)
+  echter_knoten = scene.root.children.find { |node| node.name == 'ed_0_0' }
+  fremder_knoten = scene.add(Node.new(name: 'ed_0_0'))
+  Rune::Input.capture = false
+  Rune::Gfx.reset_calls
+  Game.instance_variable_set(:@hover, echter_knoten)
+  Game.draw
+  haus_label = Rune::Gfx.calls.any? { |call| call[0] == :text && call[3].start_with?('Haus ') }
+  Rune::Gfx.reset_calls
+  Game.instance_variable_set(:@hover, fremder_knoten)
+  Game.draw
+  fremd_label = Rune::Gfx.calls.any? { |call| call[0] == :text && call[3].start_with?('ed_0_0 ') }
+  haus_label && fremd_label
+ensure
+  karte['objects'] = [] if karte
+  Game.instance_variable_set(:@hover, nil)
+end
+check('Kartenwechsel bleibt für Spielscripts ohne Editor verfügbar') do
+  prepare
+  vorher = Game.instance_variable_get(:@scene)
+  Game.change_map('weit')
+  Game.map_id == 'weit' && !Game.instance_variable_get(:@scene).equal?(vorher) &&
+    Rune::Player.position[0] == 100.0 && $game_player.encounter_count == 1
+end
+check('F5-artiges erneutes Laden von main.rb läuft ohne Editor') do
+  load File.join(Rune::ROOT, 'game', 'main.rb')
+  Game.instance_variable_set(:@intro, nil)
+  Game.update(0.016)
+  Game.draw
+  !defined?(Editor) && Game.map_id == 'start' && !Game.respond_to?(:playtest_start)
+end
+
 puts '== Zufallskampf: Start und Kartenwechsel =='
 check('Kaltstart würfelt den Zähler der Startkarte') do
   $game_player.encounter_count == 1 && $game_map.encounter_step == 1
@@ -503,24 +581,13 @@ check('Touch-Event desselben Schritts hat Vorrang vor Zufallskampf') do
   step
   !Battle.active? && Game.interpreter.running? && $game_player.encounter_count == 0
 end
-check('im Editor keine Begegnung und kein Encounter-Countdown') do
-  prepare
-  counter(1)
-  editor = Game.instance_variable_get(:@editor)
-  editor.toggle(Game.instance_variable_get(:@scene))
-  step
-  im_editor = editor.active? && !Battle.active? && $game_player.encounter_count == 1
-  editor.toggle(Game.instance_variable_get(:@scene))
-  step
-  im_editor && Battle.active?
-end
-check('F4 beim letzten Schritt öffnet den Editor statt eines Kampfes') do
+check('F4 im Spiel öffnet keinen Editor und verhindert keinen Zufallskampf') do
   prepare
   counter(1)
   Rune::Input.keys = [:f4]
   step
-  editor = Game.instance_variable_get(:@editor)
-  editor.active? && !Battle.active? && $game_player.encounter_count == 1
+  !defined?(Editor) && !Game.respond_to?(:playtest_start) &&
+    Battle.active? && Rune::Simulation.paused && $game_player.encounter_count == 1
 ensure
   Rune::Input.keys = []
 end
