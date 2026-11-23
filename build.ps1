@@ -262,6 +262,21 @@ if ($Test) {
     & $MaterialTestExe
     if ($LASTEXITCODE -ne 0) { throw 'Material-/Dateitest fehlgeschlagen' }
 
+    Write-Step 'Karten-/F9-Dateitransaktionen und Konfliktrennen prüfen ...'
+    $DocumentTestExe = Join-Path $BuildDir 'document_store_test.exe'
+    $DocumentTestFlags = @(
+        '-std=c++20', '-O1', '-Wall', '-Wextra', '-Wno-unused-parameter',
+        '-Wno-missing-field-initializers',
+        '-DUNICODE', '-D_UNICODE', '-DNOMINMAX', '-DWIN32_LEAN_AND_MEAN',
+        "-I$ProjectRoot\src", "$ProjectRoot\tools\document_store_test.cpp",
+        '-o', $DocumentTestExe, '-luser32', '-lgdi32',
+        '-static-libgcc', '-static-libstdc++'
+    )
+    & $Gcc @DocumentTestFlags
+    if ($LASTEXITCODE -ne 0) { throw 'document_store_test.exe konnte nicht gebaut werden' }
+    & $DocumentTestExe
+    if ($LASTEXITCODE -ne 0) { throw 'Karten-/F9-Dateitransaktionen fehlgeschlagen' }
+
     Write-Step 'Windows-Projektpfade und Playtest-Kommando prüfen ...'
     $PathTestExe = Join-Path $BuildDir 'windows_path_test.exe'
     $PathTestFlags = @(

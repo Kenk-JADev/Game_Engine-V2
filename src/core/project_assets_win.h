@@ -197,18 +197,22 @@ inline bool write_locked(HANDLE file, const std::string& data) {
     return FlushFileBuffers(file) != 0;
 }
 
-// Umbenennung des bereits verifizierten Handles relativ zum gehaltenen
-// Zielordner. Kein Pfad-Fallback: FALSE ersetzt nie ein bestehendes Ziel.
-inline bool rename_same_directory(HANDLE file, HANDLE directory, std::wstring_view target) noexcept {
-    // Nur intern erzeugte Sicherungsnamen und das feste Manifestziel sind
-    // zulässig. Weder Validierung noch Aufruf dürfen nach dem ersten Rename
-    // allokieren: auch OOM muss den Rückweg zum alten Namen offenlassen.
-    if (target != L"textures.json") {
-        if (!target.starts_with(L".rune-") || !target.ends_with(L".bak")) return false;
-        for (std::size_t i = 6; i + 4 < target.size(); ++i)
-            if ((target[i] < L'0' || target[i] > L'9') && target[i] != L'-') return false;
+// Einen bereits validierten Einzel-Namen relativ zum gehaltenen Verzeichnis
+// setzen. Niemals ein vorhandenes Ziel ersetzen und keinen Pfad-Fallback
+// verwenden. Nach einem Backup-Rename darf diese Funktion nicht allokieren.
+inline bool rename_relative_component(HANDLE file, HANDLE directory, std::wstring_view target) noexcept {
+    if (target.empty() || target.size() > 255 || target == L"." || target == L".." ||
+        target.back() == L'.' || target.back() == L' ') {
+        SetLastError(ERROR_INVALID_NAME);
+        return false;
     }
-    if (target.size() > 255) return false;
+    for (wchar_t c : target) {
+        if (c < 0x20 || c == 0x7f || c == L'/' || c == L'\\' || c == L':' ||
+            c == L'*' || c == L'?' || c == L'"' || c == L'<' || c == L'>' || c == L'|') {
+            SetLastError(ERROR_INVALID_NAME);
+            return false;
+        }
+    }
     using NtSet = NTSTATUS (NTAPI *)(HANDLE, PIO_STATUS_BLOCK, PVOID, ULONG, FILE_INFORMATION_CLASS);
     using NtError = ULONG (WINAPI *)(NTSTATUS);
     HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
@@ -240,6 +244,25 @@ inline bool rename_same_directory(HANDLE file, HANDLE directory, std::wstring_vi
     const NTSTATUS status = set(file, &ios, info, static_cast<ULONG>(length), FileRenameInformation);
     if (status < 0) { SetLastError(to_error(status)); return false; }
     return true;
+}
+
+// Der Materialstore darf weiterhin nur das feste Manifest und eigene
+// Sicherungsnamen ansteuern. Andere Aufrufer validieren ihre Zielkomponente
+// VOR dem ersten Rename über component().
+inline bool rename_same_directory(HANDLE file, HANDLE directory, std::wstring_view target) noexcept {
+    if (target != L"textures.json") {
+        if (!target.starts_with(L".rune-") || !target.ends_with(L".bak")) {
+            SetLastError(ERROR_INVALID_NAME);
+            return false;
+        }
+        for (std::size_t i = 6; i + 4 < target.size(); ++i) {
+            if ((target[i] < L'0' || target[i] > L'9') && target[i] != L'-') {
+                SetLastError(ERROR_INVALID_NAME);
+                return false;
+            }
+        }
+    }
+    return rename_relative_component(file, directory, target);
 }
 
 inline bool delete_owned_handle(HANDLE file) {
@@ -290,6 +313,11 @@ public:
         }
         return open_directory(parent, L"data", data_);
     }
+
+    // Nicht besitzendes Handle; bleibt nur gültig, solange dieser Store lebt.
+    // Karten-/Datenbanktransaktionen können so denselben geprüften Projekt-
+    // anker verwenden, ohne eine absolute Pfadauflösung nachzuholen.
+    HANDLE data_directory() const { return data_.get(); }
 
     Result read_manifest(std::string& out) {
         return read_child(data_.get(), L"textures.json", world::TEXTURE_MAX_MANIFEST_BYTES, out);

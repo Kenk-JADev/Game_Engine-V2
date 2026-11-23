@@ -50,9 +50,8 @@
 #include "core/win_path.h"
 #include "core/win_project_cli.h"
 #include "editor/json.h"
-#include "editor/atomic_file_win.h"
 #include "editor/database_form.h"
-#include "editor/database_file_win.h"
+#include "editor/document_store_win.h"
 #include "editor/encounter_check.h"
 #include "editor/encounter_form.h"
 #include "editor/event_form.h"
@@ -586,21 +585,50 @@ bool file_path_exists(const std::string& path) {
            GetFileAttributesW(wide_path.c_str()) != INVALID_FILE_ATTRIBUTES;
 }
 
-enum class FileDiskState { Missing, Ready, Error };
-
-// Für Karten dieselben Pfad-Bytes wie beim Laden/Datei-Scan verwenden.
-FileDiskState file_disk_state(const std::string& path, std::string& out) {
-    std::wstring wide_path;
-    if (!file_path_to_wide(path, wide_path)) return FileDiskState::Error;
-    const DWORD attributes = GetFileAttributesW(wide_path.c_str());
-    if (attributes == INVALID_FILE_ATTRIBUTES) {
-        const DWORD error = GetLastError();
-        if (error != ERROR_FILE_NOT_FOUND) return FileDiskState::Error;
-        out.clear();
-        return FileDiskState::Missing;
+// Die Transaktion nennt ihre eigenen, eventuell erhaltenen Dateinamen. Ein
+// Backup darf nicht still verschwinden, wenn ein fremder Neuanleger die
+// Rücksetzung des ursprünglichen Namens verhindert hat.
+void document_result_notice(HWND owner, const wchar_t* title, assets::Result result,
+                            const DocumentRecovery& recovery, const std::string& directory) {
+    if (result == assets::Result::Ok && recovery.backup.empty() && recovery.temp.empty()) return;
+    std::wstring message;
+    if (result == assets::Result::Ok) {
+        message = L"Der Vorgang wurde abgeschlossen, aber eine Sicherungsdatei blieb erhalten.";
+    } else if (result == assets::Result::Conflict) {
+        message = L"Die Datei wurde nach der Prüfung erneut geändert, entfernt oder neu angelegt. "
+                  L"Es wurde keine fremde Datei überschrieben oder gelöscht. Bitte erneut prüfen.";
+    } else if (result == assets::Result::Missing) {
+        message = L"Die Datei oder ein benötigter Projektordner fehlt. Der Vorgang wurde abgebrochen.";
+    } else if (result == assets::Result::Reparse) {
+        message = L"Die Datei oder ein Projektordner ist ein Reparsepunkt (z. B. eine Junction). "
+                  L"Dieser Zugriff wird zum Schutz der Daten abgebrochen.";
+    } else if (result == assets::Result::Invalid) {
+        message = L"Ungültiger Pfad oder Dateityp; Hardlinks sind für diese Aktion nicht erlaubt. "
+                  L"Der Vorgang wurde abgebrochen.";
+    } else if (result == assets::Result::TooLarge) {
+        message = L"Für den vollständigen Dateivergleich steht nicht genügend Speicher zur Verfügung. "
+                  L"Der Vorgang wurde abgebrochen.";
+    } else {
+        message = L"Der Dateizugriff ist gesperrt, fehlgeschlagen oder wird vom Dateisystem nicht unterstützt. "
+                  L"Der Vorgang wurde abgebrochen.";
     }
-    if ((attributes & FILE_ATTRIBUTE_DIRECTORY) || !read_file(path, out)) return FileDiskState::Error;
-    return FileDiskState::Ready;
+    std::wstring wide_directory;
+    const bool has_directory = file_path_to_wide(directory, wide_directory);
+    const auto append_path = [&](const wchar_t* label, const std::wstring& name) {
+        if (name.empty()) return;
+        message += label;
+        if (has_directory) message += wide_directory + L"\\";
+        message += name;
+        std::string utf8;
+        if (assets::to_utf8(has_directory ? wide_directory + L"\\" + name : name, utf8))
+            core::log_warn("Dokument-Wiederherstellungsdatei: " + utf8);
+    };
+    append_path(L"\r\n\r\nAlte Datei als Sicherung (bitte prüfen und ggf. wiederherstellen):\r\n", recovery.backup);
+    append_path(L"\r\n\r\nNicht entfernte temporäre Datei:\r\n", recovery.temp);
+    if (result != assets::Result::Ok)
+        core::log_error(std::string("Dokument-Dateiaktion: ") + assets::result_text(result));
+    data_prompt(owner, message.c_str(), title,
+                MB_OK | (result == assets::Result::Ok ? MB_ICONWARNING : MB_ICONERROR));
 }
 
 bool write_file(const std::string& path, const std::string& data) {
@@ -1458,18 +1486,21 @@ void open_problems_dialog() {
 bool load_map(int index, bool departure_checked = false) {
     if (index < 0 || index >= static_cast<int>(g.map_files.size())) return false;
     if (!departure_checked && g.cur_map >= 0 && !prepare_map_departure()) return false;
-    const std::string path = g.project_dir + "\\maps\\" + g.map_files[index];
-    std::string text;
-    if (!read_file(path, text)) {
-        issue_report(2, "Karte", "nicht lesbar: " + path);
-        core::log_error("Karte nicht lesbar: " + path);
-        data_prompt(GetActiveWindow(), L"Die Karte konnte nicht vollständig gelesen werden. "
-                                       L"Die Datei wurde nicht als Karte übernommen.",
-                    L"Karte nicht geladen", MB_OK | MB_ICONERROR);
+    const std::string directory = g.project_dir + "\\maps";
+    const std::string path = directory + "\\" + g.map_files[index];
+    DocumentStore store;
+    DocumentSnapshot snapshot;
+    assets::Result result = store.open(g.root, g.project_name, true, g.map_files[index]);
+    if (result == assets::Result::Ok) result = store.observe(snapshot);
+    if (result == assets::Result::Ok && !snapshot.present) result = assets::Result::Missing;
+    if (result != assets::Result::Ok) {
+        issue_report(2, "Karte", "nicht sicher lesbar: " + path);
+        core::log_error("Karte nicht sicher lesbar: " + path);
+        document_result_notice(GetActiveWindow(), L"Karte nicht geladen", result, {}, directory);
         return false;
     }
     JsonValue loaded;
-    const MapParseStatus parsed = map_parse_document(text, loaded);
+    const MapParseStatus parsed = map_parse_document(snapshot.bytes, loaded);
     if (parsed != MapParseStatus::Ok) {
         const wchar_t* reason = L"Ungültiges JSON.";
         switch (parsed) {
@@ -1500,7 +1531,7 @@ bool load_map(int index, bool departure_checked = false) {
     g.sel_obj = -1;
     g.dirty = false;
     g.map_disk_present = true;
-    g.map_disk_text = std::move(text);
+    g.map_disk_text = std::move(snapshot.bytes);
     // Schnappschüsse gehören zur vorherigen Karte und dürfen deren Objekte
     // niemals in die neu geladene Karte zurückschreiben.
     g.undo_stack.clear();
@@ -1544,38 +1575,34 @@ bool save_map() {
                     L"Karte nicht gespeichert", MB_OK | MB_ICONERROR);
         return false;
     }
-    const std::string path = g.project_dir + "\\maps\\" + g.map_files[g.cur_map];
-    std::string disk_text;
-    const FileDiskState state = file_disk_state(path, disk_text);
-    if (state == FileDiskState::Error) {
-        data_prompt(GetActiveWindow(), L"Die Kartendatei kann vor dem Speichern nicht gelesen werden. "
-                                       L"Sie wurde nicht überschrieben.",
-                    L"Karte nicht gespeichert", MB_OK | MB_ICONERROR);
-        return false;
-    }
-    if (editor_disk_changed(g.map_disk_present, g.map_disk_text, state == FileDiskState::Ready, disk_text) &&
-        data_prompt(GetActiveWindow(),
+    const std::string directory = g.project_dir + "\\maps";
+    const std::string path = directory + "\\" + g.map_files[g.cur_map];
+    std::string output = json_write(g.map_root);
+    DocumentStore store;
+    DocumentRecovery recovery;
+    assets::Result result = store.open(g.root, g.project_name, true, g.map_files[g.cur_map]);
+    if (result == assets::Result::Ok) {
+        const DocumentOutcome outcome = document_save_confirmed(
+            store, g.map_disk_present, g.map_disk_text, output, [] {
+                return data_prompt(GetActiveWindow(),
                     L"Die Kartendatei wurde seit dem Laden oder Speichern extern geändert oder entfernt. "
                     L"Trotzdem mit dem Editorstand überschreiben?",
-                    L"Karten-Dateikonflikt", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES)
-        return false;
-
-    // Zuerst im selben Verzeichnis eine vollständige Datei schreiben und nur
-    // bei Erfolg ersetzen. Die Konfliktprüfung davor ist keine Dateisperre.
-    std::wstring wide_path;
-    std::string output = json_write(g.map_root);
-    if (!file_path_to_wide(path, wide_path) || !editor_write_file_atomic(wide_path, output)) {
-        issue_report(2, "Karte", "nicht schreibbar: " + path);
-        core::log_error("Karte nicht schreibbar: " + path);
-        data_prompt(GetActiveWindow(), L"Die Karte konnte nicht gespeichert werden. "
-                                       L"Die bestehende Datei wurde vom Editor nicht ersetzt.",
-                    L"Karte nicht gespeichert", MB_OK | MB_ICONERROR);
+                    L"Karten-Dateikonflikt", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) == IDYES;
+            }, recovery);
+        if (outcome.cancelled) return false;
+        result = outcome.result;
+    }
+    if (result != assets::Result::Ok) {
+        issue_report(2, "Karte", "nicht sicher schreibbar: " + path);
+        core::log_error("Karte nicht sicher schreibbar: " + path);
+        document_result_notice(GetActiveWindow(), L"Karte nicht gespeichert", result, recovery, directory);
         return false;
     }
     g.map_disk_present = true;
     g.map_disk_text = std::move(output);
     g.dirty = false;
     core::log_info("Karte gespeichert: " + path);
+    document_result_notice(GetActiveWindow(), L"Karte gespeichert", result, recovery, directory);
     return true;
 }
 
@@ -5889,17 +5916,19 @@ bool apply_new_from_dlg() {
                     L"Neue Karte", MB_OK | MB_ICONERROR);
         return false;
     }
-    const std::string path = g.project_dir + "\\maps\\" + id + ".json";
-    std::wstring wide_path;
-    // Ohne REPLACE_EXISTING: eine seit dem letzten Scan neu angelegte Karte
-    // mit derselben ID darf beim Erstellen nicht überschrieben werden.
-    if (!file_path_to_wide(path, wide_path) || !editor_write_file_atomic(wide_path, json_write(map), false)) {
-        core::log_error("Neue Karte nicht schreibbar oder bereits vorhanden: " + path);
-        data_prompt(g_dlg, L"Die neue Karte konnte nicht angelegt werden. "
-                           L"Eine bestehende Datei mit dieser ID wird nicht überschrieben.",
-                    L"Neue Karte", MB_OK | MB_ICONERROR);
+    const std::string directory = g.project_dir + "\\maps";
+    const std::string path = directory + "\\" + id + ".json";
+    DocumentStore store;
+    DocumentSnapshot missing; // Keine bestehende Karte darf ersetzt werden.
+    DocumentRecovery recovery;
+    assets::Result result = store.open(g.root, g.project_name, true, id + ".json");
+    if (result == assets::Result::Ok) result = store.save(missing, json_write(map), recovery);
+    if (result != assets::Result::Ok) {
+        core::log_error("Neue Karte nicht sicher schreibbar oder bereits vorhanden: " + path);
+        document_result_notice(g_dlg, L"Neue Karte nicht angelegt", result, recovery, directory);
         return false;
     }
+    document_result_notice(g_dlg, L"Neue Karte angelegt", result, recovery, directory);
     core::log_info("Neue Karte angelegt: " + id);
     scan_maps();
     const auto old = std::find(g.map_files.begin(), g.map_files.end(), previous);
@@ -5922,6 +5951,8 @@ bool apply_new_from_dlg() {
 
 void delete_current_map() {
     if (g.cur_map < 0 || g.cur_map >= static_cast<int>(g.map_files.size())) return;
+    const std::string filename = g.map_files[g.cur_map];
+    const std::uint64_t map_epoch = g.map_epoch, project_epoch = g.project_epoch;
     const std::string name = g.cur_map < static_cast<int>(g.map_names.size())
                                  ? g.map_names[g.cur_map] : "?";
     std::wstring text = L"Karte \"" + utf8_to_wide(name) + L"\" wirklich löschen?";
@@ -5930,27 +5961,29 @@ void delete_current_map() {
     const int r = data_prompt(g.main, text.c_str(), L"Karte löschen",
                               MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
     if (r != IDYES) return;
-    const std::string path = g.project_dir + "\\maps\\" + g.map_files[g.cur_map];
-    std::string disk_text;
-    const FileDiskState state = file_disk_state(path, disk_text);
-    if (state != FileDiskState::Ready) {
-        data_prompt(g.main, L"Die Kartendatei ist nicht lesbar oder wurde bereits entfernt. "
-                            L"Die Karte bleibt im Editor geöffnet.",
-                    L"Karte löschen", MB_OK | MB_ICONERROR);
-        return;
+    if (g.project_epoch != project_epoch || g.map_epoch != map_epoch || g.cur_map < 0 ||
+        g.cur_map >= static_cast<int>(g.map_files.size()) || g.map_files[g.cur_map] != filename) return;
+    const std::string directory = g.project_dir + "\\maps";
+    const std::string path = directory + "\\" + filename;
+    DocumentStore store;
+    DocumentRecovery recovery;
+    assets::Result result = store.open(g.root, g.project_name, true, filename);
+    if (result == assets::Result::Ok) {
+        const DocumentOutcome outcome = document_erase_confirmed(
+            store, g.map_disk_present, g.map_disk_text, [] {
+                return data_prompt(g.main, L"Die Kartendatei wurde seit dem Laden oder Speichern extern geändert. "
+                                           L"Auch die externen Änderungen wirklich löschen?",
+                                   L"Karten-Dateikonflikt", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) == IDYES;
+            }, recovery);
+        if (outcome.cancelled) return;
+        result = outcome.result;
     }
-    if (editor_disk_changed(g.map_disk_present, g.map_disk_text, true, disk_text) &&
-        data_prompt(g.main, L"Die Kartendatei wurde seit dem Laden oder Speichern extern geändert. "
-                            L"Auch die externen Änderungen wirklich löschen?",
-                    L"Karten-Dateikonflikt", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES)
-        return;
-    std::wstring wide_path;
-    if (!file_path_to_wide(path, wide_path) || !DeleteFileW(wide_path.c_str())) {
-        data_prompt(g.main, L"Die Karte konnte nicht gelöscht werden. Sie bleibt geöffnet.",
-                    L"Karte löschen", MB_OK | MB_ICONERROR);
+    if (result != assets::Result::Ok) {
+        document_result_notice(g.main, L"Karte nicht gelöscht", result, recovery, directory);
         return;
     }
     core::log_info("Karte gelöscht: " + path);
+    document_result_notice(g.main, L"Karte gelöscht", result, recovery, directory);
     cancel_object_drag();
     close_event_editor();
     ++g.map_epoch;
@@ -8290,19 +8323,20 @@ void db_status(const std::string& text) {
 
 bool db_load() {
     const auto fail = [](const wchar_t* message) {
-        MessageBoxW(g_db.win, message, L"Datenbank nicht geladen", MB_OK | MB_ICONERROR);
+        data_prompt(g_db.win, message, L"Datenbank nicht geladen", MB_OK | MB_ICONERROR);
         return false;
     };
-    std::string text;
-    std::wstring path;
-    if (!file_path_to_wide(db_path(), path))
-        return fail(L"Der Datenbankpfad ist ungültig. Die bisherigen Daten bleiben erhalten.");
-    const DatabaseDiskState state = db_read_disk(path, text);
-    if (state == DatabaseDiskState::Error)
-        return fail(L"database.json kann nicht gelesen werden. Die bisherigen Daten bleiben erhalten.");
+    DocumentStore store;
+    DocumentSnapshot snapshot;
+    assets::Result result = store.open(g.root, g.project_name, false, "database.json");
+    if (result == assets::Result::Ok) result = store.observe(snapshot);
+    if (result != assets::Result::Ok) {
+        document_result_notice(g_db.win, L"Datenbank nicht geladen", result, {}, g.project_dir);
+        return false;
+    }
     JsonValue loaded = JsonValue::make_obj();
-    if (state == DatabaseDiskState::Ready) {
-        switch (database_parse_document(text, loaded)) {
+    if (snapshot.present) {
+        switch (database_parse_document(snapshot.bytes, loaded)) {
             case DatabaseParseStatus::InvalidJson:
                 return fail(L"database.json enthält ungültiges JSON. Sie wird nicht überschrieben.");
             case DatabaseParseStatus::InvalidRoot:
@@ -8318,8 +8352,8 @@ bool db_load() {
     }
     // Eine noch nicht vorhandene Datei entsteht erst durch explizites Speichern.
     g_db.root = std::move(loaded);
-    g_db.disk_present = state == DatabaseDiskState::Ready;
-    g_db.disk_text = std::move(text);
+    g_db.disk_present = snapshot.present;
+    g_db.disk_text = std::move(snapshot.bytes);
     g_db.dirty = false;
     return true;
 }
@@ -8446,7 +8480,7 @@ bool db_apply(bool include_entry = true) {
     const DatabaseEdit edit = database_form_prepare(g_db.root, db_entry(), specs, g_db.before, after);
     if (!edit.ok) {
         const std::string message = (edit.field.empty() ? std::string() : edit.field + ": ") + edit.error;
-        MessageBoxW(g_db.win, utf8_to_wide(message).c_str(), L"Ungültige Eingabe", MB_OK | MB_ICONWARNING);
+        data_prompt(g_db.win, utf8_to_wide(message).c_str(), L"Ungültige Eingabe", MB_OK | MB_ICONWARNING);
         if (edit.gold_error) SetFocus(g_db.ed_gold);
         else {
             for (size_t i = 0; i < specs.size(); ++i)
@@ -8454,12 +8488,12 @@ bool db_apply(bool include_entry = true) {
         }
         return false;
     }
-    if (edit.replaces_invalid && MessageBoxW(
+    if (edit.replaces_invalid && data_prompt(
             g_db.win,
             L"Diese Änderung ersetzt fehlerhafte oder nicht eindeutig darstellbare Altdaten. Fortfahren?",
             L"Datenbank", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) return false;
     if (!database_form_commit(g_db.root, db_tab_key(g_db.tab), g_db.sel, edit)) {
-        MessageBoxW(g_db.win, L"Der Eintrag ist nicht mehr verfügbar. Es wurde nichts übernommen.",
+        data_prompt(g_db.win, L"Der Eintrag ist nicht mehr verfügbar. Es wurde nichts übernommen.",
                     L"Datenbank", MB_OK | MB_ICONERROR);
         return false;
     }
@@ -8476,7 +8510,7 @@ void db_add() {
     const char* key = db_tab_key(g_db.tab);
     JsonValue* arr = db_array(key);
     if (!arr) {
-        if (g_db.root.find(key) && MessageBoxW(
+        if (g_db.root.find(key) && data_prompt(
                 g_db.win, L"Die Sammlung ist keine Liste. Durch Neu wird sie ersetzt. Fortfahren?",
                 L"Datenbank", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) return;
         arr = &g_db.root.set(key, JsonValue::make_arr());
@@ -8545,7 +8579,7 @@ void db_add() {
 void db_delete() {
     JsonValue* arr = db_array(db_tab_key(g_db.tab));
     if (!arr || g_db.sel < 0 || static_cast<size_t>(g_db.sel) >= arr->arr.size()) return;
-    if (MessageBoxW(g_db.win, L"Diesen Eintrag und seine Zusatzdaten wirklich löschen?",
+    if (data_prompt(g_db.win, L"Diesen Eintrag und seine Zusatzdaten wirklich löschen?",
                     L"Datenbank", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) return;
     if (!db_apply(false)) return;
     // Gold kann beim Setzen die Wurzel-Paarliste und damit arr verschieben.
@@ -8561,43 +8595,47 @@ void db_delete() {
 
 bool db_save() {
     if (!db_apply()) return false;
-    std::wstring path;
-    if (!file_path_to_wide(db_path(), path)) {
-        MessageBoxW(g_db.win, L"Der Datenbankpfad ist ungültig. Es wurde nichts überschrieben.",
-                    L"Datenbank", MB_OK | MB_ICONERROR);
+    if (!database_document_utf8(g_db.root) || !database_document_serializable(g_db.root) ||
+        database_document_duplicates(g_db.root)) {
+        data_prompt(g_db.win, L"Die Datenbank enthält ungültiges Unicode, doppelte Schlüssel "
+                              L"oder eine nicht darstellbare Zahl. Sie wird nicht überschrieben.",
+                    L"Datenbank nicht gespeichert", MB_OK | MB_ICONERROR);
         return false;
     }
-    std::string disk_text;
-    const DatabaseDiskState state = db_read_disk(path, disk_text);
-    if (state == DatabaseDiskState::Error) {
-        MessageBoxW(g_db.win, L"database.json kann vor dem Speichern nicht gelesen werden. Es wurde nichts überschrieben.",
-                    L"Datenbank", MB_OK | MB_ICONERROR);
-        return false;
+    std::string output = json_write(g_db.root);
+    DocumentStore store;
+    DocumentRecovery recovery;
+    assets::Result result = store.open(g.root, g.project_name, false, "database.json");
+    if (result == assets::Result::Ok) {
+        const DocumentOutcome outcome = document_save_confirmed(
+            store, g_db.disk_present, g_db.disk_text, output, [] {
+                return data_prompt(g_db.win,
+                    L"database.json wurde außerhalb dieses Dialogs geändert, angelegt oder entfernt. "
+                    L"Trotzdem mit dem Dialogstand überschreiben?",
+                    L"Datenbank-Konflikt", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) == IDYES;
+            }, recovery);
+        if (outcome.cancelled) return false;
+        result = outcome.result;
     }
-    if (database_disk_changed(g_db.disk_present, g_db.disk_text, state == DatabaseDiskState::Ready, disk_text) &&
-        MessageBoxW(g_db.win,
-            L"database.json wurde außerhalb dieses Dialogs geändert, angelegt oder entfernt. Trotzdem überschreiben?",
-            L"Datenbank-Konflikt", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) return false;
-    const std::string output = json_write(g_db.root);
-    if (!editor_write_file_atomic(path, output)) {
-        db_status("FEHLER: database.json konnte nicht geschrieben werden");
-        MessageBoxW(g_db.win, L"database.json konnte nicht gespeichert werden. Die alte Datei bleibt erhalten.",
-                    L"Datenbank", MB_OK | MB_ICONERROR);
+    if (result != assets::Result::Ok) {
+        db_status("FEHLER: database.json konnte nicht sicher geschrieben werden");
+        document_result_notice(g_db.win, L"Datenbank nicht gespeichert", result, recovery, g.project_dir);
         return false;
     }
     g_db.disk_present = true;
-    g_db.disk_text = output;
+    g_db.disk_text = std::move(output);
     g_db.dirty = false;
     db_refresh();
     if (!g_db.hint_active) db_status("Gespeichert: database.json");
+    document_result_notice(g_db.win, L"Datenbank gespeichert", result, recovery, g.project_dir);
     return true;
 }
 
 bool database_request_close() {
     if (!g_db.win) return true;
     if (g_db.dirty || db_pending()) {
-        const int result = MessageBoxW(g_db.win, L"Änderungen an der Datenbank speichern?",
-                                       L"Datenbank", MB_YESNOCANCEL | MB_ICONQUESTION);
+        const int result = data_prompt(g_db.win, L"Änderungen an der Datenbank speichern?",
+                                       L"Datenbank", MB_YESNOCANCEL | MB_ICONQUESTION | MB_DEFBUTTON3);
         if ((result != IDYES && result != IDNO) || (result == IDYES && !db_save())) return false;
     }
     DestroyWindow(g_db.win);
@@ -8679,7 +8717,7 @@ LRESULT CALLBACK database_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             if (id == IDDB_DEL)    { db_delete(); return 0; }
             if (id == IDDB_SAVE)   { db_save(); return 0; }
             if (id == IDDB_RELOAD) {
-                if ((g_db.dirty || db_pending()) && MessageBoxW(
+                if ((g_db.dirty || db_pending()) && data_prompt(
                         h, L"Ungespeicherte Datenbankänderungen verwerfen und neu laden?",
                         L"Datenbank", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) return 0;
                 if (db_load()) {
