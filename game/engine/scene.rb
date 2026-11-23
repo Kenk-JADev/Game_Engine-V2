@@ -1,7 +1,7 @@
 #encoding: utf-8
 
-# Eine Szene besitzt einen Wurzelknoten. Spaeter kommen hier Kamera, Licht,
-# Kollision und Event-Interpreter dazu - fuer Etappe 1 reicht der Baum.
+# Eine Szene besitzt einen Wurzelknoten. Später kommen hier Kamera, Licht,
+# Kollision und Event-Interpreter dazu - für Etappe 1 reicht der Baum.
 class Scene
   attr_reader :name, :root
 
@@ -15,7 +15,7 @@ class Scene
     node
   end
 
-  # Alle Hindernisse neu an die Engine melden (nach Aenderungen an der Szene).
+  # Alle Hindernisse neu an die Engine melden (nach Änderungen an der Szene).
   def refresh_solids
     Rune::Physics.clear_solids
     walk(@root) { |n| n.register_solid }

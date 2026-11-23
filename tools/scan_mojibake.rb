@@ -1,4 +1,4 @@
-# Findet doppelt kodierte UTF-8-Umlaute (Mojibake "Ae.."-Zeichenfolgen wie
+# Findet doppelt kodierte UTF-8-Umlaute (Mojibake "Ä.."-Zeichenfolgen wie
 # "MenÃ¼" = ehemalige "Menü") in allen Quellen.
 # Aufruf: ruby tools/scan_mojibake.rb
 Dir['src/**/*.{cpp,h}'] + Dir['game/**/*.rb'] + Dir['docs/*.md'].sort.each do |f|

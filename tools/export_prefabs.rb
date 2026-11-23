@@ -1,6 +1,6 @@
 # encoding: utf-8
-# Exportiert Prefabs::LIST nach game/data/prefabs.json (eine Quelle fuer
-# Spiel und RuneEditor). Bei Prefab-Aenderungen: ruby tools/export_prefabs.rb
+# Exportiert Prefabs::LIST nach game/data/prefabs.json (eine Quelle für
+# Spiel und RuneEditor). Bei Prefab-Änderungen: ruby tools/export_prefabs.rb
 require './game/engine/prefabs.rb'
 require 'json'
 

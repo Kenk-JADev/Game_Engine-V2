@@ -32,7 +32,7 @@ void Camera::update(const core::InputState& in, float dt) {
     }
 
     // Kamera-Kollision: Abstand weich auf die freie Sichtlinie bringen.
-    // Reinziehen sofort (kein Clipping), Rausziehen gegaettet.
+    // Reinziehen sofort (kein Clipping), Rausziehen gegättet.
     const float want = (collision_dist >= 0.0f) ? std::min(dist, collision_dist) : dist;
     if (want < m_applied_dist) {
         m_applied_dist = want;
@@ -46,7 +46,7 @@ void Camera::update(const core::InputState& in, float dt) {
         m_applied_lift += (wlift - m_applied_lift) * std::min(1.0f, dt * 5.0f);
     }
 
-    // Bewegung uebernimmt Physics; die Kamera schaut nur.
+    // Bewegung übernimmt Physics; die Kamera schaut nur.
 }
 
 Vec3 Camera::eye_position() const {

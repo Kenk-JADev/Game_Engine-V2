@@ -23,11 +23,11 @@ end
 
 if text.include?('COMMIT18L')
   hash = nil
-  # Hash erst nach dem Etappen-Commit verfuegbar - erst suchen, dann ersetzen.
+  # Hash erst nach dem Etappen-Commit verfügbar - erst suchen, dann ersetzen.
   log = git('log', '--oneline', '-5')
   m = log.match(/([0-9a-f]{7}) Etappe 18l/)
   hash = m[1] if m
-  raise 'Etappe-18l-Commit noch nicht da - Commit vor dem Nachtrag ausfuehren' unless hash
+  raise 'Etappe-18l-Commit noch nicht da - Commit vor dem Nachtrag ausführen' unless hash
   text.sub!('COMMIT18L', hash)
   puts "18l-Hash nachgetragen: #{hash}"
 else

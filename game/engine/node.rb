@@ -3,7 +3,7 @@
 # Ein Knoten im Szenengraph. Alles was gezeichnet wird ist ein Node mit einer Box.
 # Position/Rotation (Radiant)/Skalierung als [x, y, z]-Arrays.
 #
-# solid: true  -> der Knoten wird zum Hindernis fuer den Spieler (Haus, Zaun, Pfosten).
+# solid: true  -> der Knoten wird zum Hindernis für den Spieler (Haus, Zaun, Pfosten).
 class Node
   attr_accessor :name, :position, :rotation, :scale, :color, :visible, :solid
   attr_accessor :texture, :tile   # Texturname ('gras', 'holz', ...) + Kachel in Metern
@@ -26,7 +26,7 @@ class Node
     @on_draw   = nil
   end
 
-  # Uebertraegt die Box dieses Knotens als Hindernis an die Engine.
+  # Überträgt die Box dieses Knotens als Hindernis an die Engine.
   def register_solid
     return unless @solid
     Rune::Physics.add_solid(@position[0], @position[1], @position[2],
@@ -39,7 +39,7 @@ class Node
     self
   end
 
-  # Block wird vor dem Zeichnen mit (node) aufgerufen - fuer Sonderfaelle.
+  # Block wird vor dem Zeichnen mit (node) aufgerufen - für Sonderfälle.
   def on_draw(&block)
     @on_draw = block
     self

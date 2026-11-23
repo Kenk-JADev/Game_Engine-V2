@@ -4,7 +4,7 @@ path = File.join(__dir__, '..', 'docs', 'architecture.md')
 text = File.read(path, encoding: 'UTF-8')
 
 anchor = "## Ruby-API (Stand Etappe 2)"
-raise 'Anker fuer 17f fehlt' unless text.include?(anchor)
+raise 'Anker für 17f fehlt' unless text.include?(anchor)
 
 section = <<~MD
   ## Grafik-Import und Materialbase (Etappe 17f)
@@ -21,26 +21,26 @@ section = <<~MD
   ```
 
   **Editor:** `Grafik -> Grafik importieren...`
-  (`ID_MENU_IMPORT_TEX = 109`) oeffnet den Windows-Dateidialog (PNG/BMP),
+  (`ID_MENU_IMPORT_TEX = 109`) öffnet den Windows-Dateidialog (PNG/BMP),
   dekodiert per WIC (`decode_image_wic`, `-lwindowscodecs`) und schreibt
   `.rgba` + `textures.json` (`mat_import_file`). Der Name wird aus dem
   Dateinamen abgeleitet (`mat_slug`: klein, nur `a-z0-9_`, eindeutig).
 
-  `Grafik -> Materialbase...` (`ID_MENU_MATERIALS = 110`) oeffnet das
+  `Grafik -> Materialbase...` (`ID_MENU_MATERIALS = 110`) öffnet das
   moduslose Fenster `RuneEditorMatDlg` (IDs 7001-7013): Liste aller Prefab-
-  und importierten Texturen, Kachelgroesse aendern, importieren, loeschen
-  (nur importierte), auf das ausgewaehlte Objekt anwenden (`obj["tex"]`)
+  und importierten Texturen, Kachelgrösse ändern, importieren, löschen
+  (nur importierte), auf das ausgewählte Objekt anwenden (`obj["tex"]`)
   oder den Objekt-Override entfernen.
 
-  Das Eigenschaften-Panel hat dafuer ein Feld **Material**
+  Das Eigenschaften-Panel hat dafür ein Feld **Material**
   (`IDC_ED_TEX = 3023`); leer = Prefab-Texturen, sonst Materialname.
   `push_object` zeichnet dann alle Teile des Objekts mit dieser Textur.
 
-  **Spiel:** `Textures.register_project` liest `textures.json`, prueft
-  `w * h * 4` Bytes und meldet jede Datei ueber `Rune::Gfx.texture` an. Der
+  **Spiel:** `Textures.register_project` liest `textures.json`, prüft
+  `w * h * 4` Bytes und meldet jede Datei über `Rune::Gfx.texture` an. Der
   Aufruf steht in `Game.setup` direkt nach `Textures.register_all` (also
-  auch nach F5). `Textures.tile_of(name)` liefert die Kachelgroesse aus den
-  Metadaten. `Prefabs.instantiate` wertet `obj["tex"]` aus und ueberschreibt
+  auch nach F5). `Textures.tile_of(name)` liefert die Kachelgrösse aus den
+  Metadaten. `Prefabs.instantiate` wertet `obj["tex"]` aus und überschreibt
   Textur und Kachel aller Prefab-Teile.
 
   **Kopflos testen:** `build/RuneEditor.exe --import-tex <bild> [name]`
@@ -49,16 +49,16 @@ section = <<~MD
   **Wichtig beim Linken:** Die Ruby-DLL exportiert eigene CRT-Symbole
   (`fclose`, `fwrite`, ...). Ohne `-lucrtbase` **vor** der
   Ruby-Importbibliothek werden unsere stdio-Aufrufe auf die Ruby-Exporte
-  umgebogen; `fclose` stuerzt dann mit Access Violation ab. `build.ps1`
-  linkt deshalb `-lucrtbase` zuerst.
+  umgebogen; `fclose` stürzt dann mit Access Violation ab. `build.ps1`
+  linkt deshalb `-lucrtbase` zürst.
 
-  **Geprueft:** `ruby tools/tex_import_test.rb` (BMP -> RGBA, Zeilenordnung,
-  Farben, Metadaten, Aufraeumen) und `ruby tools/project_tex_test.rb`
-  (Spielseite: Metadaten, Groessenpruefung, Registrierung, `tile_of`) sowie
-  alle bisherigen Tests gruen.
+  **Geprüft:** `ruby tools/tex_import_test.rb` (BMP -> RGBA, Zeilenordnung,
+  Farben, Metadaten, Aufräumen) und `ruby tools/project_tex_test.rb`
+  (Spielseite: Metadaten, Grössenprüfung, Registrierung, `tile_of`) sowie
+  alle bisherigen Tests grün.
 
 MD
 
 text = text.sub(anchor, section + anchor)
 File.write(path, text, mode: 'wb')
-puts 'architecture.md: 17f ergaenzt'
+puts 'architecture.md: 17f ergänzt'

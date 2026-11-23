@@ -1,9 +1,9 @@
 #encoding: utf-8
 # ============================================================================
-#  Kopfloser Test fuer die Etappe-18f-Befehle (choices, toggle_switch,
+#  Kopfloser Test für die Etappe-18f-Befehle (choices, toggle_switch,
 #  move_player, weather, save/load) und den Parallel-Trigger.
 #     ruby -I game/engine tools/event18f_test.rb
-#  Exit-Code 0 = alles gruen.
+#  Exit-Code 0 = alles grün.
 # ============================================================================
 
 module Rune
@@ -55,7 +55,7 @@ module Rune
   end
 end
 
-# Game-Attrappe fuer save/load (Game.save_game/load_game wird im Interpreter
+# Game-Attrappe für save/load (Game.save_game/load_game wird im Interpreter
 # aufgerufen; die echte Implementierung braucht die ganze Engine).
 module Game
   SAVED = []
@@ -121,7 +121,7 @@ $interp = Interpreter.new
 $interp.start([{ 'cmd' => 'weather', 'name' => 'regen', 'intensity' => 1.5 }])
 drain
 check('weather: regen aktiv') { Weather.type == 'regen' }
-check('weather: Intensitaet 1.5') { (Weather.intensity - 1.5).abs < 0.001 }
+check('weather: Intensität 1.5') { (Weather.intensity - 1.5).abs < 0.001 }
 
 # --- save_game / load_game --------------------------------------------------
 $interp = Interpreter.new
@@ -158,7 +158,7 @@ check('choices: Pfeil runter -> wrap zu 0') { $interp.choices[:sel] == 0 }
 keys!(:up)
 check('choices: Pfeil rauf -> wrap zu 2') { $interp.choices[:sel] == 2 }
 keys!(:e)
-check('choices: Fenster zu nach Bestaetigung') { $interp.choices.nil? }
+check('choices: Fenster zu nach Bestätigung') { $interp.choices.nil? }
 drain
 check('choices: richtiger Zweig (Vielleicht)') do
   GameState.switch('wahl_vl') && !GameState.switch('wahl_ja') && !GameState.switch('wahl_nein')
@@ -171,21 +171,21 @@ cmds2 = [
   { 'cmd' => 'choices',
     'options' => ['A', 'B'],
     'branches' => [
-      [{ 'cmd' => 'text', 'lines' => ['Du hast A gewaehlt'] }],
-      [{ 'cmd' => 'text', 'lines' => ['Du hast B gewaehlt'] }],
+      [{ 'cmd' => 'text', 'lines' => ['Du hast A gewählt'] }],
+      [{ 'cmd' => 'text', 'lines' => ['Du hast B gewählt'] }],
     ] },
 ]
 $interp = Interpreter.new
 $interp.start(cmds2)
 drain
 check('choices+text: erst Text') { $interp.message == ['Frage?'] }
-keys!(:e)   # Text bestaetigen
+keys!(:e)   # Text bestätigen
 drain
 check('choices+text: dann Wahlfenster') { $interp.busy_choices? }
 keys!(:down)
 keys!(:e)
 drain
-check('choices+text: B-Text erscheint') { $interp.message == ['Du hast B gewaehlt'] }
+check('choices+text: B-Text erscheint') { $interp.message == ['Du hast B gewählt'] }
 keys!(:e)
 drain
 check('choices+text: fertig') { !$interp.running? }
@@ -199,7 +199,7 @@ check('parallel-Trigger im Datenmodell') { ev.trigger == 'parallel' }
 $interp = Interpreter.new
 $interp.start([{ 'cmd' => 'unbekannt_xyz' }, { 'cmd' => 'switch', 'name' => 'nach', 'value' => true }])
 drain
-check('unbekannter Befehl wird uebersprungen') { GameState.switch('nach') }
+check('unbekannter Befehl wird übersprungen') { GameState.switch('nach') }
 
-puts($fail.zero? ? '== EVENT18F-TEST: ALLES GRUEN ==' : "== #{$fail} FEHLER ==")
+puts($fail.zero? ? '== EVENT18F-TEST: ALLES GRÜN ==' : "== #{$fail} FEHLER ==")
 exit($fail.zero? ? 0 : 1)

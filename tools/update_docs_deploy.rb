@@ -1,4 +1,4 @@
-# Haengt docs/architecture.md einen Deployment-Abschnitt an
+# Hängt docs/architecture.md einen Deployment-Abschnitt an
 # (Doppelklick-Start ohne Ruby-PATH; Fix aus Etappe 18e-Nacharbeit).
 # Aufruf: ruby tools/update_docs_deploy.rb
 path = File.join(__dir__, '..', 'docs', 'architecture.md')
@@ -12,9 +12,9 @@ section = <<~MD
   per Explorer-Doppelklick kam „libwinpthread-1.dll nicht gefunden" bzw.
   Aktivierungsfehler 0xc0150002. Drei Ursachen, drei Fixes:
 
-  **1. libwinpthread statisch:** Der g++-Driver haengt HINTER den
+  **1. libwinpthread statisch:** Der g++-Driver hängt HINTER den
   Nutzer-Flags `-lpthread` (dynamisch) an; ein einfaches `-Bstatic`
-  vor `-lwinpthread` wirkt deshalb nicht. Loesung in build.ps1:
+  vor `-lwinpthread` wirkt deshalb nicht. Lösung in build.ps1:
   `-Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive,-Bdynamic`
   — whole-archive erzwingt die statische libwinpthread.a, egal was
   danach kommt. Beide EXEn importieren die DLL nicht mehr.
@@ -27,7 +27,7 @@ section = <<~MD
   nach build/. Fehlt der Ordner: Fehler 0xc0150002 (Ereignisprotokoll
   SideBySide, Quelle der Diagnose).
 
-  **3. RUBYLIB in vm.cpp:** Die Ruby-DLL berechnet ihr lib-Praefix
+  **3. RUBYLIB in vm.cpp:** Die Ruby-DLL berechnet ihr lib-Präfix
   relativ zum eigenen Speicherort. Liegt sie in build/, findet sie
   stdlib und Gems ('json') nicht mehr — das Spiel startet dann ohne
   Spielskripte („LoadError: json", 0 Draws). ruby::ruby::init() setzt
@@ -35,19 +35,19 @@ section = <<~MD
   vendor_ruby, 3.4.0, x64-mingw-ucrt) — nur falls RUBYLIB nicht schon
   gesetzt ist. ruby_init_loadpath() nimmt die Variable in $LOAD_PATH auf.
 
-  **Tauefalle fuer manuelle Link-Tests:** g++/gcc ohne den Toolchain-PATH
+  **Tauefalle für manülle Link-Tests:** g++/gcc ohne den Toolchain-PATH
   schlagen mit Exit 1 und VOLLKOMMEN leerer Ausgabe fehl (cc1.exe kann
   nicht starten — Loader-Fehler, der auf stderr nicht ankommt). Immer
   vorher `$env:PATH = "C:\\Ruby34-x64\\msys64\\ucrt64\\bin;..."` setzen.
   PowerShell-Array-Parameter mit `-Wl,a,b` sind ok, inline nach
-  `& $cmd -flag` wird an Kommas zerpflueckt („Argument in der
+  `& $cmd -flag` wird an Kommas zerpflückt („Argument in der
   Parameterliste fehlt").
 
   **Verifiziert:** Doppelklick-Simulation ohne Ruby-PATH (PATH=
   C:\\Windows\\System32;C:\\Windows): Editor-Fenster steht (Titel
   „RuneEditor - dorf - Dorf"), Spiel rendert (79 Draws, 0 Fehler), mit
-  Ruby-PATH alle 13 Tests + live18e/18d/18c gruen.
+  Ruby-PATH alle 13 Tests + live18e/18d/18c grün.
 
 MD
 File.open(path, 'a') { |f| f.write(section) }
-puts 'architecture.md: Deployment-Abschnitt angehaengt'
+puts 'architecture.md: Deployment-Abschnitt angehängt'

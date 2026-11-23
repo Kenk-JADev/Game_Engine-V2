@@ -2,12 +2,12 @@
 # ============================================================================
 #  Event-Interpreter (angelehnt an RPG-Maker, aber schlank).
 #
-#  Fuehrt eine Kommandoliste aus. Einige Kommandos sind "blockierend":
-#  text (wartet auf Bestaetigung) und warte (wartet auf Zeit). Solange der
-#  Interpreter laeuft, zeigt die Engine das Textfenster und sperrt das
+#  Führt eine Kommandoliste aus. Einige Kommandos sind "blockierend":
+#  text (wartet auf Bestätigung) und warte (wartet auf Zeit). Solange der
+#  Interpreter läuft, zeigt die Engine das Textfenster und sperrt das
 #  Aktivieren weiterer Events (nur ein Interpreter zur Zeit).
 #
-#  Unterstuetzte Kommandos (game/data/maps/*.json):
+#  Unterstützte Kommandos (game/data/maps/*.json):
 #    {"cmd":"text","lines":["...", "..."]}
 #    {"cmd":"choices","options":["Ja","Nein"],"branches":[[...],[...]]}   (18f)
 #    {"cmd":"switch","name":"a","value":true|false}
@@ -23,6 +23,15 @@
 #    {"cmd":"gold","amount":n}                       (negativ = abziehen)
 #    {"cmd":"heal","amount":n}                       (leer/0 = voll heilen)
 #    {"cmd":"weather","name":"regen","intensity":n}  (kein/regen/schnee, Etappe 17h)
+#    {"cmd":"self_switch","letter":"A","value":true}     (Self-Switch, Etappe 19d)
+#    {"cmd":"if_self_switch","letter":"A","value":b,"then":[...],"else":[...]}  (19d)
+#    {"cmd":"fade","direction":"aus","seconds":0.5}      (Bildschirmblende, 19d)
+#    {"cmd":"move_route","target":"Wanderer","steps":["up","warte"],
+#     "repeat":false,"wait":false,"speed":2.0}        (Bewegungsroute, 19g)
+#    {"cmd":"input_number","name":"ziffern","digits":3,"initial":0,
+#     "cancel":true}                            (Zahleneingabe, 19i)
+#    {"cmd":"battle","name":"waldweg","can_escape":true,"can_lose":false}
+#                                                       (Kampf, 19i)
 #    {"cmd":"save_game","slot":1} / {"cmd":"load_game","slot":1}           (18f)
 #    {"cmd":"script","name":"projekt_script"}  |  {"cmd":"script","code":"..."}
 # ============================================================================
@@ -35,10 +44,25 @@ class Interpreter
     @message = nil   # offene Textzeilen, wenn blockierend
     @choices = nil   # Wahlmöglichkeiten {options:, branches:, sel:}
     @wait_left = 0.0
+    @route_wait = nil  # Etappe 19g: move_route mit wait blockiert hier
+    @num_input = nil   # Etappe 19i: Zahleneingabe blockiert hier
+    @battle_wait = false   # Etappe 19i: battle blockiert bis Kampfende
   end
 
   def running?
-    !@stack.empty? || !@message.nil? || !@choices.nil? || @wait_left > 0.0
+    !@stack.empty? || !@message.nil? || !@choices.nil? || @wait_left > 0.0 ||
+      !@route_wait.nil? || !@num_input.nil? || @battle_wait
+  end
+
+  # Zahleneingabe (19i): UI-Status für Game.draw / UI.nummer_eingabe.
+  attr_reader :num_input
+
+  def busy_number?
+    !@num_input.nil?
+  end
+
+  def busy_battle?
+    @battle_wait
   end
 
   def busy_text?
@@ -49,13 +73,13 @@ class Interpreter
     !@choices.nil?
   end
 
-  # Aus einem Projekt-Script: Textfenster oeffnen (blockiert wie 'text').
+  # Aus einem Projekt-Script: Textfenster öffnen (blockiert wie 'text').
   def say(lines)
     @message = Array(lines)
   end
 
   # Startet eine Kommandoliste. Wird bereits gesprochen, wird ignoriert.
-  # owner: ausloesendes Objekt (z. B. Event/NPC) fuer Effekt-Ursprung etc.
+  # owner: auslösendes Objekt (z. B. Event/NPC) für Effekt-Ursprung etc.
   def start(commands, owner = nil)
     return false if running?
     @owner = owner
@@ -80,6 +104,21 @@ class Interpreter
       return
     end
 
+    # Etappe 19g: move_route mit "wait" - blockieren, bis der Mover fertig ist.
+    if @route_wait
+      return if Mover.running?(@route_wait)
+      @route_wait = nil
+    end
+
+    # Etappe 19i: Zahleneingabe blockiert; Eingabe läuft über UI.nummer_eingabe.
+    return if @num_input
+
+    # Etappe 19i: battle blockiert, bis Battle.active? endet.
+    if @battle_wait
+      return if defined?(Battle) && Battle.active?
+      @battle_wait = false
+    end
+
     # Kommandos abarbeiten, bis eines blockiert oder die Liste leer ist.
     64.times do
       frame = @stack.last
@@ -96,7 +135,7 @@ class Interpreter
       when 'text'      then @message = Array(cmd['lines']); return
       when 'choices'
         # Wahlmöglichkeiten (RPG-Maker-Show-Choices): blockiert, bis der
-        # Spieler waehlt; dann laeuft der passende Zweig weiter.
+        # Spieler wählt; dann läuft der passende Zweig weiter.
         opts = Array(cmd['options']).map(&:to_s)
         next if opts.empty?
         @choices = { options: opts, branches: Array(cmd['branches']), sel: 0 }
@@ -104,6 +143,10 @@ class Interpreter
       when 'wait'      then @wait_left = (cmd['seconds'] || 0.0).to_f; return
       when 'switch'    then GameState.set_switch(cmd['name'], !!cmd['value'])
       when 'toggle_switch' then GameState.toggle_switch(cmd['name'])
+      when 'self_switch'   then apply_self_switch(cmd)
+      when 'if_self_switch'
+        branch = self_switch_zutrifft?(cmd)
+        @stack.push(list: branch ? (cmd['then'] || []) : (cmd['else'] || []), index: 0)
       when 'variable'  then apply_variable(cmd)
       when 'if_switch'
         branch = GameState.switch(cmd['name']) == !!cmd['value']
@@ -114,6 +157,7 @@ class Interpreter
       when 'teleport'
         Rune::Player.teleport(cmd['x'].to_f, Game.gy(cmd['x'].to_f, cmd['z'].to_f) + 0.2,
                               cmd['z'].to_f)
+        Game.reset_step_tracking if Game.respond_to?(:reset_step_tracking)
         Rune::Camera.yaw = (cmd['yaw'] || Math::PI).to_f
       when 'move_player'
         # Spieler bewegen (18f): absolut oder relativ zur aktuellen Position.
@@ -121,10 +165,11 @@ class Interpreter
         tx = cmd['relative'] ? px + cmd['x'].to_f : cmd['x'].to_f
         tz = cmd['relative'] ? pz + cmd['z'].to_f : cmd['z'].to_f
         Rune::Player.teleport(tx, Game.gy(tx, tz) + 0.2, tz)
+        Game.reset_step_tracking if Game.respond_to?(:reset_step_tracking)
       when 'save_game'
         Game.save_game((cmd['slot'] || 1).to_i)
       when 'load_game'
-        # Achtung: Laedt die Karte neu und ersetzt damit auch diesen
+        # Achtung: Lädt die Karte neu und ersetzt damit auch diesen
         # Interpreter (Game.enter_map baut @interpreter neu). Befehle
         # nach load_game in derselben Liste laufen nicht mehr weiter.
         Game.load_game((cmd['slot'] || 1).to_i)
@@ -173,8 +218,40 @@ class Interpreter
         Party.heal_all(cmd.key?('amount') ? cmd['amount'].to_i : 0)
       when 'weather'   # {"cmd":"weather","name":"schnee","intensity":1.5} (Etappe 17h)
         Weather.set(cmd['name'] || 'kein', (cmd['intensity'] || 1.0).to_f)
+      when 'fade'   # {"cmd":"fade","direction":"aus","seconds":0.5} (Etappe 19d)
+        Fade.start(cmd['direction'] || 'aus', cmd['seconds'] || 0.5)
+      when 'input_number'   # Zahleneingabe (Etappe 19i, RPG Maker XP)
+        digits = (cmd['digits'] || 1).to_i.clamp(1, 6)
+        start = (cmd['initial'] || 0).to_i.clamp(0, 10**digits - 1)
+        @num_input = { variable: cmd['name'].to_s, digits: digits,
+                       ziffern: start.digits(10).then { |d| Array.new(digits) { |i| d[i] || 0 } }.reverse,
+                       sel: 0, cancel: cmd['cancel'] != false }
+        return
+      when 'battle'   # Kampf-Grundgerüst (Etappe 19i, RPG Maker XP)
+        if defined?(Battle)
+          ok = Battle.start(cmd['name'], can_escape: cmd['can_escape'] != false,
+                            can_lose: cmd['can_lose'] == true)
+          if ok
+            @battle_wait = true
+            return
+          end
+        else
+          Rune::Log.warn('Interpreter: battle ohne Battle-Modul übersprungen')
+        end
+      when 'move_route'   # Bewegungsroute (Etappe 19g, RPG Maker XP)
+        route = Mover.start(cmd['target'], cmd['steps'], repeat: cmd['repeat'],
+                            speed: cmd['speed'], code: cmd['code'])
+        if route && cmd['wait']
+          if cmd['repeat']
+            Rune::Log.warn('Interpreter: move_route wait+repeat - Warten ' \
+                           'würde nie enden (Route läuft endlos weiter)')
+          else
+            @route_wait = route
+            return
+          end
+        end
       else
-        Rune::Log.warn("Interpreter: unbekanntes Kommando '#{cmd['cmd']}' uebersprungen")
+        Rune::Log.warn("Interpreter: unbekanntes Kommando '#{cmd['cmd']}' übersprungen")
         Issues.report('Interpreter', "unbekanntes Kommando '#{cmd['cmd']}'")
       end
     end
@@ -191,6 +268,28 @@ class Interpreter
     GameState.set_variable(name, v)
   end
 
+  # Self-Switch (Etappe 19d, RPG Maker XP): Schalter A-D, die nur für das
+  # auslösende Event gelten. Ohne Besitzer (z. B. Intro-Aufruf) sind sie
+  # sinnlos - dann warnen und überspringen bzw. den Sonst-Zweig nehmen.
+  def apply_self_switch(cmd)
+    key = @owner.respond_to?(:self_switch_key) ? @owner.self_switch_key : nil
+    unless key
+      Rune::Log.warn('Interpreter: self_switch ohne Event-Besitzer ignoriert')
+      Issues.report('Interpreter', 'self_switch ohne Besitzer')
+      return
+    end
+    GameState.set_self_switch(key, cmd['letter'], !!cmd['value'])
+  end
+
+  def self_switch_zutrifft?(cmd)
+    key = @owner.respond_to?(:self_switch_key) ? @owner.self_switch_key : nil
+    unless key
+      Rune::Log.warn('Interpreter: if_self_switch ohne Besitzer -> Sonst-Zweig')
+      return false
+    end
+    GameState.self_switch(key, cmd['letter']) == !!cmd['value']
+  end
+
   def compare_variable(cmd)
     a = GameState.variable(cmd['name'])
     b = (cmd['value'] || 0).to_f
@@ -205,7 +304,7 @@ class Interpreter
     end
   end
 
-  # Naechste Zeile zeigen; die letzte schliesst das Fenster.
+  # Nächste Zeile zeigen; die letzte schliesst das Fenster.
   def advance_text
     if Rune::Input.pressed?(:e) || Rune::Input.pressed?(:space) ||
        Rune::Input.pressed?(:enter)
@@ -213,8 +312,8 @@ class Interpreter
     end
   end
 
-  # Wahl treffen: Pfeiltasten (oder Mausklick), E/Enter bestaetigt.
-  # Der gewaehlte Zweig wird auf den Stack gelegt und laeuft weiter.
+  # Wahl treffen: Pfeiltasten (oder Mausklick), E/Enter bestätigt.
+  # Der gewählte Zweig wird auf den Stack gelegt und läuft weiter.
   def advance_choices
     c = @choices
     n = c[:options].size

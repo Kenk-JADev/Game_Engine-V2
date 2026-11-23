@@ -11,9 +11,9 @@
 namespace {
 
 // Freie Sichtlinie vom Spielerkopf zur Third-Person-Kamera: Ray-March in
-// 32 Schritten; Terrain (Hoehe + Rand) und alle festen Hindernisse (um
-// 0.3 m aufgeblasen) blocken. Rueckgabe: erlaubter Abstand, oder -1 = frei.
-// lift (Ausgabe): > 0, wenn die Kamera lieber ueber das Hindernis gehoben
+// 32 Schritten; Terrain (Höhe + Rand) und alle festen Hindernisse (um
+// 0.3 m aufgeblasen) blocken. Rückgabe: erlaubter Abstand, oder -1 = frei.
+// lift (Ausgabe): > 0, wenn die Kamera lieber über das Hindernis gehoben
 // wird (niedrige Zaune, Brunnen) statt ganz ranzuziehen.
 float camera_clearance(rune::world::Terrain& terrain,
                        const rune::world::Physics& physics,
@@ -61,11 +61,11 @@ float camera_clearance(rune::world::Terrain& terrain,
     const float t = len * static_cast<float>(hit) / static_cast<float>(steps);
     float d = t - pad;
     if (d < 1.2f) {
-        // Sehr nah dran: lieber ueber das Hindernis heben (Zaun, Brunnen ...).
+        // Sehr nah dran: lieber über das Hindernis heben (Zaun, Brunnen ...).
         for (float l = 0.5f; l <= 2.5f; l += 0.5f) {
             if (!blocked(Vec3{desired.x, desired.y + l, desired.z})) {
                 lift = l;
-                return -1.0f;   // volle Distanz, nur hoeher
+                return -1.0f;   // volle Distanz, nur höher
             }
         }
         d = 1.2f;
@@ -76,6 +76,8 @@ float camera_clearance(rune::world::Terrain& terrain,
 } // namespace
 #include "core/log.h"
 #include "core/sound.h"
+#include "core/win_path.h"
+#include "core/win_project_cli.h"
 #include "core/window.h"
 #include "gfx/camera.h"
 #include "gfx/renderer.h"
@@ -85,28 +87,12 @@ float camera_clearance(rune::world::Terrain& terrain,
 
 namespace {
 
-bool dir_exists(const std::string& p) {
-    DWORD attr = GetFileAttributesA(p.c_str());
-    return attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY);
-}
-
-// Projektwurzel = Ordner, der "game/" enthaelt. Erst im Arbeitsverzeichnis
-// suchen, dann neben und ueber der Exe (build/Rune3D.exe).
+// Spiel bevorzugt das aktuelle Arbeitsverzeichnis, falls es game/ enthält.
+// Die gemeinsame Suche nutzt Windows-UTF-16 und liefert intern UTF-8.
 std::string find_root() {
-    char cwd[MAX_PATH] = {};
-    GetCurrentDirectoryA(MAX_PATH, cwd);
-    if (dir_exists(std::string(cwd) + "\\game")) return cwd;
-
-    char exe[MAX_PATH] = {};
-    GetModuleFileNameA(nullptr, exe, MAX_PATH);
-    std::string dir = exe;
-    const size_t slash = dir.find_last_of("\\/");
-    if (slash != std::string::npos) dir = dir.substr(0, slash);
-
-    if (dir_exists(dir + "\\game")) return dir;
-    if (dir_exists(dir + "\\..\\game")) return dir + "\\..";
-
-    return cwd;
+    std::string root;
+    rune::core::win_path::find_engine_root(true, root);
+    return root;
 }
 
 double qpc_now() {
@@ -124,8 +110,11 @@ double qpc_now() {
 
 int main(int argc, char** argv) {
     const std::string root = find_root();
-    SetCurrentDirectoryA(root.c_str());
-    CreateDirectoryA("log", nullptr);
+    if (root.empty() || !rune::core::win_path::set_current_directory(root)) {
+        std::fprintf(stderr, "FEHLER: Engine-Wurzel nicht zugänglich\n");
+        return 1;
+    }
+    CreateDirectoryW(L"log", nullptr);
 
     // Etappe 18a: scharfe Darstellung auf skalierten Displays.
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
@@ -134,17 +123,28 @@ int main(int argc, char** argv) {
     rune::core::log_info("=== Rune3D startet ===");
     rune::core::log_info("Projektwurzel: " + root);
 
-    // Etappe 17h: Playtest-Start aus dem Editor.
-    //   Rune3D.exe --project <name>
-    // Der Name landet in RUNE_PROJECT; main.rb springt damit direkt ins
-    // Projekt (kein Titelbildschirm).
-    for (int i = 1; i + 1 < argc; ++i) {
-        if (std::string(argv[i]) == "--project") {
-            SetEnvironmentVariableA("RUNE_PROJECT", argv[i + 1]);
-            rune::core::log_info(std::string("Projekt-Argument: ") + argv[i + 1]);
-            break;
-        }
+    // Etappe 19f: Daten-Check mit klarem Hinweis. Ohne game/-Ordner neben der
+    // EXE (oder eine Ebene höher) fehlen boot.rb, prefabs.json und Projekte;
+    // die Folgefehler (LoadError/„nicht gefunden") sind sonst schwer zu deuten
+    // - genau das passierte mit einem Artefakt-Download, der nur EXEs enthielt.
+    if (!rune::core::win_path::path_exists(root + "\\game")) {
+        rune::core::log_error(
+            "Engine-Daten fehlen: kein game/-Ordner unter der Projektwurzel. "
+            "Bitte den KOMPLETTEN Build entpacken (EXEs + game/ + projekte/ "
+            "in einen Ordner) - einzelne EXEs finden ihre Daten nicht.");
     }
+
+    // Playtest: Rune3D.exe --project <name> [--map <karten-id>].
+    // Die UTF-16-Argumente gelangen verlustfrei in die Ruby-Umgebung;
+    // ohne --map wird ein möglicherweise geerbter alter Kartenwert gelöscht.
+    rune::core::win_project_cli::GameArguments launch;
+    if (!rune::core::win_project_cli::current_game(launch) ||
+        !rune::core::win_project_cli::apply_game_environment(launch)) {
+        rune::core::log_error("Ungültige --project-/--map-Argumente oder Umgebung");
+        return 1;
+    }
+    if (launch.has_project) rune::core::log_info("Projekt-Argument: " + launch.project);
+    if (launch.has_map) rune::core::log_info("Playtest-Karte: " + launch.map);
 
     rune::App& app = rune::app();
 
@@ -183,7 +183,7 @@ int main(int argc, char** argv) {
         rune::core::log_error("Bootstrap fehlgeschlagen - starte ohne Spiel weiter");
     }
 
-    rune::core::log_info("Hauptschleife laeuft");
+    rune::core::log_info("Hauptschleife läuft");
     rune::core::log_info("F1 = First-Person, F3 = Third-Person, F2 = Debug, F5 = Ruby neu laden");
 
     double last = qpc_now();
@@ -226,8 +226,8 @@ int main(int argc, char** argv) {
         if (window.consume_resize()) renderer.resize(window.width(), window.height());
 
         // Erst Physik (Spieler bewegen), dann Kamera daran ausrichten.
-        // Im Editor-Modus (sim_paused) steht die Simulation komplett still —
-        // nichts kann kaputtgehen, waehrend man editiert (Etappe 16b).
+        // Bei sim_paused, etwa während eines Kampfes, steht die Physik still;
+        // Kamera und Ruby-Oberfläche laufen weiter.
         if (!app.sim_paused) {
             physics.update(dt, in, camera.yaw, terrain);
         }
@@ -263,10 +263,10 @@ int main(int argc, char** argv) {
             fps_accum = 0.0;
             fps_frames = 0;
 
-            char title[160];
-            std::snprintf(title, sizeof(title), "Rune3D - RPG Engine   |   %.0f FPS   |   %d Draws",
+            wchar_t title[160];
+            std::swprintf(title, 160, L"Rune3D - RPG Engine   |   %.0f FPS   |   %d Draws",
                           app.fps, renderer.draw_count());
-            SetWindowTextA(window.hwnd(), title);
+            SetWindowTextW(window.hwnd(), title);
         }
 
         renderer.begin_frame(camera.view_proj(window.width(), window.height()),

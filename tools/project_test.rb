@@ -1,8 +1,8 @@
 #encoding: utf-8
 # ============================================================================
-#  Kopfloser Test fuer das Projekt-System: Liste, Slug, Anlegen, neue Karten.
+#  Kopfloser Test für das Projekt-System: Liste, Slug, Anlegen, neue Karten.
 #     ruby -I game/engine tools/project_test.rb
-#  Legt echte Ordner unter projekte/ an - Testprojekte werden wieder geloescht.
+#  Legt echte Ordner unter projekte/ an - Testprojekte werden wieder gelöscht.
 # ============================================================================
 
 $LOAD_PATH.unshift(File.join(File.expand_path('..', __dir__), 'game', 'engine'))
@@ -76,19 +76,51 @@ check('Karte welt02 ist leer') {
   m = Database.map('welt02')
   m['objects'].empty? && m['events'].empty? && m['start']['x'] == 0.0
 }
-check('naechste freie ID ist welt03') { Project.next_map_id == 'welt03' }
+check('nächste freie ID ist welt03') { Project.next_map_id == 'welt03' }
 
-# --- Infos / zuletzt gespielt / loeschen ----------------------------------
+# --- Infos / zuletzt gespielt / löschen ----------------------------------
 Project.touch(name)
 info = Project.info(name)
 check('info liefert Titel') { info['title'] == 'Test Welt' }
-check('info zaehlt 2 Karten') { info['maps'] == 2 }
+check('info zählt 2 Karten') { info['maps'] == 2 }
 check('touch vermerkt zuletzt gespielt') { info['last'].is_a?(String) && !info['last'].empty? }
 check('title liefert Anzeigename') { Project.title(name) == 'Test Welt' }
+
+# Der Playtest darf den gleichzeitig im Editor eingestellten Projektstart
+# nicht aus einem älteren Snapshot überschreiben oder kaputtes JSON leeren.
+system_path = File.join(Project.data_path(name), 'system.json')
+fixture = JSON.parse(File.read(system_path, encoding: 'UTF-8'))
+fixture['start']['x'] = 17.0
+fixture['start']['use_project_position'] = true
+fixture['zukunft'] = { 'zahl' => 9_007_199_254_740_993, 'text' => 'Änderung' }
+File.write(system_path, JSON.pretty_generate(fixture) + "\n", encoding: 'UTF-8')
+check('touch erhält Projektstart und unbekannte Daten') {
+  Project.touch(name) && (updated = JSON.parse(File.read(system_path, encoding: 'UTF-8'))) &&
+    updated['start'] == fixture['start'] && updated['zukunft'] == fixture['zukunft'] &&
+    updated['last_played'].is_a?(String)
+}
+['{', '{"start":{"x":1,"x":2}}', '[1,2]'].each do |invalid|
+  File.binwrite(system_path, invalid)
+  check('touch lässt beschädigte, mehrdeutige oder falsche Systemdaten unangetastet') {
+    !Project.touch(name) && File.binread(system_path) == invalid
+  }
+end
+File.write(system_path, JSON.pretty_generate(fixture) + "\n", encoding: 'UTF-8')
+before_lock = File.binread(system_path)
+locked = File.open(system_path, 'r+b')
+begin
+  acquired = locked.flock(File::LOCK_EX | File::LOCK_NB)
+  skipped = !Project.touch(name)
+ensure
+  locked.close
+end
+check('touch überspringt ein konkurrierend gesperrtes system.json') {
+  acquired && skipped && File.binread(system_path) == before_lock
+}
 Project.delete(name)
 check('delete entfernt das Projekt') { !Project.valid?(name) }
 
-# --- Aufraeumen -----------------------------------------------------------
+# --- Aufräumen -----------------------------------------------------------
 FileUtils.rm_rf(Project.path('test_welt'))
 FileUtils.rm_rf(Project.path('test_welt_2'))
 check('Testprojekte wieder entfernt') { !Project.valid?('test_welt') && !Project.valid?('test_welt_2') }

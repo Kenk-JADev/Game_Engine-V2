@@ -1,11 +1,11 @@
 # Aktualisiert docs/architecture.md um Etappe 18d
-# (Splat-Boeden: mehrere Boden-Texturen pro Karte, Atlas, Flaechen-Editor).
+# (Splat-Böden: mehrere Boden-Texturen pro Karte, Atlas, Flächen-Editor).
 # Aufruf: ruby tools/update_docs18d.rb
 path = File.join(__dir__, '..', 'docs', 'architecture.md')
 text = File.read(path, encoding: 'UTF-8')
 
 anchor = '## Tileset-Editor (Etappe 18c)'
-raise 'Anker fuer 18d fehlt' unless text.include?(anchor)
+raise 'Anker für 18d fehlt' unless text.include?(anchor)
 
 section = <<~MD
   ## Splat-Böden (Etappe 18d)
@@ -45,10 +45,10 @@ section = <<~MD
   **Geprüft:** Live-Test log/live18d.ps1 (Fläche hinzufügen/entfernen,
   Splat-Log, JSON-Checks, Editor lebt), Spiel-Smoke mit 2 Splats
   (Atlas + Splat-Boden im engine.log, 0 Fehler), alle 13 Tests grün,
-  live18c-Regression grün (Log-Format angepasst: "Kachel N m, N Flaeche(n)").
+  live18c-Regression grün (Log-Format angepasst: "Kachel N m, N Fläche(n)").
 
 MD
 
 text = text.sub(anchor, section + anchor)
 File.write(path, text, mode: 'wb')
-puts 'architecture.md: 18d ergaenzt'
+puts 'architecture.md: 18d ergänzt'

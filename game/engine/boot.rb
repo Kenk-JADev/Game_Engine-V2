@@ -2,7 +2,7 @@
 # Rune3D - Bootstrap. Wird einmal beim Start geladen, danach nur noch main.rb (F5).
 
 module Rune
-  # Winkel-Helfer: die Engine rechnet in Radiant, Skripte duerfen Grad benutzen.
+  # Winkel-Helfer: die Engine rechnet in Radiant, Skripte dürfen Grad benutzen.
   DEG2RAD = Math::PI / 180.0
 
   def self.rad(degrees)
@@ -15,42 +15,34 @@ module Rune
     Game.draw       if Game.respond_to?(:draw)
   end
 
-  module World
-    # Gelaende erzeugen - mit benannten Argumenten, damit Skripte lesbar bleiben.
-    # Rune::World.generate(width: 240, height: 180, resolution: 192, seed: 7,
-    #                      amplitude: 0.0)   # amplitude 0 = ganz flach
-    # size: wird als Quadrat weiter unterstuetzt (alte Karten).
-    # height_brushes: gemalte Berge/Senken aus dem Editor (Etappe 18l) -
-    # Liste von [x, z, radius, hoehe] (hoehe < 0 = Senke). Muss vor dem
-    # generate_raw-Aufruf gesetzt werden.
-    def self.generate(width: nil, height: nil, size: nil, resolution: 176,
-                      seed: 7, amplitude: 5.0, height_brushes: nil)
-      w = width || size || 220.0
-      h = height || size || w
-      self.height_brushes = height_brushes || []
-      generate_raw(w.to_f, h.to_f, resolution, seed, amplitude)
-    end
-  end
 end
 
 $LOAD_PATH.unshift(File.join(Rune::ROOT, 'game', 'engine'))
 
+require 'terrain_api'
 require 'node'
 require 'scene'
 require 'ui'
 require 'data'
 require 'state'
 require 'issues'
+require 'mapcheck'   # Etappe 19a: Karten-Daten prüfen (Regeln wie im Editor)
+require 'passage'    # Etappe 19k.3: Passierbarkeit (Block-Zonen + Hindernisse)
 require 'party'
+require 'battle'     # Etappe 19i: Kampf-Grundgerüst (XP Scene_Battle)
 require 'event'
 require 'npc'
+require 'mover'      # Etappe 19g: Bewegungsrouten (XP Move Routes)
 require 'effects'
 require 'weather'
+require 'fade'        # Etappe 19d: Bildschirm ein-/ausblenden (XP-Feature)
 require 'interpreter'
 require 'scripts'
+require 'rgss'       # Etappe 19e: RPG-Maker-XP-Schicht ($game_*, Graphics, ...)
+require 'graphics'   # Etappe 19h: Sprite/Window/Viewport/$scene (RGSS-Vertiefung)
 require 'pick'
 require 'prefabs'
-require 'editor'
+require 'map_objects'
 require 'textures'
 require 'sounds'
 require 'project'

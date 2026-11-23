@@ -1,9 +1,9 @@
 #encoding: utf-8
 # ============================================================================
-#  Kopfloser Test fuer Datenbank + GameState + Event + Interpreter.
-#  Laesst sich ohne Engine starten:
+#  Kopfloser Test für Datenbank + GameState + Event + Interpreter.
+#  Lässt sich ohne Engine starten:
 #     ruby -I game/engine tools/event_test.rb
-#  Exit-Code 0 = alles gruen.
+#  Exit-Code 0 = alles grün.
 # ============================================================================
 
 # --- Minimal-Attrappe der Engine-Schnittstelle -----------------------------
@@ -51,7 +51,7 @@ require 'state'
 require 'issues'
 require 'event'
 require 'interpreter'
-require 'effects'   # dorf.json enthaelt seit Etappe 14c 'effect'-Befehle
+require 'effects'   # dorf.json enthält seit Etappe 14c 'effect'-Befehle
 
 module Rune
   module Gfx
@@ -98,22 +98,22 @@ check('Touch-Event vorhanden') { events.count { |e| e.trigger == 'touch' } == 1 
 check('Mara in Reichweite bei (0,5.0)') { mara.near?(0.0, 5.0) }
 check('Mara ausser Reichweite bei (0,12.0)') { !mara.near?(0.0, 12.0) }
 
-# --- Erstes Gespraech: noch keine Kristalle --------------------------------
+# --- Erstes Gespräch: noch keine Kristalle --------------------------------
 $interp = Interpreter.new
 $interp.start(mara.commands)
 drain
-check('Mara begruesst (2 Zeilen)') { $interp.message ==
-  ['Mara: Drei Kristalle traegt der Weg nach Norden.', 'Hol sie dir, dann oeffnen sich die Tore.'] }
+check('Mara begrüsst (2 Zeilen)') { $interp.message ==
+  ['Mara: Drei Kristalle trägt der Weg nach Norden.', 'Hol sie dir, dann öffnen sich die Tore.'] }
 press!
-check('Zeile 2 sichtbar') { $interp.message == ['Hol sie dir, dann oeffnen sich die Tore.'] }
+check('Zeile 2 sichtbar') { $interp.message == ['Hol sie dir, dann öffnen sich die Tore.'] }
 press!
 check('Fenster zu') { $interp.message.nil? }
 drain
 check('Danach else-Zweig (noch nicht genug)') { $interp.message ==
-  ['Mara: Noch nicht genug. Zaehle sie selbst nach.'] }
+  ['Mara: Noch nicht genug. Zähle sie selbst nach.'] }
 press!
 drain
-check('Interpreter fertig, Schalter unveraendert') { !$interp.running? && !GameState.switch('kristall_aktiv') }
+check('Interpreter fertig, Schalter unverändert') { !$interp.running? && !GameState.switch('kristall_aktiv') }
 
 # --- Kristall einsammeln ---------------------------------------------------
 $interp = Interpreter.new
@@ -166,7 +166,7 @@ check('nach wait kommt Text') { $interp.message == ['fertig'] }
 $interp = Interpreter.new
 $interp.start([{ 'cmd' => 'quatsch' }, { 'cmd' => 'text', 'lines' => ['weiter'] }])
 drain
-check('unbekanntes Kommando uebersprungen') { $interp.message == ['weiter'] }
+check('unbekanntes Kommando übersprungen') { $interp.message == ['weiter'] }
 
 # --- Sound-Kommando ---------------------------------------------------------
 $interp = Interpreter.new

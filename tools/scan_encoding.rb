@@ -1,4 +1,4 @@
-# Etappe 18c/Groesse: Prueft alle Quell- und Daten-Dateien auf Kodierung.
+# Etappe 18c/Grösse: Prüft alle Quell- und Daten-Dateien auf Kodierung.
 #  1) Ist die Datei valides UTF-8? (Wenn nein: gemischte/kaputte Bytess)
 #  2) Welche Umlaute (UTF-8) und rohen CP1252-Bytes stecken drin?
 # Aufruf: ruby tools/scan_encoding.rb
@@ -12,7 +12,7 @@ puts "Dateien gesamt: #{files.size}, invalide UTF-8: #{invalid.size}"
 invalid.each { |f| puts "  INVALID: #{f}" }
 puts '---'
 
-# UTF-8-Umlaute und CP1252-Rohbytes je Datei zaehlen.
+# UTF-8-Umlaute und CP1252-Rohbytes je Datei zählen.
 utf8_pat = {
   "\xC3\xA4".b => 'ae', "\xC3\xB6".b => 'oe', "\xC3\xBC".b => 'ue',
   "\xC3\x84".b => 'Ae', "\xC3\x96".b => 'Oe', "\xC3\x9C".b => 'Ue',
@@ -27,8 +27,8 @@ files.each do |f|
     hits << "UTF8-#{tr} x#{n}" if n.positive?
   end
   raw1252.each do |b|
-    # CP1252-Rohbyte nur zaehlen, wenn es NICHT Teil einer UTF-8-Folge ist;
-    # einfache Zaehlung reicht hier zur Diagnose.
+    # CP1252-Rohbyte nur zählen, wenn es NICHT Teil einer UTF-8-Folge ist;
+    # einfache Zählung reicht hier zur Diagnose.
     n = bin.count(b.chr)
     hits << "RAW1252-0x#{b.to_s(16)} x#{n}" if n.positive?
   end

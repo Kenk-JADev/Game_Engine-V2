@@ -7,10 +7,50 @@ using namespace rune::math;
 
 namespace rune::world {
 namespace {
-constexpr float kMaxStep = 0.35f; // Stufen bis zu dieser Hoehe werden erklommen
+constexpr float kMaxStep = 0.35f; // Stufen bis zu dieser Höhe werden erklommen
 }
 
 void Physics::clear_solids() { m_solids.clear(); }
+
+// Etappe 19k.2: Block-Zonen - unsichtbare Wände über alle Höhen.
+void Physics::clear_blocked() { m_blocked.clear(); }
+
+void Physics::add_blocked(float cx, float cz, float w, float h) {
+    if (w <= 0.0f || h <= 0.0f) return;
+    BlockedRect r{};
+    r.x0 = cx - w * 0.5f;
+    r.x1 = cx + w * 0.5f;
+    r.z0 = cz - h * 0.5f;
+    r.z1 = cz + h * 0.5f;
+    m_blocked.push_back(r);
+}
+
+bool Physics::is_blocked(float x, float z) const {
+    for (const BlockedRect& r : m_blocked) {
+        if (x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1) return true;
+    }
+    return false;
+}
+
+// Etappe 19k.3: liegt der Punkt in einem Objekt-Hindernis?
+bool Physics::solid_at(float x, float y, float z) const {
+    for (const Aabb& b : m_solids) {
+        if (x >= b.min.x && x <= b.max.x &&
+            y >= b.min.y && y <= b.max.y &&
+            z >= b.min.z && z <= b.max.z) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Überlappt das Rechteck (x0..x1, z0..z1) eine Block-Zone?
+bool Physics::blocked_overlaps(float x0, float z0, float x1, float z1) const {
+    for (const BlockedRect& r : m_blocked) {
+        if (x0 < r.x1 && x1 > r.x0 && z0 < r.z1 && z1 > r.z0) return true;
+    }
+    return false;
+}
 
 void Physics::add_solid(Vec3 center, Vec3 size) {
     Aabb b{};
@@ -35,7 +75,7 @@ void Physics::push_out(float cx, float cz, float radius) {
     const float f = radius / d;
     m_pos.x = cx + dx * f;
     m_pos.z = cz + dz * f;
-    if (overlaps_any(m_pos)) m_pos = old;   // nicht in Waende druecken
+    if (overlaps_any(m_pos)) m_pos = old;   // nicht in Wände drücken
 }
 
 bool Physics::overlaps_any(Vec3 pos) const {
@@ -50,6 +90,8 @@ bool Physics::overlaps_any(Vec3 pos) const {
             return true;
         }
     }
+    // Etappe 19k.2: Block-Zonen ignorieren die Höhe (unsichtbare Wände).
+    if (blocked_overlaps(x0, z0, x1, z1)) return true;
     return false;
 }
 
@@ -60,7 +102,7 @@ float Physics::terrain_floor(Vec3 pos, const Terrain& terrain) const {
         const bool inside_xz = pos.x + radius > b.min.x && pos.x - radius < b.max.x &&
                                pos.z + radius > b.min.z && pos.z - radius < b.max.z;
         if (!inside_xz) continue;
-        // Nur Deckel, die knapp ueber den Fuessen liegen, zaehlen als Boden.
+        // Nur Deckel, die knapp über den Füssen liegen, zählen als Boden.
         if (b.max.y <= pos.y + kMaxStep && b.max.y > floor_h) floor_h = b.max.y;
     }
     return floor_h;
@@ -103,7 +145,7 @@ void Physics::update(float dt, const core::InputState& in, float yaw, const Terr
     m_vel.y -= gravity * dt;
     if (m_vel.y < -60.0f) m_vel.y = -60.0f;
 
-    // --- Bewegung achsenweise, damit man an Waenden entlangrutscht
+    // --- Bewegung achsenweise, damit man an Wänden entlangrutscht
     m_pos.x += m_vel.x * dt;
     if (overlaps_any(m_pos)) {
         m_pos.x -= m_vel.x * dt;

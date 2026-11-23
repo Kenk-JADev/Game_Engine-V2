@@ -1,5 +1,9 @@
 {
   "name": "Dorf",
+  "encounters": {
+    "troops": ["waldweg", "banditen"],
+    "steps": 30
+  },
   "terrain": {
     "size": 240,
     "resolution": 192,
@@ -245,7 +249,7 @@
   "events": [
     {
       "id": 1,
-      "name": "Waechter Mara",
+      "name": "Wächter Mara",
       "x": 0.0,
       "z": 4.5,
       "radius": 3.2,
@@ -268,8 +272,8 @@
             {
               "cmd": "text",
               "lines": [
-                "Mara: Drei Kristalle traegt der Weg nach Norden.",
-                "Hol sie dir, dann oeffnen sich die Tore."
+                "Mara: Drei Kristalle trägt der Weg nach Norden.",
+                "Hol sie dir, dann öffnen sich die Tore."
               ]
             },
             {
@@ -304,7 +308,7 @@
                 {
                   "cmd": "text",
                   "lines": [
-                    "Mara: Noch nicht genug. Zaehle sie selbst nach."
+                    "Mara: Noch nicht genug. Zähle sie selbst nach."
                   ]
                 }
               ]
@@ -437,8 +441,8 @@
             {
               "cmd": "text",
               "lines": [
-                "Der groesste der drei. Er wird schwer.",
-                "Geh zurueck zu Mara."
+                "Der grösste der drei. Er wird schwer.",
+                "Geh zurück zu Mara."
               ]
             },
             {
@@ -492,7 +496,7 @@
           "cmd": "text",
           "lines": [
             "Ein Schild: 'Die Kristalle liegen hinter dem Zaun, im Norden.'",
-            "Der Weg fuehrt nach links um die Weide herum."
+            "Der Weg führt nach links um die Weide herum."
           ]
         }
       ]
@@ -526,7 +530,7 @@
         {
           "cmd": "text",
           "lines": [
-            "Wanderer: Schoenes Waetter heute, nicht?",
+            "Wanderer: Schönes Wetter heute, nicht?",
             "Ich patrouilliere das Dorf rundherum."
           ]
         }

@@ -5,7 +5,7 @@
 #  Quelle ist das Karten-Feld   "weather": {"type":"regen","intensity":1.0}
 #  ("kein" oder fehlend = kein Wetter). Der Interpreter-Befehl
 #  {"cmd":"weather","name":"schnee","intensity":1.5} stellt es zur Laufzeit
-#  um; Scripts koennen weather('regen', 2.0) rufen.
+#  um; Scripts können weather('regen', 2.0) rufen.
 #
 #  Wie Effects sind die Partikel kleine Boxen; Regen = schnelle lange
 #  Strahlen, Schnee = langsame schwebende Flocken. Kopflos testbar:
@@ -14,6 +14,7 @@
 
 module Weather
   TYPES = %w[kein regen schnee].freeze
+  MAX_INTENSITY = 10.0 # höchstens 400 Partikel, passend zu terrain_limits.h
 
   @type = 'kein'
   @intensity = 1.0
@@ -39,17 +40,27 @@ module Weather
       Rune::Log.info('Wetter: aus')
     else
       @type = key
-      @intensity = intensity.to_f.positive? ? intensity.to_f : 1.0
+      n = (intensity.is_a?(Integer) || intensity.is_a?(Float)) ? intensity.to_f : Float::NAN
+      unless n.finite? && n.positive? && n <= MAX_INTENSITY
+        Rune::Log.warn('Wetter-Intensität ungültig; 1.0 als Ersatz')
+        n = 1.0
+      end
+      @intensity = n
       @drops.clear
-      Rune::Log.info("Wetter: #{key} (Intensitaet #{@intensity})")
+      Rune::Log.info("Wetter: #{key} (Intensität #{@intensity})")
     end
     self
   end
 
-  # Aus dem Karten-Hash uebernehmen (Kartenstart/F5).
+  # Aus dem Karten-Hash übernehmen (Kartenstart/F5).
   def load_map(map)
-    w = (map || {})['weather'] || {}
-    set(w['type'] || 'kein', w['intensity'] || 1.0)
+    w = (map || {})['weather']
+    unless w.nil? || w.is_a?(Hash)
+      Rune::Log.warn('weather ist kein Objekt; Wetter aus')
+      w = nil
+    end
+    w ||= {}
+    set(w['type'] || 'kein', w['intensity'].nil? ? 1.0 : w['intensity'])
   end
 
   # Partikel um den Spieler herum neu verteilen (Spawn im Umkreis).
@@ -64,11 +75,11 @@ module Weather
   def update(dt, px, py, pz)
     return unless active?
 
-    # Zielmenge: ~ 40 Partikel pro Intensitaetsstufe.
+    # Zielmenge: ~ 40 Partikel pro Intensitätsstufe.
     want = (40 * @intensity).round
     gy = py - 2.0   # grober Boden (Partikel verschwinden unter dem Spieler)
 
-    # Nachfuellen.
+    # Nachfüllen.
     (@drops.size...want).each { @drops << spawn(px, pz, py) }
 
     fall = (@type == 'regen') ? 22.0 : 2.6
@@ -82,7 +93,7 @@ module Weather
     end
 
     # Unter dem Boden/zu weit weg: neu spawnen. Die Schwelle liegt etwas
-    # ueber dem Spawn-Radius (14-28 m), damit nichts flackert.
+    # über dem Spawn-Radius (14-28 m), damit nichts flackert.
     @drops.map! do |p|
       if p[:y] < gy || (p[:x] - px)**2 + (p[:z] - pz)**2 > 1024.0
         spawn(px, pz, py)
@@ -96,7 +107,7 @@ module Weather
     return unless active?
     @drops.each do |p|
       if @type == 'regen'
-        # Strahl: duenn, lang, blaugrau.
+        # Strahl: dünn, lang, blaugrau.
         Rune::Gfx.box(p[:x], p[:y], p[:z], 0.02, 0.45, 0.02, 0x9FB8D0)
       else
         # Flocke: klein, weiss, langsam.

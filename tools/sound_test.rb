@@ -1,7 +1,7 @@
 #encoding: utf-8
 # ============================================================================
-#  Kopfloser Test fuer die prozeduralen Sounds: Laengen, Determinismus,
-#  Pegel. Benoetigt keine Engine.
+#  Kopfloser Test für die prozeduralen Sounds: Längen, Determinismus,
+#  Pegel. Benötigt keine Engine.
 #     ruby -I game/engine tools/sound_test.rb
 # ============================================================================
 
@@ -69,7 +69,7 @@ check('sprung ~0.16 s')   { (dauer.call('sprung') - 0.16).abs < 0.01 }
 check('landung ~0.13 s')  { (dauer.call('landung') - 0.13).abs < 0.01 }
 check('musik ~8.0 s')     { (dauer.call('musik') - 8.0).abs < 0.05 }
 
-# Pegel: nirgends ueber 16 Bit, aber auch nicht stumm.
+# Pegel: nirgends über 16 Bit, aber auch nicht stumm.
 pegel_ok = true
 Rune::Sound::REG.each do |name, (_, bytes)|
   werte = bytes.unpack('s<*')

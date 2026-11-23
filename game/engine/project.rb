@@ -40,7 +40,7 @@ module Project
     read_system(name)['name'] || name
   end
 
-  # Kurzinfo fuer den Titelbildschirm: Titel, Kartenanzahl, Spielstaende,
+  # Kurzinfo für den Titelbildschirm: Titel, Kartenanzahl, Spielstände,
   # zuletzt gespielt.
   def info(name)
     maps = begin
@@ -55,13 +55,44 @@ module Project
       'last'  => read_system(name)['last_played'] }
   end
 
-  # "Zuletzt gespielt" beim Start eines Projekts vermerken.
+  # Beim Parsen doppelte Felder nicht still zusammenfallen lassen. Die
+  # Startposition und unbekannte Projektdaten gehören dem Benutzer.
+  class UniqueSystemObject < Hash
+    def []=(key, value)
+      raise JSON::ParserError, "doppeltes Feld #{key.inspect}" if key?(key)
+
+      super
+    end
+  end
+
+  # "Zuletzt gespielt" beim Start vermerken. Lesen und Schreiben passieren
+  # am SELBEN offenen Handle: Unter Windows verhindert dessen fehlendes
+  # Delete-Sharing den Austausch durch den Editor; der DocumentStore sperrt
+  # umgekehrt dieses Schreib-Handle. Mehrere Spiele koordinieren per flock.
+  # Der Zeitstempel ist optional: Bei Konflikt/ungültigem JSON nicht starten
+  # verzögern und insbesondere niemals eine leere Ersatzdatei schreiben.
   def touch(name)
-    p = File.join(data_path(name), 'system.json')
-    return unless File.exist?(p)
-    sys = read_system(name)
-    sys['last_played'] = Time.now.strftime('%Y-%m-%d %H:%M')
-    File.write(p, JSON.pretty_generate(sys) + "\n", encoding: 'UTF-8')
+    path = File.join(data_path(name), 'system.json')
+    File.open(path, 'r+b') do |file|
+      unless file.flock(File::LOCK_EX | File::LOCK_NB)
+        Rune::Log.warn('Projekt: Zeitstempel übersprungen, system.json wird verwendet')
+        return false
+      end
+      source = file.read.force_encoding(Encoding::UTF_8)
+      sys = JSON.parse(source, object_class: UniqueSystemObject)
+      raise JSON::ParserError, 'system.json ist kein Objekt' unless sys.is_a?(Hash)
+
+      sys.store('last_played', Time.now.strftime('%Y-%m-%d %H:%M'))
+      output = JSON.pretty_generate(sys) + "\n"
+      file.rewind
+      file.write(output)
+      file.truncate(file.pos)
+      file.flush
+      true
+    end
+  rescue JSON::JSONError, EncodingError, SystemCallError, IOError => e
+    Rune::Log.warn("Projekt: Zeitstempel nicht gespeichert: #{e.message}")
+    false
   end
 
   # Projektordner komplett entfernen.
@@ -69,7 +100,7 @@ module Project
     FileUtils.rm_rf(path(name))
   end
 
-  # ---------------------------------------------------- Spielstaende (Etappe 10)
+  # ---------------------------------------------------- Spielstände (Etappe 10)
 
   def saves_dir(name) = File.join(path(name), 'saves')
 
@@ -89,13 +120,13 @@ module Project
     nil
   end
 
-  # Kurzinfo eines Slots (fuer Menue/Titelbildschirm): nil oder Zeit+Karte.
+  # Kurzinfo eines Slots (für Menü/Titelbildschirm): nil oder Zeit+Karte.
   def save_info(name, slot)
     d = load_save(name, slot)
     d && { 'saved' => d['saved'], 'map' => d['map'] }
   end
 
-  # Hoechster belegter Slot (3..1), nil wenn keine Spielstaende existieren.
+  # Höchster belegter Slot (3..1), nil wenn keine Spielstände existieren.
   def latest_save(name)
     3.downto(1) do |s|
       return s if File.exist?(File.join(saves_dir(name), "slot#{s}.json"))
@@ -123,7 +154,7 @@ module Project
   end
 
   # Neues Projekt anlegen: leere Welt (nur Gras), Startpunkt in der Mitte.
-  # Rueckgabe: der Projektordnername.
+  # Rückgabe: der Projektordnername.
   def create(title)
     name = unique_slug(title)
     Dir.mkdir(BASE) unless Dir.exist?(BASE)
@@ -167,7 +198,7 @@ module Project
     'dorf'
   end
 
-  # Naechste freie Karten-ID: welt01, welt02, ...
+  # Nächste freie Karten-ID: welt01, welt02, ...
   def next_map_id
     ids = Database.map_ids
     n = 1
@@ -176,7 +207,7 @@ module Project
   end
 
   # Neue leere Karte im aktiven Projekt anlegen (flach, Etappe 17b) und als
-  # JSON ablegen. Rueckgabe: die Karten-ID.
+  # JSON ablegen. Rückgabe: die Karten-ID.
   def create_map(name = 'Neue Welt')
     id = next_map_id
     dir = File.join(Database.root, 'maps')

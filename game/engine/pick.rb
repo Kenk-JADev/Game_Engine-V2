@@ -4,9 +4,9 @@
 #
 #  Die Engine liefert nur den Strahl (Rune::Camera.ray). Alles Weitere rechnet
 #  Ruby: Strahl/Achsenbox-Schnitt nach dem Slab-Verfahren. Rotierte Boxen
-#  werden exakt behandelt: der Strahl wird in den lokalen Boxraum zurueck-
+#  werden exakt behandelt: der Strahl wird in den lokalen Boxraum zurück-
 #  gedreht (Inverse der Engine-Konvention Rx*Ry*Rz) und dort gegen die
-#  ungedrehte Box geprueft.
+#  ungedrehte Box geprüft.
 # ============================================================================
 
 module Pick
@@ -45,8 +45,8 @@ module Pick
     d = rot_x(d, -rx)
     ray_box(off, d, [0.0, 0.0, 0.0], size)
   end
-  # Strahl gegen Achsenbox (Mittelpunkt + Kantenlaengen).
-  # Rueckgabe: Eintrittspunkt-Distanz (>= 0) oder nil.
+  # Strahl gegen Achsenbox (Mittelpunkt + Kantenlängen).
+  # Rückgabe: Eintrittspunkt-Distanz (>= 0) oder nil.
   def self.ray_box(origin, dir, center, size)
     tmin = -Float::INFINITY
     tmax =  Float::INFINITY
@@ -57,7 +57,7 @@ module Pick
       hi = center[i] + half
 
       if dir[i].abs < 1e-6
-        # Strahl laeuft parallel zu dieser Achse: muss innerhalb der Slabs liegen
+        # Strahl läuft parallel zu dieser Achse: muss innerhalb der Slabs liegen
         return nil if origin[i] < lo || origin[i] > hi
       else
         t1 = (lo - origin[i]) / dir[i]
@@ -73,7 +73,7 @@ module Pick
     tmin >= 0.0 ? tmin : 0.0
   end
 
-  # Strahl gegen Kugel (fuer Events ohne Box).
+  # Strahl gegen Kugel (für Events ohne Box).
   def self.ray_sphere(origin, dir, center, radius)
     oc = [origin[0] - center[0], origin[1] - center[1], origin[2] - center[2]]
     c = oc[0] * oc[0] + oc[1] * oc[1] + oc[2] * oc[2] - radius * radius
@@ -88,7 +88,7 @@ module Pick
     t >= 0.0 ? t : nil
   end
 
-  # Naechstes Objekt unter dem Strahl.
+  # Nächstes Objekt unter dem Strahl.
   # candidate: alles mit position/scale (Node) oder eigenem box_center/box_size.
   def self.closest(origin, dir, candidates, max_dist: 120.0)
     best = nil

@@ -1,4 +1,4 @@
-# Prueft die gespeicherte Projekt-Karte auf die neuen 17b-Felder.
+# Prüft die gespeicherte Projekt-Karte auf die neuen 17b-Felder.
 # Aufruf: ruby tools\check_map17b.rb [pfad]
 require 'json'
 pfad = ARGV[0] || 'projekte/dorf/data/maps/dorf.json'

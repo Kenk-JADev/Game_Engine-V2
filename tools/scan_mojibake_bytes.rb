@@ -1,4 +1,4 @@
-# Byte-Ebene: zaehlt echte Mojibake-Sequenzen (doppelt kodierte Umlaute).
+# Byte-Ebene: zählt echte Mojibake-Sequenzen (doppelt kodierte Umlaute).
 # "Menü" korrekt = C3 BC; doppelt kodiert ("MenÃ¼") = C3 83 C2 BC.
 # Aufruf: ruby tools/scan_mojibake_bytes.rb
 files = Dir['src/**/*.{cpp,h}'] + Dir['game/**/*.rb']

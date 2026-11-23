@@ -6,25 +6,33 @@
 #
 #    {"scripts":[{"name":"gruss","code":"say ['Hallo!']"}]}
 #
-#  Events rufen sie mit {"cmd":"script","name":"gruss"} auf; alternativ traegt
-#  ein Befehl den Code direkt in "code". Der Code laeuft in einem Context, der
+#  Events rufen sie mit {"cmd":"script","name":"gruss"} auf; alternativ trägt
+#  ein Befehl den Code direkt in "code". Der Code läuft in einem Context, der
 #  die RPG-Maker-typischen Helfer anbietet (say, switch, variable, teleport,
-#  sound, effect, log) - kein Zugriff auf den Interpreter-Stack, damit
-#  Scripts nicht mitten in der Abarbeitung Listen veraendern.
+#  sound, effect, log, fade, self_switch). Das ist keine Sicherheitsbox:
+#  Ruby-Code kann auch auf den Interpreter und das übrige Programm zugreifen.
+#
+#  Seit Etappe 19e steht Project-Scripts zusätzlich die RGSS-Schicht offen
+#  (game/engine/rgss.rb): $game_switches/$game_party/$game_player/...,
+#  Graphics.fadeout, Input.trigger?, Audio.se_play - die RPG-Maker-XP-API
+#  für eigenes Custom-Ruby im Script-Editor (F11).
 #
 #  Kopflos testbar: ruby -I game/engine tools/script_test.rb
 # ============================================================================
 
 require 'json'
+require 'battle'   # Etappe 19i: Context-Helfer battle() braucht Battle
 
 module Scripts
   @defs = {}
+  @startup = []
 
   module_function
 
   # scripts.json des aktiven Projekts laden (fehlende Datei ist kein Fehler).
   def load_project
     @defs = {}
+    @startup = []
     path = File.join(Database.root, 'scripts.json')
     return true unless File.exist?(path)
 
@@ -34,7 +42,11 @@ module Scripts
       next unless h.is_a?(Hash)
       name = h['name'].to_s
       next if name.empty?
-      @defs[name] = h['code'].to_s
+      code = h['code'].to_s
+      @defs[name] = code
+      # Nur ausdrücklich markierte Scripte automatisch ausführen; alte
+      # Event-Scripte bleiben unverändert und laufen nur auf Anfrage.
+      @startup << [name, code] if h['autoload'] == true
     end
     Rune::Log.info("Scripts: #{@defs.size} Projekt-Scripts geladen")
     true
@@ -47,7 +59,25 @@ module Scripts
   def names = @defs.keys.sort
   def defined?(name) = @defs.key?(name.to_s)
 
-  # Benanntes Script ausfuehren. interpreter/event duerfen nil sein (Tests).
+  # Wie eine RGSS-Scriptliste: explizit markierte Einträge in Dateireihenfolge
+  # im Top-Level ausführen, damit auch Klassendefinitionen möglich sind. Die
+  # RGSS-Globalen und die erste Karte stehen bereits bereit. F5/Neustart führt
+  # sie erneut aus. Das ist vertrauenswürdiger Ruby-Code, keine Sicherheitsbox.
+  def run_startup
+    ok = true
+    @startup.each do |name, code|
+      begin
+        TOPLEVEL_BINDING.eval(code, "script:#{name}", 1)
+      rescue StandardError, ScriptError => e
+        ok = false
+        Rune::Log.error("Start-Script '#{name}': #{e.class}: #{e.message}")
+        Issues.report('Scripts', "Start-Script '#{name}': #{e.class}: #{e.message}", severity: 'error')
+      end
+    end
+    ok
+  end
+
+  # Benanntes Script ausführen. interpreter/event dürfen nil sein (Tests).
   def run(name, interpreter = nil, event = nil)
     key = name.to_s
     code = @defs[key]
@@ -64,7 +94,7 @@ module Scripts
     false
   end
 
-  # Code direkt aus einem Event-Befehl ausfuehren.
+  # Code direkt aus einem Event-Befehl ausführen.
   def run_code(name, code, interpreter = nil, event = nil)
     Context.new(interpreter, event).instance_eval(code.to_s, "event:#{name}", 1)
     true
@@ -74,7 +104,8 @@ module Scripts
     false
   end
 
-  # Sandkasten fuer Script-Code: nur diese Helfer, kein Interpreter-Interna.
+  # Kontext mit diesen Helfern. Das ist keine Sicherheits-Sandbox:
+  # Ruby-Code kann auf Interpreter und Umgebung zugreifen.
   class Context
     attr_reader :event, :interpreter
 
@@ -85,7 +116,7 @@ module Scripts
 
     def game = Game
 
-    # Textfenster oeffnen (blockiert wie ein text-Kommando).
+    # Textfenster öffnen (blockiert wie ein text-Kommando).
     def say(*lines)
       return unless @interpreter
       @interpreter.say(lines.flatten.map(&:to_s))
@@ -101,13 +132,14 @@ module Scripts
 
     def teleport(x, z, yaw: Math::PI)
       Rune::Player.teleport(x.to_f, Game.gy(x.to_f, z.to_f) + 0.2, z.to_f)
+      Game.reset_step_tracking if Game.respond_to?(:reset_step_tracking)
       Rune::Camera.yaw = yaw.to_f
     end
 
     def log(msg) = Rune::Log.info("[Script] #{msg}")
     def sound(name, volume = 1.0) = Rune::Sound.play(name.to_s, volume.to_f)
 
-    # Etappe 17g: Party-/Inventar-Helfer fuer Projekt-Scripts.
+    # Etappe 17g: Party-/Inventar-Helfer für Projekt-Scripts.
     def party = Party
     def gold(amount = nil)
       return Party.gold if amount.nil?
@@ -117,13 +149,44 @@ module Scripts
     def item_count(name) = Party.item_count(name)
     def add_item(name, count = 1) = Party.add_item(name, count.to_i)
     def take_item(name, count = 1) = Party.take_item(name, count.to_i)
-    def use_item(name) = Party.use_item(name)
+    # Ziel als zweites Argument oder target:; ohne Ziel wie bisher automatisch.
+    def use_item(name, target_id = nil, target: target_id) = Party.use_item(name, target: target)
     def heal(amount = 0) = Party.heal_all(amount.to_i)
 
     # Etappe 17h: Wetter umstellen (kein/regen/schnee); ohne Argument lesen.
     def weather(name = nil, intensity = 1.0)
       return Weather.type if name.nil?
       Weather.set(name.to_s, intensity.to_f)
+    end
+
+    # Etappe 19e: Bildschirmblende und Self-Switches als Kurz-Helfer
+    # (RGSS-Scripts nutzen alternativ Graphics.fadeout/$game_self_switches).
+    def fade(direction = 'aus', seconds = 0.5)
+      Fade.start(direction.to_s, seconds.to_f)
+    end
+
+    # Bewegungsroute starten (Etappe 19g): Ziel 'spieler' oder NPC-Name,
+    # Schritte z.B. %w[up up warte zufall]. Läuft nebenher (Mover).
+    def move_route(target, steps, repeat: false, speed: nil, code: nil)
+      Mover.start(target, Array(steps), repeat: repeat, speed: speed, code: code)
+    end
+
+    # Kampf starten (Etappe 19i): battle('waldweg') wie der Event-Befehl.
+    def battle(troop_id, can_escape: true, can_lose: false)
+      return false unless defined?(Battle)
+
+      Battle.start(troop_id, can_escape: can_escape, can_lose: can_lose)
+    end
+
+    # Self-Switch des Besitzer-Events: ohne Argument lesen, mit Argument
+    # setzen. Ohne Event (nil) liefern beide nil - das Script läuft ins Leere.
+    def self_switch(letter, value = nil)
+      return nil unless @event.respond_to?(:self_switch_key)
+
+      key = @event.self_switch_key
+      return GameState.self_switch(key, letter) if value.nil?
+
+      GameState.set_self_switch(key, letter, !!value)
     end
 
     # Partikel am Event (oder am Spieler, wenn kein Event bekannt ist).

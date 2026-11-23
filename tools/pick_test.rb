@@ -1,8 +1,8 @@
 #encoding: utf-8
 # ============================================================================
-#  Kopfloser Test fuer das Picking (Strahl/Box, Strahl/Kugel, Auswahl).
+#  Kopfloser Test für das Picking (Strahl/Box, Strahl/Kugel, Auswahl).
 #     ruby -I game/engine tools/pick_test.rb
-#  Exit-Code 0 = alles gruen.
+#  Exit-Code 0 = alles grün.
 # ============================================================================
 
 module Rune
@@ -53,7 +53,7 @@ check('Parallel daneben verfehlt') { Pick.ray_box(O, [1.0, 0.0, 0.0], [0.0, 5.0,
 t = Pick.ray_box([0.0, 1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 0.0], [2.0, 2.0, 2.0])
 check('Parallel innerhalb der Slabs trifft') { t && near(t, 0.0) }
 
-# schraeger Strahl
+# schräger Strahl
 d = [0.0, 0.0, 1.0]
 t = Pick.ray_box([3.0, 0.0, 0.0], d, [0.0, 0.0, 10.0], [2.0, 2.0, 2.0])
 check('Seitlich vorbei verfehlt') { t.nil? }
@@ -66,7 +66,7 @@ t = Pick.ray_sphere([0.0, 0.0, 9.5], FWD, [0.0, 0.0, 10.0], 1.0)
 check('Kugel: Start in der Kugel -> t = 0') { t && near(t, 0.0) }
 check('Kugel: Start davor -> Eintritt') { near(Pick.ray_sphere([0.0, 0.0, 5.0], FWD, [0.0, 0.0, 10.0], 1.0), 4.0) }
 
-# --- Auswahl des naechsten Objekts ----------------------------------------
+# --- Auswahl des nächsten Objekts ----------------------------------------
 class FakeNode
   attr_reader :name, :position, :scale
   def initialize(name, position, scale)
@@ -89,7 +89,7 @@ event = FakeEvent.new('kristall', [0.0, 0.0, 12.0], 1.0)
 daneben = FakeNode.new('daneben', [10.0, 0.0, 5.0], [1.0, 1.0, 1.0])
 
 hit = Pick.closest(O, FWD, [fern, nahe, event, daneben])
-check('naechstes Objekt gewinnt') { hit && hit[0].name == 'nah' }
+check('nächstes Objekt gewinnt') { hit && hit[0].name == 'nah' }
 check('Distanz stimmt') { hit && near(hit[1], 4.0) }
 
 hit = Pick.closest(O, FWD, [fern, event, daneben])
@@ -100,23 +100,23 @@ check('nichts in Reichweite -> nil') { Pick.closest(O, FWD, [daneben]).nil? }
 check('max_dist begrenzt') { Pick.closest(O, FWD, [fern], max_dist: 10.0).nil? }
 
 # --- Rotierte Boxen (Etappe 12) ---------------------------------------------
-# Wuerfel 2x2x2 im Ursprung, 45 Grad um Y gedreht. Die rotierte Box ist eine
+# Würfel 2x2x2 im Ursprung, 45 Grad um Y gedreht. Die rotierte Box ist eine
 # Raute in der xz-Ebene mit Eckdistanz sqrt(2) ~ 1.414.
 S2 = Math.sqrt(2.0)
 dreh = Struct.new(:name, :position, :rotation, :scale).new(
   'gedreht', [0.0, 0.0, 0.0], [0.0, Math::PI / 4, 0.0], [2.0, 2.0, 2.0])
 
 # Strahl von +x: trifft die Rautenseite bei x = sqrt(2), nicht bei x = 1
-# (wie der alte Huellbox-Test es geliefert haette).
+# (wie der alte Hüllbox-Test es geliefert hätte).
 t = Pick.ray_rot_box([3.0, 0.0, 0.0], [-1.0, 0.0, 0.0],
                      dreh.position, dreh.scale, dreh.rotation)
 check('45-Grad-Box: Eintritt an der Rautenseite') { t && near(t, 3.0 - S2) }
 
-# Diagonalstrahl an der Ecke vorbei: trifft die alte Huellbox, aber nicht
+# Diagonalstrahl an der Ecke vorbei: trifft die alte Hüllbox, aber nicht
 # mehr die gedrehte Box.
 nil45 = Pick.ray_rot_box([1.35, 0.0, 1.35], [-1.0 / S2, 0.0, 1.0 / S2],
                          dreh.position, dreh.scale, dreh.rotation)
-check('45-Grad-Box: Huellbox-Fehltreffer eliminiert') { nil45.nil? }
+check('45-Grad-Box: Hüllbox-Fehltreffer eliminiert') { nil45.nil? }
 
 # closest() beachtet rotation automatisch.
 hit = Pick.closest([3.0, 0.0, 0.0], [-1.0, 0.0, 0.0], [dreh])
@@ -130,7 +130,7 @@ tx = Pick.ray_rot_box([0.0, 3.0, 0.0], [0.0, -1.0, 0.0],
                       drehx.position, drehx.scale, drehx.rotation)
 check('X-Rotation: Eintritt von oben') { tx && near(tx, 3.0 - S2) }
 
-# Ungedrehte Box verhaelt sich unveraendert.
+# Ungedrehte Box verhält sich unverändert.
 gerade = Struct.new(:name, :position, :rotation, :scale).new(
   'gerade', [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [2.0, 2.0, 2.0])
 tg = Pick.ray_rot_box([3.0, 0.0, 0.0], [-1.0, 0.0, 0.0],
