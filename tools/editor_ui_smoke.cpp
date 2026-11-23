@@ -166,7 +166,17 @@ bool respond(const wchar_t* title, int id, const wchar_t* expected_text = nullpt
         return false;
     }
     HWND button = nullptr;
-    if (!wait_until([&] { button = GetDlgItem(dialog, id); return button != nullptr; })) {
+    if (!wait_until([&] {
+        button = GetDlgItem(dialog, id);
+        // Windows kann die einzige OK-Schaltfläche als IDCANCEL anlegen
+        // (Escape schließt dann ebenfalls). Nur bei einem ausdrücklich
+        // erwarteten OK und exakt dieser Beschriftung verwenden.
+        if (!button && id == IDOK) {
+            HWND alternative = GetDlgItem(dialog, IDCANCEL);
+            if (alternative && text(alternative) == L"OK") button = alternative;
+        }
+        return button != nullptr;
+    })) {
         ui_detail(std::wstring(L"Schaltfläche fehlt im Dialog: ") + title + L", ID " + std::to_wstring(id) +
                   dialog_detail(dialog));
         return false;
