@@ -181,7 +181,7 @@ int main(int argc, char** argv) {
                 check("fremde Datenwurzel und Pfadflucht werden vom echten Binding abgewiesen", ruby_true(
                     "Rune::Assets.read_texture(File.join(Rune::ROOT, 'projekte', 'B', 'data'), $project_name, nil, nil)[0] == :invalid && "
                     "Rune::Assets.read_texture($project_root, $project_name, '../a.rgba', 4)[0] == :invalid"));
-                check("F5 leert den Cache und lädt A erneut", ruby_true("Textures.begin_project; Textures.register_project == 2") &&
+                check("Neuladepfad leert den Cache und lädt A erneut", ruby_true("Textures.begin_project; Textures.register_project == 2") &&
                       renderer.texture_index("nur_a") >= 0 && pixel_is(renderer, f.root + "\\shot.bmp", "gras", 0));
                 check("Ruby wechselt zu B", ruby_true(
                     "$project_name = 'B'; $project_root = File.join(Rune::ROOT, 'projekte', $project_name, 'data'); "

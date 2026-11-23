@@ -1709,8 +1709,9 @@ Datenbank nicht unter dem Pfad eines anderen Projekts gespeichert wird.
 Tests: `tools/json_test.cpp` prüft das Dialog-Datenmodell, optionale und
 fehlerhafte Altwerte, lange Listen, Duplikate, Werte-Grenzen, die echte
 Demo-Datenbank, JSON-Roundtrips und unberührte allgemeine Eigenschaften.
-CI baut/linkt den Win32-Editor, hat aber keine GPU/Fenster für einen echten
-grafischen Live-Test (siehe Backlog und Handoff).
+CI baut/linkt den Win32-Editor und kann WARP in einem unsichtbaren Fenster
+prüfen, ersetzt aber keinen interaktiven GUI-/Hardware-GPU-Test (siehe Backlog
+und Handoff).
 
 ## Projektgebundene Materialien und Texturen (Etappe 19q)
 
@@ -1727,9 +1728,11 @@ abgewiesen; Reads und WIC sind begrenzt. Editor und Ruby halten diese
 Projektbindung bis zum Wechsel. Import legt RGBA exklusiv neu an; der
 Manifest-Commit vergleicht die Originalbytes unter Dateisperre, verschiebt
 bei Bedarf das Original in eine Sicherung und hängt die vorbereitete Datei
-ohne Überschreiben ein. Das ist kein atomarer Namensaustausch: bei Absturz
-oder blockierter Rücksetzung bleibt eine Sicherung zur Wiederherstellung.
-Der Schutz umfasst nicht andere Projektdateien und vertraut dem Engine-Anker.
+ohne Überschreiben ein. Das Rename nutzt `NtSetInformationFile` mit dem
+gehaltenen Zielverzeichnis und einem einzelnen Dateinamen, ohne Pfad-Fallback.
+Das ist kein atomarer Namensaustausch: bei Absturz oder blockierter
+Rücksetzung bleibt eine Sicherung zur Wiederherstellung. Der Schutz umfasst
+nicht andere Projektdateien und vertraut dem Engine-Anker.
 
 Der Renderer hält Basis- und Projekt-Namensräume separat; Projekt-Overrides
 gewinnen bei der Auflösung und im Atlas. Projektwechsel/F5 verwerfen Projekt-
@@ -1739,10 +1742,18 @@ Namen statt langlebiger Slotnummern. Änderungen oder Löschungen räumen
 betroffene Atlas-Terrainreferenzen ab, bevor der Aufrufer neu aufbaut.
 
 `material_test.cpp` testet den portablen Baum und unter Windows Dateisperren,
-Hardlinks, Junctions und einen deterministischen Konflikt. Der WIC-Test nutzt
-nur ein temporäres Projekt. `renderer_warp_test.cpp` rendert auf D3D11-WARP
-(Software) und liest echte Pixel, einschließlich Atlas-Terrain und A→B→A.
-Ein interaktiver Hardware-/GUI-/DPI-Test bleibt separat erforderlich:
+Hardlinks, Junctions, ein abweichendes Arbeitsverzeichnis und einen
+bewusst erzeugten Konflikt. Der WIC-Test nutzt nur ein temporäres Projekt.
+`renderer_warp_test.cpp` liest D3D11-WARP-Pixel, einschließlich Atlas-Terrain
+und A→B→A. `embedded_texture_test.cpp` verbindet echte CRuby-Module, den
+Windows-Dateistore und den WARP-Renderer, einschließlich Unicode-Projektname,
+Textur-Neuladepfad und A→B→A über die API. Er simuliert weder das Drücken von
+F5 noch den vollständigen Launcher. Der Test setzt den Load-Pfad der gewählten
+Ruby-Installation und belegt nicht deren entkoppeltes Deployment.
+
+Windows-2022-CI, Commit `776044d`, Lauf 45162482261: Material 57/0, WARP
+34/0, eingebettete Texturbrücke 19/0 und Ruby-Suite 27/0. Ein interaktiver
+Hardware-/GUI-/DPI-Test bleibt separat erforderlich:
 `docs/WINDOWS_MATERIAL_LIVE_TEST.md`.
 
 ## Sichere Terrain-/Atmosphärenvorschau (Etappe 19p)
@@ -1811,10 +1822,10 @@ WASI-Shim OK (ohne EXE-Test). Die 3.4-JSON-/Event-
 Brücken nutzen echte C++-Fixtures (14 Dateien/0 Format- oder Semantik-
 fehler, 17 Event-Checks/0 Fehler), da WASM kein Open3 ausführen kann.
 Win64-Editor, Renderer, Terrain und Ruby-VM wurden cross-kompiliert;
-zusätzliche unsichtbare Windows-Listboxprüfungen wurden hier nicht ausgeführt.
-CI ist für den vollständigen Windows-Build mit Ruby 3.4 vorgesehen.
-Kein D3D-/GUI-Lauf, GPU-Fehler-Injektion oder nativer Binding-Lauf wurde
-hier durchgeführt; der Windows-Live-Test bleibt offen (Handoff/Backlog).
+zusätzliche unsichtbare Windows-Listboxprüfungen wurden lokal nicht ausgeführt.
+Der spätere 19q-CI-Lauf baut unter Windows mit Ruby 3.4 und prüft WARP sowie
+die eingebettete Texturbrücke (Ergebnisse im 19q-Abschnitt). Interaktive
+GUI-/Hardware-GPU-Prüfung und GPU-Fehler-Injektion bleiben offen (Handoff/Backlog).
 
 ## F6-Layout für kleine Arbeitsflächen (Etappe 19o.6)
 

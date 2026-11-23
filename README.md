@@ -96,7 +96,7 @@ Offene Punkte mit Symptom und betroffener Datei stehen in
 .\build.ps1 -Clean       # komplett neu
 .\build.ps1 -Run         # bauen und das Spiel starten
 .\build.ps1 -Test        # C++-/Windows-Datei-/Ruby-Tests und JSON-/Event-Brücke
-.\build.ps1 -WarpTest    # D3D11-Softwaretest mit WARP (optional)
+.\build.ps1 -WarpTest    # D3D11-WARP + eingebettete Ruby-Texturbrücke (optional)
 .\build.ps1 -RubyRoot D:\Ruby34-x64   # andere Ruby-Installation
 ```
 
@@ -129,6 +129,7 @@ ruby tools\lint_repo.rb                        # Repo-Hygiene
 | C++-Terrain | Echte Geländegenerierung, Höhen-/Splat-Budgets, Atlasplan und Fehlerpfade ohne D3D | `tools/terrain_test.cpp` |
 | Materialien/Dateien | Verlustfreier JSON-Baum, unter Windows Handle-Konflikte, Junctions und Hardlinks | `tools/material_test.cpp` |
 | D3D11-WARP | Software-Renderer, Pixel, Projektwechsel und Atlas-/Terrainreferenzen | `tools/renderer_warp_test.cpp` (`-WarpTest`) |
+| Eingebettete Texturbrücke | Echtes CRuby, Projektdateien, A→B→A und WARP-Pixel | `tools/embedded_texture_test.cpp` (`-WarpTest`) |
 | JSON-Brücke | Schreibt C++ bytegleich zu Ruby `JSON.pretty_generate`? | `tools/json_bridge_check.rb` |
 | Event-Brücke | C++-F6-Änderungen gegen echte Ruby-Event- und Interpreter-Laufzeit | `tools/event_bridge_check.rb` |
 | Karten-Scan | Daten-Validierung (Befehle, Trigger, Bedingungen, Wegpunkte, Terrain) | `game/engine/mapcheck.rb` |
@@ -150,8 +151,13 @@ Pull Request:
 | `cpp-logik` | ubuntu | JSON-/Editor-, Terrain- und Material-C++-Tests mit `-Werror`, danach JSON- und Event-Brücke |
 | `windows` | windows-2022 | Build, kopflose Datei-/Importtests und `-WarpTest`, EXEs als Artefakt |
 
-WARP testet den echten D3D11-Renderer mit Software, aber keine Hardware-GPU,
-Bedienung oder DPI. Dafür ist der [Windows-Live-Test](docs/WINDOWS_MATERIAL_LIVE_TEST.md)
+Windows-CI für Commit `776044d`, Lauf [45162482261](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45162482261):
+57 Material-/Dateiprüfungen, 34 WARP-Prüfungen, 19 Prüfungen der eingebetteten
+Texturbrücke und 27 Ruby-Suiten jeweils ohne Fehler. WARP testet den echten
+D3D11-Renderer mit Software, aber keine Hardware-GPU, Bedienung oder DPI.
+Der Brückentest verwendet den Load-Pfad der ausgewählten Ruby-Installation;
+er belegt daher nicht das Deployment ohne diese Installation. Für die
+vollständigen Abläufe ist der [Windows-Live-Test](docs/WINDOWS_MATERIAL_LIVE_TEST.md)
 auf einem interaktiven Rechner nötig. Artefakt: **Rune3D-Windows**.
 
 ## Projektstruktur
@@ -342,7 +348,8 @@ Der Atlas ist auf 1024 Texturen à 64×64 begrenzt (höchstens 16 MiB pro
 RGBA-Kopie). Ohne Atlas oder ohne passende Basistextur bleibt der Boden als
 Einzeltextur-Vorschau; fehlende Flächentexturen zeigen die Basis. Die
 Einschränkung steht in Status/F10 bzw. im Spiel-Log. `terrain.tile` wirkt
-weiterhin nur ohne Splat-Atlas. Ein echter Windows-GUI-/D3D-Test steht aus.
+weiterhin nur ohne Splat-Atlas. Der interaktive GUI-/Hardware-D3D-Test steht
+aus; der automatisierte D3D11-WARP-Test verwendet Software-Rendering.
 
 ### Karten-Eigenschaften (F2)
 

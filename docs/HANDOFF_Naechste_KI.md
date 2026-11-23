@@ -37,7 +37,7 @@ Der User beauftragte eine Überarbeitung von Engine und Editor **im Stil von RPG
 | 19e | `59845c1` (CI-Grün) | RGSS-Schicht (`game/engine/rgss.rb`): `$game_*`-Globale, `Graphics`/`Input`/`Audio`/`load_data`+`save_data` wie RPG Maker XP (Abweichungen: JSON statt Marshal, Namen statt IDs, kein `$scene`-Loop) + Launcher-Ersteinrichtung `:first` (ohne Projekt: Enter/N = erstellen, D = Demo, Esc = beenden; `ensure_demo` nicht mehr automatisch) + Context-Helfer `fade`/`self_switch` + `$game_system.menu_disabled/save_disabled` beachtet; Tests `rgss_test.rb`, script_test-Abschnitt 6 |
 | 19f | `96be63d` (CI-Grün) | Artefakt-Bugfix (User-Konsole): `Rune3D-Windows` enthält jetzt `game/` + `projekte/` neben den EXEs (CI kopiert sie nach `build/`); beide EXEs loggen einen klaren Hinweis, wenn `game/` unter der Wurzel fehlt |
 | 19p | `84ad7b5` (CI grün) | Terrain-/Atmosphärengrenzen, sichtbare F10-/Atlas-Fallbacks, F7-Datentreue, Ruby-Brücke und portable Terrain-Tests |
-| 19q | dieser Stand (CI-Status siehe Actions) | Projektgebundene Texturen, sicherer Materialstore, WARP-/Dateitests und vorbereiteter Windows-Live-Test |
+| 19q | `d2e6192` bis `776044d` (CI-Grün Run 45162482261) | Projektgebundene Texturen, Materialstore, Windows-Datei-/WARP-/Ruby-Bindingtests und vorbereiteter Windows-Live-Test |
 | 19o.6 | `326925b` (CI-Grün Run 44640705908) | F6: Monitor-Arbeitsfläche, DPI-skalierter Scroll-Ausschnitt, Fokus-Nachführung und portable/unsichtbare Windows-Tests |
 | 19o.5 | `4635c80` (CI-Grün Run 44628573472) | F6: datentreue Event-/Seiten-/Befehlsformulare, Pending-Schutz, bedarfsweise Altseitenmigration und C++/Ruby-Event-Brücke |
 | 19o.4 | `38ed554` (CI-Grün Run 44614856669) | Objektformular datentreu, Pending-/Drag-Schutz und sicheres Kartenladen; portable Tests |
@@ -56,7 +56,9 @@ Der User beauftragte eine Überarbeitung von Engine und Editor **im Stil von RPG
 | 19h | `1695951` + Nacharbeit bis `070da7e` (CI-Grün) | RGSS-Vertiefung: `graphics.rb` (Bitmap/Sprite/Window/Viewport, z-sortiert über `Graphics.draw`), `$scene` + `Graphics.scene_update`, `$game_temp`, `$data_actors/items/system`, `passable?` echt (Grenzen + Geländestufe), `RGSS.reset!` bei enter_map; Tests `graphics_test.rb` + rgss_test-Abschnitt |
 | 19g | `e8ac3e5` + Nacharbeit `89eb6d6` (CI-Grün) | Bewegungsrouten (XP Move Routes): `mover.rb` (8 Schritte, repeat, wait, Ersetzung, Spieler/NPC-Ziele), Befehl `move_route` (24 Typen synchron), Editor-Formular ohne neue Controls, Context-Helfer, `Mover.reset!` bei enter_map; Tests `move_route_test.rb` + script_test-Abschnitt 7 |
 
-Stand 19p: 671 JSON-/Editor-Checks und 51 echte Terrain-Checks jeweils in Release und ASan/UBSan/float-cast-overflow; Win64-Editor, Renderer, Terrain und Ruby-VM cross-kompiliert; zusätzliche unsichtbare Windows-Listboxprüfungen hier nicht ausgeführt. Natives Ruby 3.0.6: 26 Suiten OK, 1 Windows-EXE-Skip; dieselben 26 Suiten einzeln mit Ruby 3.4-WASM im isolierten WASI-Shim OK (ohne EXE-Test). Native 3.0-JSON-Brücke: 14 Dateien, 0 Semantikfehler, 4 versionsbedingte Formatabweichungen; mit Ruby-3.4-WASM und echten C++-Fixtures: 14 Dateien ohne Semantik-/Formatabweichung und 17 Event-Checks/0 Fehler. WASM nutzt dabei Fixtures statt Open3, die Ruby-Tests nutzen native Stubs. CI baut und linkt unter Windows mit Ruby 3.4 und führt die vorhandenen kopflosen Tests aus; ein echter GUI-/D3D-/GPU- und nativer Binding-Lauf steht aus. CI-Status und Arbeitsbaum vor Weiterarbeit prüfen; `opencode.json` ist lokaler Harness-Kram (ignoriert).
+Stand 19p: 671 JSON-/Editor-Checks und 51 echte Terrain-Checks jeweils in Release und ASan/UBSan/float-cast-overflow; Win64-Editor, Renderer, Terrain und Ruby-VM cross-kompiliert; zusätzliche unsichtbare Windows-Listboxprüfungen lokal nicht ausgeführt. Natives Ruby 3.0.6: 26 Suiten OK, 1 Windows-EXE-Skip; dieselben 26 Suiten einzeln mit Ruby 3.4-WASM im isolierten WASI-Shim OK (ohne EXE-Test). Native 3.0-JSON-Brücke: 14 Dateien, 0 Semantikfehler, 4 versionsbedingte Formatabweichungen; mit Ruby-3.4-WASM und echten C++-Fixtures: 14 Dateien ohne Semantik-/Formatabweichung und 17 Event-Checks/0 Fehler. WASM nutzt Fixtures statt Open3, die Ruby-Modultests nutzen Stubs.
+
+Stand 19q: Windows-2022-CI für Commit `776044d`, [Lauf 45162482261](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45162482261), alle vier Jobs grün. Material-/Dateitest 57/0, Ruby-Suite einschließlich WIC-Import 27/0, WARP 34/0 und echte eingebettete Texturbrücke mit WARP 19/0. Der Brückentest nutzt den Ruby-Load-Pfad der ausgewählten Installation; die komplette Anwendung, interaktive GUI/DPI und Hardware-GPU bleiben separat zu testen. CI-Status und Arbeitsbaum vor Weiterarbeit prüfen; `opencode.json` ist lokaler Harness-Kram (ignoriert).
 
 **Nacharbeit 19a (notiert für die Historie):** Der erste CI-Lauf hat genau das getan,
 wofür er da ist: `build.ps1 -Test` übergab g++ Argumente mit angehängtem Komma
@@ -141,7 +143,7 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
 - **Playtest:** Menü/Toolbar F4 → `save_map()` + `CreateProcessW("build\Rune3D.exe", "--project dorf")`. Spiel: `main.cpp` setzt `RUNE_PROJECT`, `game/main.rb` (`Game.setup`) lädt das Projekt direkt (ohne Titelbildschirm); unbekannter Name → Launcher + Warnung.
 - **Wetter:** Karten-JSON `"weather":{"type":"kein|regen|schnee","intensity":1.0}`; `Weather.load_map/update/draw`; Interpreter `{"cmd":"weather",...}`; Editor-Dialog F2 schreibt das Feld.
 - **Link-Falle (`fclose`-Crash):** In `build.ps1` muss `-lucrtbase` **vor** `-lx64-ucrt-ruby340` stehen, sonst leitet der Linker Editor-stdio auf Ruby-CRT-Exports um → Zugriffsverletzung. Kommentar dort steht, nicht „aufräumen".
-- 17f-Import: WIC → rohe `<name>.rgba` + `textures.json` unter `projekte/<p>/data/textures/`; Spiel lädt via `Textures.register_project`. CLI: `RuneEditor.exe --import-tex <bild> [name]`.
+- 17f-Import: WIC → rohe `<name>.rgba` unter `projekte/<p>/data/textures/` und Manifest `data/textures.json`; Spiel lädt via `Textures.register_project`. CLI: `RuneEditor.exe --import-tex <bild> [name] [--project <projekt>]`.
 
 ## 3. Was gut funktioniert hat (beibehalten)
 
@@ -178,9 +180,10 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
   Backup-/Rename-Commit ist kein atomarer Austausch; Wiederherstellungsdateien
   nach Absturz/Konflikt beachten. Basis-/Projekt-Slots sind getrennt; F5 und
   A→B→A löschen alte Slots, Draws und Atlas-Terrainreferenzen. Tests:
-  `material_test.cpp`, `project_tex_test.rb`, `tex_import_test.rb` und
-  `renderer_warp_test.cpp`; WARP ist Software, kein Hardware-/GUI-Nachweis.
-  Reproduzierbare Kopie und Ablauf: `docs/WINDOWS_MATERIAL_LIVE_TEST.md`.
+  `material_test.cpp`, `project_tex_test.rb`, `tex_import_test.rb`,
+  `renderer_warp_test.cpp` und `embedded_texture_test.cpp`. WARP ist Software,
+  kein Hardware-/GUI-Nachweis. Reproduzierbare Kopie und Ablauf:
+  `docs/WINDOWS_MATERIAL_LIVE_TEST.md`.
 - **F6-Datentreue (19o.5):** `event_form.h` liest Event, Seite und Befehl
   nichtmutierend und bereitet gemeinsame Änderungen auf Kopien vor. Alte
   Seiten werden nur für neue Bedingungen/Seiten migriert; Top-Level-
@@ -311,9 +314,9 @@ offenem F7 A→B→A wechseln: Übernehmen/Entfernen müssen gesperrt sein.
 F2→F6 und F6→F2 sowie Wetter/Nebel-Ersatz und F10-Neuscan prüfen. F7- und
 F3-Auswahl während Rückfragen und F5, Formularentwürfe sowie normale und
 ungültige RGBA-Dateinamen mit gesicherten Kopien prüfen. 19q ergänzt
-Material-Reparsepunkt-/Konfliktschutz und dazu automatisierte Tests; den
-vollständigen Ablauf mit echten Ruby-Bindings, Hardware-GPU und GUI trotzdem
-interaktiv prüfen. Siehe `docs/WINDOWS_MATERIAL_LIVE_TEST.md`.
+Material-Reparsepunkt-/Konfliktschutz und automatisierte Tests einschließlich
+der eingebetteten Ruby-Texturbrücke; den vollständigen Ablauf mit Hardware-GPU
+und GUI trotzdem interaktiv prüfen. Siehe `docs/WINDOWS_MATERIAL_LIVE_TEST.md`.
 
 **Noch offen für 19o.6 (echter Windows-Rechner):** Ein gesichertes
 Testprojekt mit mehreren Events/Seiten und verschiedenen Befehlstypen öffnen.

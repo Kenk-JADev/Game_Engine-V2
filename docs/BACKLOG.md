@@ -48,13 +48,13 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
   Geöffnete Projektverzeichnisse bleiben bis zum Wechsel gebunden.
 - Offene Grenzen: Backup und Promotion sind kein atomarer Namensaustausch;
   nach Absturz oder blockierter Wiederherstellung kann `.rune-*.bak` bleiben.
-  Das gilt nur für Materialdaten, nicht pauschal für Karten/Datenbank. Lokale
-  NTFS-Tests ersetzen keine Tests auf Netzlaufwerken, anderen Dateisystemen,
-  bei Stromausfall oder in der interaktiven GUI. Sicherungskopien nutzen.
-- Automatisierung: `tools/material_test.cpp` (Windows-Handle-/Reparse-/Race-
-  Fälle), `tools/tex_import_test.rb` (isolierter WIC-Import). Ergebnis des
-  Windows-CI-Laufs prüfen; interaktive Anleitung:
-  `docs/WINDOWS_MATERIAL_LIVE_TEST.md`.
+  Das gilt nur für Materialdaten, nicht pauschal für Karten/Datenbank. Die
+  CI-Tests ersetzen keine Tests auf Netzlaufwerken, anderen Dateisystemen, bei
+  Stromausfall oder in der interaktiven GUI. Sicherungskopien nutzen.
+- Automatisierung: Windows-2022-CI für Commit `776044d`, Lauf 45162482261:
+  `tools/material_test.cpp` 57 Prüfungen/0 Fehler (Handle-/Reparse-/Race-
+  Fälle), Ruby-Suite 27/0 einschließlich `tools/tex_import_test.rb` im
+  isolierten WIC-Projekt. Interaktive Anleitung: `docs/WINDOWS_MATERIAL_LIVE_TEST.md`.
 - Betroffene Stellen: `src/core/project_assets_win.h`,
   `src/editor/material_document.h`, `src/editor/editor_main.cpp`,
   `game/engine/textures.rb`, `src/ruby/vm.cpp`.
@@ -63,12 +63,15 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - 19q trennt Basis-/Projekt-Slots, räumt F5/Projektwechsel/Atlas/Terrain ab
   und lässt Prefabs Namen dynamisch auflösen. Das vermeidet das zuvor
   beobachtete Behalten fremder Namen und Überschreiben der Basis-Slots.
-- Ruby-Stubs testen Ablauf und Validierung, der D3D11-WARP-Test rendert
-  Pixel sowie Atlas-Terrain auf Software. GPU-Ressourcen, Bedienung und
-  Darstellung müssen zusätzlich am Windows-Zielrechner mit A→B→A, F5 und
-  Launcher geprüft und protokolliert werden; WARP ist kein Hardwarebeleg.
+- Windows-2022-CI für Commit `776044d`, Lauf 45162482261: Der D3D11-WARP-
+  Test rendert Pixel und Atlas-Terrain (34/0); ein zweiter Test verwendet
+  eingebettetes Ruby, echte Projektdateien, A→B→A und WARP-Pixel (19/0).
+  Beide nutzen Software-Rendering; `-WarpTest` setzt für den Brückentest den
+  Load-Pfad der gewählten Ruby-Installation. Hardware-GPU, Bedienung und die
+  vollständigen Editor-/Spielabläufe müssen am Zielrechner geprüft werden.
 - Betroffene Stellen: `src/gfx/renderer.*`, `game/engine/textures.rb`,
-  `tools/renderer_warp_test.cpp`, `docs/WINDOWS_MATERIAL_LIVE_TEST.md`.
+  `tools/renderer_warp_test.cpp`, `tools/embedded_texture_test.cpp`,
+  `docs/WINDOWS_MATERIAL_LIVE_TEST.md`.
 
 ### [Editor] Projekt-Dateipfade mischen System-Codepage und UTF-8 — offen
 - Symptom: Bei nicht-ASCII-Zeichen in Engine-Wurzel oder fremd angelegten
@@ -232,13 +235,14 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Etappe 19a.
 
 ### [Tests] Live-Tests (Fenster-Injektion) laufen nicht in CI — offen (Test-Wissen)
-- Symptom: `tools/edclick.psm1` und `log/live*.ps1` brauchen ein echtes Fenster,
-  eine GPU und D3D11; GitHub-Runner haben beides nicht.
-- Vermutung/Analyse: Kein Fehler, eine Grenze. CI deckt Logik ab (Ruby-Tests,
-  C++-JSON, Daten-Scan, Windows-Linken); grafisches Verhalten muss weiter am
-  Rechner geprüft werden (F12-Screenshot, `edclick`). Insbesondere stehen
-  die Dialog-/DPI-Tests für F6 sowie Objektformular/F2/F5/F7/F9 und die
-  echte Atlas-/Splat-Darstellung und native Ruby-Bindings aus (siehe Handoff).
+- Symptom: `tools/edclick.psm1` und `log/live*.ps1` brauchen einen
+  interaktiven Desktop und die Ziel-GPU; das leistet die CI nicht.
+- Vermutung/Analyse: CI prüft zusätzlich zu Logik und Windows-Build auch
+  WARP mit unsichtbarem Fenster, Atlas-Pixeln und einem eingebetteten
+  Ruby-Texturtest. Das ersetzt keine interaktive Hardwareprüfung der
+  vollständigen Anwendung (F12-Screenshot, `edclick`). Insbesondere bleiben
+  Dialog-/DPI-Tests für F6, Objektformular/F2/F5/F7/F9 und die tatsächliche
+  Atlas-/Splat-Darstellung im Editor und Spiel offen (siehe Handoff).
 - Betroffene Stellen: `.github/workflows/ci.yml`, `tools/edclick.psm1`.
 - Gefunden in: Etappe 19a.
 

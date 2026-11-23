@@ -19,8 +19,11 @@ Ersatz für den GPU-/Bedientest.
 
    `-Test` prüft unter anderem den WIC-Import in einem **eigenen temporären**
    Projekt und den Windows-Dateistore. `-WarpTest` rendert mit WARP in einem
-   unsichtbaren Fenster und liest Pixel aus dem Backbuffer. Ein Fehlschlag oder
-   nicht verfügbares WARP ist kein bestandener Test. Die EXE-Bauartefakte selbst
+   unsichtbaren Fenster, liest Pixel aus dem Backbuffer und prüft zusätzlich
+   die echte eingebettete Ruby-Texturbrücke mit temporären A/B-Projekten.
+   Der Brückentest verwendet den Load-Pfad der ausgewählten Ruby-Installation;
+   das ist kein Test des installationsunabhängigen Deployments. Ein Fehlschlag
+   oder nicht verfügbares WARP ist kein bestandener Test. Die EXE-Bauartefakte
    brauchen weiterhin die im README beschriebenen Ruby-Laufzeitkomponenten.
 2. Nur eine **neue** Kopie außerhalb des Repositorys verwenden, z. B.:
 
@@ -92,7 +95,7 @@ muss auf der Platte bleiben, darf aber nicht als Textur geladen werden.
    keine neue unreferenzierte RGBA-Datei. Editor schließen oder auf ein anderes
    Projekt und zurück wechseln, um den Katalog neu zu laden. Wiederholen mit
    ungültigem JSON: Import/Speichern gesperrt, Originalbytes unverändert.
-7. Testprotokoll, `log/editor.log` und F12-Screenshots sichern. Die geplante
+7. Testprotokoll, `log/editor.log` und F12-Screenshots sichern. Die automatisierte
    Windows-Dateitest-Suite prüft daneben Junctions/Hardlinks, gesperrte Dateien,
    einen erzwungenen Namenskonflikt und den Wiederherstellungsnamen.
 

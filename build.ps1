@@ -8,7 +8,7 @@
     .\build.ps1 -Run                bauen und Rune3D starten
     .\build.ps1 -Clean              alles neu bauen
     .\build.ps1 -Test               C++-/Datei- und Ruby-Tests, JSON-/Event-Brücke
-    .\build.ps1 -WarpTest           D3D11-WARP-Integrationstest (Software)
+    .\build.ps1 -WarpTest           D3D11-WARP und Ruby-Texturbrücke (Software)
     .\build.ps1 -RubyRoot C:\Ruby34-x64   andere Ruby-Installation benutzen
 
     Werkzeug-Suche (seit Etappe 19a):
@@ -143,8 +143,8 @@ Write-Step "Ruby:      $RubyRootGefunden  ($($Ruby.SoName))"
 Write-Step "Toolchain: $Toolchain"
 
 # ------------------------------------------------------------ D3D11-WARP (optional)
-# Software-Rendering mit verstecktem Fenster; nicht mit einem interaktiven
-# Hardware-/GUI-Test verwechseln. Dieser Test wird nur auf Wunsch ausgeführt.
+# Software-Rendering mit verstecktem Fenster und eingebetteter Ruby-Brücke;
+# kein interaktiver Hardware-/GUI-Test. Nur auf Wunsch ausführen.
 if ($WarpTest) {
     New-Item -ItemType Directory -Force -Path $BuildDir | Out-Null
     $WarpExe = Join-Path $BuildDir 'renderer_warp_test.exe'
