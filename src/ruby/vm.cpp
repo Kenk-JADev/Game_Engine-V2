@@ -1,6 +1,7 @@
 #include "ruby/vm.h"
 
 #include <ruby.h>
+#include <ruby/encoding.h>
 #include <ruby/version.h>
 
 #include <algorithm>
@@ -1078,6 +1079,17 @@ bool init(int argc, char** argv, const std::string& root) {
     {
         RUBY_INIT_STACK;
         ruby_init();
+    }
+
+    // ruby_init() allein durchläuft nicht ruby_process_options(), das beim
+    // normalen Windows-Ruby die externe und Dateisystem-Kodierung setzt.
+    // Ohne diesen Schritt kann Dir.children die System-Codepage benutzen
+    // und nicht darstellbare Projekt-/Kartennamen durch '?' ersetzen.
+    rb_enc_set_default_external(rb_enc_from_encoding(rb_utf8_encoding()));
+    if (rb_filesystem_encindex() != rb_utf8_encindex()) {
+        core::log_error("Ruby-VM: Dateisystem-Kodierung ist nicht UTF-8");
+        ruby_finalize();
+        return false;
     }
 
     ruby_init_loadpath();

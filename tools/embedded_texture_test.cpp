@@ -32,7 +32,18 @@ bool ruby_true(const char* code) {
     if (state) {
         const VALUE error = rb_errinfo();
         VALUE text = rb_obj_as_string(error);
-        std::printf("  Ruby-Fehler: %s\n", StringValueCStr(text));
+        const std::string message = StringValueCStr(text);
+        std::printf("  Ruby-Fehler: %s\n", message.c_str());
+        if (std::getenv("GITHUB_ACTIONS")) {
+            std::string escaped;
+            for (char c : message) {
+                if (c == '%') escaped += "%25";
+                else if (c == '\r') escaped += "%0D";
+                else if (c == '\n') escaped += "%0A";
+                else escaped += c;
+            }
+            std::printf("::error title=Ruby-Ausnahme::%s\n", escaped.c_str());
+        }
         rb_set_errinfo(Qnil);
         return false;
     }
@@ -105,6 +116,7 @@ struct Fixture {
         DeleteFileW((engine + L"\\project.rb").c_str());
         DeleteFileW((engine + L"\\textures.rb").c_str());
         DeleteFileW((adata + L"\\system.json").c_str());
+        DeleteFileW((a + L"\\saves\\slot1.json").c_str());
         DeleteFileW((amaps + L"\\karte_\u65e5.json").c_str());
         DeleteFileW((adata + L"\\textures.json").c_str());
         DeleteFileW((atex + L"\\rot.rgba").c_str());
@@ -112,6 +124,7 @@ struct Fixture {
         DeleteFileW((bdata + L"\\textures.json").c_str());
         DeleteFileW((btex + L"\\blau.rgba").c_str());
         RemoveDirectoryW(atex.c_str()); RemoveDirectoryW(amaps.c_str());
+        RemoveDirectoryW((a + L"\\saves").c_str());
         RemoveDirectoryW(adata.c_str()); RemoveDirectoryW(a.c_str());
         RemoveDirectoryW(btex.c_str()); RemoveDirectoryW(bdata.c_str()); RemoveDirectoryW(b.c_str());
         RemoveDirectoryW(projects.c_str()); RemoveDirectoryW(demo.c_str());
@@ -196,6 +209,8 @@ int main(int argc, char** argv) {
         if (ruby_started) {
             rb_gv_set("$expected_root", rb_utf8_str_new(f.root.data(), static_cast<long>(f.root.size())));
             rb_gv_set("$expected_project", rb_utf8_str_new(f.project.data(), static_cast<long>(f.project.size())));
+            check("eingebettetes Ruby initialisiert externe und Dateisystem-Kodierung als UTF-8", ruby_true(
+                "Encoding.default_external == Encoding::UTF_8 && Encoding.find('filesystem') == Encoding::UTF_8"));
             check("Rune::ROOT und RUNE_PROJECT erreichen Ruby exakt als UTF-8", ruby_true(
                 "Rune::ROOT.encoding == Encoding::UTF_8 && Rune::ROOT == $expected_root && "
                 "ENV['RUNE_PROJECT'] == $expected_project && File.directory?(Rune::ROOT)"));
@@ -206,13 +221,21 @@ int main(int argc, char** argv) {
             check("echte Database-/Textures-/Project-Module aus Unicode-Wurzel geladen",
                   data_loaded && textures_loaded && project_loaded);
             if (data_loaded && textures_loaded && project_loaded) {
-                check("Ruby findet und aktualisiert den Unicode-Projektnamen exakt", ruby_true(
-                    "Project.list.include?($expected_project) && Project.touch($expected_project) && "
-                    "Project.read_system($expected_project)['last_played'].is_a?(String)"));
-                check("Ruby liest Unicode-Karten-ID und Systemdaten", ruby_true(
+                check("Ruby-Verzeichnissuche liefert den Unicode-Projektnamen exakt als UTF-8", ruby_true(
+                    "names = Project.list; names == [$expected_project] && names[0].encoding == Encoding::UTF_8"));
+                check("Ruby aktualisiert Systemdaten des Unicode-Projekts", ruby_true(
+                    "Project.touch($expected_project) && Project.read_system($expected_project)['last_played'].is_a?(String)"));
+                check("Ruby schreibt und liest Spielstand im Unicode-Projekt", ruby_true(
+                    "Project.save($expected_project, 1, {'map' => \"karte_\\u65e5\"}); "
+                    "Project.load_save($expected_project, 1)['map'] == \"karte_\\u65e5\""));
+                check("Ruby liest Startkarten-ID aus Unicode-Projekt", ruby_true(
                     "$project_name = ENV['RUNE_PROJECT']; $project_root = Project.data_path($project_name); Database.reset!; "
-                    "Database.system.dig('start', 'map') == \"karte_\\u65e5\" && "
-                    "Database.map_ids == [\"karte_\\u65e5\"] && Database.map(\"karte_\\u65e5\")['name'] == 'Unicode-Karte'"));
+                    "Database.system.dig('start', 'map') == \"karte_\\u65e5\""));
+                check("Ruby-Verzeichnissuche liefert Unicode-Karten-ID exakt als UTF-8", ruby_true(
+                    "ids = Database.map_ids; ids == [\"karte_\\u65e5\"] && ids[0].encoding == Encoding::UTF_8 && "
+                    "Project.info($expected_project)['maps'] == 1"));
+                check("Ruby liest Datei mit Unicode-Karten-ID", ruby_true(
+                    "Database.map(\"karte_\\u65e5\")['name'] == 'Unicode-Karte'"));
                 check("Ruby liest Unicode-Projekt A und meldet zwei echte Texturen an", ruby_true(
                     "Textures.begin_project; Textures.register_project == 2"));
                 check("A überschreibt Basis nur in der Projektebene", renderer.texture_index("gras") != base &&
