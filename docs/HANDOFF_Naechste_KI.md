@@ -1,6 +1,6 @@
-# Handoff für die nächste KI - Rune3D, Stand nach Etappe 19q
+# Handoff für die nächste KI - Rune3D, Stand nach Etappe 19r
 
-**Datum des Stands:** 2026-11-19 — Etappe 19q: Projekttexturen und Materialdateien; CI-Status in GitHub Actions prüfen
+**Datum des Stands:** 2026-11-19 — Etappe 19r: Windows-Projekt- und Kartenpfade; CI-Status in GitHub Actions prüfen
 **Projekt:** `C:/Users/jusagu/Desktop/Engine` — Windows-Only 3D-RPG-Engine (C++20/Win32/D3D11 + echtes CRuby 3.4.11), Editor = eigenes Programm `RuneEditor.exe`.
 
 ## 0. Auftrag und Fortschritt (RPG-Maker-XP-Überholung)
@@ -38,6 +38,7 @@ Der User beauftragte eine Überarbeitung von Engine und Editor **im Stil von RPG
 | 19f | `96be63d` (CI-Grün) | Artefakt-Bugfix (User-Konsole): `Rune3D-Windows` enthält jetzt `game/` + `projekte/` neben den EXEs (CI kopiert sie nach `build/`); beide EXEs loggen einen klaren Hinweis, wenn `game/` unter der Wurzel fehlt |
 | 19p | `84ad7b5` (CI grün) | Terrain-/Atmosphärengrenzen, sichtbare F10-/Atlas-Fallbacks, F7-Datentreue, Ruby-Brücke und portable Terrain-Tests |
 | 19q | `d2e6192` bis `776044d` (CI-Grün Run 45162482261) | Projektgebundene Texturen, Materialstore, Windows-Datei-/WARP-/Ruby-Bindingtests und vorbereiteter Windows-Live-Test |
+| 19r | `08b064e` + `ae0cfe6` (CI-Grün Run 45169345662) | UTF-8 intern, strikte Windows-UTF-16-Grenzen, Unicode-Projekte/Karten, Ruby-Dateisystemkodierung und F4-Prozessübergabe |
 | 19o.6 | `326925b` (CI-Grün Run 44640705908) | F6: Monitor-Arbeitsfläche, DPI-skalierter Scroll-Ausschnitt, Fokus-Nachführung und portable/unsichtbare Windows-Tests |
 | 19o.5 | `4635c80` (CI-Grün Run 44628573472) | F6: datentreue Event-/Seiten-/Befehlsformulare, Pending-Schutz, bedarfsweise Altseitenmigration und C++/Ruby-Event-Brücke |
 | 19o.4 | `38ed554` (CI-Grün Run 44614856669) | Objektformular datentreu, Pending-/Drag-Schutz und sicheres Kartenladen; portable Tests |
@@ -58,7 +59,9 @@ Der User beauftragte eine Überarbeitung von Engine und Editor **im Stil von RPG
 
 Stand 19p: 671 JSON-/Editor-Checks und 51 echte Terrain-Checks jeweils in Release und ASan/UBSan/float-cast-overflow; Win64-Editor, Renderer, Terrain und Ruby-VM cross-kompiliert; zusätzliche unsichtbare Windows-Listboxprüfungen lokal nicht ausgeführt. Natives Ruby 3.0.6: 26 Suiten OK, 1 Windows-EXE-Skip; dieselben 26 Suiten einzeln mit Ruby 3.4-WASM im isolierten WASI-Shim OK (ohne EXE-Test). Native 3.0-JSON-Brücke: 14 Dateien, 0 Semantikfehler, 4 versionsbedingte Formatabweichungen; mit Ruby-3.4-WASM und echten C++-Fixtures: 14 Dateien ohne Semantik-/Formatabweichung und 17 Event-Checks/0 Fehler. WASM nutzt Fixtures statt Open3, die Ruby-Modultests nutzen Stubs.
 
-Stand 19q: Windows-2022-CI für Commit `776044d`, [Lauf 45162482261](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45162482261), alle vier Jobs grün. Material-/Dateitest 57/0, Ruby-Suite einschließlich WIC-Import 27/0, WARP 34/0 und echte eingebettete Texturbrücke mit WARP 19/0. Der Brückentest nutzt den Ruby-Load-Pfad der ausgewählten Installation; die komplette Anwendung, interaktive GUI/DPI und Hardware-GPU bleiben separat zu testen. CI-Status und Arbeitsbaum vor Weiterarbeit prüfen; `opencode.json` ist lokaler Harness-Kram (ignoriert).
+Stand 19q: Windows-2022-CI für Commit `776044d`, [Lauf 45162482261](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45162482261), alle vier Jobs grün. Material-/Dateitest 57/0, Ruby-Suite einschließlich WIC-Import 27/0, WARP 34/0 und echte eingebettete Texturbrücke mit WARP 19/0.
+
+Stand 19r: Windows-2022-CI für Commit `ae0cfe6`, [Lauf 45169345662](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45169345662), alle vier Jobs grün: Windows-Pfadtest 28/0, Material 57/0, WARP 36/0, echte eingebettete Ruby-/WARP-Brücke 28/0 und Ruby 3.4.13 27/0/0. Die Tests nutzen reale W-APIs, einen eigenen Kindprozess, echte kopierte Editor-CLI und CRuby; sie sind kein vollständiger F4-Spielstart, GUI-/DPI- oder Hardware-GPU-Test. Der Brückentest nutzt den Ruby-Load-Pfad der ausgewählten Installation. Interaktive Prüfung und Langpfadgrenzen siehe Backlog und Live-Anleitung. CI-Status und Arbeitsbaum vor Weiterarbeit prüfen; `opencode.json` ist lokaler Harness-Kram (ignoriert).
 
 **Nacharbeit 19a (notiert für die Historie):** Der erste CI-Lauf hat genau das getan,
 wofür er da ist: `build.ps1 -Test` übergab g++ Argumente mit angehängtem Komma
@@ -87,10 +90,11 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
   JSON- und Event-Brücke). Stand 19a: 17 Ruby-Tests + C++-JSON-Test (88 Checks).
   Achtung: Tests, die Engine-Module direkt laden, brauchen `require 'issues'` (Muster siehe tools/add_issues_requires.rb).
 - **Sprache/Zeichen:** Prosa (Kommentare, UI- und Spieltexte, Doku, Namen in
-  JSON) schreibt echte Umlaute; Identifier (Funktionen, JSON-Keys, IDs, Pfade,
-  API-Namen) bleiben ASCII. Win32-Textaufrufe immer als W-Variante mit
-  `utf8_to_wide`/`wide_to_utf8` — ANSI-Aufrufe verstümmeln UTF-8 zu „Ã¼".
-  `.ps1`-Dateien mit Umlauten brauchen eine UTF-8-BOM (PowerShell 5.1).
+  JSON) schreibt echte Umlaute; Quellcode-Identifier und API-Namen bleiben
+  ASCII. Projekt-/Kartennamen und Installationspfade können gültiges Unicode
+  enthalten. Intern UTF-8, an Win32-Datei-/Textgrenzen die W-Varianten und
+  strikte Konvertierung nutzen; ANSI kann UTF-8 verstümmeln. `.ps1`-Dateien
+  mit Umlauten brauchen eine UTF-8-BOM (PowerShell 5.1).
 - **Editor-Bedienung seit 19c:** Modi sind Radios in der Gruppe „Werkzeug";
   im Setzen-Modus zeigt der Geist am Cursor exakt, was der Klick setzt
   (`R` = Vorschau drehen); Objektliste sortiert per Klick auf den Spaltenkopf;
@@ -127,7 +131,7 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
   der Ruby-Bibliothek) ändert das nichts.
 - Live-Verifikation über Fenster-Injektion: `tools/edclick.psm1` + Vorlage `log/live17h.ps1` (Wichtig: Fenster per `EnumWindows` nach Klassenname suchen, **nicht** `FindWindowW` über Prozessgrenzen — das ist unzuverlässig; Befehle per `SendMessage` statt `PostMessage`).
 - Editor-Dialoge sind **modeless**; Screenshots via `CopyFromScreen` gehen auf dem isolierten Desktop **nicht** — stattdessen F12 im Editor (`request_screenshot`).
-- **Editor startet nur mit Ruby im PATH** (x64-ucrt-ruby340.dll); sonst kein Fenster und kein `log/editor.log` — ~~das ist kein Bug~~ **seit Etappe 18e+ behoben:** build.ps1 kopiert `x64-ucrt-ruby340.dll`, `libgmp-10.dll`, `libwinpthread-1.dll` + `ruby_builtin_dlls\` nach `build/` (SxS-Assembly, sonst 0xc0150002), winpthread wird statisch gelinkt (`-Wl,-Bstatic,--whole-archive -lwinpthread`), und `vm.cpp` setzt `RUBYLIB` auf die Ruby-Stdlib-Pfade (sonst `LoadError: json` bei Doppelklick-Start). Beide EXEn starten jetzt ohne Ruby-PATH per Doppelklick.
+- **Editor startet nur mit Ruby im PATH** (x64-ucrt-ruby340.dll); sonst kein Fenster und kein `log/editor.log` — ~~das ist kein Bug~~ **seit Etappe 18e+ behoben:** build.ps1 kopiert `x64-ucrt-ruby340.dll`, `libgmp-10.dll`, `libwinpthread-1.dll` + `ruby_builtin_dlls\` nach `build/` (SxS-Assembly, sonst 0xc0150002), winpthread wird statisch gelinkt (`-Wl,-Bstatic,--whole-archive -lwinpthread`), und `vm.cpp` setzt `RUBYLIB` falls unbelegt auf Ruby-3.4-Stdlib-Pfade unter `C:/Ruby34-x64` (sonst `LoadError: json`). Andere Ruby-Installationen benötigen einen passenden `RUBYLIB`; kopierte DLLs allein belegen kein installationsunabhängiges Deployment.
 - Keine Wiederhol-Schleifen: gleiches Problem zweimal → Quelle lesen, Ansatz wechseln. Jede Runde endet mit Status (fertig / blockiert + Grund).
 - **Backlog-Disziplin (seit 18g):** Fehler/Grenzen, die NICHT sofort in der laufenden Etappe behoben werden, gehören in `docs/BACKLOG.md` (Symptom, Vermutung, betroffene Stellen) — nicht in wiederholte Test-Läufe. Tests laufen pro Etappe genau einmal (Testsuite + ein Live-Test); nur bei rotem Test wird nachgelesen, nicht blind neu gestartet.
 
@@ -137,10 +141,10 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
   **Module:** `Database` (JSON laden, `database.json` seit 17g), `GameState`, `Party`+Actor (17g), `Event`/`Npc`/`Interpreter`, `Scripts` (Sandbox `Scripts::Context` mit Helfern say/switch/variable/teleport/sound/effect/item/gold/heal/weather…), `Pick`, `Effects`+`Weather` (Partikel via `Rune::Gfx.box`), `Textures`/`Sounds` (prozedural), `Project`, `Launcher`, `MapCheck` (19a: Karten-Daten
   prüfen, dieselben Regeln wie `issues_scan_map` im Editor; `Game.enter_map` meldet harte
   Fehler an `Issues`).
-- **Editor:** `src/editor/editor_main.cpp` (eine große Datei, ~4700 Zeilen). Eigene Fensterklassen: `RuneEditorMain`, Viewport `RuneEditorView`, Dialoge `RuneEditorDlg`/`DlgNew` (Karten), `RuneEditorEventDlg`, `ScriptDlg`, `MatDlg`, `DbDlg`, `SoundDlg` — **alle modeless**.
+- **Editor:** `src/editor/editor_main.cpp` (eine große Datei, ~9400 Zeilen). Eigene Fensterklassen: `RuneEditorMain`, Viewport `RuneEditorView`, Dialoge `RuneEditorDlg`/`DlgNew` (Karten), `RuneEditorEventDlg`, `ScriptDlg`, `MatDlg`, `DbDlg`, `SoundDlg` — **alle modeless**.
 - Editor-IDs: Menü 100–115 (115=TILESET; 112=SOUNDTEST, 113=PLAYTEST, 114=PROJECT), Haupt-Controls 3001–3033 (Toolbar 3025, Boden-malen-Radio 3026, Kartenbaum 3027, Höhe-malen-Radio 3029, Objektformular-Hinweis 3033), Karten-Dialog 4100–4115 (Wetter 4113/4114, **Block-Zonen 4115**), Projekt-Dialog 4201–4205, Tileset-Dialog 4301–4319 (Liste 4301, Kachelgröße 4303, Übernehmen 4304, Speichern 4305, Erzeugen 4306, Farben/Muster/Name 4307–4310, Schließen 4311, Vorschau 4312, Splat-Flächen X/Z/B/T 4313–4316, Hinzufügen 4317, Entfernen 4318, Flächen-Liste 4319), Event 5001–5056, Script 6001–6016, Material 7001–7013, DB 8001–8055, Sound 8101–8107. F-Tasten: F1 Hilfe, F2 Eigenschaften, F3 Materialbase, F4 Playtest, F6 Events, **F7 Tileset**, F8 Sound-Test, F9 Datenbank, F11 Scripts.
 - **Toolbar:** 8 Buttons, Icons prozedural per GDI gezeichnet (`make_toolbar_icon` + Namensraum `ico`), senden Menü-IDs via `WM_COMMAND`. F-Tasten: F1 Hilfe, F2 Eigenschaften, F3 Materialbase, F4 Playtest, F6 Events, F8 Sound-Test, F9 Datenbank, F11 Scripts.
-- **Playtest:** Menü/Toolbar F4 → `save_map()` + `CreateProcessW("build\Rune3D.exe", "--project dorf")`. Spiel: `main.cpp` setzt `RUNE_PROJECT`, `game/main.rb` (`Game.setup`) lädt das Projekt direkt (ohne Titelbildschirm); unbekannter Name → Launcher + Warnung.
+- **Playtest:** Menü/Toolbar F4 → `save_map()` + `CreateProcessW` mit exakt zitiertem Projekt und expliziter Engine-Wurzel als CWD; EXE in `build/` oder neben `game/`. Spiel: `main.cpp` setzt `RUNE_PROJECT` per UTF-16, `Game.setup` liest den Namen unverändert; unbekannter Name → Launcher + Warnung.
 - **Wetter:** Karten-JSON `"weather":{"type":"kein|regen|schnee","intensity":1.0}`; `Weather.load_map/update/draw`; Interpreter `{"cmd":"weather",...}`; Editor-Dialog F2 schreibt das Feld.
 - **Link-Falle (`fclose`-Crash):** In `build.ps1` muss `-lucrtbase` **vor** `-lx64-ucrt-ruby340` stehen, sonst leitet der Linker Editor-stdio auf Ruby-CRT-Exports um → Zugriffsverletzung. Kommentar dort steht, nicht „aufräumen".
 - 17f-Import: WIC → rohe `<name>.rgba` unter `projekte/<p>/data/textures/` und Manifest `data/textures.json`; Spiel lädt via `Textures.register_project`. CLI: `RuneEditor.exe --import-tex <bild> [name] [--project <projekt>]`.
@@ -156,6 +160,22 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
 
 **Backlog:** Offene Fehler, Grenzen und Test-Wissen stehen zentral in `docs/BACKLOG.md` — dort nachsehen und neue Erkenntnisse dorthin eintragen (nicht mehr hier listen).
 
+- **Windows-Projektpfade (19r):** `win_path.h` definiert gültiges UTF-8
+  intern und strikte UTF-16-Konvertierung an Windows-Grenzen. `win_project_cli.h`
+  liest die Wide-Kommandozeile und setzt `RUNE_PROJECT` ohne ACP; `vm.cpp`
+  setzt bei CRuby-Initialisierung externe und Dateisystemkodierung auf
+  UTF-8 und prüft den Alias. Der erste 19r-Windowslauf scheiterte, weil
+  `ruby_init()` die normale Optionsinitialisierung nicht ausführt und
+  `Dir.children` sonst Namen per Codepage verlieren kann. Die Nacharbeit
+  `ae0cfe6` besteht Windows-CI. Ruby bekommt `Rune::ROOT`/Skriptpfade als
+  UTF-8; `Game.setup` trimmt Projektnamen nicht mehr. `project_scan_win.h`,
+  `database_file_win.h`, `listbox_win.h` und `playtest_win.h` teilen die
+  tatsächlichen Editorhilfen mit den Windows-Tests. Ungültige Zeichen
+  werden abgewiesen oder beim Scan übersprungen; Altmerker ohne gültiges
+  UTF-8 nicht automatisch recodieren. Editor-Neuanlage bleibt ASCII-only.
+  Kein Pauschalversprechen für Langpfade oder Kartendatei-Sicherheit.
+  F4-Test startet eine Kopie des Testtreibers, nicht das echte Spiel; der
+  interaktive Ablauf steht in `docs/WINDOWS_MATERIAL_LIVE_TEST.md`.
 - **Terrain/Atmosphäre (19p):** `world/terrain_limits.h` und
   `terrain_preview.h` prüfen sichere Raster-, Pinsel-, Splat-, Tile- und
   Atmosphärenwerte vor Cast/Schleifen. Karten werden dabei nicht verändert;

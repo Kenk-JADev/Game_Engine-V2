@@ -115,7 +115,50 @@ muss auf der Platte bleiben, darf aber nicht als Textur geladen werden.
    Testprojekt nur innerhalb der Kopie machen. Window-Resize und DPI-Wechsel
    sind zusätzliche GUI-Fälle und ersetzen keinen Farbabgleich.
 
-## 5. Grenzen und Wiederherstellung
+## 5. Zusätzlicher Live-Test: Unicode-Pfade (noch offen)
+
+Dieser Ablauf ist ein Vorschlag für einen interaktiven Zielrechner, **kein**
+bereits bestandener Test. Er ergänzt die automatisierten W-API-/Ruby-Tests.
+
+1. Im Repository eine **weitere neue**, isolierte Kopie unter einem Pfad mit
+   Umlaut, CJK und Emoji anlegen, z. B. (nicht schon vorher erstellen):
+
+   ```powershell
+   $copy = Join-Path $env:TEMP 'RuneLive_ä_日_🚀'
+   if (Test-Path -LiteralPath $copy) { throw 'Ziel existiert; anderen Namen wählen' }
+   ruby tools/prepare_material_live.rb $copy
+   if ($LASTEXITCODE -ne 0) { throw 'Vorbereitung fehlgeschlagen; Teilkopie prüfen' }
+   ```
+
+2. Nur in dieser neu erzeugten Kopie `projekte/A_material` in
+   ` A_ä_日_🚀` umbenennen (führendes Leerzeichen beachten). Im Ordner
+   `data/maps` die Testkarte `dorf.json` in `karte_日.json` umbenennen.
+   In **dieser Kopie** `data/system.json` mit einem UTF-8-fähigen Editor
+   öffnen und `start.map` von `dorf` auf `karte_日` ändern. Keine anderen
+   Projekte oder Originaldateien umbenennen oder überschreiben.
+3. Den Editor aus der Kopie mit dem exakten Projektnamen starten:
+
+   ```powershell
+   & (Join-Path $copy 'build/RuneEditor.exe') --project ' A_ä_日_🚀'
+   ```
+
+   Projekt im Wechsel-Dialog finden/öffnen, die Unicode-Karte auswählen,
+   bearbeiten, speichern, schließen und wieder öffnen. F9 öffnen, eine
+   kleine Änderung speichern und erneut laden. Danach den Editor schließen
+   und **ohne** `--project` neu starten; prüfen, ob der Projektmerker
+   denselben Namen wiederfindet:
+
+   ```powershell
+   & (Join-Path $copy 'build/RuneEditor.exe')
+   ```
+4. F4 im Editor auslösen: Das **echte** Spiel muss direkt das gleiche
+   Projekt und `karte_日` öffnen, ohne wegen des Leerzeichens/Unicode in
+   den Launcher zurückzufallen. F12-Screenshot und Logpfade prüfen. Optional
+   F3-Import mit einem Bild mit Unicode-Dateinamen ausführen. Namen, Logs,
+   Windows-Version, Systemcodepage, DPI und GPU sowie Erfolg/Fehler notieren;
+   bei Fehlern die Testkopie und Sicherungen zur Diagnose erhalten.
+
+## 6. Grenzen und Wiederherstellung
 
 * Dateipfade der Materialdaten werden unter dem gewählten Engine-Anker einzeln
   über Windows-Handles geöffnet; Junctions/Symlinks und mehrfach verlinkte
@@ -127,9 +170,11 @@ muss auf der Platte bleiben, darf aber nicht als Textur geladen werden.
   Stromausfall/Absturz kann eine `.rune-*.bak` hinterlassen. Bei einem
   konkurrierenden Ziel die angezeigte Sicherung erhalten und nach Prüfung
   manuell wiederherstellen; niemals automatisch fremde Dateien löschen.
-* Der Editor verwendet für einige bestehende Projekt-/Installationspfade noch
-  Win32-ANSI-Aufrufe. Unicode-Projekt-/Installationspfade außerhalb der aktiven
-  Windows-Codepage sind **kein** allgemein zugesagter GUI-Fall; der kopflose
-  Import nimmt seine Argumente dagegen per UTF-16 entgegen.
+* Die umgestellten Projekt-/Installations- und Kartenpfade nutzen intern
+  gültiges UTF-8 und an Windows-Grenzen UTF-16 statt ACP. Automatische Tests
+  decken Unicode einschließlich Zeichen außerhalb der aktiven Codepage ab;
+  der interaktive GUI-Ablauf oben ist noch offen. Das ist weder eine
+  allgemeine Langpfadgarantie noch der Material-Dateischutz für Karten/F9.
+  Alte Projektmerker in ungültigem UTF-8 nicht automatisch umkodieren.
 * Nach Abschluss alle Programme der Kopie schließen. Testkopie erst nach
   Sicherung/Prüfung entfernen; niemals das Original-Repository bereinigen.

@@ -1713,6 +1713,49 @@ CI baut/linkt den Win32-Editor und kann WARP in einem unsichtbaren Fenster
 prüfen, ersetzt aber keinen interaktiven GUI-/Hardware-GPU-Test (siehe Backlog
 und Handoff).
 
+## Windows-Projekt- und Kartenpfade (Etappe 19r)
+
+Der ursprünglich im Backlog vorgeschlagene reine UTF-16-Durchstich wurde
+bewusst nicht gewählt: C++-Datenmodelle, JSON und Ruby führen Projekt- und
+Installationspfade als **gültiges UTF-8**. `core/win_path.h` konvertiert
+an Windows-Grenzen strikt nach/von UTF-16 (`MB_ERR_INVALID_CHARS`,
+`WC_ERR_INVALID_CHARS`), ohne ACP-Ersatzzeichen. Fehlerhafte Pfade werden
+abgewiesen, ungültige UTF-16-Verzeichniseinträge beim Scan übersprungen.
+Die gemeinsame Wurzelsuche verwendet Wide-APIs: der Editor bevorzugt die
+EXE-Installation, das Spiel ein CWD mit `game/`. Beide speichern die
+normalisierte Wurzel intern in UTF-8.
+
+Der Editor verwendet dieselbe Kodierung für Projekt-/Kartenscan, Lesen,
+Speichern/Löschen, F9, den Projektmerker und den gebundenen Materialstore.
+Die Projektlistbox holt Texte mit dynamischer Länge; neue temporäre Dateien
+für Karten/F9 haben kurze Namen im Zielverzeichnis. F4 validiert den
+Projektnamen, sucht `build/Rune3D.exe` oder `Rune3D.exe` neben `game/` und
+startet `CreateProcessW` mit zitiertem Argument und expliziter Engine-CWD.
+Die echte Wide-Kommandozeile und `RUNE_PROJECT` bleiben unverändert; ein
+alter Projektmerker mit ungültigem UTF-8 wird nicht per ACP geraten. Neue
+Projektordner im Editor bleiben auf ASCII-Buchstaben/Ziffern/`_` begrenzt.
+
+`Rune::ROOT` und Skriptpfade werden Ruby als UTF-8 übergeben. Weil das
+eingebettete `ruby_init()` nicht die normale Ruby-Optionsinitialisierung
+durchläuft, setzt `vm.cpp` externe und Dateisystemkodierung explizit auf
+UTF-8; ein abweichender Dateisystem-Alias lässt den VM-Start scheitern,
+statt Verzeichnisnamen still über die Codepage zu ersetzen. `Game.setup`
+entfernt keine führenden Leerzeichen aus `RUNE_PROJECT`.
+
+Windows-2022-CI für `ae0cfe6`, [Lauf 45169345662](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45169345662):
+28 Pfadprüfungen/0 Fehler, darunter Umlaut, CJK und Emoji (teils außerhalb
+der aktiven Codepage), F9-/Kartenhilfen, langer Listboxtext und F4-Kindprozess in beiden
+EXE-Layouts. Der Kindprozess ist der Testtreiber, nicht das komplette Spiel.
+Die echte kopierte Editor-CLI importiert ein Bild in einer Unicode-Wurzel;
+die eingebettete Ruby-/WARP-Brücke prüft reale Projekt-/Karten-/Spielstand-
+pfade sowie Texturen und Pixel (28/0). WARP insgesamt 36/0, Materialtest
+57/0, Ruby-Suiten 27/0/0. Keine interaktive GUI, keine Hardware-GPU und kein
+vollständiger Launcher-/F5-Test. Ein langer Kartenkomponententest verwendet
+explizit `\\?\` und belegt keine allgemeine Langpfadunterstützung. Karten
+und Datenbank bekommen dadurch keinen Materialstore-Sicherheitsvertrag;
+Konfliktprüfung und Ersetzen bleiben nicht durchgehend gesperrt. Live-Test:
+`docs/WINDOWS_MATERIAL_LIVE_TEST.md`.
+
 ## Projektgebundene Materialien und Texturen (Etappe 19q)
 
 `texture_limits.h` begrenzt Dimensionen/Bytes, Slots, Manifest und Eingabebild.
@@ -2505,9 +2548,12 @@ SideBySide, Quelle der Diagnose).
 relativ zum eigenen Speicherort. Liegt sie in build/, findet sie
 stdlib und Gems ('json') nicht mehr — das Spiel startet dann ohne
 Spielskripte („LoadError: json", 0 Draws). ruby::ruby::init() setzt
-deshalb RUBYLIB auf die acht Installationspfade (site_ruby,
+deshalb RUBYLIB auf acht Pfade unter `C:/Ruby34-x64` (site_ruby,
 vendor_ruby, 3.4.0, x64-mingw-ucrt) — nur falls RUBYLIB nicht schon
-gesetzt ist. ruby_init_loadpath() nimmt die Variable in $LOAD_PATH auf.
+gesetzt ist. Andere Ruby-Installationen brauchen einen passenden RUBYLIB;
+ruby_init_loadpath() nimmt die Variable in $LOAD_PATH auf. Der WARP-Test
+setzt den Load-Pfad der ausgewählten Installation und prüft daher kein
+installationsunabhängiges Deployment.
 
 **Tauefalle für manülle Link-Tests:** g++/gcc ohne den Toolchain-PATH
 schlagen mit Exit 1 und VOLLKOMMEN leerer Ausgabe fehl (cc1.exe kann

@@ -85,7 +85,7 @@ Offene Punkte mit Symptom und betroffener Datei stehen in
 - Windows 10/11 x64 mit Direct3D 11
 - **Ruby 3.x x64** (RubyInstaller mit DevKit; entwickelt auf 3.4.11 unter
   `C:\Ruby34-x64`). Header und Importbibliothek werden aus `RbConfig` gelesen,
-  der Installationspfad ist also frei wählbar.
+  der Installationspfad ist für den Build also frei wählbar.
 - **MSYS2-ucrt64-g++** (liegt beim RubyInstaller-DevKit unter
   `<Ruby>\msys64\ucrt64`)
 
@@ -101,8 +101,13 @@ Offene Punkte mit Symptom und betroffener Datei stehen in
 ```
 
 `build.ps1` kopiert die Laufzeit-DLLs (`x64-ucrt-ruby340.dll`, `libgmp-10.dll`,
-`libwinpthread-1.dll`, `ruby_builtin_dlls\`) neben die EXEs — beide Programme
-starten danach per Doppelklick, ohne dass Ruby im PATH stehen muss.
+`libwinpthread-1.dll`, `ruby_builtin_dlls\`) neben die EXEs; für diese DLLs
+muss Ruby beim Start nicht im PATH stehen. Die Ruby-Standardbibliothek muss
+dennoch auffindbar sein: Ohne vorhandenes `RUBYLIB` verwendet `vm.cpp` feste
+Ruby-3.4-Pfade unter `C:/Ruby34-x64`. Bei anderer Installation `RUBYLIB` auf
+den Load-Pfad des **passenden** Ruby setzen. Der WARP-Brückentest setzt ihn
+für die beim Build ausgewählte Ruby-Installation automatisch. Das ist kein
+Nachweis eines völlig installationsunabhängigen Deployments.
 
 Vor dem Bauen laufende Instanzen beenden, sonst schlägt das Linken mit
 „Permission denied" fehl:
@@ -110,6 +115,25 @@ Vor dem Bauen laufende Instanzen beenden, sonst schlägt das Linken mit
 ```powershell
 Get-Process RuneEditor,Rune3D -ErrorAction SilentlyContinue | Stop-Process -Force
 ```
+
+## Windows-Projektpfade
+
+Editor und Spiel führen Engine-Wurzel sowie Projekt- und Kartennamen intern
+als gültiges UTF-8. Für diese Pfade wird an Windows-Datei- und
+Prozessgrenzen strikt in UTF-16 umgewandelt; nicht darstellbare oder ungültige Zeichen werden nicht
+über die System-Codepage ersetzt. Der Editor kann bestehende gültige Unicode-
+Projekt- und Kartennamen finden; **neu** angelegte Projektordner nutzen im
+Editor weiterhin nur ASCII-Buchstaben, Ziffern und `_`. F4 übergibt den
+Projektnamen unverändert und startet das Spiel mit der Engine-Wurzel als
+Arbeitsverzeichnis, sowohl im `build/`- als auch im EXE-neben-`game/`-Layout.
+Ein alter Projektmerker, der kein gültiges UTF-8 enthält, wird nicht aus der
+System-Codepage erraten: Projekt einmal erneut auswählen.
+
+Die automatisierten Windows-Tests decken auch Namen außerhalb der aktiven
+Codepage ab. Sie garantieren weder alle Windows-Langpfade noch die interaktive
+GUI, jedes Dateisystem oder einen allgemeinen Pfad-/Dateischutz für Karten
+und Datenbank. Der [Live-Test](docs/WINDOWS_MATERIAL_LIVE_TEST.md) bleibt
+offen; für Materialdateien gelten die gesonderten Handle-Schutzregeln.
 
 ## Testen
 
@@ -128,6 +152,7 @@ ruby tools\lint_repo.rb                        # Repo-Hygiene
 | C++-Logiktest | JSON und portable Editor-Formularmodelle, darunter F6-Transaktionen und Datentreue | `tools/json_test.cpp` |
 | C++-Terrain | Echte Geländegenerierung, Höhen-/Splat-Budgets, Atlasplan und Fehlerpfade ohne D3D | `tools/terrain_test.cpp` |
 | Materialien/Dateien | Verlustfreier JSON-Baum, unter Windows Handle-Konflikte, Junctions und Hardlinks | `tools/material_test.cpp` |
+| Windows-Projektpfade | UTF-8/UTF-16, Projekt-/Kartenscan, F9-Datei-I/O, F4-Kindprozess | `tools/windows_path_test.cpp` (`-Test`) |
 | D3D11-WARP | Software-Renderer, Pixel, Projektwechsel und Atlas-/Terrainreferenzen | `tools/renderer_warp_test.cpp` (`-WarpTest`) |
 | Eingebettete Texturbrücke | Echtes CRuby, Projektdateien, A→B→A und WARP-Pixel | `tools/embedded_texture_test.cpp` (`-WarpTest`) |
 | JSON-Brücke | Schreibt C++ bytegleich zu Ruby `JSON.pretty_generate`? | `tools/json_bridge_check.rb` |
@@ -151,10 +176,12 @@ Pull Request:
 | `cpp-logik` | ubuntu | JSON-/Editor-, Terrain- und Material-C++-Tests mit `-Werror`, danach JSON- und Event-Brücke |
 | `windows` | windows-2022 | Build, kopflose Datei-/Importtests und `-WarpTest`, EXEs als Artefakt |
 
-Windows-CI für Commit `776044d`, Lauf [45162482261](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45162482261):
-57 Material-/Dateiprüfungen, 34 WARP-Prüfungen, 19 Prüfungen der eingebetteten
-Texturbrücke und 27 Ruby-Suiten jeweils ohne Fehler. WARP testet den echten
-D3D11-Renderer mit Software, aber keine Hardware-GPU, Bedienung oder DPI.
+Windows-CI für Commit `ae0cfe6`, Lauf [45169345662](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45169345662):
+28 Pfad-, 57 Material-/Datei-, 36 WARP- und 28 eingebettete Ruby-/WARP-
+Prüfungen sowie 27 Ruby-Suiten jeweils ohne Fehler. Der Pfadtest nutzt
+echte Windows-W-APIs und einen eigenen F4-Kindprozess, aber nicht das
+komplette Spiel. WARP testet den echten D3D11-Renderer mit Software, aber
+keine Hardware-GPU, Bedienung oder DPI.
 Der Brückentest verwendet den Load-Pfad der ausgewählten Ruby-Installation;
 er belegt daher nicht das Deployment ohne diese Installation. Für die
 vollständigen Abläufe ist der [Windows-Live-Test](docs/WINDOWS_MATERIAL_LIVE_TEST.md)

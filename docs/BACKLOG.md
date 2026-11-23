@@ -73,19 +73,25 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
   `tools/renderer_warp_test.cpp`, `tools/embedded_texture_test.cpp`,
   `docs/WINDOWS_MATERIAL_LIVE_TEST.md`.
 
-### [Editor] Projekt-Dateipfade mischen System-Codepage und UTF-8 — offen
-- Symptom: Bei nicht-ASCII-Zeichen in Engine-Wurzel oder fremd angelegten
-  Projekt-/Kartendateinamen können Dateizugriffe oder Anzeigen scheitern
-  bzw. verstümmelt sein, insbesondere im F9-Dateidialog.
-- Analyse: `find_root`/Projekt- und Kartenscan verwenden Win32-A-Pfade;
-  F9 wandelt seinen gemischten Pfad mit `utf8_to_wide` als UTF-8 um.
-  19o.4 konvertiert Kartenpfade für die sichere Dateiersetzung bewusst aus
-  der bestehenden System-Codepage, löst aber die grundsätzliche Mischung
-  nicht. Pfade künftig Ende-zu-Ende als UTF-16 führen und auf Windows mit
-  Umlauten sowie Zeichen außerhalb der System-Codepage testen.
-- Betroffene Stellen: `src/editor/editor_main.cpp` (`find_root`, `scan_maps`,
-  `scan_projects`, `db_path`/`db_load`/`db_save`, `file_path_to_wide`).
-- Gefunden in: Prüfung zu Etappe 19o.4.
+### [Tests/Editor/Engine] Unicode-Pfade interaktiv und Langpfade prüfen — offen (Live)
+- 19r stellt die gezielten Projekt-/Kartenpfade auf UTF-8 intern und
+  strikte Windows-W-Grenzen um. Die Windows-CI (Commit `ae0cfe6`, Lauf
+  45169345662) prüft auch Zeichen außerhalb der aktiven Codepage: Pfadtest
+  28/0, eingebettetes Ruby/WARP 28/0, WARP 36/0, Material 57/0 und Ruby
+  27/0 einschließlich echter kopierter Editor-CLI für den WIC-Import.
+- Offen: tatsächliche GUI-Projektwahl, F9, Kartenbearbeitung, F4 mit dem
+  echten Spiel und F12 in einer Unicode-Installation auf einem Zielrechner;
+  außerdem DPI/Hardware-GPU. Der Kindprozess-Test ist **nicht** Rune3D.exe,
+  WARP ist Software, der Ruby-Test betätigt weder F5 noch den Launcher.
+  Anleitung und sichere Testkopie: `docs/WINDOWS_MATERIAL_LIVE_TEST.md`.
+- Keine allgemeine Langpfad-Zusage: Der Test einer langen Kartenkomponente
+  verwendet explizit `\\?\`; Dialoge, Ruby und alle Windows-Versionen/
+  Dateisysteme sind damit nicht allgemein abgedeckt. Die Umstellung ist kein
+  Reparsepunkt-/Hardlink-/Race-Schutz für Karten und Datenbank; F9-/Karten-
+  Konfliktfenster bleiben separat offen. Sicherungskopien nutzen.
+- Betroffene Stellen: `src/core/win_path.h`, `src/editor/editor_main.cpp`,
+  `src/ruby/vm.cpp`, `tools/windows_path_test.cpp`, Live-Anleitung.
+- Gefunden in: 19r (2026-11-19).
 
 ### [Editor] F9-/Karten-Dateikonfliktprüfung ist nicht atomar — offen (Daten-Treue)
 - Symptom: Ändert ein anderes Programm eine Datei genau zwischen der
@@ -246,7 +252,7 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Betroffene Stellen: `.github/workflows/ci.yml`, `tools/edclick.psm1`.
 - Gefunden in: Etappe 19a.
 
-### [Editor] editor_main.cpp ist eine einzige Datei mit ~7200 Zeilen — offen (Struktur)
+### [Editor] editor_main.cpp ist eine einzige Datei mit ~9400 Zeilen — offen (Struktur)
 - Symptom: Fenster, Dialoge, Kartenmodell, Undo, Scan und Rendering in einer
   Datei; `lint_repo.rb` meldet sie als „Kandidat zum Aufteilen".
 - Vermutung/Analyse: Aufteilen ist ohne lokalen Compiler riskant, seit 19a aber
@@ -267,6 +273,33 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Etappe 19a.
 
 ## Erledigt
+### [Editor/Engine] Projekt-Dateipfade mischen System-Codepage und UTF-8 — implementiert (19r)
+- Symptom/Ursache: Die frühere Wurzelsuche und die Projekt-/Kartenscans
+  benutzten Win32-A-Dateinamen, während F9 den zusammengesetzten Pfad als
+  UTF-8 interpretierte. Fremd angelegte Unicode-Namen konnten dadurch
+  verstümmelt sein oder nicht geöffnet werden.
+- Lösung: Anders als der ursprüngliche Vorschlag „Ende-zu-Ende UTF-16“
+  halten C++/Ruby und JSON Pfade intern als gültiges UTF-8; an Windows-
+  Grenzen erfolgt strikte, verlustfreie Konvertierung nach/von UTF-16.
+  Wurzelsuche, Projekt-/Kartenscan, Dateizugriffe/F9, Materialstore,
+  Projektmerker, CLI/Umgebung, Ruby-Skripte, F4 und Screenshots nutzen den
+  Vertrag. Lange Projektlistenzeilen werden dynamisch gelesen; temporäre
+  Karten-/F9-Dateien haben kurze Namen. Ungültiges UTF-8/UTF-16 wird
+  abgewiesen bzw. bei Verzeichniseinträgen übersprungen.
+- Das eingebettete Ruby muss seine externe und Dateisystemkodierung selbst
+  initialisieren: Der erste 19r-CI-Lauf fiel bei Unicode-Verzeichnislisten
+  aus, da `ruby_init()` nicht die normale Optionsinitialisierung ausführt.
+  `vm.cpp` setzt UTF-8 und lehnt einen anderen Dateisystem-Alias ab.
+- Belegt: Windows-2022-CI für `ae0cfe6`, Lauf 45169345662, alle Jobs grün;
+  `windows_path_test.cpp` 28/0, Material 57/0, WARP 36/0, echte Ruby-/WARP-
+  Brücke 28/0, Ruby-Suiten 27/0. GUI und allgemeine Langpfade bleiben
+  ausdrücklich offen (siehe Eintrag oben).
+- Betroffene Stellen: `src/core/{win_path,win_project_cli,project_assets_win}.h`,
+  `src/editor/{project_scan_win,playtest_win,database_file_win,atomic_file_win}.h`,
+  `src/editor/editor_main.cpp`, `src/main.cpp`, `src/ruby/vm.cpp`,
+  `game/main.rb`, `tools/windows_path_test.cpp`.
+- Gefunden in: Prüfung zu 19o.4; gezielte Behebung in 19r.
+
 ### [Editor/Engine] Terrain-/Atmosphärengrenzen und Vorschau — implementiert (19p)
 - Der Terrainplan prüft Maße, Seitenverhältnis, Auflösung, Seed, Amplitude,
   Pinsel-/Flächenwerte und Arbeitsbudgets vor Cast, Schleifen und Meshbau.
