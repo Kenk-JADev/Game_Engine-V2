@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "core/win_component.h"
 #include "core/win_path.h"
 #include "editor/texture_path.h"
 #include "world/texture_limits.h"
@@ -83,14 +84,7 @@ inline bool absolute_path(const std::wstring& path, std::wstring& full) {
 }
 
 inline bool component(const std::wstring& name) {
-    if (name.empty() || name.size() > 255 || name == L"." || name == L".." ||
-        name.back() == L'.' || name.back() == L' ') return false;
-    for (wchar_t c : name) {
-        if (c < 0x20 || c == 0x7f || c == L'/' || c == L'\\' || c == L':' ||
-            c == L'*' || c == L'?' || c == L'"' || c == L'<' || c == L'>' || c == L'|') return false;
-    }
-    std::string utf8;
-    return to_utf8(name, utf8) && !editor::windows_device_name(utf8);
+    return core::win_path::component(name);
 }
 
 // Die Ruby-Datenwurzel darf nur exakt der gewählten Projekt- bzw. Demo-

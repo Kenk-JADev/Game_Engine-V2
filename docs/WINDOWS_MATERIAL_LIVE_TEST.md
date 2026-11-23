@@ -132,17 +132,19 @@ bereits bestandener Test. Er ergänzt die automatisierten W-API-/Ruby-Tests.
 
 2. Nur in dieser neu erzeugten Kopie `projekte/A_material` in
    ` A_ä_日_🚀` umbenennen (führendes Leerzeichen beachten). Im Ordner
-   `data/maps` die Testkarte `dorf.json` in `karte_日.json` umbenennen.
-   In **dieser Kopie** `data/system.json` mit einem UTF-8-fähigen Editor
-   öffnen und `start.map` von `dorf` auf `karte_日` ändern. Keine anderen
-   Projekte oder Originaldateien umbenennen oder überschreiben.
+   `data/maps` die Testkarte `dorf.json` in `karte_日.json` umbenennen und
+   eine zweite Karte `karte_🚀.json` als Kopie anlegen. In **dieser Kopie**
+   `data/system.json` mit einem UTF-8-fähigen Editor öffnen und `start.map`
+   von `dorf` auf `karte_日` ändern. Die zweite Karte in der Kopie erkennbar
+   anders benennen und ihren Startpunkt so ändern, dass sie im Spiel von der
+   Startkarte unterscheidbar ist. Keine Originaldateien überschreiben.
 3. Den Editor aus der Kopie mit dem exakten Projektnamen starten:
 
    ```powershell
    & (Join-Path $copy 'build/RuneEditor.exe') --project ' A_ä_日_🚀'
    ```
 
-   Projekt im Wechsel-Dialog finden/öffnen, die Unicode-Karte auswählen,
+   Projekt im Wechsel-Dialog finden/öffnen, beide Unicode-Karten auswählen,
    bearbeiten, speichern, schließen und wieder öffnen. F9 öffnen, eine
    kleine Änderung speichern und erneut laden. Danach den Editor schließen
    und **ohne** `--project` neu starten; prüfen, ob der Projektmerker
@@ -151,14 +153,18 @@ bereits bestandener Test. Er ergänzt die automatisierten W-API-/Ruby-Tests.
    ```powershell
    & (Join-Path $copy 'build/RuneEditor.exe')
    ```
-4. F4 im Editor auslösen: Das **echte** Spiel muss direkt das gleiche
-   Projekt und `karte_日` öffnen, ohne wegen des Leerzeichens/Unicode in
-   den Launcher zurückzufallen. Hier sind ausgewählte Karte und `start.map`
-   bewusst identisch; F4 übergibt aktuell keine andere Kartenauswahl (Backlog).
-   F12-Screenshot und Logpfade prüfen. Optional
-   F3-Import mit einem Bild mit Unicode-Dateinamen ausführen. Namen, Logs,
-   Windows-Version, Systemcodepage, DPI und GPU sowie Erfolg/Fehler notieren;
-   bei Fehlern die Testkopie und Sicherungen zur Diagnose erhalten.
+4. Im Editor **`karte_🚀`**, nicht die System-Startkarte `karte_日`,
+   auswählen und F4 auslösen. Das echte Spiel muss direkt das gleiche
+   Unicode-Projekt und die gewählte zweite Karte mit ihrem Startpunkt öffnen.
+   F5 im Spiel prüfen: Die zweite Karte bleibt Startkarte. Dann zum Titel
+   zurückkehren und das Projekt manuell wählen: Nun muss `karte_日` starten.
+   Zusätzlich einen normalen `--project`-Start ohne `--map` vergleichen.
+   Das Spiel schließen und prüfen, dass der Editor weiter geöffnet ist.
+   F12-Screenshot und Logpfade prüfen. Optional F3-Import mit einem Bild mit
+   Unicode-Dateinamen ausführen. Namen, Logs, Windows-Version, Codepage,
+   DPI, GPU sowie Erfolg/Fehler notieren; bei Fehlern die Testkopie und
+   Sicherungen zur Diagnose erhalten. Spielstände und Scripts sind nicht
+   isoliert, deshalb ausschließlich in der Testkopie arbeiten.
 
 ## 6. Zusätzlicher Live-Test: Karten-/F9-Konflikte (noch offen)
 

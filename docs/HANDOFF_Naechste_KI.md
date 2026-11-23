@@ -1,6 +1,6 @@
-# Handoff für die nächste KI - Rune3D, Stand nach Etappe 19t
+# Handoff für die nächste KI - Rune3D, Stand nach Etappe 19u
 
-**Datum des Stands:** 2026-11-19 — Etappe 19t: Laufzeit ohne Ingame-Editor; CI-Status in GitHub Actions prüfen
+**Datum des Stands:** 2026-11-19 — Etappe 19u: F4 startet die gewählte Karte; CI-Status des aktuellen Commits in GitHub Actions prüfen
 **Projekt:** `C:/Users/jusagu/Desktop/Engine` — Windows-Only 3D-RPG-Engine (C++20/Win32/D3D11 + echtes CRuby 3.4.11), Editor = eigenes Programm `RuneEditor.exe`.
 
 ## 0. Auftrag und Fortschritt (RPG-Maker-XP-Überholung)
@@ -40,7 +40,8 @@ Der User beauftragte eine Überarbeitung von Engine und Editor **im Stil von RPG
 | 19q | `d2e6192` bis `776044d` (CI-Grün Run 45162482261) | Projektgebundene Texturen, Materialstore, Windows-Datei-/WARP-/Ruby-Bindingtests und vorbereiteter Windows-Live-Test |
 | 19r | `08b064e` + `ae0cfe6` (CI-Grün Run 45169345662) | UTF-8 intern, strikte Windows-UTF-16-Grenzen, Unicode-Projekte/Karten, Ruby-Dateisystemkodierung und F4-Prozessübergabe |
 | 19s | `6a3b8e1` (CI-Grün Run 45175342986) | Handle-relative Karten-/F9-Dateitransaktionen, erneut geprüfte Rückfragen, Wiederherstellung und 58 echte Windows-Dateitests |
-| 19t | aktueller Stand (CI prüfen) | Ingame-Editor entfernt, Szenenbau für Spiel/Launcher getrennt und echte Ruby-Laufzeit kopflos geprüft |
+| 19t | `c7b2f5d` (CI-Grün Run 45178315607) | Ingame-Editor entfernt, Szenenbau für Spiel/Launcher getrennt und echte Ruby-Laufzeit kopflos geprüft |
+| 19u | aktueller Stand (CI prüfen) | Externer F4-Start mit gewählter Karte, Unicode-/Fehler-/F5-/Projektwechseltests |
 | 19o.6 | `326925b` (CI-Grün Run 44640705908) | F6: Monitor-Arbeitsfläche, DPI-skalierter Scroll-Ausschnitt, Fokus-Nachführung und portable/unsichtbare Windows-Tests |
 | 19o.5 | `4635c80` (CI-Grün Run 44628573472) | F6: datentreue Event-/Seiten-/Befehlsformulare, Pending-Schutz, bedarfsweise Altseitenmigration und C++/Ruby-Event-Brücke |
 | 19o.4 | `38ed554` (CI-Grün Run 44614856669) | Objektformular datentreu, Pending-/Drag-Schutz und sicheres Kartenladen; portable Tests |
@@ -69,7 +70,9 @@ Stand 19s: [CI 45175342986](https://github.com/Kenk-JADev/Game_Engine-V2/actions
 
 Stand 19t: Der Ruby-Ingame-Editor und sein interner Playtest-Zyklus sind entfernt; der Szenenbau lebt in `MapObjects`, der separate RuneEditor und sein F4-Prozess bleiben. `runtime_boot_test.rb` lädt den echten Bootstrap/Launcher in einer temporären Kopie mit nativen Attrappen, `map_objects_test.rb` prüft Szenenbau und Kollisionen, `encounter_test.rb` den Spielablauf. Lokal: Ruby 3.0.6 27 Suiten OK/0 Fehler/1 Windows-EXE-Skip, MapCheck sauber, JSON 671/0, Terrain 51/0, Material 25/0, Lint 0 Fehler/3 Warnungen; `src/main.cpp` Win64 mit `-Werror` cross-kompiliert. Interaktive Windows-/GPU-Tests bleiben offen.
 
-**Anschließender Userwunsch:** Rune3D funktional ausbauen; RuneEditor ist das einzige vollständige Editorprogramm. Als konkrete Lücke wurde erkannt: F4 startet noch die Projekt-Startkarte statt der im RuneEditor ausgewählten Karte (Backlog). Welche weiteren neuen Funktionen priorisiert werden sollen, ist offen.
+Stand 19u: F4 übergibt Projekt und ausgewählte Karten-ID; mit `--project` allein bleibt der normale Start erhalten. F5 liest im Playtest diese Karte erneut, auch nach einem zunächst fehlenden Projekt; manuelle Projektwahl löscht die Vorgabe. Nicht vorhandene, mehrdeutige oder nicht als JSON-Objekt lesbare Karten zeigen einen Fehler statt einer anderen Karte. `Database` und `MapCheck` erkennen auch `.JSON` und ignorieren Verzeichnisse. Lokal: Ruby 3.0.6 27 Suiten OK/0 Fehler/1 Windows-EXE-Skip, MapCheck sauber, JSON 671/0, Terrain 51/0, Material 25/0; Win64-Kompilierung von Spiel, Editor und Pfadtest sowie Link des Pfadtests, nicht lokal unter Windows ausgeführt. CI und interaktiver GUI-/Hardwaretest für 19u sind separat zu prüfen.
+
+**Anschließender Userwunsch:** Rune3D funktional ausbauen; RuneEditor ist das einzige vollständige Editorprogramm. Die F4-Kartenauswahl ist in 19u implementiert; weitere konkrete Funktionen sind noch nicht priorisiert.
 
 **Nacharbeit 19a (notiert für die Historie):** Der erste CI-Lauf hat genau das getan,
 wofür er da ist: `build.ps1 -Test` übergab g++ Argumente mit angehängtem Komma
@@ -152,7 +155,7 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
 - **Editor:** `src/editor/editor_main.cpp` (eine große Datei, ~9400 Zeilen). Eigene Fensterklassen: `RuneEditorMain`, Viewport `RuneEditorView`, Dialoge `RuneEditorDlg`/`DlgNew` (Karten), `RuneEditorEventDlg`, `ScriptDlg`, `MatDlg`, `DbDlg`, `SoundDlg` — **alle modeless**.
 - Editor-IDs: Menü 100–115 (115=TILESET; 112=SOUNDTEST, 113=PLAYTEST, 114=PROJECT), Haupt-Controls 3001–3033 (Toolbar 3025, Boden-malen-Radio 3026, Kartenbaum 3027, Höhe-malen-Radio 3029, Objektformular-Hinweis 3033), Karten-Dialog 4100–4115 (Wetter 4113/4114, **Block-Zonen 4115**), Projekt-Dialog 4201–4205, Tileset-Dialog 4301–4319 (Liste 4301, Kachelgröße 4303, Übernehmen 4304, Speichern 4305, Erzeugen 4306, Farben/Muster/Name 4307–4310, Schließen 4311, Vorschau 4312, Splat-Flächen X/Z/B/T 4313–4316, Hinzufügen 4317, Entfernen 4318, Flächen-Liste 4319), Event 5001–5056, Script 6001–6016, Material 7001–7013, DB 8001–8055, Sound 8101–8107. F-Tasten: F1 Hilfe, F2 Eigenschaften, F3 Materialbase, F4 Playtest, F6 Events, **F7 Tileset**, F8 Sound-Test, F9 Datenbank, F11 Scripts.
 - **Toolbar:** 8 Buttons, Icons prozedural per GDI gezeichnet (`make_toolbar_icon` + Namensraum `ico`), senden Menü-IDs via `WM_COMMAND`. F-Tasten: F1 Hilfe, F2 Eigenschaften, F3 Materialbase, F4 Playtest, F6 Events, F8 Sound-Test, F9 Datenbank, F11 Scripts.
-- **Playtest:** Menü/Toolbar F4 → `save_map()` + `CreateProcessW` mit exakt zitiertem Projekt und expliziter Engine-Wurzel als CWD; EXE in `build/` oder neben `game/`. Spiel: `main.cpp` setzt `RUNE_PROJECT` per UTF-16, `Game.setup` liest den Namen unverändert; unbekannter Name → Launcher + Warnung. Die ausgewählte Karte wird bisher nicht übergeben; Spielstände sind nicht isoliert (Backlog).
+- **Playtest:** Menü/Toolbar F4 → `save_map()` + `CreateProcessW` mit exakt zitiertem Projekt und ausgewählter Karten-ID sowie expliziter Engine-Wurzel als CWD; EXE in `build/` oder neben `game/`. `--map` verlangt `--project`; ohne Karte bleibt die Projekt-Startkarte. Ungültige/nicht eindeutig lesbare explizite Karten zeigen einen Fehler. F5 liest die Karte erneut, Titel/Projektwahl löscht die Vorgabe. Der Prozess ist keine Sandbox und kein Dateischnappschuss (Backlog).
 - **Wetter:** Karten-JSON `"weather":{"type":"kein|regen|schnee","intensity":1.0}`; `Weather.load_map/update/draw`; Interpreter `{"cmd":"weather",...}`; Editor-Dialog F2 schreibt das Feld.
 - **Link-Falle (`fclose`-Crash):** In `build.ps1` muss `-lucrtbase` **vor** `-lx64-ucrt-ruby340` stehen, sonst leitet der Linker Editor-stdio auf Ruby-CRT-Exports um → Zugriffsverletzung. Kommentar dort steht, nicht „aufräumen".
 - 17f-Import: WIC → rohe `<name>.rgba` unter `projekte/<p>/data/textures/` und Manifest `data/textures.json`; Spiel lädt via `Textures.register_project`. CLI: `RuneEditor.exe --import-tex <bild> [name] [--project <projekt>]`.

@@ -4708,8 +4708,8 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                                 L"  F9 Datenbank (Helden/Items/Gegner/Truppen)\n"
                                 L"  F11 Script-Editor\n\n"
                                 L"Menü Karte: neue Karten anlegen, zwischen ihnen wechseln\n"
-                                L"Playtest: startet Rune3D.exe mit diesem Projekt\n"
-                                L"(--project, ohne Titelbildschirm).\n\n"
+                                L"Playtest: speichert die gewählte Karte und startet\n"
+                                L"Rune3D.exe mit Projekt und Karte (ohne Titelbildschirm).\n\n"
                                 L"Der Editor arbeitet nur auf den Kartendaten - "
                                 L"die Game-Engine bleibt unberührt.",
                                 L"RuneEditor - Bedienung", MB_OK | MB_ICONINFORMATION);
@@ -9005,11 +9005,32 @@ bool soundtest_focused() {
     return fg == g_snd.win || (fg && IsChild(g_snd.win, fg));
 }
 
-// Karte speichern und das Spiel als eigenen Prozess starten (Etappe 17h).
+// Ausgewählte Karte speichern und im eigenen Spielprozess testen.
 void start_playtest() {
+    std::string map_id;
     if (g.cur_map >= 0) {
+        const int map_index = g.cur_map;
+        if (map_index >= static_cast<int>(g.map_files.size()) ||
+            !playtest_map_id(g.map_files[map_index], map_id)) {
+            data_prompt(g.main, L"Die ausgewählte Karte hat keine gültige Karten-ID. "
+                                L"Playtest abgebrochen.",
+                        L"RuneEditor", MB_OK | MB_ICONERROR);
+            return;
+        }
+        const std::string map_file = g.map_files[map_index];
+        const std::uint64_t map_epoch = g.map_epoch, project_epoch = g.project_epoch;
         if (!save_map()) {
-            MessageBoxW(g.main, L"Karte konnte nicht gespeichert werden - "
+            data_prompt(g.main, L"Karte konnte nicht gespeichert werden - "
+                                L"Playtest abgebrochen.",
+                        L"RuneEditor", MB_OK | MB_ICONERROR);
+            return;
+        }
+        // Rückfragen pumpen Nachrichten. Nur die tatsächlich gespeicherte
+        // Karte des ursprünglichen Projekts darf an den Kindprozess gehen.
+        if (g.project_epoch != project_epoch || g.map_epoch != map_epoch ||
+            g.cur_map != map_index || map_index >= static_cast<int>(g.map_files.size()) ||
+            g.map_files[map_index] != map_file) {
+            data_prompt(g.main, L"Projekt oder Karte haben sich beim Speichern geändert. "
                                 L"Playtest abgebrochen.",
                         L"RuneEditor", MB_OK | MB_ICONERROR);
             return;
@@ -9017,9 +9038,9 @@ void start_playtest() {
     }
 
     std::wstring exe, args, cwd;
-    if (!playtest_command(g.root, g.project_name, exe, args, cwd)) {
-        MessageBoxW(g.main, L"Rune3D.exe wurde nicht gefunden oder der Projektpfad ist ungültig. "
-                            L"Zuerst build.ps1 ausführen.",
+    if (!playtest_command(g.root, g.project_name, map_id, exe, args, cwd)) {
+        data_prompt(g.main, L"Rune3D.exe wurde nicht gefunden oder Projekt-/Kartenname ist ungültig. "
+                            L"Bitte den Build und die Auswahl prüfen.",
                     L"RuneEditor", MB_OK | MB_ICONERROR);
         return;
     }
@@ -9029,14 +9050,15 @@ void start_playtest() {
     // Auch nach einem Dateidialog explizit mit der Engine-Wurzel starten.
     if (!CreateProcessW(exe.c_str(), args.data(), nullptr, nullptr, FALSE,
                         0, nullptr, cwd.c_str(), &si, &pi)) {
-        MessageBoxW(g.main, L"Rune3D.exe konnte nicht gestartet werden. "
+        data_prompt(g.main, L"Rune3D.exe konnte nicht gestartet werden. "
                             L"Zuerst build.ps1 ausführen.",
                     L"RuneEditor", MB_OK | MB_ICONERROR);
         return;
     }
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
-    core::log_info("Playtest gestartet: Rune3D.exe --project " + g.project_name);
+    core::log_info("Playtest gestartet: Projekt " + g.project_name +
+                   (map_id.empty() ? " (Projekt-Startkarte)" : ", Karte " + map_id));
 }
 
 } // namespace rune::editor

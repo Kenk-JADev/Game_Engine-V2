@@ -109,16 +109,21 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Betroffene Stellen: `src/editor/document_store_win.h`, `editor_main.cpp`,
   `src/core/project_assets_win.h`, `tools/document_store_test.cpp`.
 
-### [Editor/Engine] F4 übergibt nicht die ausgewählte Karte — offen (Funktion)
-- RuneEditor speichert die aktuelle Karte, übergibt aber nur `--project`;
-  `Game.setup` startet `system.json` → `start.map`. Ist im Editor eine andere
-  Karte ausgewählt, testet F4 daher die falsche Karte. Ein Unicode-Test mit
-  identischer Start-/Auswahlkarte deckt diesen Unterschied nicht auf.
-- Das Spiel läuft als separater Prozess und nutzt gewöhnliche Projekt-
-  Spielstände und Script-Dateizugriffe; es ist keine isolierte Sandbox.
+### [Tests/Editor] F4 mit zwei Karten interaktiv prüfen — offen (Live)
+- 19u übergibt die ausgewählte Karten-ID; automatisierte Tests prüfen einen
+  echten Windows-Kindprozess mit Testtreiber und den echten Ruby-Bootstrap
+  mit nativen Attrappen. Keiner dieser Tests bedient RuneEditor und Rune3D
+  gemeinsam durch die sichtbare Windows-/D3D-Oberfläche.
+- Auf einem Zielrechner mit zwei unterschiedlichen Karten, Unicode-Namen,
+  F4, F5, Dateikonflikten, Titel-/Projektwechsel und Hardware-GPU gemäß
+  `docs/WINDOWS_MATERIAL_LIVE_TEST.md` prüfen; nicht als bestanden markieren,
+  bevor er tatsächlich ausgeführt wurde.
+- Der Spielprozess ist keine Sandbox oder Dateischnappschuss: Spielstände,
+  `last_played` und Scripts nutzen reguläre Projektdateien. Die Karte wird
+  nach dem Editor-Speichern vom Spiel separat gelesen; externe Änderungen
+  zwischen diesen Schritten sind nicht ausgeschlossen.
 - Betroffene Stellen: `src/editor/{editor_main.cpp,playtest_win.h}`,
-  `src/core/win_project_cli.h`, `src/main.cpp`, `game/main.rb`.
-- Gefunden bei der Trennung des Ingame-Editors (19t).
+  `src/core/win_project_cli.h`, `src/main.cpp`, `game/{main.rb,engine/data.rb}`.
 
 ### [Engine] Kampf-Grundgerüst deckt noch nicht alles ab — offen (Feature-Fehlend)
 - Stand 19i: Rundenkampf mit Angriff/Item/Flucht, Sieg/Niederlage/Exp/
@@ -286,6 +291,26 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Etappe 19a.
 
 ## Erledigt
+### [Editor/Engine] F4 startet die gewählte Karte — implementiert (19u)
+- RuneEditor speichert die aktive Karte, prüft die unveränderte Auswahl
+  und übergibt Projekt und Karten-ID UTF-16-sicher an Rune3D. Ohne gewählte
+  Karte bleibt es beim Projektstart; mit ungültiger oder nicht eindeutig
+  lesbarer Auswahl erscheint ein Fehler statt einer anderen Karte.
+- F5 im Playtest liest die gewählte Karte erneut. Auch wenn das Projekt beim
+  Start fehlte, behält F5 die Vorgabe für einen erneuten Versuch im selben
+  Projekt. Eine manuelle Projektwahl nach dem Titelbildschirm entfernt sie.
+  `Game.change_map`, Terrain, Events und Begegnungen bleiben regulär aktiv.
+  `MapCheck` berücksichtigt auch `.JSON` und ignoriert Kartenverzeichnisse.
+- `windows_path_test.cpp` prüft Parser, Validierung, Unicode, Prozessstart
+  und geerbte Umgebung; `embedded_texture_test.cpp` die Ruby-Umgebung;
+  `runtime_boot_test.rb` prüft getrennte Projekt-/Kartenszenarien mit echten
+  Ruby-Scripts und nativen Attrappen. Aktuellen CI-Lauf und offenen Live-Test
+  oben separat prüfen; weder Sandbox noch Hardware-/GUI-Nachweis.
+- Betroffene Stellen: `src/editor/{editor_main.cpp,playtest_win.h}`,
+  `src/core/{win_component,win_project_cli}.h`, `src/main.cpp`,
+  `game/{main.rb,engine/data.rb,engine/launcher.rb,engine/mapcheck.rb}`
+  und die genannten Tests (einschließlich `mapcheck_test.rb`).
+
 ### [Engine] Eingebauten Szeneneditor aus Rune3D entfernt — implementiert (19t)
 - `RuneEditor.exe` bleibt das Bearbeitungsprogramm. Der frühere Ruby-Editor,
   sein F4-Modus und der interne Playtest-Zyklus wurden aus Rune3D entfernt;
@@ -298,7 +323,7 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Tests: `map_objects_test.rb` (echte Ruby-Szene/Physikattrappe),
   `runtime_boot_test.rb` (echter Bootstrap/Launcher/F5 in temporärer Kopie,
   native APIs als Attrappen), `encounter_test.rb` (Spielablauf/Kampf/F4).
-  Grafischer Windows-/Hardwaretest des Gesamtablaufs steht aus.
+  CI auf `c7b2f5d`: [Lauf 45178315607](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45178315607) grün; grafischer Windows-/Hardwaretest steht aus.
 - Betroffene Stellen: `game/engine/{boot,launcher,map_objects,prefabs}.rb`,
   `game/main.rb`, `tools/{map_objects,runtime_boot,encounter}_test.rb`.
 

@@ -6,23 +6,28 @@
 # ============================================================================
 require 'tmpdir'
 require 'fileutils'
+require 'json'
+require 'open3'
+require 'rbconfig'
 
 module Rune
   module Log
     @errors = []
+    @warnings = []
     class << self
-      attr_reader :errors
+      attr_reader :errors, :warnings
     end
     def self.info(_message); end
-    def self.warn(_message); end
+    def self.warn(message) = @warnings << message
     def self.error(message) = @errors << message
   end
 
   module World
     class << self
       attr_accessor :height_brushes
+      attr_reader :last_args
     end
-    def self.generate_raw(*_args) = true
+    def self.generate_raw(*args) = (@last_args = args; true)
     def self.ready? = true
     def self.height_at(_x, _z) = 0.0
   end
@@ -119,7 +124,10 @@ module Rune
   end
 
   module App
-    def self.quit; end
+    class << self
+      attr_reader :quit_requested
+    end
+    def self.quit = (@quit_requested = true)
   end
 end
 
@@ -133,11 +141,201 @@ rescue StandardError, ScriptError => e
   $fail += 1
 end
 
+PLAYTEST_PROJECT = ' A_ä_日_🚀'
+PLAYTEST_MAP = ' Karte_日_🚀.'
+OTHER_PROJECT = 'B_Projekt'
+
+# Ein eigener Ruby-Prozess startet den echten Bootstrap mit den Werten,
+# die Rune3D vor VM-Start aus der CLI-Übergabe gesetzt hätte. Alle nativen
+# Schnittstellen bleiben Attrappen; Win32 und D3D werden hier nicht getestet.
+if ARGV[0] == '--playtest-child'
+  root, scenario = ARGV[1], ARGV[2]
+  Rune.const_set(:ROOT, root)
+  Dir.chdir(root) do
+    if scenario == 'inaccessible'
+      # Reproduzierbarer Lesefehler ohne von OS-/Adminrechten abhängige ACLs.
+      blocked = File.expand_path(File.join(root, 'projekte', PLAYTEST_PROJECT, 'data', 'maps'))
+      original_children = Dir.method(:children)
+      Dir.define_singleton_method(:children) do |path, *args, **kwargs|
+        raise Errno::EACCES, path if File.expand_path(path) == blocked
+
+        original_children.call(path, *args, **kwargs)
+      end
+    end
+    load File.join(root, 'game', 'engine', 'boot.rb')
+    case scenario
+    when 'selected'
+      check('F4 startet die ausgewählte Unicode-Karte statt der System-Startkarte') do
+        Game.instance_variable_get(:@mode) == :game && Game.map_id == PLAYTEST_MAP &&
+          Game.map['name'] == 'Ausgewählte Karte' && $project_name == PLAYTEST_PROJECT &&
+          Database.map_ids.include?(PLAYTEST_MAP) && ENV['RUNE_PLAYTEST_MAP'].nil?
+      end
+      check('Terrain, Startpunkt, Hindernisse, Event und Encounter gehören zur ausgewählten Karte') do
+        x, y, z = Rune::Player.position
+        x == 13.0 && y == 0.2 && z == -7.0 && Rune::World.last_args[0..1] == [96, 88] &&
+          Rune::Physics.solid_count.positive? && Game.events.map(&:name) == ['Prüf-Event'] &&
+          $game_player.encounter_count.positive?
+      end
+      check('F4 im Spiel öffnet keinen Editor und verändert keine Kartendatei') do
+        path = File.join(Project.data_path(PLAYTEST_PROJECT), 'maps', PLAYTEST_MAP + '.JSON')
+        before = File.binread(path)
+        scene = Game.instance_variable_get(:@scene)
+        Game.instance_variable_set(:@intro, nil)
+        Rune::Input.keys = [:f4]
+        Rune.tick(0.016)
+        Rune::Input.keys = []
+        Game.instance_variable_get(:@scene).equal?(scene) && !defined?(Editor) && File.binread(path) == before
+      ensure
+        Rune::Input.keys = []
+      end
+      check('normaler Kartenwechsel funktioniert auch im externen Playtest') do
+        Game.change_map('start')
+        Game.map_id == 'start' && Game.map['name'] == 'Projekt-Start' && Rune::Player.position[0] == 1.0
+      end
+      check('F5-artiges Laden startet wieder die gewählte Karte im selben Projekt') do
+        load File.join(root, 'game', 'main.rb')
+        Game.map_id == PLAYTEST_MAP && Game.map['name'] == 'Ausgewählte Karte' &&
+          Rune::Player.position[0] == 13.0
+      end
+      check('F5 liest die ausgewählte Kartendatei nach externer Änderung erneut') do
+        path = File.join(Project.data_path(PLAYTEST_PROJECT), 'maps', PLAYTEST_MAP + '.JSON')
+        before = File.binread(path)
+        begin
+          updated = JSON.parse(before)
+          updated['start']['x'] = 15
+          File.write(path, JSON.generate(updated), encoding: 'UTF-8')
+          load File.join(root, 'game', 'main.rb')
+          Game.map_id == PLAYTEST_MAP && Rune::Player.position[0] == 15.0
+        ensure
+          File.binwrite(path, before)
+        end
+      end
+      check('nach Titelbildschirm und erneuter Wahl gilt wieder die normale Projekt-Startkarte') do
+        Game.to_title!
+        Launcher.start(PLAYTEST_PROJECT)
+        Game.map_id == 'start' && Game.map['name'] == 'Projekt-Start'
+      end
+      check('F5 nach manueller Projektwahl erhält den normalen Start') do
+        load File.join(root, 'game', 'main.rb')
+        Game.map_id == 'start'
+      end
+      check('Kartenübernahme läuft nicht in ein anderes Projekt mit gleicher Karten-ID aus') do
+        Game.to_title!
+        Launcher.start(OTHER_PROJECT)
+        Game.map_id == 'b_start' && Game.map['name'] == 'Projekt B'
+      end
+      check('kein Fehler im Laufzeit-Log') { Rune::Log.errors.empty? }
+    when 'project_only'
+      check('Projekt ohne Kartenoption startet weiterhin die System-Startkarte') do
+        Game.instance_variable_get(:@mode) == :game && Game.map_id == 'start' &&
+          Game.map['name'] == 'Projekt-Start'
+      end
+    when 'unknown_project'
+      check('unbekanntes Projekt mit Kartenoption zeigt einen Fehler') do
+        Game.instance_variable_get(:@mode) == :playtest_error && Game.map_id.nil? &&
+          Rune::Simulation.paused && ENV['RUNE_PLAYTEST_MAP'].nil?
+      end
+      check('F5 bei weiterhin fehlendem Projekt bleibt beim Fehler und wählt keine Ersatzkarte') do
+        load File.join(root, 'game', 'main.rb')
+        Game.instance_variable_get(:@mode) == :playtest_error && Game.map_id.nil? && Rune::Simulation.paused
+      end
+      restored_project = Project.path(ENV['RUNE_PROJECT'])
+      begin
+        FileUtils.cp_r(Project.path(PLAYTEST_PROJECT), restored_project)
+        selected = File.join(restored_project, 'data', 'maps', PLAYTEST_MAP + '.JSON')
+        backup = selected + '.test-backup'
+        File.rename(selected, backup)
+        check('wiederhergestelltes Projekt ohne gewählte Karte zeigt weiterhin einen Fehler') do
+          load File.join(root, 'game', 'main.rb')
+          Game.instance_variable_get(:@mode) == :playtest_error && Game.map_id.nil? && Rune::Simulation.paused
+        end
+        File.rename(backup, selected)
+        check('F5 nach Wiederherstellung von Projekt und Karte startet die ursprüngliche Auswahl') do
+          load File.join(root, 'game', 'main.rb')
+          Game.instance_variable_get(:@mode) == :game && Game.map_id == PLAYTEST_MAP &&
+            Game.map['name'] == 'Ausgewählte Karte' && Rune::Input.captured? && !Rune::Simulation.paused
+        end
+      ensure
+        FileUtils.remove_entry(restored_project) if File.exist?(restored_project)
+      end
+    when 'unknown_project_change'
+      check('unbekanntes Projekt startet zunächst keine Karte') do
+        Game.instance_variable_get(:@mode) == :playtest_error && Game.map_id.nil?
+      end
+      check('geändertes Projekt nach Fehler übernimmt keine fremde Kartenvorgabe') do
+        ENV['RUNE_PROJECT'] = OTHER_PROJECT
+        load File.join(root, 'game', 'main.rb')
+        Game.instance_variable_get(:@mode) == :game && $project_name == OTHER_PROJECT &&
+          Game.map_id == 'b_start' && !Rune::Simulation.paused
+      end
+    when 'delete_retry'
+      check('ausgewählte Karte zunächst gestartet') { Game.map_id == PLAYTEST_MAP }
+      path = File.join(Project.data_path(PLAYTEST_PROJECT), 'maps', PLAYTEST_MAP + '.JSON')
+      backup = path + '.test-backup'
+      begin
+        File.rename(path, backup)
+        check('entfernte F4-Karte führt bei F5 sichtbar zum Fehler statt zur anderen Startkarte') do
+          load File.join(root, 'game', 'main.rb')
+          Game.instance_variable_get(:@mode) == :playtest_error && Rune::Simulation.paused
+        end
+      ensure
+        File.rename(backup, path) if File.exist?(backup)
+      end
+      check('F5 nach Wiederherstellung startet die gewählte Karte und gibt die Simulation frei') do
+        load File.join(root, 'game', 'main.rb')
+        Game.instance_variable_get(:@mode) == :game && Game.map_id == PLAYTEST_MAP &&
+          Rune::Input.captured? && !Rune::Simulation.paused
+      end
+    when 'repair'
+      check('Karte mit falscher JSON-Wurzel zeigt einen Playtest-Fehler') do
+        Game.instance_variable_get(:@mode) == :playtest_error && Rune::Simulation.paused
+      end
+      path = File.join(Project.data_path(PLAYTEST_PROJECT), 'maps', 'liste.JSON')
+      before = File.binread(path)
+      begin
+        repaired = { 'name' => 'Repariert', 'terrain' => {}, 'objects' => [], 'events' => [],
+                     'start' => { 'x' => 4, 'z' => 5 } }
+        File.write(path, JSON.generate(repaired), encoding: 'UTF-8')
+        check('F5 liest die reparierte Karte statt der alten ungültigen Cache-Wurzel') do
+          load File.join(root, 'game', 'main.rb')
+          Game.instance_variable_get(:@mode) == :game && Game.map_id == 'liste' &&
+            Game.map['name'] == 'Repariert' && Rune::Input.captured? && !Rune::Simulation.paused
+        end
+      ensure
+        File.binwrite(path, before)
+      end
+    else
+      check('fehlendes Projekt oder ungültige Karte starten keine andere Karte') do
+        Game.instance_variable_get(:@mode) == :playtest_error && Game.map_id.nil? &&
+          Rune::Simulation.paused && !Rune::Input.captured? && ENV['RUNE_PLAYTEST_MAP'].nil?
+      end
+      check('Fehler wird sichtbar gezeichnet und Esc beendet den Spielprozess') do
+        Game.draw
+        Rune::Input.keys = [:escape]
+        Game.update(0.016)
+        Rune::Gfx.texts.include?('Playtest abgebrochen') &&
+          Rune::Gfx.texts.any? { |text| text.include?('[F5]') && text.include?('[Esc]') } &&
+          Rune::App.quit_requested && Rune::Log.warnings.any? { |message| message.include?('Playtest abgebrochen') }
+      ensure
+        Rune::Input.keys = []
+      end
+      if scenario == 'traversal'
+        check('Pfadflucht wurde nicht als Datenbankpfad gelesen') do
+          Database.instance_variable_get(:@cache).keys.none? { |key| key.include?('..') }
+        end
+      end
+    end
+  end
+  puts($fail.zero? ? 'PLAYTEST-KIND OK (0 Fehler)' : "PLAYTEST-KIND FEHLGESCHLAGEN (#{$fail} Fehler)")
+  exit($fail.zero? ? 0 : 1)
+end
+
 repo = File.expand_path('..', __dir__)
 Dir.mktmpdir('rune-laufzeit-') do |root|
   FileUtils.cp_r(File.join(repo, 'game'), root)
   Rune.const_set(:ROOT, root)
   previous_project = ENV.delete('RUNE_PROJECT')
+  previous_map = ENV.delete('RUNE_PLAYTEST_MAP')
   begin
     Dir.chdir(root) do
       check('echter Bootstrap lädt Launcher und Demo-Kulisse ohne Ingame-Editor') do
@@ -183,6 +381,84 @@ Dir.mktmpdir('rune-laufzeit-') do |root|
     end
   ensure
     ENV['RUNE_PROJECT'] = previous_project
+    ENV['RUNE_PLAYTEST_MAP'] = previous_map
+  end
+
+  # Zwei isolierte Projekte; die gewählte Karte unterscheidet sich bewusst
+  # von der System-Startkarte und hat eine großgeschriebene Dateiendung.
+  a_data = File.join(root, 'projekte', PLAYTEST_PROJECT, 'data')
+  b_data = File.join(root, 'projekte', OTHER_PROJECT, 'data')
+  [a_data, b_data].each do |data|
+    FileUtils.mkdir_p(File.join(data, 'maps'))
+    FileUtils.cp(File.join(root, 'game', 'data', 'database.json'), File.join(data, 'database.json'))
+  end
+  write_json = lambda do |path, value|
+    File.write(path, JSON.pretty_generate(value) + "\n", encoding: 'UTF-8')
+  end
+  standard = { 'name' => 'Projekt-Start', 'terrain' => { 'width' => 120, 'height' => 110,
+               'resolution' => 64, 'amplitude' => 0 }, 'objects' => [], 'events' => [],
+               'start' => { 'x' => 1, 'z' => 2 } }
+  chosen = { 'name' => 'Ausgewählte Karte', 'terrain' => { 'width' => 96, 'height' => 88,
+             'resolution' => 64, 'amplitude' => 0 },
+             'objects' => [{ 'type' => 'haus', 'x' => 0, 'z' => 0 }],
+             'events' => [{ 'id' => 1, 'name' => 'Prüf-Event', 'x' => 3, 'z' => 4,
+                            'trigger' => 'action', 'commands' => [] }],
+             'start' => { 'x' => 13, 'z' => -7, 'yaw' => 0.5 },
+             'encounters' => { 'troops' => ['waldweg'], 'steps' => 8 } }
+  write_json.call(File.join(a_data, 'system.json'), { 'name' => 'A', 'start' => { 'map' => 'start' } })
+  write_json.call(File.join(a_data, 'maps', 'start.json'), standard)
+  write_json.call(File.join(a_data, 'maps', PLAYTEST_MAP + '.JSON'), chosen)
+  write_json.call(File.join(b_data, 'system.json'), { 'name' => 'B', 'start' => { 'map' => 'b_start' } })
+  write_json.call(File.join(b_data, 'maps', 'b_start.json'), standard.merge('name' => 'Projekt B'))
+  write_json.call(File.join(b_data, 'maps', PLAYTEST_MAP + '.JSON'), chosen.merge('name' => 'Fremde Karte'))
+  write_json.call(File.join(a_data, 'secret.json'), chosen.merge('name' => 'Nicht als Karte laden'))
+  File.write(File.join(a_data, 'maps', 'kaputt.json'), '{', encoding: 'UTF-8')
+  File.write(File.join(a_data, 'maps', 'liste.JSON'), '[]', encoding: 'UTF-8')
+  FileUtils.mkdir_p(File.join(a_data, 'maps', 'ordner.json'))
+
+  scenarios = [
+    ['ausgewählte Karte und Projektwechsel', 'selected', PLAYTEST_PROJECT, PLAYTEST_MAP],
+    ['Projekt ohne Kartenoption', 'project_only', PLAYTEST_PROJECT, nil],
+    ['Karte nach F5 entfernt und wiederhergestellt', 'delete_retry', PLAYTEST_PROJECT, PLAYTEST_MAP],
+    ['fehlende Karte', 'missing', PLAYTEST_PROJECT, 'fehlt'],
+    ['nicht lesbares Kartenverzeichnis', 'inaccessible', PLAYTEST_PROJECT, PLAYTEST_MAP],
+    ['kaputtes Karten-JSON', 'broken', PLAYTEST_PROJECT, 'kaputt'],
+    ['Karten-JSON ohne Objektwurzel', 'array', PLAYTEST_PROJECT, 'liste'],
+    ['reparierte Kartenwurzel nach F5', 'repair', PLAYTEST_PROJECT, 'liste'],
+    ['Kartenverzeichnis statt Datei', 'directory', PLAYTEST_PROJECT, 'ordner'],
+    ['versuchte Pfadflucht', 'traversal', PLAYTEST_PROJECT, '../secret'],
+    ['unbekanntes Projekt und F5-Wiederherstellung', 'unknown_project', 'nicht_vorhanden', PLAYTEST_MAP],
+    ['Projektwechsel nach unbekanntem Projekt', 'unknown_project_change', 'nicht_vorhanden', PLAYTEST_MAP]
+  ]
+  playtest_env = lambda do |project, map|
+    env = { 'RUNE_PROJECT' => project, 'RUNE_PLAYTEST_MAP' => map }
+    # Das eingebettete Windows-Ruby verwendet UTF-8. Ein nacktes POSIX-C-
+    # Locale würde ENV sonst als ASCII-8BIT liefern und den Test verfälschen.
+    env['LC_ALL'] = 'C.UTF-8' unless RbConfig::CONFIG['host_os'].match?(/mswin|mingw/)
+    env
+  end
+  scenarios.each do |label, scenario, project, map|
+    env = playtest_env.call(project, map)
+    out, err, status = Open3.capture3(env, RbConfig.ruby, '-EUTF-8', File.expand_path(__FILE__),
+                                      '--playtest-child', root, scenario)
+    ok = status.success? && out.include?('PLAYTEST-KIND OK (0 Fehler)')
+    check("separater Ruby-Start: #{label}") { ok }
+    puts "#{out}#{err}" unless ok
+  end
+
+  # Unter Windows mit nicht case-sensitiven Verzeichnissen sind diese beiden
+  # Namen dieselbe Datei. Nur bei tatsächlich zwei Einträgen prüfen.
+  lower = File.join(a_data, 'maps', 'doppelt.json')
+  upper = File.join(a_data, 'maps', 'doppelt.JSON')
+  write_json.call(lower, standard)
+  write_json.call(upper, chosen)
+  if Dir.children(File.join(a_data, 'maps')).count { |f| f.downcase == 'doppelt.json' } == 2
+    env = playtest_env.call(PLAYTEST_PROJECT, 'doppelt')
+    out, err, status = Open3.capture3(env, RbConfig.ruby, '-EUTF-8', File.expand_path(__FILE__),
+                                      '--playtest-child', root, 'ambiguous')
+    ok = status.success? && out.include?('PLAYTEST-KIND OK (0 Fehler)')
+    check('mehrdeutige Endungen starten keine zufällige Karte') { ok }
+    puts "#{out}#{err}" unless ok
   end
 end
 

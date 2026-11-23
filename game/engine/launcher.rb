@@ -30,6 +30,8 @@ module Launcher
   module_function
 
   def activate
+    # Eine F4-Kartenvorgabe darf nicht auf die nächste Projektwahl übergehen.
+    Game.clear_playtest_start if Game.respond_to?(:clear_playtest_start)
     # Rückkehr aus dem Spiel: Projektbindung lösen, damit die Kulisse
     # wieder die Demo-Welt aus game/data zeigt.
     $project_root = nil
@@ -66,6 +68,7 @@ module Launcher
   end
 
   def start(name)
+    Game.clear_playtest_start if Game.respond_to?(:clear_playtest_start)
     Rune::Sound.play('klick', 0.8)
     Project.touch(name)
     $project_name = name

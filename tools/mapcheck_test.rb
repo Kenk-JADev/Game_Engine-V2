@@ -623,6 +623,13 @@ begin
     File.write(File.join(tmp, 'saves', 'slot1.json'), '{}', encoding: 'utf-8')
     MapCheck.map_ids(tmp).sort == %w[gut kaputt]
   end
+  check('MapCheck findet auch .JSON und ignoriert gleichnamige Verzeichnisse') do
+    File.write(File.join(tmp, 'maps', 'gross.JSON'), JSON.generate(saubere_karte), encoding: 'utf-8')
+    FileUtils.mkdir_p(File.join(tmp, 'maps', 'ordner.json'))
+    MapCheck.map_ids(tmp) == %w[gross gut kaputt] &&
+      MapCheck.scan_tree(tmp, **OPTS).keys.sort.map { |p| File.basename(p) } ==
+        %w[gross.JSON gut.json kaputt.json]
+  end
 ensure
   FileUtils.remove_entry(tmp) if Dir.exist?(tmp)
 end

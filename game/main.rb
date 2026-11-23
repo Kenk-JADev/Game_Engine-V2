@@ -135,9 +135,9 @@ end
 
   # Karte mit Terrain, Objekten, Events und NPCs aufbauen und den Spieler
   # an ihren Startpunkt setzen; auch beim Laden eines Spielstands verwendet.
-  def self.enter_map(id)
+  def self.enter_map(id, loaded_map: nil)
     @map_id = id
-    @map = Database.map(id)
+    @map = loaded_map || Database.map(id)
     reset_step_tracking
     Fade.reset!   # Etappe 19d: nie mit dunklem Bildschirm in eine Karte kommen
     Mover.reset!  # Etappe 19g: Routen sind flüchtig (Ziel-NPCs sind neu)
@@ -413,21 +413,47 @@ end
 
   # ---------------------------------------------------------------- Ablauf
 
+  # Die F4-Vorgabe gilt nur im gestarteten Projekt. Beim Titelbildschirm oder
+  # einer manuellen Projektwahl wird sie gelöscht; F5 im Playtest behält sie.
+  def self.clear_playtest_start
+    @playtest_project = nil
+    @playtest_map = nil
+  end
+
+  def self.playtest_failed(message)
+    @mode = :playtest_error
+    @playtest_error = message
+    @menu = nil
+    Rune::Input.capture = false
+    Rune::Simulation.paused = true
+    Rune::Log.warn("Playtest abgebrochen: #{message}")
+  end
+
   def self.setup
+    recovering = @mode == :playtest_error
     @time = 0.0
     @debug = false
     @debug_timer = 0.0
     @prompt = nil
     Issues.clear!   # Etappe 18h: Backlog startet pro Session/F5 neu
 
-    # Ohne Projekt: Titelbildschirm (RPG-Maker-Stil). Erst die Projektwahl
-    # legt $project_root fest und ruft dieses Setup erneut auf.
-    # Ausnahme (Etappe 17h): RUNE_PROJECT aus --project startet direkt -
-    # Playtests aus dem Editor springen ohne Titelbildschirm ins Projekt.
+    # Ohne Projekt: Titelbildschirm (RPG-Maker-Stil). --project startet
+    # direkt; eine einmal gelesene --map-Vorgabe gehört nur zu diesem Projekt.
     if $project_root.nil?
+      requested_map = ENV.delete('RUNE_PLAYTEST_MAP')
       # Projektverzeichnisnamen sind exakt; führende Leerzeichen sind auf
       # Windows zulässig und dürfen bei --project/F4 nicht entfernt werden.
       env_project = ENV['RUNE_PROJECT'].to_s
+      if !requested_map.nil?
+        @playtest_project = env_project
+        @playtest_map = requested_map
+      elsif recovering && @playtest_project == env_project
+        # Auch ein zunächst fehlendes Projekt darf beim F5-Versuch nicht die
+        # ausgewählte Karte verlieren und still dessen Startkarte verwenden.
+        requested_map = @playtest_map
+      else
+        clear_playtest_start
+      end
       known = Project.list.include?(env_project)
       Rune::Log.warn("RUNE_PROJECT '#{env_project}' ist unbekannt") if
         !env_project.empty? && !known
@@ -441,20 +467,41 @@ end
                        "direkt geladen (#{Database.map_ids.size} Karten)")
         Rune::Window.title = "#{sys['name'] || env_project} - Rune3D"
         Rune::Input.capture = true
+      elsif !requested_map.nil?
+        playtest_failed("Projekt '#{env_project}' wurde nicht gefunden.")
+        return
       else
         @mode = :launcher
+        Rune::Simulation.paused = false if recovering
         Launcher.activate
         return
       end
     end
+    clear_playtest_start if @playtest_project && @playtest_project != $project_name
+
+    # Eine ausdrücklich gewünschte Karte muss eindeutig existieren und ein
+    # lesbares JSON-Objekt sein. Niemals unbemerkt eine andere Karte starten.
+    selected_map = nil
+    unless @playtest_map.nil?
+      selected_map = Database.playtest_map(@playtest_map)
+      unless selected_map
+        playtest_failed("Karte '#{@playtest_map}' fehlt, ist mehrdeutig oder nicht lesbar.")
+        return
+      end
+    end
     @mode = :game
+    if recovering
+      Rune::Simulation.paused = false
+      Rune::Input.capture = true
+    end
 
     # Spielzustand aus system.json zurücksetzen (bei F5 ebenfalls).
     GameState.reset!(Database.system)
     Party.setup(Database.database)
     Scripts.load_project
 
-    map_id = Database.system.dig('start', 'map') || Database.map_ids.first || 'welt01'
+    map_id = selected_map ? @playtest_map :
+      (Database.system.dig('start', 'map') || Database.map_ids.first || 'welt01')
 
     # Optik: prozedurale Texturen, Himmel/Nebel/Panorama aus der Startkarte.
     Textures.end_project
@@ -463,7 +510,7 @@ end
     Textures.register_project
     # Etappe 18l: Terrain-Bau ist nach enter_map gewandert (Kartenwechsel
     # baut es ebenfalls auf, damit Kartengrenze und gemalte Berge stimmen).
-    enter_map(map_id)
+    enter_map(map_id, loaded_map: selected_map)
     RGSS.setup   # Etappe 19e: $game_*-Globale (RPG-Maker-XP-Schicht)
     # enter_map läuft beim Kaltstart vor RGSS.setup; dieses ersetzt den
     # Spieler auch bei F5. Den neuen Spieler daher auf der Startkarte würfeln.
@@ -478,9 +525,12 @@ end
   end
 
   def self.update(dt)
-    # Titelbildschirm: hier endet der Frame, bis ein Projekt gewählt ist.
+    # Titelbildschirm und fehlgeschlagener Playtest starten keine Spiel-Frames.
     if @mode == :launcher
       Launcher.update(dt)
+      return
+    elsif @mode == :playtest_error
+      Rune::App.quit if Rune::Input.pressed?(:escape)
       return
     end
 
@@ -800,6 +850,15 @@ end
   def self.draw
     if @mode == :launcher
       Launcher.draw
+      return
+    elsif @mode == :playtest_error
+      Rune::Gfx.clear_color = 0x131A24
+      width = Rune::Window.width
+      y = Rune::Window.height / 2 - 70
+      UI.panel(20, y, width - 40, 140, UI::PANEL, 0.97)
+      UI.text(40, y + 18, 'Playtest abgebrochen', UI::DANGER, 20)
+      UI.text(40, y + 54, @playtest_error.to_s[0, 100], UI::TEXT, 15)
+      UI.text(40, y + 92, 'Karte/Projekt prüfen. [F5] Erneut   [Esc] Beenden', UI::TEXT_DIM, 15)
       return
     end
 

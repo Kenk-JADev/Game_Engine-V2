@@ -134,20 +134,17 @@ int main(int argc, char** argv) {
             "in einen Ordner) - einzelne EXEs finden ihre Daten nicht.");
     }
 
-    // Etappe 17h: Playtest-Start aus dem Editor.
-    //   Rune3D.exe --project <name>
-    // Der Name landet in RUNE_PROJECT; main.rb springt damit direkt ins
-    // Projekt (kein Titelbildschirm).
-    std::string project;
-    const auto project_arg = rune::core::win_project_cli::current_project(project);
-    if (project_arg == rune::core::win_project_cli::ProjectArgument::Invalid ||
-        (project_arg == rune::core::win_project_cli::ProjectArgument::Present &&
-         !rune::core::win_project_cli::set_project_environment(project))) {
-        rune::core::log_error("Ungültiges oder fehlendes --project-Argument");
+    // Playtest: Rune3D.exe --project <name> [--map <karten-id>].
+    // Die UTF-16-Argumente gelangen verlustfrei in die Ruby-Umgebung;
+    // ohne --map wird ein möglicherweise geerbter alter Kartenwert gelöscht.
+    rune::core::win_project_cli::GameArguments launch;
+    if (!rune::core::win_project_cli::current_game(launch) ||
+        !rune::core::win_project_cli::apply_game_environment(launch)) {
+        rune::core::log_error("Ungültige --project-/--map-Argumente oder Umgebung");
         return 1;
     }
-    if (project_arg == rune::core::win_project_cli::ProjectArgument::Present)
-        rune::core::log_info("Projekt-Argument: " + project);
+    if (launch.has_project) rune::core::log_info("Projekt-Argument: " + launch.project);
+    if (launch.has_map) rune::core::log_info("Playtest-Karte: " + launch.map);
 
     rune::App& app = rune::app();
 

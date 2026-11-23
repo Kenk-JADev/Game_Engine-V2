@@ -43,16 +43,51 @@ module Database
     load('database.json') || {}
   end
 
+  # Verzeichnisse namens *.json sind keine Karten. Dateilinks werden wie bei
+  # normalen Ruby-Dateizugriffen gefolgt; dies ist keine Sandbox-Prüfung.
+  # Die Endung kann auch .JSON heißen (wie im RuneEditor).
+  def self.map_files
+    dir = File.join(root, 'maps')
+    return [] unless Dir.exist?(dir)
+
+    Dir.children(dir).select { |f| f.match?(/\.json\z/i) && File.file?(File.join(dir, f)) }.sort
+  rescue SystemCallError => e
+    Rune::Log.warn("Kartenverzeichnis nicht lesbar: #{e.message}")
+    []
+  end
+
+  # Die ID muss exakt zum Dateinamen passen. Mehrdeutige Endungen wie
+  # karte.json und karte.JSON werden nicht für einen Playtest erraten.
+  def self.map_filename(id)
+    return nil unless id.is_a?(String) && !id.empty?
+
+    found = map_files.select { |f| f[0...-5] == id }
+    found.one? ? found.first : nil
+  end
+
   def self.map(id)
-    m = load(File.join('maps', "#{id}.json"))
+    filename = map_filename(id) || "#{id}.json"
+    m = load(File.join('maps', filename))
     m || { 'name' => id.to_s, 'terrain' => {}, 'events' => [] }
   end
 
-  # Alle Karten-IDs des Projekts, sortiert.
+  # Für eine ausdrücklich gewählte F4-Karte keinen leeren Ersatz erzeugen:
+  # fehlende, mehrdeutige oder nicht als Objekt lesbare Karten sind Fehler.
+  def self.playtest_map(id)
+    filename = map_filename(id)
+    return nil unless filename
+
+    # F5 im Playtest liest die Datei erneut statt einen alten oder inzwischen
+    # reparierten Cache-Eintrag zu übernehmen. Andere Daten bleiben wie bisher.
+    path = File.join('maps', filename)
+    @cache.delete(path)
+    m = load(path)
+    m if m.is_a?(Hash)
+  end
+
+  # Alle Karten-IDs des Projekts, sortiert und ohne die tatsächliche Endung.
   def self.map_ids
-    dir = File.join(root, 'maps')
-    return [] unless Dir.exist?(dir)
-    Dir.children(dir).grep(/\.json$/i).map { |f| File.basename(f, '.json') }.sort
+    map_files.map { |f| f[0...-5] }.sort
   end
 
   def self.reset!

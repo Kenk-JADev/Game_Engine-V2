@@ -203,17 +203,26 @@ int main(int argc, char** argv) {
         // Wie Rune3D.exe vor dem VM-Start setzen; Ruby liest die Wide-Umgebung.
         const bool env_set = rune::core::win_project_cli::set_project_environment(f.project);
         check("Projektname verlustfrei in Windows-Umgebung gesetzt", env_set);
+        std::string expected_map;
+        const bool map_env_set = rune::core::win_path::to_utf8(L" Karte_\u65e5_\U0001f680 ", expected_map) &&
+            rune::core::win_project_cli::set_start_map_environment(expected_map);
+        check("Karten-ID verlustfrei in Windows-Umgebung gesetzt", map_env_set);
         char* ruby_argv[] = {argv[0], nullptr};
-        ruby_started = env_set && rune::ruby::init(1, ruby_argv, f.root);
+        ruby_started = env_set && map_env_set && rune::ruby::init(1, ruby_argv, f.root);
         check("echte eingebettete Ruby-VM gestartet", ruby_started);
         if (ruby_started) {
             rb_gv_set("$expected_root", rb_utf8_str_new(f.root.data(), static_cast<long>(f.root.size())));
             rb_gv_set("$expected_project", rb_utf8_str_new(f.project.data(), static_cast<long>(f.project.size())));
+            rb_gv_set("$expected_map", rb_utf8_str_new(expected_map.data(), static_cast<long>(expected_map.size())));
             check("eingebettetes Ruby initialisiert externe und Dateisystem-Kodierung als UTF-8", ruby_true(
                 "Encoding.default_external == Encoding::UTF_8 && Encoding.find('filesystem') == Encoding::UTF_8"));
             check("Rune::ROOT und RUNE_PROJECT erreichen Ruby exakt als UTF-8", ruby_true(
                 "Rune::ROOT.encoding == Encoding::UTF_8 && Rune::ROOT == $expected_root && "
                 "ENV['RUNE_PROJECT'] == $expected_project && File.directory?(Rune::ROOT)"));
+            check("RUNE_PLAYTEST_MAP erreicht eingebettetes Ruby samt Unicode und Leerzeichen", ruby_true(
+                "ENV['RUNE_PLAYTEST_MAP'] == $expected_map && ENV['RUNE_PLAYTEST_MAP'].encoding == Encoding::UTF_8"));
+            check("Ruby übernimmt und löscht die einmalige Kartenumgebung exakt", ruby_true(
+                "ENV.delete('RUNE_PLAYTEST_MAP') == $expected_map && !ENV.key?('RUNE_PLAYTEST_MAP')"));
             const bool data_loaded = rune::ruby::load_script("game\\engine\\data.rb");
             const bool textures_loaded = rune::ruby::load_script(f.root + "\\game\\engine\\textures.rb");
             const bool project_loaded = ruby_true(

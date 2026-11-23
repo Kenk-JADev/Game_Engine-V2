@@ -162,7 +162,7 @@ module MapCheck
   # Karten-Ids (Dateinamen ohne .json) aus den Verzeichnissen — für die
   # Teleport-Zielprüfung.
   def map_ids(*roots)
-    map_files(*roots).map { |p| File.basename(p, '.json') }.sort
+    map_files(*roots).map { |p| File.basename(p).sub(/\.json\z/i, '') }.sort
   end
 
   # Nur JSON-Dateien aus einem "maps"-Ordner zählen als Karten (database.json,
@@ -173,9 +173,11 @@ module MapCheck
       next [root] if File.file?(root)
       next [] unless File.directory?(root)
 
-      Dir.glob(File.join(root, '**', '*.json')).select do |pfad|
+      # Der Editor und Database akzeptieren auch .JSON und gemischte
+      # Groß-/Kleinschreibung. Verzeichnisse mit dieser Endung sind keine Karte.
+      Dir.glob(File.join(root, '**', '*.[jJ][sS][oO][nN]')).select do |pfad|
         ordner = File.dirname(pfad).split(%r{[/\\]})
-        (ordner & %w[maps map]).any? && !ordner.include?('saves')
+        File.file?(pfad) && (ordner & %w[maps map]).any? && !ordner.include?('saves')
       end
     end
   end

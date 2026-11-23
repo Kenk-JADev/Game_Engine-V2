@@ -792,17 +792,18 @@ an/aus. Der Editor initialisiert dafür die waveOut-Engine
 (core::sound) und meldet die Sounds per Ruby-Boot an
 (game/editor/boot.rb requires zusätzlich sounds.rb).
 
-**Playtest:** Extras -> Playtest starten... (F4) speichert die Karte
-und startet `build\Rune3D.exe --project dorf` als eigenen Prozess.
-Das Spiel wertet `--project <name>` aus (main.cpp setzt
-RUNE_PROJECT), springt also ohne Titelbildschirm direkt ins Projekt
-(game/main.rb: ENV['RUNE_PROJECT'] in Game.setup). Ein unbekannter
-Projektname fällt auf den Titelbildschirm zurück (mit Warnung).
+**Playtest (aktualisiert in 19u):** Extras -> Playtest starten... (F4)
+speichert die ausgewählte Karte und startet Rune3D als eigenen Prozess
+mit `--project <name> --map <karten-id>`. Ohne Kartenauswahl gilt die
+Projekt-Startkarte. Projekt und Karte werden unverändert über die Wide-CLI
+übergeben; eine ungültige ausdrückliche Auswahl zeigt einen Fehler. Bei
+`--project` ohne Karte fällt ein unbekanntes Projekt auf den Launcher zurück.
 
 **Geprüft:** `ruby -I game/engine tools/weather_test.rb` (22 Checks),
 alle 13 Tests grün, Live-Test log/live17h.ps1 (Toolbar, Zoom,
 Wetter-Dialog schreibt JSON, Sound-Dialog, Playtest-Prozess +
-engine.log-Vermerk, Aufräumen).
+engine.log-Vermerk, Aufräumen). Dieser historische 17h-Test belegt nicht
+den späteren 19u-Ablauf mit zwei unterschiedlichen Karten.
 
 ## Datenbank: Helden, Items, Gold (Etappe 17g)
 
@@ -1686,6 +1687,39 @@ CI baut/linkt den Win32-Editor und kann WARP in einem unsichtbaren Fenster
 prüfen, ersetzt aber keinen interaktiven GUI-/Hardware-GPU-Test (siehe Backlog
 und Handoff).
 
+## F4 mit ausgewählter Karte (Etappe 19u)
+
+RuneEditor leitet die Karten-ID aus dem gespeicherten Dateinamen ab und
+startet `Rune3D.exe --project <name> --map <id>` mit `CreateProcessW`,
+zitierten Einzelkomponenten und der Engine-Wurzel als Arbeitsverzeichnis.
+Das Projekt-/Karten-Epoch-Paar und der Dateiname werden nach etwaigen
+Speicherrückfragen erneut geprüft. Ohne ausgewählte Karte entfällt `--map`.
+IDs sind nicht leer, passen samt `.json` in eine gültige Windows-Komponente
+und enthalten keine Pfade oder Gerätenamen. Optionen dürfen auch als echte
+Namen vorkommen; doppelte, fehlende und unbekannte Optionen werden abgewiesen.
+
+`main.cpp` setzt die Wide-Umgebung `RUNE_PROJECT` und `RUNE_PLAYTEST_MAP`;
+ohne `--map` wird ein geerbter alter Kartenwert gelöscht. Ruby verbraucht
+die Kartenoption beim direkten Projektstart und hält sie nur für dieses
+Projekt. `Database` und `MapCheck` erkennen `.json`/`.JSON` samt gemischter
+Schreibung und ignorieren Verzeichnisse. Für den Playtest verlangt `Database`
+eine eindeutige ID und ein lesbares JSON-Objekt.
+Fehlende/mehrdeutige Karten und unbekannte Projekte mit Karte zeigen einen
+Fehlerbildschirm statt einer anderen Karte. F5 liest die Karte erneut und
+setzt den Spielzustand zurück; auch bei einem zunächst fehlenden Projekt
+bleibt die Auswahl für den erneuten Versuch erhalten. Titel/Projektwahl
+löscht die Vorgabe.
+Terrain, Startpunkt, Events, Begegnungen und `Game.change_map` laufen über
+die normalen Enginepfade. Ohne explizite Karte bleibt der Start wie bisher.
+
+Der Kindprozess ist keine Sandbox und kein Dateischnappschuss. Ruby liest
+die Karte nach dem Editor-Speichern separat; externe Änderungen oder
+Dateilinks sind damit nicht allgemein ausgeschlossen. Normale Spielstände,
+Scripts und `last_played` bleiben aktiv. Die Windows-Pfadtests nutzen einen
+echten Test-Kindprozess, die Ruby-Boot-Tests native Attrappen; sie sind kein
+sichtbarer F4-GUI-/Hardwaretest. Den aktuellen CI-Lauf und die noch offene
+Zwei-Karten-Live-Anleitung in `docs/WINDOWS_MATERIAL_LIVE_TEST.md` prüfen.
+
 ## Rune3D-Laufzeit ohne Ingame-Editor (Etappe 19t)
 
 `boot.rb` lädt `map_objects.rb` statt des entfernten `editor.rb`.
@@ -1700,8 +1734,8 @@ F4 hat in Rune3D keine Editorfunktion mehr. `Game.change_map`, Terrain,
 Events, NPCs, Laufzeit-Picking, Kampfpausen und F5 bleiben erhalten;
 beim Encounter hat ein laufendes Event Vorrang. F4 im eigenständigen
 RuneEditor speichert die Karte und startet das Spiel als eigenen Prozess.
-Es übergibt derzeit noch nicht die ausgewählte Karten-ID (Backlog). Der
-Prozess benutzt reguläre Projekt-Spielstände und ist keine Sandbox.
+Seit 19u übergibt er die ausgewählte Karten-ID. Der Prozess benutzt
+reguläre Projekt-Spielstände und ist keine Sandbox.
 
 `map_objects_test.rb` prüft echte Ruby-Knoten/Szenen und eine Physikattrappe,
 `runtime_boot_test.rb` lädt echten Bootstrap, Launcher und Spiel in einer

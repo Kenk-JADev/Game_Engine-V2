@@ -38,9 +38,11 @@ Laufzeit neu geladen werden.
 - Script-Editor, Materialbase (PNG/BMP-Import per WIC, auch per Drag & Drop),
   Datenbank (Helden, Items, Gegner, Truppen, Gold), Sound-Test,
   Probleme-Dialog (F10)
-- Playtest: speichert die aktuelle Karte und startet
-  `Rune3D.exe --project <name>` als eigenen Prozess. Derzeit beginnt das Spiel an der Startkarte
-  aus `system.json`, nicht zwingend an der ausgewählten Karte (siehe Backlog).
+- Playtest: speichert die ausgewählte Karte und startet
+  `Rune3D.exe --project <name> --map <karten-id>` als eigenen Prozess.
+  Der Spieler beginnt am Kartenstart (falls keiner gesetzt ist: Projekt-
+  Startkoordinaten). Ohne Kartenauswahl gilt die Projekt-Startkarte; eine
+  fehlende ausgewählte Karte meldet einen Fehler.
 
 **Engine**: Third-Person-Spieler mit Physik (Schwerkraft, Sprung, `solid`-Teile
 als Hindernisse, Kartengrenze), Event-Interpreter mit Verzweigungen und
@@ -67,7 +69,7 @@ Karten werden in `RuneEditor.exe` bearbeitet; F4 im Spiel öffnet keinen Editor.
 | Datenbank (Helden, Items, Gegner, Truppen …) | alle vier Sammlungen + Gold per GUI editierbar; keine Skills/Waffen/Zustände | ✅ teilweise |
 | Tileset / Boden | Splat-Böden, Höhen-Malwerkzeug | ✅ |
 | Script-Editor (Ruby) | `Scripts`-Sandbox + Editor | ✅ |
-| Playtest | F4 im RuneEditor startet eigenen Spielprozess; aktuell Startkarte statt ausgewählter Karte | ✅ teilweise |
+| Playtest | F4 startet die gewählte Karte im eigenen Spielprozess; keine Sandbox | ✅ teilweise |
 | Nebel / Panorama / Wetter | Karten-JSON + Interpreter | ✅ |
 | Kampfsystem | Rundenkampf-Grundgerüst (`battle.rb`): Angriff/Item/Flucht, Exp/Gold/Drops; Zufallskämpfe pro Karte im F2-Dialog; keine Skills/Zustände | ✅ teilweise |
 | Bewegungsfolgen (Move Routes) | `mover.rb`, XP-Schrittnamen + Codes, Routen im Event-Befehl | ✅ |
@@ -181,6 +183,8 @@ Pull Request:
 | `cpp-logik` | ubuntu | JSON-/Editor-, Terrain- und Material-C++-Tests mit `-Werror`, danach JSON- und Event-Brücke |
 | `windows` | windows-2022 | Build, kopflose Datei-/Importtests und `-WarpTest`, EXEs als Artefakt |
 
+Für die editorlose Laufzeit war [CI 45178315607](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45178315607) auf `c7b2f5d` grün; den aktuellen Commit separat prüfen.
+
 Windows-CI für Commit `6a3b8e1`, Lauf [45175342986](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45175342986):
 58 Karten-/F9-Datei-, 28 Pfad-, 57 Material-/Datei-, 36 WARP- und 28
 eingebettete Ruby-/WARP-Prüfungen sowie 27 Ruby-Suiten jeweils ohne Fehler.
@@ -235,11 +239,15 @@ docs/                architecture.md, BACKLOG.md, HANDOFF_Naechste_KI.md
 
 **Spiel**: WASD laufen, Shift rennen, Leertaste springen, E benutzen/reden,
 Maussteuerung Blick, Esc Menü, F2 Debug-Ausgabe, F5 Scripte neu laden.
-F4 startet nur im RuneEditor einen separaten Spielprozess. Das Spiel schließen,
-um zum weiter geöffneten Editor zurückzukehren. Dieser Prozess ist keine
-Sandbox: Spielstände und Scripts nutzen die gewöhnlichen Projektdateien.
-Alte Scripts, die `Editor` oder den internen Playtest-Zyklus direkt aufrufen,
-müssen angepasst werden; `Game.change_map` bleibt als Laufzeitaufruf erhalten.
+F4 startet nur im RuneEditor einen separaten Spielprozess mit der gewählten
+Karte. Dort setzt F5 den Spielzustand zurück und liest diese Karte erneut;
+nach Rückkehr zum Titel und manueller Projektwahl gilt wieder die normale
+Startkarte. Ohne Editor-Auswahl wird die Projekt-Startkarte verwendet.
+Das Spiel schließen, um zum weiter geöffneten Editor zurückzukehren. Der
+Prozess ist keine Sandbox: Spielstände, Scripts und Projektdateien bleiben
+die gewöhnlichen Dateien. Alte Scripts, die `Editor` oder den internen
+Playtest-Zyklus direkt aufrufen, müssen angepasst werden; `Game.change_map`
+bleibt als Laufzeitaufruf erhalten.
 
 ## Datenformate
 

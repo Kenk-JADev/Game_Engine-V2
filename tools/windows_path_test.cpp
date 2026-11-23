@@ -37,6 +37,7 @@ void check(const char* name, bool ok) {
 }
 
 std::wstring project_name() { return L" Projekt \u00e4 \u65e5 \U0001f680"; }
+std::wstring map_name() { return L" Karte \u65e5 \U0001f680."; }
 
 bool same_path(const std::wstring& a, const std::wstring& b) {
     return CompareStringOrdinal(a.c_str(), static_cast<int>(a.size()),
@@ -108,27 +109,40 @@ cli::ProjectArgument parse(std::vector<std::wstring> args, std::string& result) 
     return cli::parse_project(static_cast<int>(pointers.size()), pointers.data(), result);
 }
 
+bool parse_game(std::vector<std::wstring> args, cli::GameArguments& result) {
+    std::vector<wchar_t*> pointers;
+    for (auto& arg : args) pointers.push_back(arg.data());
+    return cli::parse_game(static_cast<int>(pointers.size()), pointers.data(), result);
+}
+
 // Dieses Programm wird als Rune3D.exe kopiert und über den echten F4-Helfer
-// mit einem Unicode-Projekt und eigenem CWD gestartet. Es bestätigt dieselbe
+// mit Unicode-Projekt/Karte und eigenem CWD gestartet. Es bestätigt dieselbe
 // Windows-Argument-/Umgebungsgrenze wie main.cpp, startet aber KEINE GUI.
 int child() {
-    std::string project;
+    cli::GameArguments args;
+    std::string root;
     std::wstring wide, cwd, resolved;
-    if (cli::current_project(project) != cli::ProjectArgument::Present ||
-        !paths::to_wide(project, wide) || wide != project_name() ||
-        !cli::set_project_environment(project)) return 2;
+    if (!cli::current_game(args) || !args.has_project ||
+        !paths::to_wide(args.project, wide) || wide != project_name() ||
+        (args.has_map && (!paths::to_wide(args.map, wide) || wide != map_name())) ||
+        !cli::apply_game_environment(args)) return 2;
     wchar_t env[512]{};
     if (!GetEnvironmentVariableW(L"RUNE_PROJECT", env, 512) || std::wstring(env) != project_name()) return 3;
-    if (!paths::current_directory(cwd) || !paths::find_engine_root(false, project) ||
-        !paths::to_wide(project, resolved) || !same_path(cwd, resolved)) return 4;
-    if (!paths::find_engine_root(true, project) || !paths::to_wide(project, resolved) ||
+    SetLastError(ERROR_SUCCESS);
+    const DWORD map_length = GetEnvironmentVariableW(L"RUNE_PLAYTEST_MAP", env, 512);
+    if (args.has_map ? (!map_length || std::wstring(env) != map_name()) :
+                       (map_length != 0 || GetLastError() != ERROR_ENVVAR_NOT_FOUND)) return 6;
+    if (!paths::current_directory(cwd) || !paths::find_engine_root(false, root) ||
+        !paths::to_wide(root, resolved) || !same_path(cwd, resolved)) return 4;
+    if (!paths::find_engine_root(true, root) || !paths::to_wide(root, resolved) ||
         !same_path(cwd, resolved)) return 5;
     return 0;
 }
 
-bool run_playtest_child(const std::string& root, const std::string& project, bool nested) {
+bool run_playtest_child(const std::string& root, const std::string& project,
+                        const std::string& map, bool nested) {
     std::wstring exe, command, cwd;
-    if (!playtest_command(root, project, exe, command, cwd)) return false;
+    if (!playtest_command(root, project, map, exe, command, cwd)) return false;
     const bool selected_nested = exe.find(L"\\build\\Rune3D.exe") != std::wstring::npos;
     if (selected_nested != nested) return false;
     STARTUPINFOW si{};
@@ -193,6 +207,42 @@ int main(int argc, char** argv) {
           parse({L"Rune3D.exe", L"--project", unpaired}, parsed) == cli::ProjectArgument::Invalid);
     check("ohne Projektargument bleibt die Option unbelegt",
           parse({L"Rune3D.exe"}, parsed) == cli::ProjectArgument::Absent && parsed.empty());
+
+    std::string playtest_map_utf8;
+    paths::to_utf8(map_name(), playtest_map_utf8);
+    cli::GameArguments launch;
+    check("Spiel-CLI liest Projekt und andere Unicode-Karte exakt, auch in umgekehrter Reihenfolge",
+          parse_game({L"Rune3D.exe", L"--map", map_name(), L"--project", project_name()}, launch) &&
+          launch.has_project && launch.has_map && launch.project == project_utf8 && launch.map == playtest_map_utf8);
+    check("Spiel-CLI erhält den normalen Projektstart ohne Kartenoption",
+          parse_game({L"Rune3D.exe", L"--project", project_name()}, launch) &&
+          launch.has_project && launch.project == project_utf8 && !launch.has_map && launch.map.empty());
+    check("Spiel-CLI ohne Optionen bleibt leer",
+          parse_game({L"Rune3D.exe"}, launch) && !launch.has_project && !launch.has_map);
+    check("fehlende, doppelte oder alleinstehende Kartenargumente werden abgewiesen",
+          !parse_game({L"Rune3D.exe", L"--project", L"A", L"--map"}, launch) &&
+          !parse_game({L"Rune3D.exe", L"--map", L"B"}, launch) &&
+          !parse_game({L"Rune3D.exe", L"--project", L"A", L"--map", L"B", L"--map", L"C"}, launch) &&
+          !parse_game({L"Rune3D.exe", L"--project", L"A", L"--project", L"B"}, launch));
+    check("ungültiges UTF-16, leere, unbekannte und Pfad-Kartenargumente werden abgewiesen",
+          !parse_game({L"Rune3D.exe", L"--project", L"A", L"--map", unpaired}, launch) &&
+          !parse_game({L"Rune3D.exe", L"--project", L"A", L"--map", L""}, launch) &&
+          !parse_game({L"Rune3D.exe", L"--project", L"A", L"--map", L"..\\fremd"}, launch) &&
+          !parse_game({L"Rune3D.exe", L"--project", L"A", L"--unbekannt"}, launch));
+    check("optionsähnliche Projekt- und Kartennamen bleiben exakt darstellbar",
+          parse_game({L"Rune3D.exe", L"--project", L"--map", L"--map", L"--project"}, launch) &&
+          launch.project == "--map" && launch.map == "--project" &&
+          !parse_game({L"Rune3D.exe", L"--project", L"--map", L"ungewollt"}, launch));
+    check("Karten-ID wird als Dateiname mit .json validiert, nicht als nackte Komponente",
+          cli::valid_map_id(L"karte.") && cli::valid_map_id(L"karte ") &&
+          cli::valid_map_id(std::wstring(250, L'a')) && !cli::valid_map_id(std::wstring(251, L'a')) &&
+          !cli::valid_map_id(L"CON") && !cli::valid_map_id(L"../karte"));
+    std::string derived;
+    check("Editor leitet Unicode-ID mit Punkt aus .JSON ab",
+          playtest_map_id(playtest_map_utf8 + ".JSON", derived) && derived == playtest_map_utf8);
+    check("Editor lehnt leere, fremde oder ungültige Karten-Dateinamen ab",
+          !playtest_map_id(".json", derived) && !playtest_map_id("karte.txt", derived) &&
+          !playtest_map_id("../karte.json", derived) && !playtest_map_id("CON.json", derived));
 
     HWND list = CreateWindowExW(0, L"LISTBOX", L"", WS_POPUP | LBS_HASSTRINGS,
                                 0, 0, 100, 100, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
@@ -293,16 +343,26 @@ int main(int argc, char** argv) {
     else current_exe.clear();
     const std::wstring nested = build + L"\\Rune3D.exe", adjacent = f.root + L"\\Rune3D.exe";
     const bool copied_nested = !current_exe.empty() && f.copy(current_exe, nested);
-    // CWD absichtlich ändern: playtest_command muss dem Kind die Wurzel setzen.
+    // CWD und Kartenumgebung absichtlich verstellen: Das Kind muss beides
+    // beim Projektstart korrigieren, auch wenn keine Karte gewählt ist.
     const bool outside_set = have_original && SetCurrentDirectoryW(outside.c_str()) != 0;
-    check("F4-Kommando startet Kindprozess im build/-Layout mit exakt einem Projektargument",
-          copied_nested && outside_set && run_playtest_child(root_utf8, project_utf8, true));
+    const bool stale_env = SetEnvironmentVariableW(L"RUNE_PLAYTEST_MAP", L"veraltete_Karte") != 0;
+    check("F4 startet Kindprozess im build/-Layout mit exaktem Unicode-Projekt und anderer Karte",
+          copied_nested && outside_set && stale_env &&
+          run_playtest_child(root_utf8, project_utf8, playtest_map_utf8, true));
+    check("Projektstart ohne Karte löscht im Kind eine veraltete geerbte Kartenumgebung",
+          copied_nested && outside_set && stale_env && run_playtest_child(root_utf8, project_utf8, "", true));
     const bool removed_nested = copied_nested && DeleteFileW(nested.c_str()) != 0;
     const bool copied_adjacent = removed_nested && f.copy(current_exe, adjacent);
-    check("F4-Kommando unterstützt auch EXE neben game/", copied_adjacent && run_playtest_child(root_utf8, project_utf8, false));
+    check("F4 mit Karte unterstützt auch EXE neben game/",
+          copied_adjacent && run_playtest_child(root_utf8, project_utf8, playtest_map_utf8, false));
     std::wstring ignored_exe, ignored_cmd, ignored_cwd;
-    check("F4 lehnt nicht zitierbare Projektpfade ab",
-          !playtest_command(root_utf8, "../anderes-projekt", ignored_exe, ignored_cmd, ignored_cwd));
+    check("F4 lehnt nicht zitierbare Projekt- und Kartenpfade ab",
+          !playtest_command(root_utf8, "../anderes-projekt", playtest_map_utf8,
+                            ignored_exe, ignored_cmd, ignored_cwd) &&
+          !playtest_command(root_utf8, project_utf8, "../karte", ignored_exe, ignored_cmd, ignored_cwd) &&
+          !playtest_command(root_utf8, project_utf8, "karte\" --project B", ignored_exe, ignored_cmd, ignored_cwd));
+    check("Test-Kartenumgebung wird wieder gelöscht", cli::clear_start_map_environment());
 
     const bool restored = (!cwd_changed && !outside_set) ||
                           (have_original && SetCurrentDirectoryW(original_cwd.c_str()));
