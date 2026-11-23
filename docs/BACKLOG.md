@@ -21,6 +21,17 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 ---
 
 ## Offen
+### [Tests/Editor] RGSS-Editor, Kartenmarker und Windows-Anzeige interaktiv prüfen — offen (Live)
+- Die neuen F11-Zeilen-/Scroll-/DPI-Funktionen, NPC-/Event-Doppelklicks,
+  das Rechtsklick-Startmenü und die EXE-Beschreibung sind implementiert.
+  Automatisierung nutzt Modelle und synthetische Nachrichten mit WARP;
+  Hardware-GPU, physische Maus, Fokus und Monitorwechsel sind nicht belegt.
+- Eine isolierte Kopie mit `docs/WINDOWS_MAIN_LIVE_TEST.md` testen;
+  tatsächliche Windows-Dateieigenschaften und Task-Manager-Anzeige notieren.
+  Nicht durch ein CI-Grün als auf dem User-Rechner bestätigt ausgeben.
+- Betroffene Stellen: `script_dialog_win.h`, `map_interaction.h`,
+  `editor_main.cpp`, `build.ps1`, `tools/editor_ui_smoke.cpp`.
+
 ### [Tests/Ruby/Engine] Ruby-Start auf dem Zielrechner bestätigen — offen (Live)
 - Symptom: Der User sah beim Editorstart `LoadError: cannot load such file -- json`.
   19x paketiert die zugehörige Stdlib und prüft den Start automatisiert mit

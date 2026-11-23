@@ -9,8 +9,8 @@
 #  Events rufen sie mit {"cmd":"script","name":"gruss"} auf; alternativ trägt
 #  ein Befehl den Code direkt in "code". Der Code läuft in einem Context, der
 #  die RPG-Maker-typischen Helfer anbietet (say, switch, variable, teleport,
-#  sound, effect, log, fade, self_switch) - kein Zugriff auf den Interpreter-
-#  Stack, damit Scripts nicht mitten in der Abarbeitung Listen verändern.
+#  sound, effect, log, fade, self_switch). Das ist keine Sicherheitsbox:
+#  Ruby-Code kann auch auf den Interpreter und das übrige Programm zugreifen.
 #
 #  Seit Etappe 19e steht Project-Scripts zusätzlich die RGSS-Schicht offen
 #  (game/engine/rgss.rb): $game_switches/$game_party/$game_player/...,
@@ -104,7 +104,8 @@ module Scripts
     false
   end
 
-  # Sandkasten für Script-Code: nur diese Helfer, kein Interpreter-Interna.
+  # Kontext mit diesen Helfern. Das ist keine Sicherheits-Sandbox:
+  # Ruby-Code kann auf Interpreter und Umgebung zugreifen.
   class Context
     attr_reader :event, :interpreter
 

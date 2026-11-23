@@ -7,9 +7,8 @@
 //  ausschliesslich auf den Kartendaten (JSON) — Spiellogik (Physik, Events,
 //  NPCs, Interpreter) existiert hier nicht und kann daher nichts kaputtmachen.
 //
-//  Eingebettetes CRuby wird nur einmalig beim Start benutzt, um die
-//  prozeduralen Texturen zu erzeugen (game/editor/boot.rb) — danach läuft
-//  alles in C++.
+//  Eingebettetes CRuby erzeugt beim Start prozedurale Texturen und prüft
+//  auf Wunsch Ruby-/RGSS-Syntax im Script-Editor, ohne diesen Code auszuführen.
 //
 //  Layout:
 //    +--------------------------------------------------------------+
@@ -5291,6 +5290,8 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                                 L"W/A/S/D: Bewegen    Q/E: Runter/Hoch\n"
                                 L"Mausrad: Zoom (Dolly)    Shift+Rad: Höhe    Shift: schnell\n\n"
                                 L"Linksklick: Setzen (im Setzen-Modus) / Auswählen\n"
+                                L"NPC/Event: einmal wählen, Doppelklick öffnet Bearbeitung\n"
+                                L"Rechtsklick auf Gelände: Spieler-Startposition setzen\n"
                                 L"Verschieben-Modus: Objekt mit Linksklick greifen und ziehen\n"
                                 L"Boden malen: Linksklick = Fläche, Shift+Klick = Radierer\n"
                                 L"Höhe malen: Linksklick = Berg, Shift+Klick = Senke,\n"
@@ -5315,8 +5316,8 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                                 L"Bei wenig Platz lassen sich die Seitenleisten scrollen.\n"
                                 L"Playtest: speichert die gewählte Karte und startet\n"
                                 L"Rune3D.exe mit Projekt und Karte (ohne Titelbildschirm).\n\n"
-                                L"Der Editor arbeitet nur auf den Kartendaten - "
-                                L"die Game-Engine bleibt unberührt.",
+                                L"Karten, Projektstart und RGSS-Scripts werden in den "
+                                L"Projektdateien bearbeitet. Scripts sind keine Sandbox.",
                                 L"RuneEditor - Bedienung", MB_OK | MB_ICONINFORMATION);
                     return 0;
                 case IDC_PREFAB_LIST:

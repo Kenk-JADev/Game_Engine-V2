@@ -38,14 +38,16 @@ Laufzeit neu geladen werden.
 - Event-Editor mit **Seiten** (Bedingungen über Schalter/Variablen/Self-
   Switches), Triggern (`action`, `touch`, `auto`, `parallel`) und 26 Befehlen
   in Kategorien (inkl. Bewegungsroute, Zahleneingabe, Kampf starten)
-- Script-Editor, Materialbase (PNG/BMP-Import per WIC, auch per Drag & Drop),
+- NPCs und Events in der Kartenansicht auswählen und per Doppelklick bearbeiten;
+  Spieler-Startposition per Rechtsklick auf das Gelände setzen
+- RGSS-/Ruby-Script-Editor mit Zeilennummern, Materialbase (PNG/BMP-Import per WIC, auch per Drag & Drop),
   Datenbank (Helden, Items, Gegner, Truppen, Gold), Sound-Test,
   Probleme-Dialog (F10)
 - Playtest: speichert die ausgewählte Karte und startet
   `Rune3D.exe --project <name> --map <karten-id>` als eigenen Prozess.
-  Der Spieler beginnt am Kartenstart (falls keiner gesetzt ist: Projekt-
-  Startkoordinaten). Ohne Kartenauswahl gilt die Projekt-Startkarte; eine
-  fehlende ausgewählte Karte meldet einen Fehler.
+  Eine ausdrücklich gesetzte Projekt-Startposition gilt auf ihrer Karte;
+  sonst gilt der Kartenstart (oder ersatzweise der Projektstart). Ohne
+  Kartenauswahl gilt die Projekt-Startkarte; eine fehlende Karte meldet einen Fehler.
 
 **Engine**: Third-Person-Spieler mit Physik (Schwerkraft, Sprung, `solid`-Teile
 als Hindernisse, Kartengrenze), Event-Interpreter mit Verzweigungen und
@@ -107,7 +109,7 @@ ist benutzbar. Der grafische Kampf-Live-Test ist noch offen:
 | Schalter & Variablen | `GameState` | ✅ |
 | Datenbank (Helden, Items, Gegner, Truppen …) | alle vier Sammlungen + Gold per GUI editierbar; keine Skills/Waffen/Zustände | ✅ teilweise |
 | Tileset / Boden | Splat-Böden, Höhen-Malwerkzeug | ✅ |
-| Script-Editor (Ruby) | `Scripts`-Sandbox + Editor | ✅ |
+| Script-Editor (Ruby/RGSS) | Zeilennummern, Syntaxprüfung, opt-in Startscripts; keine Sandbox | ✅ teilweise |
 | Playtest | F4 startet die gewählte Karte im eigenen Spielprozess; keine Sandbox | ✅ teilweise |
 | Nebel / Panorama / Wetter | Karten-JSON + Interpreter | ✅ |
 | Kampfsystem | Rundenkampf-Grundgerüst (`battle.rb`): Angriff/Item/Flucht, Exp/Gold/Drops; Zufallskämpfe pro Karte im F2-Dialog; keine Skills/Zustände | ✅ teilweise |
@@ -152,6 +154,9 @@ unabhängig von `PATH` und einem fremden `RUBYLIB`. Ein unvollständig kopiertes
 Paket wird als Fehler gemeldet, statt Ruby-Versionen unbemerkt zu mischen.
 Ein vorhandener, nicht vom Build markierter Bibliotheksordner wird beim
 normalen Build nicht überschrieben; `-Clean` löscht dagegen ganz `build/`.
+Die EXEs tragen eigene Windows-Versionsinformationen: „Rune3D Editor“ bzw.
+„Rune3D Spiel“. winpthreads bleibt statisch gelinkt; das Toolchain-Archiv
+wird nicht verändert. Ein vollständiger Neubau ist für diese Anzeige nötig.
 
 Bei einer bestehenden Fehlermeldung `LoadError: cannot load such file -- json`
 Editor und Spiel schließen, aus dem **aktualisierten Quellstand** neu bauen
@@ -209,13 +214,14 @@ ruby tools\lint_repo.rb                        # Repo-Hygiene
 | Ruby-Modultests | Engine-Logik mit `Rune::*`-Stubs (Events, Seiten, Interpreter, Party, Kampf, Wetter, Scripte, Projekte, Speichern) + Ruby/C++-Vokabular-Sync | `tools/*_test.rb`, Runner `tools/test_all.rb` |
 | Ruby-Laufzeit | Echter Bootstrap, Launcher, Szenenbau, F4/F5, Kampf-Eingabe und Save/Load mit nativen Attrappen | `tools/runtime_boot_test.rb`, `tools/map_objects_test.rb`, `tools/encounter_test.rb` |
 | C++-Logiktest | JSON, Editor-Formulare, Hauptfenster-Geometrie und Kartenaktionsschutz; unter Windows zusätzlich unsichtbare Panel-/Baumtests | `tools/json_test.cpp` |
+| Script-/Kartenmodell | RGSS-Dokumente, Einrückung, Markeridentität und Startposition | `tools/editor_workflow_test.cpp` |
 | C++-Terrain | Echte Geländegenerierung, Höhen-/Splat-Budgets, Atlasplan und Fehlerpfade ohne D3D | `tools/terrain_test.cpp` |
 | Materialien/Dateien | Verlustfreier JSON-Baum, unter Windows Handle-Konflikte, Junctions und Hardlinks | `tools/material_test.cpp` |
 | Windows-Projektpfade | UTF-8/UTF-16, Projekt-/Kartenscan, F9-Datei-I/O, F4-Kindprozess | `tools/windows_path_test.cpp` (`-Test`) |
 | Windows-Karten/F9 | Echte Dateihandles, simulierte Bestätigungen, Konkurrenz, Unicode, Hardlinks und Junctions | `tools/document_store_test.cpp` (`-Test`) |
 | D3D11-WARP | Software-Renderer, Pixel, Projektwechsel und Atlas-/Terrainreferenzen | `tools/renderer_warp_test.cpp` (`-WarpTest`) |
 | Eingebettete Ruby-Brücke | Echter Editor-Boot, JSON-Erweiterungen, `fileutils`, isolierte Unicode-Laufzeit und WARP-Pixel | `tools/embedded_texture_test.cpp` (`-WarpTest`) |
-| Windows-Start | Echte Editor-/Spiel-EXEs im Unicode-Paket ohne Ruby-PATH und `RUBYLIB`, mit WARP | `tools/windows_runtime_smoke.ps1` |
+| Windows-Start/UI | Echte EXEs im Unicode-Paket ohne Ruby-PATH und `RUBYLIB`, WARP; synthetische Win32-Editorabläufe | `tools/windows_runtime_smoke.ps1`, `tools/editor_ui_smoke.cpp` |
 | JSON-Brücke | Schreibt C++ bytegleich zu Ruby `JSON.pretty_generate`? | `tools/json_bridge_check.rb` |
 | Event-Brücke | C++-F6-Änderungen gegen echte Ruby-Event- und Interpreter-Laufzeit | `tools/event_bridge_check.rb` |
 | Karten-Scan | Daten-Validierung (Befehle, Trigger, Bedingungen, Wegpunkte, Terrain) | `game/engine/mapcheck.rb` |
@@ -294,6 +300,22 @@ Eingaben und ungespeicherte Änderungen wie bisher abgefragt; bei Abbruch
 bleibt die alte Karte aktiv. **Strg+S** speichert sie über den vorhandenen
 Dateischutz. Objekt-Undo/Redo umfasst weiterhin keine Events oder Böden.
 
+**NPCs, Events und Spielerstart:** Braune NPCs, Schilder und violette
+Eventpunkte können einzeln angeklickt werden; erst ein schneller Doppelklick
+auf denselben Marker öffnet dessen Bearbeitung (NPC: F5, Event: F6). Vor einem
+NPC-Wechsel werden offene F6-Formulare geklärt. Verdeckte oder ungültige
+Marker können über F5/F6 bearbeitet werden. Das grüne Symbol zeigt den
+expliziten Projektstart auf dieser Karte.
+
+Ein kurzer Rechtsklick auf sichtbares Gelände öffnet **Spieler-Startposition
+hier setzen**; Rechtsklickziehen dreht weiterhin die Kamera. Die Position
+rastet im aktuellen Raster ein (G ändert die Rasterweite). Der Start wird
+**sofort** in `data/system.json` gespeichert, unabhängig von der Kartendatei
+und ihrem Undo; Blickrichtung und zusätzliche Projektfelder bleiben erhalten.
+Vor einer gesperrten Zone wird gewarnt. Neustart/F4 und F5 im Spiel lesen die
+Position auf der zugehörigen Karte; F4 auf einer anderen Karte benutzt deren
+Kartenstart. Ein normaler Kartenwechsel und Spielstände behalten ihr Verhalten.
+
 Die Windows-GUI, Monitorwechsel und Hardware-GPU müssen noch interaktiv
 geprüft werden: [Anleitung](docs/WINDOWS_MAIN_LIVE_TEST.md).
 
@@ -301,10 +323,12 @@ geprüft werden: [Anleitung](docs/WINDOWS_MAIN_LIVE_TEST.md).
 
 | Eingabe | Wirkung |
 |---|---|
-| rechte Maustaste halten | umsehen |
+| rechte Maustaste ziehen | umsehen; ein kurzer Rechtsklick auf Gelände öffnet das Kontextmenü |
 | W/A/S/D, Q/E | bewegen, runter/hoch |
 | Mausrad, Shift+Rad | Zoom, Höhe — Shift = schnell |
 | Linksklick | setzen / auswählen; im Verschieben-Modus ziehen |
+| Doppelklick auf NPC/Event | erster Klick wählt, schneller zweiter Klick öffnet den gezielten F5-/F6-Dialog |
+| Rechtsklick auf Gelände | Spieler-Startposition hier setzen (speichert sofort) |
 | Boden malen | Linksklick = Fläche, Shift+Klick = Radierer |
 | Höhe malen | Linksklick = Berg, Shift+Klick = Senke, `+`/`-` = Pinselgröße |
 | R, Entf | Auswahl drehen (+30°), löschen |
@@ -317,7 +341,7 @@ geprüft werden: [Anleitung](docs/WINDOWS_MAIN_LIVE_TEST.md).
 **Spiel**: WASD laufen, Shift rennen, Leertaste springen, E benutzen/reden,
 Maussteuerung Blick, Esc Menü, F2 Debug-Ausgabe, F5 Scripte neu laden.
 F4 startet nur im RuneEditor einen separaten Spielprozess mit der gewählten
-Karte. Dort setzt F5 den Spielzustand zurück und liest diese Karte erneut;
+Karte. Dort setzt F5 den Spielzustand zurück und liest Karte und Projektstart erneut;
 nach Rückkehr zum Titel und manueller Projektwahl gilt wieder die normale
 Startkarte. Ohne Editor-Auswahl wird die Projekt-Startkarte verwendet.
 Das Spiel schließen, um zum weiter geöffneten Editor zurückzukehren. Der
@@ -325,6 +349,40 @@ Prozess ist keine Sandbox: Spielstände, Scripts und Projektdateien bleiben
 die gewöhnlichen Dateien. Alte Scripts, die `Editor` oder den internen
 Playtest-Zyklus direkt aufrufen, müssen angepasst werden; `Game.change_map`
 bleibt als Laufzeitaufruf erhalten.
+
+### Ruby-/RGSS-Script-Editor (F11)
+
+F11 öffnet die Scripts des aktuellen Projekts in `data/scripts.json`.
+Der Editor zeigt eine Zeilenspalte und Cursorposition; **Tab** fügt zwei
+Leerzeichen ein bzw. rückt eine Auswahl ein, **Umschalt+Tab** rückt aus.
+**Syntax prüfen** kompiliert den Ruby-Text ohne ihn auszuführen. Beim
+Auswahlwechsel wird der bisherige Eintrag übernommen, **Speichern** oder
+**Strg+S** schreibt die Datei. Schließen/Projektwechsel fragt nach noch
+ungespeicherten Änderungen; Neu laden, ungültige Daten und externe
+Dateikonflikte ersetzen keinen Entwurf ohne ausdrückliche Entscheidung.
+Nicht darstellbare oder doppelt vorhandene Felder bleiben geschützt;
+unbekannte Daten bleiben beim Bearbeiten erhalten.
+
+Ein benanntes Script kann wie bisher mit einem Eventbefehl aufgerufen
+werden. Mit **Als RGSS-Startscript beim Spielstart ausführen** wird es
+zusätzlich beim Neustart und F5 des Spiels in Dateireihenfolge im Top-Level
+ausgeführt, nachdem Karte und `$game_*`-Globale angelegt wurden. Ohne diese
+Markierung laufen alte Event-Scripts nicht automatisch. Ein Fehler wird
+protokolliert und hält die folgenden Startscripts nicht an.
+
+```json
+{ "scripts": [
+  { "name": "setup", "autoload": true, "code": "$game_variables[1] = 42" },
+  { "name": "gruss", "code": "say ['Hallo!']" }
+] }
+```
+
+`{"cmd":"script","name":"gruss"}` ruft das zweite Script aus einem
+Event auf; dort stehen die Event-Helfer wie `say` zur Verfügung. Startscripts
+laufen im Top-Level und nutzen z. B. `$game_variables`. Die RGSS-Schicht
+ist **teilweise** kompatibel, nicht die vollständige RPG-Maker-XP-Laufzeit;
+es läuft das mitgelieferte moderne CRuby. Ruby-Scripts sind vertrauenswürdiger
+Code mit Dateizugriff, **keine Sandbox**. Nur vertrauenswürdige Scripts ausführen.
 
 ## Datenformate
 

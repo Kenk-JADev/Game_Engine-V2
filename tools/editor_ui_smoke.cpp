@@ -109,25 +109,66 @@ bool post_command(HWND h, int id, int code = BN_CLICKED, HWND sender = nullptr) 
     return h && PostMessageW(h, WM_COMMAND, MAKEWPARAM(id, code), reinterpret_cast<LPARAM>(sender)) != 0;
 }
 
-struct TextSearch { const wchar_t* needle; bool found = false; };
+// Diagnose auch dann verfügbar machen, wenn Actions-Logs extern nicht
+// heruntergeladen werden können. Steuerzeichen/Prozent sind in Workflow-
+// Kommandos zu escapen; fremde Fenstertexte sind auf kurze Auszüge begrenzt.
+void ui_detail(const std::wstring& detail) {
+    const int n = WideCharToMultiByte(CP_UTF8, 0, detail.data(), static_cast<int>(detail.size()),
+                                      nullptr, 0, nullptr, nullptr);
+    std::string utf8(static_cast<size_t>(std::max(0, n)), '\0');
+    if (n > 0) WideCharToMultiByte(CP_UTF8, 0, detail.data(), static_cast<int>(detail.size()),
+                                   utf8.data(), n, nullptr, nullptr);
+    std::string safe;
+    for (const char c : utf8) {
+        if (c == '%') safe += "%25";
+        else if (c == '\r') safe += "%0D";
+        else if (c == '\n') safe += "%0A";
+        else safe += c;
+    }
+    std::printf("  UI-DETAIL: %s\n", safe.c_str());
+    if (std::getenv("GITHUB_ACTIONS")) std::printf("::error title=Editor-UI-Detail::%s\n", safe.c_str());
+}
+
+struct TextSearch { const wchar_t* needle; bool found = false; std::wstring children; };
 BOOL CALLBACK find_child_text(HWND h, LPARAM lp) {
     auto& search = *reinterpret_cast<TextSearch*>(lp);
-    if (text(h).find(search.needle) != std::wstring::npos) { search.found = true; return FALSE; }
+    const std::wstring child = text(h);
+    if (search.children.size() < 1000 && !child.empty()) search.children += L" [" + child.substr(0, 300) + L"]";
+    if (child.find(search.needle) != std::wstring::npos) { search.found = true; return FALSE; }
     return TRUE;
 }
 
 bool respond(const wchar_t* title, int id, const wchar_t* expected_text = nullptr) {
     HWND dialog = wait_window(L"#32770", title);
-    if (!dialog) return false;
-    HWND button = nullptr;
-    if (!wait_until([&] { button = GetDlgItem(dialog, id); return button != nullptr; })) return false;
-    if (expected_text) {
-        TextSearch search{expected_text, false};
-        EnumChildWindows(dialog, find_child_text, reinterpret_cast<LPARAM>(&search));
-        if (!search.found) return false;
+    if (!dialog) {
+        ui_detail(std::wstring(L"Dialog nicht erschienen: ") + title + (alive() ? L"; Prozess läuft" : L"; Prozess beendet"));
+        return false;
     }
-    if (!PostMessageW(button, BM_CLICK, 0, 0)) return false;
-    return wait_until([&] { return !IsWindow(dialog); });
+    HWND button = nullptr;
+    if (!wait_until([&] { button = GetDlgItem(dialog, id); return button != nullptr; })) {
+        ui_detail(std::wstring(L"Schaltfläche fehlt im Dialog: ") + title + L", ID " + std::to_wstring(id));
+        return false;
+    }
+    if (expected_text) {
+        TextSearch search{expected_text, false, {}};
+        const bool matches = wait_until([&] {
+            search.found = false;
+            search.children.clear();
+            EnumChildWindows(dialog, find_child_text, reinterpret_cast<LPARAM>(&search));
+            return search.found;
+        }, 5000);
+        if (!matches) {
+            ui_detail(std::wstring(L"Dialog ") + title + L" erwartet [" + expected_text + L"]; Controls:" + search.children);
+            return false;
+        }
+    }
+    if (!PostMessageW(button, BM_CLICK, 0, 0)) {
+        ui_detail(std::wstring(L"Dialogschaltfläche konnte nicht gedrückt werden: ") + title);
+        return false;
+    }
+    const bool closed = wait_until([&] { return !IsWindow(dialog); });
+    if (!closed) ui_detail(std::wstring(L"Dialog wurde nicht geschlossen: ") + title);
+    return closed;
 }
 
 bool create_dir(const std::wstring& path) {
@@ -227,8 +268,9 @@ bool test_markers(HWND main) {
     SetForegroundWindow(main);
     left_click(view, a);
     Sleep(250);
-    if (!check("Einzelklick öffnet keinen Event- oder NPC-Dialog",
-               !find_window(L"RuneEditorEventDlg") && !find_window(L"RuneEditorPlacementDlg"))) return false;
+    if (!check("Einzelklick öffnet keinen Dialog und setzt kein Objekt",
+               !find_window(L"RuneEditorEventDlg") && !find_window(L"RuneEditorPlacementDlg") &&
+               text(main).find(L'*') == std::wstring::npos)) return false;
     double_click_tail(view, b);
     Sleep(250);
     if (!check("zweiter Klick auf anderes Event öffnet keinen Dialog", !find_window(L"RuneEditorEventDlg"))) return false;

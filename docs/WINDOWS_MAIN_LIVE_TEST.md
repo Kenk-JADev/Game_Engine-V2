@@ -104,6 +104,65 @@ Monitorwechsel. Nicht ausgeführte Schritte ausdrücklich offen lassen.
    Bestehende F5/F6/F7/F9/F11-Funktionen nur als Regression prüfen, nicht
    als neue 19w-Implementierung ausgeben.
 
+## 19y: Versionsname, NPC/Event-Marker und Spielerstart
+
+Auch hier ausschließlich die oben angelegte Kopie verwenden. Die
+Testprojekte enthalten anfangs keine NPCs/Events. In `A_material` per F5
+einen NPC und per F6 zwei Events an gut sichtbaren, getrennten Positionen
+anlegen; jeweils übernehmen und die Karte mit Strg+S speichern.
+
+1. In den Eigenschaften von `build\RuneEditor.exe` die Dateibeschreibung
+   **Rune3D Editor**, für `build\Rune3D.exe` **Rune3D Spiel** und als Produkt
+   **Rune3D** prüfen. Den gestarteten Editor zusätzlich im Task-Manager
+   ansehen und die tatsächliche Anzeige notieren. Das ist ein neuer Build;
+   alte EXEs/Windows-Caches können weiterhin den alten Text anzeigen.
+2. Jeden NPC-/Eventmarker einmal anklicken: Er soll ausgewählt sein, aber
+   keinen Dialog öffnen. Danach zweimal schnell auf denselben Marker klicken:
+   der passende NPC muss in F5 bzw. das passende Event in F6 ausgewählt
+   sein. Langsame Klicks sowie schneller Wechsel zwischen zwei verschiedenen
+   Markern dürfen keine falsche Bearbeitung öffnen. Auf verdeckte Marker,
+   Pinsel-/Setzmodus, Maus-Capture und bestehendes Objektziehen achten.
+3. Im geöffneten F6-Dialog eine Eingabe ändern, ohne zu übernehmen, und
+   einen NPC doppelklicken: Abbrechen muss den Evententwurf und F6 erhalten;
+   Nein verwirft nach Rückfrage, Ja übernimmt und öffnet anschließend den
+   richtigen NPC. Den NPC-Dialog erst mit OK oder Abbrechen beenden.
+4. Auf sichtbarem Gelände **kurz rechtsklicken** und „Spieler-Startposition
+   hier setzen“ wählen; Rechtsklickziehen muss weiter die Kamera drehen und
+   darf kein Menü öffnen. Das grüne Symbol zeigt den Start nur auf seiner
+   Karte; G ändert die Rasterweite. Eine gesperrte Zone erzeugt eine Warnung.
+   Der Projektstart wird sofort separat gespeichert und ist nicht im
+   Karten-Undo; andere nicht gespeicherte Kartenänderungen bleiben separat.
+5. In der Testkopie `projekte\A_material\data\system.json` prüfen: `start.map`,
+   `x`, `z`, `use_project_position` stimmen; die bisherige `yaw` und fremde
+   Felder bleiben erhalten. F4 auf dieser Karte startet dort; F4 auf einer
+   anderen Karte verwendet deren Kartenstart. Im laufenden Spiel nach einer
+   erneuten Startänderung F5 drücken: system.json wird erneut gelesen, die
+   F4-Kartenauswahl bleibt bestehen. Kartenwechsel und Spielstand-Position
+   dürfen nicht auf den Projektstart zurückspringen.
+
+## 19y: F11-Ruby-/RGSS-Editor und Schutz
+
+1. F11 öffnen. Liste, Name, Code, Zeilennummern und Cursoranzeige prüfen;
+   einen langen Text mit vielen Zeilen eingeben, scrollen, auswählen, Tab und
+   Umschalt+Tab sowie Rückgängig testen. Zeilennummern sollen beim vertikalen
+   Scrollen und bei 100/125/150/200 % DPI zu den Codezeilen passen. Fenster
+   verkleinern, maximieren und nach Möglichkeit auf einen anders skalierten
+   Monitor verschieben; Text und Auswahl müssen erhalten bleiben.
+2. Ein neues Script als Startscript markieren, z. B.
+   `$game_variables[7] = 42` und `Rune::Log.info('RGSS-Starttest')` auf zwei
+   Zeilen. Syntax prüfen: gültiger Code wird nicht ausgeführt; ungültiges
+   Ruby soll einen Fehler mit Zeile melden. Mit Strg+S speichern und F4/F5
+   starten; im Spiel-Log muss der Starttest erscheinen. Ein nicht markiertes
+   Script darf nicht automatisch starten. Die RGSS-Schicht ist nur teilweise
+   XP-kompatibel; Scripts sind vertrauenswürdiger Ruby-Code, keine Sandbox.
+3. In F11 einen Entwurf ändern und andere Listeinträge auswählen; beim
+   Rückwechsel muss er erhalten bleiben. Schließen und Projektwechsel jeweils
+   mit Abbrechen, Speichern und Verwerfen prüfen. Externe Änderungen an der
+   **Testkopie** von `scripts.json` während offenem F11 erzeugen einen
+   Dateikonflikt: Nein erhält beide Stände, Ja überschreibt nur nach Warnung.
+   Beschädigtes JSON beim Neu laden darf den offenen Entwurf nicht löschen.
+   Kontrollieren, dass unbekannte Zusatzfelder unverändert erhalten bleiben.
+
 Erwartung und tatsächliches Ergebnis pro Schritt, nicht ausgeführte Fälle,
 `log/editor.log` und bei Bedarf Bildschirmfotos festhalten. F12 speichert
 nur den **Viewport**, nicht das gesamte Hauptfenster. Bei einem Fehler die

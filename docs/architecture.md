@@ -55,6 +55,32 @@ die Grafik `RUNE_D3D_WARP=1` gesetzt. Die CI lädt das hochgeladene Artefakt
 erneut herunter und testet diese entpackten Dateien. Den aktuellen Lauf prüfen;
 Software-WARP ersetzt keinen interaktiven Zielrechner-/Hardware-GPU-Test.
 
+## Kartenmarker, Spielerstart und EXE-Metadaten (19y)
+
+`map_interaction.h` liefert datengeprüfte Marker für NPCs und Events. Der
+Viewport zeichnet die Marker und trifft nur unverdeckte Geometrie. Ein
+einfacher Klick selektiert; `CS_DBLCLKS` und `WM_LBUTTONDBLCLK` öffnen nur
+beim selben Typ, Index, Karten-Epoch und JSON-Snapshot. F6-Entwürfe werden
+vor dem gezielten Wechsel geklärt; F5 arbeitet weiterhin auf einer Kopie.
+Rechtsklickziehen bleibt Kamera, ein kurzer Rechtsklick öffnet das
+Kontextmenü am Geländetreffer. Raster und Kartengrenze gelten auch für den
+Start; gesperrte Zonen lösen eine Rückfrage aus.
+
+Der Projektstart wird gezielt und sofort über `DocumentStore` in
+`system.json` gespeichert (`start.map/x/z/use_project_position`), ohne
+Richtung und fremde Felder zu ersetzen. Er ist kein Karten-Undo. Nur beim
+Spielstart/F5 und nur für die angegebene Karte überschreibt er den lokalen
+Kartenstart. `Database.reload_system` liest dafür `system.json` bei F5 neu;
+andere Caches, Kartenwechsel und Savegames behalten ihre Regeln.
+
+`build.ps1` linkt eigene `VERSIONINFO`-Ressourcen für beide EXEs und eine
+lokale Kopie von `libwinpthread.a` ohne `version.o`: `--whole-archive`
+könnte sonst die fremde Beschreibung „POSIX WinThreads for Windows“ als
+EXE-Ressource übernehmen. Das Toolchain-Original bleibt unverändert und
+`objdump` prüft, dass keine dynamische winpthread-DLL importiert wird.
+Der isolierte Smoke-Test prüft zusätzlich die EXE-Versionseigenschaften;
+die konkrete Windows-Anzeige und interaktive Nutzung bleiben Live-Tests.
+
 ## Hauptfenster und Karten (19w)
 
 Das separate `RuneEditor.exe` hat eine gruppierte Werkzeugleiste mit
@@ -412,43 +438,33 @@ Fenstertest war in der abgeschotteten Build-Umgebung nicht möglich
 (der Editor landet auf einem nicht sichtbaren Desktop; `EnumWindows`
 sieht nur das Konsolenfenster).
 
-## Projekt-Scripts und Script-Editor (Etappe 17e)
+## Projekt-Scripts und Script-Editor (17e / 19y)
 
-**Datei:** Jedes Projekt darf `data/scripts.json` enthalten:
+Jedes Projekt darf `data/scripts.json` als Array oder Objekt mit `scripts`-
+Array enthalten. Benannte Event-Scripts werden über `Scripts.run` im
+`Scripts::Context` mit Helfern wie `say`, `switch`, `variable`, `teleport`
+und `party` ausgeführt; Inline-Code bleibt möglich. Ein `autoload: true`
+markiert ein Startscript: `Scripts.run_startup` führt diese nach
+`enter_map` und `RGSS.setup` in Dateireihenfolge über `TOPLEVEL_BINDING`
+aus, auch bei F5. Nicht markierte Altscripts starten nicht automatisch.
+Fehler werden protokolliert und folgende Einträge laufen weiter. Der
+Kontext ist **keine Sicherheits-Sandbox**; Ruby ist vertrauenswürdiger Code.
+Die vorhandene RGSS-Schicht ist teilweise XP-kompatibel, nicht vollständig.
 
-```json
-{ "scripts": [ { "name": "gruss", "code": "say ['Hallo!']" } ] }
-```
+F11 (`script_dialog_win.h`) ist moduslos und nutzt ein Edit-Control mit
+separater Zeilenspalte, Scroll-/Cursoranzeige, Tab/Shift+Tab, Strg+S und
+nicht ausführender CRuby-Syntaxprüfung (`RubyVM::InstructionSequence.compile`
+geschützt über `rb_protect`). Das portable `script_document.h` erhält
+unbekannte Felder und unveränderte Codezeilenenden; mehrdeutige, ungültige
+oder nicht vollständig darstellbare Felder werden geschützt. Auswahlwechsel
+übernimmt den alten Eintrag; bei Reload/Schließen/Projektwechsel werden
+Entwürfe geklärt. `DocumentStore` prüft den Dateistand und meldet Konflikte.
+Wie bei Karten ist die Sicherung/Promotion kein atomarer Namensaustausch.
 
-`Scripts.load_project` liest sie in `Game.setup` ein (also auch bei F5).
-Ein Event ruft ein Script mit `{"cmd":"script","name":"gruss"}` auf;
-`{"cmd":"script","code":"..."}` führt Code direkt aus. Der Interpreter
-kennt dafür das neue Kommando `script` und `Interpreter#say(lines)`.
-
-**Sandkasten:** Der Code läuft in `Scripts::Context#instance_eval`, nicht
-im Interpreter. Helfer: `say` (öffnet das Textfenster und blockiert wie
-`text`), `switch`, `set_switch`, `variable`, `set_variable`,
-`add_variable`, `teleport(x, z, yaw:)`, `sound`, `effect`, `log`,
-`player_position`, `game`. Fehler (auch Syntaxfehler) werden geloggt und
-brechen die restliche Kommandoliste nicht ab.
-
-**Editor:** `Scripts -> Script-Editor...` (`ID_MENU_SCRIPTS = 108`)
-öffnet ein modusloses Fenster (`RuneEditorScriptDlg`) mit Script-Liste,
-Namensfeld und grossem Ruby-Codefeld (Consolas). *Neu*, *Löschen*,
-*Übernehmen*, *Speichern* (schreibt `projekte/<name>/data/scripts.json`)
-und *Neu laden*. Beim Wechsel wird der alte Eintrag automatisch
-übernommen; die Statuszeile zeigt Zielpfad und Änderungszustand.
-
-**Event-Editor:** Der Befehlstyp *Script* trägt den Script-Namen in
-`name`; die Befehlsliste zeigt `Script "gruss"`.
-
-**Demo:** `game/data/scripts.json` (Vorlage) und
-`projekte/dorf/data/scripts.json` enthalten `dorf_begruessung` und
-`kristalle_zaehlen` als Beispiele.
-
-**Geprüft:** `ruby -I game/engine tools/script_test.rb` (Schalter,
-Variablen, say-Blockade, fehlerhaftes Script, Inline-Code, effect und
-teleport) sowie alle acht bisherigen Tests grün.
+`tools/editor_workflow_test.cpp` prüft Modelle portabel, Ruby-Tests prüfen
+opt-in Autoload und Fehlerisolierung; `tools/editor_ui_smoke.cpp` steuert
+die echte Windows-EXE mit synthetischen Nachrichten in einer isolierten
+Paketkopie. Das ersetzt keinen interaktiven DPI-/Hardware-Test.
 
 ## Grafik-Import und Materialbase (Etappe 17f)
 
@@ -901,7 +917,7 @@ zeigt ein Panel daneben Helden, Gold und Inventar (`Party.status_lines`).
 `{"cmd":"gold","amount":50}` (negativ = abziehen),
 `{"cmd":"heal"}` (voll) bzw. `{"cmd":"heal","amount":30}`.
 
-**Script-Sandbox** (`Scripts::Context`) kennt dafür: `party`,
+**Script-Kontext** (`Scripts::Context`) kennt dafür: `party`,
 `gold(amount)`/`gold()`, `items`, `item_count`, `add_item`, `take_item`,
 `use_item`, `heal`.
 
@@ -922,7 +938,7 @@ per `ruby tools/add_database17g.rb`.
 
 **Geprüft:** `ruby -I game/engine tools/party_test.rb` (Setup, Inventar,
 Benutzen, Gold, Heilung, Snapshot/Restore, Interpreter-Befehle,
-Sandbox-Helfer - 39 Checks) sowie alle bisherigen Tests grün.
+Kontext-Helfer - 39 Checks) sowie alle bisherigen Tests grün.
 
 
 ## Höhen-Malwerkzeug & Kartengrenze (Etappe 18l)

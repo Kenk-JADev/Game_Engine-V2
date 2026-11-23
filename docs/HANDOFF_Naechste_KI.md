@@ -1,6 +1,6 @@
-# Handoff für die nächste KI - Rune3D, Stand nach Implementierung 19x
+# Handoff für die nächste KI - Rune3D, Stand nach Implementierung 19y
 
-**Stand:** 19x Ruby-Deployment und isolierte Starttests implementiert. Aktuellen Git-/CI-Status prüfen; interaktiver Windows-/DPI-/Hardwaretest und Bestätigung auf dem Rechner des Users sind offen.
+**Stand:** 19y RGSS-Editor, Kartenmarker, Projektstart und eigene EXE-Metadaten implementiert. Aktuellen Git-/CI-Status prüfen; interaktiver Windows-/DPI-/Hardwaretest und Bestätigung auf dem Rechner des Users sind offen.
 **Projekt:** `C:/Users/jusagu/Desktop/Engine` — Windows-Only 3D-RPG-Engine (C++20/Win32/D3D11 + echtes CRuby 3.4.11), Editor = eigenes Programm `RuneEditor.exe`.
 
 ## 0. Auftrag und Fortschritt (RPG-Maker-XP-Überholung)
@@ -44,7 +44,8 @@ Der User beauftragte eine Überarbeitung von Engine und Editor **im Stil von RPG
 | 19u | `bc237b3` (CI-Grün Run 45183821663) | Externer F4-Start mit gewählter Karte, Unicode-/Fehler-/F5-/Projektwechseltests |
 | 19v | `9441733` + `b2f34df` (CI-Grün Run 45192650255) | Party-/Kampfzustand, gezielte Items, Esc, Game Over und Abbruch/F5; Ruby-Regressionen und Live-Anleitung |
 | 19w | `d9a236c` (CI-Grün Run 45224317716) | Hauptfenster: Palette über Kartenbaum, Splitter/Scrollen/DPI und geschützte Kartenaktionen; Windows-Live-Test offen |
-| 19x | aktueller Commit; CI-Status prüfen | Ruby-Stdlib paketieren, fehlendes JSON diagnostizieren und isolierten Start von Editor/Spiel testen |
+| 19y | aktuellen Git-/CI-Status prüfen | F11 RGSS, Marker-Doppelklick, Rechtsklick-Spielerstart, eigene EXE-Version und isolierter UI-Smoke |
+| 19x | `39eab54`; CI-Lauf 45231512626 grün | Ruby-Stdlib paketieren, fehlendes JSON diagnostizieren und isolierten Start von Editor/Spiel testen |
 | 19o.6 | `326925b` (CI-Grün Run 44640705908) | F6: Monitor-Arbeitsfläche, DPI-skalierter Scroll-Ausschnitt, Fokus-Nachführung und portable/unsichtbare Windows-Tests |
 | 19o.5 | `4635c80` (CI-Grün Run 44628573472) | F6: datentreue Event-/Seiten-/Befehlsformulare, Pending-Schutz, bedarfsweise Altseitenmigration und C++/Ruby-Event-Brücke |
 | 19o.4 | `38ed554` (CI-Grün Run 44614856669) | Objektformular datentreu, Pending-/Drag-Schutz und sicheres Kartenladen; portable Tests |
@@ -133,6 +134,18 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
 
 **Nacharbeit 18f (notiert für die Historie):** Der 18f-Stand lag beim Übergabezeitpunkt uncommittet im Baum (Handoff behauptete das Gegenteil). Er wurde verifiziert (Build + 14 Tests grün) und als `82ceab9` committet, bevor 18g begann.
 
+**19y — aktuelle Aufgabe:** Windows-EXEs tragen eigene Versionstexte;
+die Ursache „POSIX WinThreads for Windows“ ist ein möglicher fremder
+`version.o` bei statischem Whole-Archive-Linking, nicht anderweitig bewiesen.
+F11 bearbeitet echtes Ruby/RGSS mit Zeilennummern und opt-in Startscripts;
+keine vollständige XP-Kompatibilität oder Sandbox versprechen. Auf der
+Kartenfläche öffnet erst ein schneller Doppelklick auf denselben NPC-/Event-
+Marker F5/F6. Ein kurzer Rechtsklick setzt den Projektstart über das Menü,
+Ziehen bleibt Kamera. Projektstart wird sofort separat in `system.json`
+gespeichert; F4/F5 verwenden ihn nur auf seiner Karte. Portable und
+Ruby-Tests sowie Windows-WARP-/UI-Smoke prüfen den aktuellen Stand; den
+aktuellen CI-Lauf und die offenen interaktiven Zielrechnerfälle prüfen.
+
 ## 1. Arbeitsregeln (unbedingt einhalten)
 
 - Antworten und Code-Kommentare **auf Deutsch**. User spricht Deutsch.
@@ -199,10 +212,10 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
 ## 2. Architektur-Kurzreferenz
 
 - **Spiel:** `src/main.cpp` (Schleife, F5=Ruby-Reload) → Ruby `game/engine/boot.rb` (Requires) → `game/main.rb` (`Game.setup/update/draw`, Launcher, Menü). Seit 19t kein Ingame-Editor; F4 im RuneEditor startet Rune3D separat.
-  **Module:** `Database` (JSON laden, `database.json` seit 17g), `GameState`, `Party`+Actor (17g), `Event`/`Npc`/`Interpreter`, `Scripts` (Sandbox `Scripts::Context` mit Helfern say/switch/variable/teleport/sound/effect/item/gold/heal/weather…), `Pick`, `Effects`+`Weather` (Partikel via `Rune::Gfx.box`), `Textures`/`Sounds` (prozedural), `Project`, `Launcher`, `MapCheck` (19a: Karten-Daten
+  **Module:** `Database` (JSON laden, `database.json` seit 17g), `GameState`, `Party`+Actor (17g), `Event`/`Npc`/`Interpreter`, `Scripts` (Kontext `Scripts::Context`, keine Sandbox, mit Helfern say/switch/variable/teleport/sound/effect/item/gold/heal/weather…), `Pick`, `Effects`+`Weather` (Partikel via `Rune::Gfx.box`), `Textures`/`Sounds` (prozedural), `Project`, `Launcher`, `MapCheck` (19a: Karten-Daten
   prüfen, dieselben Regeln wie `issues_scan_map` im Editor; `Game.enter_map` meldet harte
   Fehler an `Issues`).
-- **Editor:** `src/editor/editor_main.cpp` (eine große Datei, knapp 10000 Zeilen). Eigene Fensterklassen: `RuneEditorMain`, Viewport `RuneEditorView`, Dialoge `RuneEditorDlg`/`DlgNew` (Karten), `RuneEditorEventDlg`, `ScriptDlg`, `MatDlg`, `DbDlg`, `SoundDlg` — **alle modeless**.
+- **Editor:** `src/editor/editor_main.cpp` (eine große Datei, knapp 10000 Zeilen). Eigene Fensterklassen: `RuneEditorMain`, Viewport `RuneEditorView`, Dialoge `RuneEditorDlg`/`DlgNew` (Karten), `RuneEditorEventDlg`, `ScriptDlg`, `MatDlg`, `DbDlg`, `SoundDlg` — überwiegend modeless; F5-Platzierung ist modal.
 - Editor-IDs: Menü 100–120 (115=TILESET, 117=PLACEMENT, 118–120=Aufteilung; 112=SOUNDTEST, 113=PLAYTEST, 114=PROJECT), Haupt-Controls 3001–3037 (Toolbar 3025, Boden-malen-Radio 3026, Kartenbaum 3027, Höhe-malen-Radio 3029, Objektformular-Hinweis 3033, Palette/Inspektor 3034/3035, Karten-Neu/Eigenschaften 3036/3037), Karten-Dialog 4100–4115 (Wetter 4113/4114, **Block-Zonen 4115**), Projekt-Dialog 4201–4205, Tileset-Dialog 4301–4319 (Liste 4301, Kachelgröße 4303, Übernehmen 4304, Speichern 4305, Erzeugen 4306, Farben/Muster/Name 4307–4310, Schließen 4311, Vorschau 4312, Splat-Flächen X/Z/B/T 4313–4316, Hinzufügen 4317, Entfernen 4318, Flächen-Liste 4319), Event 5001–5056, Script 6001–6016, Material 7001–7013, DB 8001–8055, Sound 8101–8107. F-Tasten: F1 Hilfe, F2 Eigenschaften, F3 Materialbase, F4 Playtest, F6 Events, **F7 Tileset**, F8 Sound-Test, F9 Datenbank, F11 Scripts.
 - **Toolbar:** 12 Buttons in Gruppen, Icons prozedural und DPI-skaliert per GDI gezeichnet (`make_toolbar_icon` + Namensraum `ico`), senden Menü-IDs via `WM_COMMAND`. F-Tasten: F1 Hilfe, F2 Eigenschaften, F3 Materialbase, F4 Playtest, F6 Events, F8 Sound-Test, F9 Datenbank, F11 Scripts.
 - **Playtest:** Menü/Toolbar F4 → `save_map()` + `CreateProcessW` mit exakt zitiertem Projekt und ausgewählter Karten-ID sowie expliziter Engine-Wurzel als CWD; EXE in `build/` oder neben `game/`. `--map` verlangt `--project`; ohne Karte bleibt die Projekt-Startkarte. Ungültige/nicht eindeutig lesbare explizite Karten zeigen einen Fehler. F5 liest die Karte erneut, Titel/Projektwahl löscht die Vorgabe. Der Prozess ist keine Sandbox und kein Dateischnappschuss (Backlog).
