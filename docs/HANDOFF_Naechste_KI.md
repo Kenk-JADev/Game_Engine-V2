@@ -142,9 +142,11 @@ keine vollständige XP-Kompatibilität oder Sandbox versprechen. Auf der
 Kartenfläche öffnet erst ein schneller Doppelklick auf denselben NPC-/Event-
 Marker F5/F6. Ein kurzer Rechtsklick setzt den Projektstart über das Menü,
 Ziehen bleibt Kamera. Projektstart wird sofort separat in `system.json`
-gespeichert; F4/F5 verwenden ihn nur auf seiner Karte. Portable und
-Ruby-Tests sowie Windows-WARP-/UI-Smoke prüfen den aktuellen Stand; den
-aktuellen CI-Lauf und die offenen interaktiven Zielrechnerfälle prüfen.
+gespeichert; F4/F5 verwenden ihn nur auf seiner Karte. `Project.touch` hält
+beim Lesen/Schreiben denselben Handle und überspringt Konflikte; der Ruby-
+In-place-Write ist nicht absturzsicher (Backlog). Portable und Ruby-Tests
+sowie Windows-WARP-/UI-Smoke prüfen den aktuellen Stand; den aktuellen
+CI-Lauf und die offenen interaktiven Zielrechnerfälle prüfen.
 
 ## 1. Arbeitsregeln (unbedingt einhalten)
 
@@ -216,7 +218,7 @@ aktuellen CI-Lauf und die offenen interaktiven Zielrechnerfälle prüfen.
   prüfen, dieselben Regeln wie `issues_scan_map` im Editor; `Game.enter_map` meldet harte
   Fehler an `Issues`).
 - **Editor:** `src/editor/editor_main.cpp` (eine große Datei, knapp 10000 Zeilen). Eigene Fensterklassen: `RuneEditorMain`, Viewport `RuneEditorView`, Dialoge `RuneEditorDlg`/`DlgNew` (Karten), `RuneEditorEventDlg`, `ScriptDlg`, `MatDlg`, `DbDlg`, `SoundDlg` — überwiegend modeless; F5-Platzierung ist modal.
-- Editor-IDs: Menü 100–120 (115=TILESET, 117=PLACEMENT, 118–120=Aufteilung; 112=SOUNDTEST, 113=PLAYTEST, 114=PROJECT), Haupt-Controls 3001–3037 (Toolbar 3025, Boden-malen-Radio 3026, Kartenbaum 3027, Höhe-malen-Radio 3029, Objektformular-Hinweis 3033, Palette/Inspektor 3034/3035, Karten-Neu/Eigenschaften 3036/3037), Karten-Dialog 4100–4115 (Wetter 4113/4114, **Block-Zonen 4115**), Projekt-Dialog 4201–4205, Tileset-Dialog 4301–4319 (Liste 4301, Kachelgröße 4303, Übernehmen 4304, Speichern 4305, Erzeugen 4306, Farben/Muster/Name 4307–4310, Schließen 4311, Vorschau 4312, Splat-Flächen X/Z/B/T 4313–4316, Hinzufügen 4317, Entfernen 4318, Flächen-Liste 4319), Event 5001–5056, Script 6001–6016, Material 7001–7013, DB 8001–8055, Sound 8101–8107. F-Tasten: F1 Hilfe, F2 Eigenschaften, F3 Materialbase, F4 Playtest, F6 Events, **F7 Tileset**, F8 Sound-Test, F9 Datenbank, F11 Scripts.
+- Editor-IDs: Menü 100–120 (115=TILESET, 117=PLACEMENT, 118–120=Aufteilung; 112=SOUNDTEST, 113=PLAYTEST, 114=PROJECT), Haupt-Controls 3001–3037 (Toolbar 3025, Boden-malen-Radio 3026, Kartenbaum 3027, Höhe-malen-Radio 3029, Objektformular-Hinweis 3033, Palette/Inspektor 3034/3035, Karten-Neu/Eigenschaften 3036/3037), Karten-Dialog 4100–4115 (Wetter 4113/4114, **Block-Zonen 4115**), Projekt-Dialog 4201–4205, Tileset-Dialog 4301–4319 (Liste 4301, Kachelgröße 4303, Übernehmen 4304, Speichern 4305, Erzeugen 4306, Farben/Muster/Name 4307–4310, Schließen 4311, Vorschau 4312, Splat-Flächen X/Z/B/T 4313–4316, Hinzufügen 4317, Entfernen 4318, Flächen-Liste 4319), Event 5001–5056, Script 6001–6023, Material 7001–7013, DB 8001–8055, Sound 8101–8107. F-Tasten: F1 Hilfe, F2 Eigenschaften, F3 Materialbase, F4 Playtest, F6 Events, **F7 Tileset**, F8 Sound-Test, F9 Datenbank, F11 Scripts.
 - **Toolbar:** 12 Buttons in Gruppen, Icons prozedural und DPI-skaliert per GDI gezeichnet (`make_toolbar_icon` + Namensraum `ico`), senden Menü-IDs via `WM_COMMAND`. F-Tasten: F1 Hilfe, F2 Eigenschaften, F3 Materialbase, F4 Playtest, F6 Events, F8 Sound-Test, F9 Datenbank, F11 Scripts.
 - **Playtest:** Menü/Toolbar F4 → `save_map()` + `CreateProcessW` mit exakt zitiertem Projekt und ausgewählter Karten-ID sowie expliziter Engine-Wurzel als CWD; EXE in `build/` oder neben `game/`. `--map` verlangt `--project`; ohne Karte bleibt die Projekt-Startkarte. Ungültige/nicht eindeutig lesbare explizite Karten zeigen einen Fehler. F5 liest die Karte erneut, Titel/Projektwahl löscht die Vorgabe. Der Prozess ist keine Sandbox und kein Dateischnappschuss (Backlog).
 - **Wetter:** Karten-JSON `"weather":{"type":"kein|regen|schnee","intensity":1.0}`; `Weather.load_map/update/draw`; Interpreter `{"cmd":"weather",...}`; Editor-Dialog F2 schreibt das Feld.

@@ -138,6 +138,27 @@ BOOL CALLBACK find_child_text(HWND h, LPARAM lp) {
     return TRUE;
 }
 
+BOOL CALLBACK describe_child(HWND h, LPARAM lp) {
+    auto& description = *reinterpret_cast<std::wstring*>(lp);
+    if (description.size() >= 1000) return FALSE;
+    wchar_t cls[128]{};
+    GetClassNameW(h, cls, 128);
+    description += L" [" + std::wstring(cls) + L" id=" + std::to_wstring(GetDlgCtrlID(h)) +
+                   L" text=" + text(h).substr(0, 200) + L"]";
+    return TRUE;
+}
+
+std::wstring dialog_detail(HWND dialog) {
+    DWORD exit_code = 0;
+    GetExitCodeProcess(child_process, &exit_code);
+    std::wstring result = L"; Fenster=" + std::to_wstring(IsWindow(dialog)) +
+        L", sichtbar=" + std::to_wstring(IsWindowVisible(dialog)) +
+        L", hängt=" + std::to_wstring(IsHungAppWindow(dialog)) +
+        L", Prozess-Exit=" + std::to_wstring(exit_code) + L", Controls:";
+    if (IsWindow(dialog)) EnumChildWindows(dialog, describe_child, reinterpret_cast<LPARAM>(&result));
+    return result;
+}
+
 bool respond(const wchar_t* title, int id, const wchar_t* expected_text = nullptr) {
     HWND dialog = wait_window(L"#32770", title);
     if (!dialog) {
@@ -146,7 +167,8 @@ bool respond(const wchar_t* title, int id, const wchar_t* expected_text = nullpt
     }
     HWND button = nullptr;
     if (!wait_until([&] { button = GetDlgItem(dialog, id); return button != nullptr; })) {
-        ui_detail(std::wstring(L"Schaltfläche fehlt im Dialog: ") + title + L", ID " + std::to_wstring(id));
+        ui_detail(std::wstring(L"Schaltfläche fehlt im Dialog: ") + title + L", ID " + std::to_wstring(id) +
+                  dialog_detail(dialog));
         return false;
     }
     if (expected_text) {

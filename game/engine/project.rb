@@ -55,13 +55,44 @@ module Project
       'last'  => read_system(name)['last_played'] }
   end
 
-  # "Zuletzt gespielt" beim Start eines Projekts vermerken.
+  # Beim Parsen doppelte Felder nicht still zusammenfallen lassen. Die
+  # Startposition und unbekannte Projektdaten gehören dem Benutzer.
+  class UniqueSystemObject < Hash
+    def []=(key, value)
+      raise JSON::ParserError, "doppeltes Feld #{key.inspect}" if key?(key)
+
+      super
+    end
+  end
+
+  # "Zuletzt gespielt" beim Start vermerken. Lesen und Schreiben passieren
+  # am SELBEN offenen Handle: Unter Windows verhindert dessen fehlendes
+  # Delete-Sharing den Austausch durch den Editor; der DocumentStore sperrt
+  # umgekehrt dieses Schreib-Handle. Mehrere Spiele koordinieren per flock.
+  # Der Zeitstempel ist optional: Bei Konflikt/ungültigem JSON nicht starten
+  # verzögern und insbesondere niemals eine leere Ersatzdatei schreiben.
   def touch(name)
-    p = File.join(data_path(name), 'system.json')
-    return unless File.exist?(p)
-    sys = read_system(name)
-    sys['last_played'] = Time.now.strftime('%Y-%m-%d %H:%M')
-    File.write(p, JSON.pretty_generate(sys) + "\n", encoding: 'UTF-8')
+    path = File.join(data_path(name), 'system.json')
+    File.open(path, 'r+b') do |file|
+      unless file.flock(File::LOCK_EX | File::LOCK_NB)
+        Rune::Log.warn('Projekt: Zeitstempel übersprungen, system.json wird verwendet')
+        return false
+      end
+      source = file.read.force_encoding(Encoding::UTF_8)
+      sys = JSON.parse(source, object_class: UniqueSystemObject)
+      raise JSON::ParserError, 'system.json ist kein Objekt' unless sys.is_a?(Hash)
+
+      sys.store('last_played', Time.now.strftime('%Y-%m-%d %H:%M'))
+      output = JSON.pretty_generate(sys) + "\n"
+      file.rewind
+      file.write(output)
+      file.truncate(file.pos)
+      file.flush
+      true
+    end
+  rescue JSON::JSONError, EncodingError, SystemCallError, IOError => e
+    Rune::Log.warn("Projekt: Zeitstempel nicht gespeichert: #{e.message}")
+    false
   end
 
   # Projektordner komplett entfernen.

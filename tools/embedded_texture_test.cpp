@@ -7,6 +7,7 @@
 #include "app.h"
 #include "core/project_assets_win.h"
 #include "core/win_project_cli.h"
+#include "editor/document_store_win.h"
 
 #include <windows.h>
 #include <shellapi.h>
@@ -48,6 +49,21 @@ bool ruby_true(const char* code) {
         return false;
     }
     return RTEST(result);
+}
+
+struct TouchRace {
+    bool invoked = false;
+    bool skipped = false;
+};
+
+// Der Editor hält die Systemdatei in DocumentStore::save bereits gesperrt.
+// Der Ruby-Start darf dann weder aus einem älteren Stand zurückschreiben noch
+// warten oder das Spiel wegen eines optionalen Zeitstempels abbrechen.
+void touch_while_editor_locked(void* context) noexcept {
+    auto& race = *static_cast<TouchRace*>(context);
+    race.invoked = true;
+    try { race.skipped = ruby_true("!Project.touch($expected_project)"); }
+    catch (...) { race.skipped = false; }
 }
 
 std::string solid(unsigned char r, unsigned char g, unsigned char b) {
@@ -284,6 +300,34 @@ int main(int argc, char** argv) {
                     "names = Project.list; names == [$expected_project] && names[0].encoding == Encoding::UTF_8"));
                 check("Ruby aktualisiert Systemdaten des Unicode-Projekts", ruby_true(
                     "Project.touch($expected_project) && Project.read_system($expected_project)['last_played'].is_a?(String)"));
+                {
+                    rune::editor::DocumentStore store;
+                    rune::editor::DocumentSnapshot snapshot;
+                    rune::editor::DocumentRecovery recovery;
+                    TouchRace race;
+                    rune::editor::DocumentTestHooks hooks{};
+                    hooks.after_compare = touch_while_editor_locked;
+                    hooks.context = &race;
+                    auto result = store.open(f.root, f.project, false, "system.json");
+                    if (result == rune::assets::Result::Ok) result = store.observe(snapshot);
+                    if (result == rune::assets::Result::Ok && snapshot.present)
+                        result = store.save(snapshot, snapshot.bytes, recovery, &hooks);
+                    check("Ruby-Zeitstempel überspringt die vom Editor gesperrte Systemdatei",
+                          result == rune::assets::Result::Ok && race.invoked && race.skipped &&
+                          ruby_true("Project.read_system($expected_project).dig('start', 'map') == \"karte_\\u65e5\""));
+                }
+                {
+                    const bool held = ruby_true(
+                        "$touch_test_file = File.open(File.join(Project.data_path($expected_project), 'system.json'), 'r+b'); "
+                        "$touch_test_file.flock(File::LOCK_EX | File::LOCK_NB)");
+                    rune::editor::DocumentStore store;
+                    rune::editor::DocumentSnapshot snapshot;
+                    auto result = store.open(f.root, f.project, false, "system.json");
+                    if (result == rune::assets::Result::Ok) result = store.observe(snapshot);
+                    const bool released = ruby_true("$touch_test_file.close if $touch_test_file; $touch_test_file = nil; true");
+                    check("Editor beobachtet kein system.json während Ruby es zum Schreiben hält",
+                          held && result != rune::assets::Result::Ok && released);
+                }
                 check("Ruby schreibt und liest Spielstand im Unicode-Projekt", ruby_true(
                     "Project.save($expected_project, 1, {'map' => \"karte_\\u65e5\"}); "
                     "Project.load_save($expected_project, 1)['map'] == \"karte_\\u65e5\""));

@@ -85,6 +85,38 @@ check('info liefert Titel') { info['title'] == 'Test Welt' }
 check('info zählt 2 Karten') { info['maps'] == 2 }
 check('touch vermerkt zuletzt gespielt') { info['last'].is_a?(String) && !info['last'].empty? }
 check('title liefert Anzeigename') { Project.title(name) == 'Test Welt' }
+
+# Der Playtest darf den gleichzeitig im Editor eingestellten Projektstart
+# nicht aus einem älteren Snapshot überschreiben oder kaputtes JSON leeren.
+system_path = File.join(Project.data_path(name), 'system.json')
+fixture = JSON.parse(File.read(system_path, encoding: 'UTF-8'))
+fixture['start']['x'] = 17.0
+fixture['start']['use_project_position'] = true
+fixture['zukunft'] = { 'zahl' => 9_007_199_254_740_993, 'text' => 'Änderung' }
+File.write(system_path, JSON.pretty_generate(fixture) + "\n", encoding: 'UTF-8')
+check('touch erhält Projektstart und unbekannte Daten') {
+  Project.touch(name) && (updated = JSON.parse(File.read(system_path, encoding: 'UTF-8'))) &&
+    updated['start'] == fixture['start'] && updated['zukunft'] == fixture['zukunft'] &&
+    updated['last_played'].is_a?(String)
+}
+['{', '{"start":{"x":1,"x":2}}', '[1,2]'].each do |invalid|
+  File.binwrite(system_path, invalid)
+  check('touch lässt beschädigte, mehrdeutige oder falsche Systemdaten unangetastet') {
+    !Project.touch(name) && File.binread(system_path) == invalid
+  }
+end
+File.write(system_path, JSON.pretty_generate(fixture) + "\n", encoding: 'UTF-8')
+before_lock = File.binread(system_path)
+locked = File.open(system_path, 'r+b')
+begin
+  acquired = locked.flock(File::LOCK_EX | File::LOCK_NB)
+  skipped = !Project.touch(name)
+ensure
+  locked.close
+end
+check('touch überspringt ein konkurrierend gesperrtes system.json') {
+  acquired && skipped && File.binread(system_path) == before_lock
+}
 Project.delete(name)
 check('delete entfernt das Projekt') { !Project.valid?(name) }
 

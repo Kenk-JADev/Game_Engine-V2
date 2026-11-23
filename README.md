@@ -315,6 +315,9 @@ und ihrem Undo; Blickrichtung und zusätzliche Projektfelder bleiben erhalten.
 Vor einer gesperrten Zone wird gewarnt. Neustart/F4 und F5 im Spiel lesen die
 Position auf der zugehörigen Karte; F4 auf einer anderen Karte benutzt deren
 Kartenstart. Ein normaler Kartenwechsel und Spielstände behalten ihr Verhalten.
+Ist `system.json` beim Spielstart gesperrt, wird der optionale Zeitstempel
+„zuletzt gespielt“ übersprungen, statt eine konkurrierende Startänderung
+zu überschreiben. Projektdateien trotzdem regelmäßig sichern.
 
 Die Windows-GUI, Monitorwechsel und Hardware-GPU müssen noch interaktiv
 geprüft werden: [Anleitung](docs/WINDOWS_MAIN_LIVE_TEST.md).

@@ -72,6 +72,12 @@ Richtung und fremde Felder zu ersetzen. Er ist kein Karten-Undo. Nur beim
 Spielstart/F5 und nur für die angegebene Karte überschreibt er den lokalen
 Kartenstart. `Database.reload_system` liest dafür `system.json` bei F5 neu;
 andere Caches, Kartenwechsel und Savegames behalten ihre Regeln.
+`Project.touch` hält unter Windows beim Lesen/Schreiben von `last_played`
+denselben beschreibbaren Handle ohne Delete-Sharing; konkurrierende Spiele
+nutzen eine nichtblockierende Dateisperre. Ein Editor-Konflikt überspringt
+den optionalen Zeitstempel. Fehlerhafte, mehrdeutige oder nicht objektförmige
+Systemdaten werden nicht durch einen leeren Ersatz überschrieben. Der Ruby-
+Schreibvorgang selbst bleibt ein nicht absturzsicherer In-place-Write.
 
 `build.ps1` linkt eigene `VERSIONINFO`-Ressourcen für beide EXEs und eine
 lokale Kopie von `libwinpthread.a` ohne `version.o`: `--whole-archive`

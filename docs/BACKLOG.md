@@ -32,6 +32,16 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Betroffene Stellen: `script_dialog_win.h`, `map_interaction.h`,
   `editor_main.cpp`, `build.ps1`, `tools/editor_ui_smoke.cpp`.
 
+### [Engine] Zeitstempel in system.json nicht absturzsicher — offen (Dateischutz)
+- `Project.touch` liest und schreibt mit demselben Handle, überspringt
+  Konflikte mit dem Editor bzw. anderen Spielen und verändert fehlerhafte
+  oder mehrdeutige Daten nicht. Die eigentliche Ruby-In-place-Schreiboperation
+  ist aber nicht atomar: Abbruch, Stromausfall oder Schreibfehler können
+  weiterhin zu einer unvollständigen Datei führen. Backups verwenden.
+- Eine später abgestimmte atomare Ablage/Transaktion muss die bestehende
+  `last_played`-Kompatibilität und den Editor-DocumentStore berücksichtigen.
+- Betroffene Stellen: `game/engine/project.rb`, `src/editor/document_store_win.h`.
+
 ### [Tests/Ruby/Engine] Ruby-Start auf dem Zielrechner bestätigen — offen (Live)
 - Symptom: Der User sah beim Editorstart `LoadError: cannot load such file -- json`.
   19x paketiert die zugehörige Stdlib und prüft den Start automatisiert mit
@@ -213,9 +223,9 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 ### [Editor] Platzier-Editor: komplexe NPC-Befehle und 3D-Picking — offen (Ausbau)
 - Stand 19n: F5 bearbeitet NPCs, Schild-Events und Objekte mit X/Y/Z,
   Wegpunkten und einfachem Text. Zusätzliche NPC-Befehle bleiben erhalten,
-  sind aber nicht vollständig in der GUI editierbar. NPCs/Schilder können
-  noch nicht direkt im 3D-Viewport angeklickt/gezogen werden; F5 bietet
-  stattdessen die letzte Cursorposition und numerische Felder.
+  sind aber nicht vollständig in der GUI editierbar. Seit 19y öffnet ein
+  Doppelklick auf den Marker die gezielte Bearbeitung; direktes Ziehen von
+  NPCs/Schildern im 3D-Viewport fehlt weiterhin. F5 bietet numerische Felder.
 - Y ist ein Bodenversatz für die Darstellung; NPC-Kollision und Event-
   Reichweite sind weiterhin XZ-basiert (keine vertikale Trennung).
 - Betroffene Stellen: `src/editor/placement_dialog.h`, `game/engine/npc.rb`,
