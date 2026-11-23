@@ -59,9 +59,23 @@ class Party
       @items[id] = (h['start'] || 0).to_i if (h['start'] || 0).to_i.positive?
     end
     @gold = (db['gold'] || 0).to_i
+    @steps = 0   # F3: XP Game_Party#steps - zählt die Schritte des Helden
     Rune::Log.info("Party: #{@actors.size} Helden, #{@items.size} Item-Sorten, " \
                    "#{@gold} Gold")
     @actors
+  end
+
+  # F3 (XP Game_Party): Heldenliste und Schrittzähler.
+  def self.actors
+    @actors ||= []
+  end
+
+  def self.steps
+    @steps ||= 0
+  end
+
+  def self.increase_steps
+    @steps = (@steps || 0) + 1
   end
 
   def self.leader
@@ -202,6 +216,7 @@ class Party
   def self.snapshot
     {
       'gold' => @gold,
+      'steps' => steps,
       'items' => @items.dup,
       'actors' => @actors.map do |a|
         { 'id' => a.id, 'level' => a.level, 'hp' => a.hp, 'mp' => a.mp, 'exp' => a.exp }
@@ -212,6 +227,7 @@ class Party
   def self.restore!(snap)
     snap ||= {}
     @gold = (snap['gold'] || 0).to_i
+    @steps = (snap['steps'] || 0).to_i   # alte Spielstände ohne 'steps' = 0
     @items = (snap['items'] || {}).map { |k, v| [k.to_s, v.to_i] }.reject { |_, v| v <= 0 }.to_h
     (snap['actors'] || []).each do |h|
       a = find(h['id'])

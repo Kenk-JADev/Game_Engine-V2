@@ -210,5 +210,39 @@ seq.manual_fire(interp)
 interp.update(0.016)
 check('Kiste: zweite Seite spricht') { interp.message == ['Die Kiste ist leer.'] }
 
+# --- F2: keine erfüllte Bedingung -> Event inaktiv --------------------------
+# XP: existiert keine aktive Seite (page nil), hat das Event keinen Trigger
+# und keine Kommandos - es wird schlicht übersprungen (statt fälschlich
+# Seite 0 mit leeren Bedingungen zu erzwingen).
+inaktiv = Event.new(
+  'id' => 30, 'name' => 'Schloss', 'x' => 0, 'z' => 0,
+  'pages' => [
+    { 'conditions' => { 'switch' => { 'name' => 'nie_gesetzt', 'value' => true } },
+      'trigger' => 'action',
+      'commands' => [{ 'cmd' => 'text', 'lines' => ['soll nie laufen'] }] },
+    { 'conditions' => { 'switch' => { 'name' => 'auch_nie', 'value' => true } },
+      'trigger' => 'touch',
+      'commands' => [{ 'cmd' => 'text', 'lines' => ['ebenfalls nie'] }] }
+  ]
+)
+inaktiv.refresh_page!
+check('F2: page_index nil, wenn keine Seite passt') { inaktiv.page_index.nil? }
+check('F2: active? false') { !inaktiv.active? }
+check('F2: trigger nil') { inaktiv.trigger.nil? }
+check('F2: commands leer') { inaktiv.commands.empty? }
+check('F2: manual_fire startet nichts') do
+  i = Interpreter.new
+  inaktiv.manual_fire(i)
+  !i.running?
+end
+GameState.set_switch('nie_gesetzt', true)
+inaktiv.refresh_page!
+check('F2: nach Schalter-ON wieder aktiv (Seite 0)') do
+  inaktiv.active? && inaktiv.page_index == 0 && inaktiv.trigger == 'action'
+end
+GameState.set_switch('nie_gesetzt', false)
+inaktiv.refresh_page!
+check('F2: zurückschalten -> wieder inaktiv') { inaktiv.page_index.nil? }
+
 puts($fail.zero? ? 'EVENT-PAGES-TEST OK (0 Fehler)' : "EVENT-PAGES-TEST FEHLGESCHLAGEN (#{$fail} Fehler)")
 exit($fail.zero? ? 0 : 1)

@@ -3,35 +3,39 @@
 #  Bewegungsrouten (Etappe 19g, XP-Vokabular seit 19h.2).
 #
 #  Vorbild ist "Bewegungsroute festlegen" aus RPG Maker XP - die Schritt-
-#  Namen und Codes stammen 1:1 aus den Default-Scripts (XP-Defaultscript/
-#  019 - Game_Character 2.rb, move_type_custom):
+#  Namen und die Codes 1..45 entsprechen den RGSS-Konstanten ROUTE_*
+#  (GAME_Character; Quellen: RPG-Maker-Hilfe, MV-Hilfe, tonbi.jp
+#  CommandTable, rpg-maker.fr Easy-Scripts - siehe F1 in der
+#  LOGIK_PRUEFUNG):
 #
-#    11 move_down          12 move_left          13 move_right
-#    14 move_up            15 move_lower_left    16 move_lower_right
-#    17 move_upper_left    18 move_upper_right   19 move_random
-#    20 move_toward_player 21 move_away_from_player
-#    22 move_forward       23 move_backward      24 jump
-#    25 wait               26 turn_down          27 turn_left
-#    28 turn_right         29 turn_up            30 turn_90d_right
-#    31 turn_90d_left      32 turn_180d          33 turn_90d_right_or_left
-#    34 turn_random        35 turn_toward_player 36 turn_away_from_player
-#    37 switch_on          38 switch_off         39 change_speed
-#    40 change_freq        41 move_animation_on  42 move_animation_off
-#    43 stop_animation_on  44 stop_animation_off 45 direction_fix_on
-#    46 direction_fix_off  47 through_on         48 through_off
-#    49 always_on_top_on   50 always_on_top_off  51 change_graphic
-#    52 change_opacity     53 change_blending    57 script
+#     1 move_down           2 move_left           3 move_right
+#     4 move_up             5 move_lower_left     6 move_lower_right
+#     7 move_upper_left     8 move_upper_right    9 move_random
+#    10 move_toward_player 11 move_away_from_player
+#    12 move_forward      13 move_backward       14 jump
+#    15 wait              16 turn_down           17 turn_left
+#    18 turn_right        19 turn_up             20 turn_90d_right
+#    21 turn_90d_left     22 turn_180d           23 turn_90d_right_or_left
+#    24 turn_random       25 turn_toward_player  26 turn_away_from_player
+#    27 switch_on         28 switch_off          29 change_speed
+#    30 change_freq       31 move_animation_on   32 move_animation_off
+#    33 stop_animation_on 34 stop_animation_off  35 direction_fix_on
+#    36 direction_fix_off 37 through_on          38 through_off
+#    39 transparent_on    40 transparent_off     41 change_graphic
+#    42 change_opacity    43 change_blending     44 play_se
+#    45 script
 #
-#  (Die Nummern sind die Rune3D-Reihenfolge dieser Liste; XP-Codes 11..46
-#  werden als Schritt-Strings ebenfalls verstanden - "11" = move_down usw.,
+#  (XP-Codes werden als Schritt-Strings verstanden - "1" = move_down usw.,
 #  dazu die deutschen Kurznamen aus 19g: up/down/left/right/zufall/
-#  spieler_nah/spieler_weg/warte.)
+#  spieler_nah/spieler_weg/warte. always_on_top_* gibt es in XP nicht -
+#  Rune3D-Eigenbau ohne Code.)
 #
 #  Nicht umsetzbar in der 3D-Engine (dokumentierte No-Ops mit Warnung beim
 #  ersten Auftreten): change_graphic/opacity/blending (NPCs sind Boxen),
-#  stop_animation_*/direction_fix_*/through_*/always_on_top_* (2D-Schalter),
-#  change_freq (Bewegungsfrequenz gibt es hier nicht - Tempo ist speed).
-#  jump = Hüpfer-Partikel statt Sprungphysik; script führt Ruby-Code im
+#  transparent_*/stop_animation_*/direction_fix_*/through_*/always_on_top_*
+#  (2D-Schalter), change_freq (Bewegungsfrequenz gibt es hier nicht - Tempo
+#  ist speed). jump = Hüpfer-Partikel statt Sprungphysik; play_se spielt den
+#  SE-Namen aus dem Route-Feld code; script führt Ruby-Code im
 #  Scripts-Context aus.
 #
 #  Event-Befehl:
@@ -63,31 +67,40 @@ module Mover
     move_animation_on move_animation_off
     stop_animation_on stop_animation_off
     direction_fix_on direction_fix_off through_on through_off
+    transparent_on transparent_off
     always_on_top_on always_on_top_off
-    change_graphic change_opacity change_blending script
+    change_graphic change_opacity change_blending play_se script
   ].freeze
 
-  # XP-Befehls-Codes (019 - Game_Character 2.rb) als Schritt-String.
+  # XP-Befehls-Codes als Schritt-String (F1): die ROUTE_*-Konstanten der
+  # RPG-Maker-Serie, exakt 0..45 - Quellen: RPG-Maker-XP-Hilfe, MV-Hilfe,
+  # tonbi.jp CommandTable (ROUTE_MOVE_DOWN=1 ... ROUTE_SCRIPT=45) und
+  # rpg-maker.fr Easy-Scripts-Tabelle. (Die alte Liste '11'..'57' lag um 10
+  # daneben, mischte 39/40 mit always_on_top und kannte kein play_se.)
+  # '0' = ROUTE_END (XP hängt den Ende-Marker immer an) -> leer, kein Schritt.
+  # XP hat KEINE always_on_top-Schritte - die bleiben Rune3D-Eigenbau ohne Code.
   XP_CODES = {
-    '11' => 'move_down', '12' => 'move_left', '13' => 'move_right',
-    '14' => 'move_up', '15' => 'move_lower_left', '16' => 'move_lower_right',
-    '17' => 'move_upper_left', '18' => 'move_upper_right',
-    '19' => 'move_random', '20' => 'move_toward_player',
-    '21' => 'move_away_from_player', '22' => 'move_forward',
-    '23' => 'move_backward', '24' => 'jump', '25' => 'wait',
-    '26' => 'turn_down', '27' => 'turn_left', '28' => 'turn_right',
-    '29' => 'turn_up', '30' => 'turn_90d_right', '31' => 'turn_90d_left',
-    '32' => 'turn_180d', '33' => 'turn_90d_right_or_left',
-    '34' => 'turn_random', '35' => 'turn_toward_player',
-    '36' => 'turn_away_from_player', '37' => 'switch_on',
-    '38' => 'switch_off', '39' => 'change_speed', '40' => 'change_freq',
-    '41' => 'move_animation_on', '42' => 'move_animation_off',
-    '43' => 'stop_animation_on', '44' => 'stop_animation_off',
-    '45' => 'direction_fix_on', '46' => 'direction_fix_off',
-    '47' => 'through_on', '48' => 'through_off',
-    '49' => 'always_on_top_on', '50' => 'always_on_top_off',
-    '51' => 'change_graphic', '52' => 'change_opacity',
-    '53' => 'change_blending', '57' => 'script',
+    '0' => '',
+    '1' => 'move_down', '2' => 'move_left', '3' => 'move_right',
+    '4' => 'move_up', '5' => 'move_lower_left', '6' => 'move_lower_right',
+    '7' => 'move_upper_left', '8' => 'move_upper_right',
+    '9' => 'move_random', '10' => 'move_toward_player',
+    '11' => 'move_away_from_player', '12' => 'move_forward',
+    '13' => 'move_backward', '14' => 'jump', '15' => 'wait',
+    '16' => 'turn_down', '17' => 'turn_left', '18' => 'turn_right',
+    '19' => 'turn_up', '20' => 'turn_90d_right', '21' => 'turn_90d_left',
+    '22' => 'turn_180d', '23' => 'turn_90d_right_or_left',
+    '24' => 'turn_random', '25' => 'turn_toward_player',
+    '26' => 'turn_away_from_player', '27' => 'switch_on',
+    '28' => 'switch_off', '29' => 'change_speed', '30' => 'change_freq',
+    '31' => 'move_animation_on', '32' => 'move_animation_off',
+    '33' => 'stop_animation_on', '34' => 'stop_animation_off',
+    '35' => 'direction_fix_on', '36' => 'direction_fix_off',
+    '37' => 'through_on', '38' => 'through_off',
+    '39' => 'transparent_on', '40' => 'transparent_off',
+    '41' => 'change_graphic', '42' => 'change_opacity',
+    '43' => 'change_blending', '44' => 'play_se',
+    '45' => 'script',
   }.freeze
 
   # Deutsche Kurznamen aus Etappe 19g (bestehende Karten bleiben gültig).
@@ -303,6 +316,16 @@ module Mover
     when 'change_speed'
       r.speed = r.code.to_f if r.code && r.code.to_f > 0
 
+    when 'play_se'
+      # XP-Code 44: 'code' enthält den SE-Namen; XP-Volumen 100 = 1.0.
+      # Pitch hat die Engine noch nicht (offen unter "20x Ton").
+      name = r.code.to_s
+      if name.empty?
+        warn_once('Mover: play_se ohne SE-Namen im Route-Feld code')
+      else
+        Rune::Sound.play(name, 1.0)
+      end
+
     when 'script'
       code = r.code.to_s
       if code.empty?
@@ -322,6 +345,7 @@ module Mover
          'stop_animation_on', 'stop_animation_off',
          'direction_fix_on', 'direction_fix_off',
          'through_on', 'through_off',
+         'transparent_on', 'transparent_off',
          'always_on_top_on', 'always_on_top_off',
          'change_graphic', 'change_opacity', 'change_blending'
       warn_once("Mover: Schritt '#{befehl}' hat in Rune3D keine Wirkung (übersprungen)")

@@ -262,13 +262,26 @@ end
       Rune::Log.warn("Laden fehlgeschlagen: Slot #{slot} ist leer")
       return false
     end
+
+    # F4: fehlende/unlesbare Zielkarte = Fehler, NICHT stille Ersetzung -
+    # sonst lädt ein defekter Spielstand das Projekt hart, während der
+    # Zustand (Position/NPCs/Schalter) aus dem Spielstand kommt. Erst
+    # prüfen, dann Zustand anfassen. ACHTUNG: Database.map() liefert bei
+    # Fehlern einen leeren Ersatz-Hash (nie nil) - playtest_map ist die
+    # einzige präzise Prüfung (nil bei fehlend/mehrdeutig/unlesbar).
+    map_id = data['map']
+    unless map_id.is_a?(String) && Database.playtest_map(map_id)
+      Issues.report('Laden',
+                    "Karte '#{map_id}' im Spielstand Slot #{slot} fehlt oder " \
+                    'ist unlesbar - Laden abgebrochen', severity: 'error')
+      return false
+    end
+
     GameState.restore!(data['state'] || {})
     Party.setup(Database.database)
     Party.restore!(data['party'] || {})
     @intro = nil   # Intro nicht nochmal zeigen
 
-    map_id = data['map']
-    map_id = Database.map_ids.first unless Database.map(map_id)
     enter_map(map_id)
 
     # Ausgelöste Touch-/Auto-Events wiederherstellen.
@@ -352,6 +365,7 @@ end
   def self.open_menu
     @menu_sel = 0
     @menu = true
+    Rune::Simulation.paused = true   # F5: Menü friert die Simulation ein
     Rune::Input.capture = false   # Menü mit freiem Zeiger
     Rune::Sound.play('klick', 0.6)
     Rune::Log.info('Menü geöffnet')
@@ -359,6 +373,11 @@ end
 
   def self.close_menu
     @menu = nil
+    # Steht noch ein Text/Wahl/Zahl offen, hält die Pause (F5) - der
+    # nächste Frame rechnet ohnehin neu.
+    Rune::Simulation.paused = !!(@interpreter &&
+      (@interpreter.busy_text? || @interpreter.busy_choices? ||
+       @interpreter.busy_number?))
     Rune::Input.capture = true
     Rune::Sound.play('klick', 0.5)
     Rune::Log.info('Menü geschlossen')
@@ -521,8 +540,8 @@ end
       end
     end
     @mode = :game
+    Rune::Simulation.paused = false   # F5: Spiel startet laufend
     if recovering
-      Rune::Simulation.paused = false
       Rune::Input.capture = true
     end
 
@@ -564,6 +583,7 @@ end
   def self.update(dt)
     # Titelbildschirm und fehlgeschlagener Playtest starten keine Spiel-Frames.
     if @mode == :launcher
+      Rune::Simulation.paused = true   # F5: keine Physik auf dem Titelbild
       Launcher.update(dt)
       return
     elsif @mode == :playtest_error
@@ -743,7 +763,14 @@ end
       end
     end
 
-    Rune::Simulation.paused = false
+    # F5 (XP): offene Text/Wahl/Zahleneingabe friert die Simulation ein -
+    # die Welt steht still, bis die Eingabe abgeschlossen ist. 'wait' in
+    # einer Bewegungsroute pausiert dagegen NICHT (wie XP darf der Spieler
+    # weiterlaufen).
+    Rune::Simulation.paused = @menu ||
+                              @interpreter.busy_text? ||
+                              @interpreter.busy_choices? ||
+                              @interpreter.busy_number?
 
     # Events haben Vorrang: ein im selben Schritt ausgelöstes Event
     # darf nicht zusammen mit einem Zufallskampf starten. Ein gesperrter oder
@@ -815,8 +842,18 @@ end
     return unless Rune::Input.mouse_pressed?(0) && @hover
 
     if @hover.is_a?(Event)
-      Rune::Log.info(format("Klick: Event '%s' (%.1f m)", @hover.name, @hover_dist))
-      @hover.manual_fire(@interpreter) unless @interpreter.running?
+      # D9 (XP-Gleichheit): nur aktive 'action'-Events starten per Klick -
+      # touch/auto/parallel laufen über die Trigger-Schleife, inaktive
+      # Events (keine erfüllte Seitenbedingung) gar nicht.
+      if @hover.active? && @hover.trigger == 'action'
+        unless @interpreter.running?
+          Rune::Log.info(format("Klick: Event '%s' (%.1f m)", @hover.name, @hover_dist))
+          @hover.manual_fire(@interpreter)
+        end
+      else
+        Rune::Log.info(format("Klick ohne Wirkung: Event '%s (%s)' (%.1f m)",
+                              @hover.name, @hover.trigger || 'inaktiv', @hover_dist))
+      end
     else
       sz = @hover.scale
       Rune::Log.info(format("Klick: Objekt '%s' (%.1f m) Grösse %.1f x %.1f x %.1f",
@@ -894,7 +931,8 @@ end
     Rune::Gfx.clear_color = 0x131A24
 
     # Der Spieler existiert nur als Punkt; im Third-Person-Modus bekommt er einen Körper.
-    if Rune::Camera.mode == :third
+    # F6: $game_player.transparent (XP) verbirgt den Körper.
+    if Rune::Camera.mode == :third && !($game_player && $game_player.transparent)
       px, py, pz = Rune::Player.position
       Rune::Gfx.box(px, py + 0.9, pz, 0.7, 1.8, 0.7, 0xE8E2D0,
                     0.0, Rune::Camera.yaw, 0.0)

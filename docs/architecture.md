@@ -1467,17 +1467,20 @@ Seit dem User-Upload folgt die Schicht den Original-Dateien Feld für Feld:
   encounter_count/make_encounter_count (Grundlage für Zufallskämpfe, 19i).
 - **Window_Selectable** nach `030 - Window_Selectable.rb`: index=/cursor_up/
   cursor_down/cursor_page_*/row_max/page_row_max/cursor_rect/help_window.
-- **Mover spricht XP** (`019 - Game_Character 2.rb`, move_type_custom):
+- **Mover spricht XP** (Routen-Codes wie RPG Maker XP, `ROUTE_*`):
   Schritte sind die Original-Namen (move_down .. move_backward, jump, wait,
   turn_down .. turn_away_from_player, switch_on/off, change_speed,
-  move_animation_on/off, script, ...), XP-Befehls-Codes ('11'..'57') und die
+  move_animation_on/off, play_se, script, ...), XP-Befehls-Codes ('0' =
+  Ende-Marker bis '45' = script, F1-Tabelle in `mover.rb`) und die
   deutschen 19g-Kurznamen (up/down/warte/...) werden als Aliase verstanden.
   Blickrichtung (2/4/6/8) wird mitgeführt: Bewegungsschritte drehen,
   turn_*-Schritte drehen nur - NPC per `Npc#turn_to` (Node-Yaw), Spieler per
   Kamera-Yaw. Schritte mit Parameter tragen den Wert im neuen Route-Feld
-  `code` (switch_on/off: Schaltername, change_speed: m/s, script: Ruby-Code);
+  `code` (switch_on/off: Schaltername, change_speed: m/s, play_se:
+  SE-Name, script: Ruby-Code);
   Event-Befehl und Context-Helfer haben dafür `code`, MapCheck warnt bei
-  switch_on/script ohne `code`. 2D-only-Schritte (change_graphic/opacity/
+  switch_on/play_se/script ohne `code` (auch bei numerischen Codes).
+  2D-only-Schritte (change_graphic/opacity/
   blending, stop_animation_*, direction_fix_*, through_*, always_on_top_*,
   change_freq) sind dokumentierte No-Ops mit Einmal-Warnung.
 - **Editor:** Bewegungsroute bekommt Wert 3 = Code-Parameter (Laden/Bauen/

@@ -63,6 +63,18 @@ module Scripts
   end
 end
 
+# Sound-Attrappe: play_se-Schritt (F1, XP-Code 44) - Positional wie die
+# native Schnittstelle Rune::Sound.play(name, volume).
+module Rune
+  module Sound
+    CALLS = []
+    def self.play(name, volume = 1.0)
+      CALLS << [name, volume]
+      true
+    end
+  end
+end
+
 $LOAD_PATH.unshift(File.join(Rune::ROOT, 'game', 'engine'))
 require 'state'
 require 'issues'
@@ -123,6 +135,42 @@ check('Sync: MapCheck-Aliase == Mover-Aliase') do
 end
 check('Sync: MapCheck-XP-Codes == Mover-XP-Codes') do
   MapCheck::MOVER_XP_CODES.sort == Mover::XP_CODES.keys.sort
+end
+
+# F1: die XP-Tabelle muss EXAKT 0..45 sein (0 = ROUTE_END, sonst RGSS
+# ROUTE_*-Konstanten). Früher stand hier '11'..'57' - ein
+# Regressionstest dagegen.
+XP_CODES_ERWARTET = {
+  '1' => 'move_down', '2' => 'move_left', '3' => 'move_right',
+  '4' => 'move_up', '5' => 'move_lower_left', '6' => 'move_lower_right',
+  '7' => 'move_upper_left', '8' => 'move_upper_right',
+  '9' => 'move_random', '10' => 'move_toward_player',
+  '11' => 'move_away_from_player', '12' => 'move_forward',
+  '13' => 'move_backward', '14' => 'jump', '15' => 'wait',
+  '16' => 'turn_down', '17' => 'turn_left', '18' => 'turn_right',
+  '19' => 'turn_up', '20' => 'turn_90d_right', '21' => 'turn_90d_left',
+  '22' => 'turn_180d', '23' => 'turn_90d_right_or_left',
+  '24' => 'turn_random', '25' => 'turn_toward_player',
+  '26' => 'turn_away_from_player', '27' => 'switch_on',
+  '28' => 'switch_off', '29' => 'change_speed', '30' => 'change_freq',
+  '31' => 'move_animation_on', '32' => 'move_animation_off',
+  '33' => 'stop_animation_on', '34' => 'stop_animation_off',
+  '35' => 'direction_fix_on', '36' => 'direction_fix_off',
+  '37' => 'through_on', '38' => 'through_off',
+  '39' => 'transparent_on', '40' => 'transparent_off',
+  '41' => 'change_graphic', '42' => 'change_opacity',
+  '43' => 'change_blending', '44' => 'play_se',
+  '45' => 'script',
+}.freeze
+check('XP-Codes exakt 0..45 wie RPG Maker XP (0 = Ende-Marker)') do
+  Mover::XP_CODES == XP_CODES_ERWARTET.merge('0' => '')
+end
+check('play_se/transparent in SCHRITTE + CODE_PFLICHT gespiegelt') do
+  Mover::SCHRITTE.include?('play_se') &&
+    MapCheck::MOVER_SCHRITTE.include?('play_se') &&
+    MapCheck::MOVER_CODE_PFLICHT.include?('play_se') &&
+    Mover::SCHRITTE.include?('transparent_on') &&
+    MapCheck::MOVER_SCHRITTE.include?('transparent_on')
 end
 check('leere Schrittliste -> nil') { Mover.start('Wanda', []).nil? }
 check('unbekanntes Ziel -> nil') { Mover.start('gibt_es_nicht', %w[up]).nil? }
@@ -274,7 +322,9 @@ check('ohne wait: Route läuft trotzdem nebenher') { Mover.active? }
 Mover.reset!
 
 puts '== Mover: XP-Vokabular (19h.2, Game_Character 2) =='
-check('normalize: XP-Code 14 = move_up') { Mover.normalize('14') == 'move_up' }
+check('normalize: XP-Code 4 = move_up, 14 = jump (F1-Tabelle)') do
+  Mover.normalize('4') == 'move_up' && Mover.normalize('14') == 'jump'
+end
 check('normalize: deutsche Aliase (19g) bleiben gültig') do
   Mover.normalize('up') == 'move_up' && Mover.normalize('warte') == 'wait' &&
     Mover.normalize('spieler_nah') == 'move_toward_player'
@@ -284,7 +334,7 @@ check('normalize: XP-Name bleibt') { Mover.normalize('move_down') == 'move_down'
 Mover.reset!
 xp = FakeNpc.new('Xaver', 0.0, 0.0, 1.0)
 Game.npcs = [xp]
-Mover.start('Xaver', ['14'])   # XP-Code 14 = move_up
+Mover.start('Xaver', ['4'])    # XP-Code 4 = move_up (F1-Tabelle)
 Mover.update(1.0)
 check('XP-Code als Schritt läuft (move_up: z = -1)') { nah?(xp.position, [0.0, -1.0]) }
 
@@ -458,6 +508,36 @@ check("switch_on ohne 'code' -> Warnung") do
                                   'steps' => %w[switch_on] }]), **OPTS),
        "brauchen 'code'", MapCheck::WARNUNG)
 end
+check("play_se ohne 'code' -> Warnung (F1)") do
+  hat?(MapCheck.scan(karte_mit([{ 'cmd' => 'move_route', 'target' => 'x',
+                                  'steps' => %w[play_se] }]), **OPTS),
+       "brauchen 'code'", MapCheck::WARNUNG)
+end
+check("XP-Code 44 ohne 'code' -> Warnung, Code wird normalisiert (F1)") do
+  hat?(MapCheck.scan(karte_mit([{ 'cmd' => 'move_route', 'target' => 'x',
+                                  'steps' => %w[44] }]), **OPTS),
+       "brauchen 'code'", MapCheck::WARNUNG)
+end
+check("XP-Code 0 (Ende-Marker) gilt als bekannt") do
+  MapCheck.scan(karte_mit([{ 'cmd' => 'move_route', 'target' => 'x',
+                             'steps' => %w[0 move_up] }]), **OPTS).empty?
+end
+
+# F1: Code '44' führt play_se aus und spielt den SE-Namen aus 'code'.
+Game.npcs = [FakeNpc.new('Wanda', 0.0, 0.0, 1.0)]
+se_route = Mover.start('Wanda', ['44'], code: 'klick')
+Mover.update(0.5)
+check("XP-Code 44 -> play_se mit SE-Namen 'klick'") do
+  se_route && Rune::Sound::CALLS.last == ['klick', 1.0]
+end
+se_leer = Mover.start('Wanda', ['44'], code: '')
+Mover.update(0.5)   # Warnung ausführen (Schritt startet)
+Mover.update(0.5)   # Route schliessen (index >= size)
+check('play_se ohne Namen -> Warnung statt Absturz') do
+  se_leer && !Mover.running?(se_leer)
+end
+Game.npcs = []
+
 check('CMD_TYPES zählen 26') { MapCheck::CMD_TYPES.size == 26 }
 
 puts '== Mover: Block-Zonen (19k.3) =='

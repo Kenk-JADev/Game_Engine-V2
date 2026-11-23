@@ -357,6 +357,44 @@ if ARGV[0] == '--playtest-child'
             Party.item_count('heiltrank') == 1 && !Battle.active? && !Rune::Simulation.paused
         end
         check('kein Fehler im Laufzeit-Log') { Rune::Log.errors.empty? }
+        # F4: fehlende Zielkarte im Spielstand = Laden abbrechen, NICHT die
+        # Projekt-Hartkarte still laden - und der geladene Zustand bleibt.
+        check('F4: kaputter Spielstand (Karte fehlt) bricht ab, Zustand bleibt') do
+          roh = JSON.parse(File.read(slot_path, encoding: 'UTF-8'))
+          map_vorher = Game.map_id
+          roh['map'] = 'gibt_es_nicht'
+          File.write(slot_path, JSON.generate(roh))
+          GameState.set_switch('f4_probe', true)
+          abbruch = Game.load_game(1) == false &&
+                    Game.map_id == map_vorher &&
+                    GameState.switch('f4_probe')   # Restore lief nicht
+          # Slot für spätere Läufe wieder herstellen.
+          roh['map'] = PLAYTEST_MAP
+          File.write(slot_path, JSON.generate(roh))
+          abbruch
+        end
+        # F5: offenes Menü und offener Text frieren die Simulation ein.
+        check('F5: Menü pausiert die Simulation und schliesst wieder') do
+          Game.instance_variable_set(:@intro, nil)
+          Rune::Input.keys = [:escape]
+          runtime_frame          # Esc öffnet das Menü
+          offen = Game.instance_variable_get(:@menu) && Rune::Simulation.paused
+          Rune::Input.keys = []
+          runtime_frame          # Tastenkante frei
+          Rune::Input.keys = [:escape]
+          runtime_frame          # Esc schliesst das Menü
+          offen && !Game.instance_variable_get(:@menu) && !Rune::Simulation.paused
+        end
+        check('F5: offener Text pausiert die Simulation') do
+          Game.interpreter.start([{ 'cmd' => 'text', 'lines' => ['F5-Testzeile'] }])
+          runtime_frame
+          offen = Game.interpreter.busy_text? && Rune::Simulation.paused
+          Game.interpreter.instance_variable_set(:@message, nil)   # Text schliesst
+          runtime_frame
+          offen && !Game.interpreter.running? && !Rune::Simulation.paused
+        end
+        # Hinweis: der F4-Test meldet absichtlich einen Fehler - die
+        # Log-Prüfung stand bereits VOR den F4/F5-Checks.
       ensure
         Rune::Input.keys = []
         Battle.abort!

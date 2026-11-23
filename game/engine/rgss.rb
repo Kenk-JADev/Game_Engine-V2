@@ -281,6 +281,12 @@ module RGSS
     def gain_gold(amount) = Party.add_gold(amount.to_i)
     def lose_gold(amount) = Party.add_gold(-amount.to_i)
 
+    # F3 (XP Game_Party): actors = Heldenliste, steps = Schrittzähler,
+    # item_number = XP-Name für item_count.
+    def actors = Party.actors
+    def steps = Party.steps
+    def item_number(name) = Party.item_count(name.to_s)
+
     def items = Party.items
     def item_count(name) = Party.item_count(name.to_s)
     def gain_item(name, count = 1) = Party.add_item(name.to_s, count.to_i)
@@ -293,12 +299,16 @@ module RGSS
 
   # ---------------------------------------------------------- $game_player
 
-  # Der Spieler in 3D: x/z sind Weltkoordinaten, y die Höhe. moveto setzt
-  # ihn auf den Boden (Game.gy) wie der teleport-Befehl.
+  # Der Spieler in 3D: Rune3D-x/z sind Weltkoordinaten. ACHTUNG (F6): die
+  # XP-Leser y/z sind die KARTENEBENE (x/z-Kachel), nicht die Welthöhe -
+  # $game_player.y == $game_player.z == Welt-z, die Höhe steckt nur in
+  # position[1]. moveto setzt ihn auf den Boden (Game.gy) wie der
+  # teleport-Befehl.
   class GamePlayer
     def position = Rune::Player.position
     def x = Rune::Player.position[0]
-    def y = Rune::Player.position[1]
+    # F6: XP-y ist die Kartenebene (= Welt-z), NICHT die Welthöhe!
+    def y = Rune::Player.position[2]
     def z = Rune::Player.position[2]
 
     def moveto(x, z, yaw: Math::PI)
@@ -328,7 +338,66 @@ module RGSS
 
     def increase_steps
       @steps = (@steps || 0) + 1
+      # F3 (XP): der Parteizähler zählt mit - so fragt $game_party.steps ab.
+      Party.increase_steps if defined?(Party) && !move_route_forcing
     end
+
+    # --- F6: fehlende XP-Methoden (No-Ops, damit XP-Skripte nicht crashen) ---
+
+    # Blickrichtung "gerade ausrichten" (XP: Sprite-Offset zurücksetzen).
+    def straighten; end
+
+    def turn_down
+      self.direction = 2
+    end
+
+    def turn_left
+      self.direction = 4
+    end
+
+    def turn_right
+      self.direction = 6
+    end
+
+    def turn_up
+      self.direction = 8
+    end
+
+    # Transparenz/Through als reine Zustands-Flags (Rune3D zeichnet den
+    # Spieler unverändert; der Zustand existiert für XP-Skripte).
+    def transparent
+      @transparent ||= false
+    end
+
+    def transparent=(value)
+      @transparent = !!value
+    end
+
+    def through
+      @through ||= false
+    end
+
+    def through=(value)
+      @through = !!value
+    end
+
+    # Eine erzwungene Spieler-Route läuft über Mover (nicht über die
+    # Editor-Route des Spielers). Immer ein echtes true/false (XP erwartet
+    # einen Booleschen Wert, auch ohne geladenes Mover).
+    def move_route_forcing
+      return false unless defined?(Mover) && Mover.respond_to?(:routes)
+
+      Mover.routes.any?(&:spieler)
+    end
+
+    # Kamera-/Sprite-Zentrierung gibt es in 3D automatisch.
+    def moving? = false
+
+    def center(_x = nil, _y = nil); end
+
+    # XP ruft Game_Player#update aus der Szenen-Schleife - hier treibt
+    # die Engine die Physik, dieser Haken bleibt leer.
+    def update; end
 
     # XP Game_Player#make_encounter_count (022): rand(n) + rand(n) + 1 mit
     # n = encounter_step der Karte (Default 30) - im Mittel n Schritte bis
@@ -396,20 +465,27 @@ module RGSS
     def map_id = Game.map_id
     def display_name = (Game.map || {})['name']
 
-    def events = Game.respond_to?(:events) ? Game.events : []
-    def npcs   = Game.respond_to?(:npcs) ? Game.npcs : []
+    # F3 (XP-Gleichheit): $game_map.events ist ein Hash {id => Event}.
+    # Rune3D hält Events als Array in Game.events - hier als ID-Hash view.
+    def events
+      liste = Game.respond_to?(:events) ? Game.events : []
+      liste.each_with_object({}) { |e, h| h[e.id] = e }
+    end
+
+    def npcs = Game.respond_to?(:npcs) ? Game.npcs : []
 
     # Event per ID oder Name (RGSS nutzt IDs; Rune3D erlaubt beides).
     # Achtung: Event-IDs sind optional (Default 0) - deshalb NICHT per
     # to_i über einen Strang vergleichen, sonst trifft die Namenssuche
     # ('Wache'.to_i == 0) jedes Event mit Default-ID.
     def event(id_or_name)
+      werte = events.values
       if id_or_name.is_a?(Integer)
-        events.find { |e| e.id.to_i == id_or_name }
+        werte.find { |e| e.id.to_i == id_or_name }
       else
         name = id_or_name.to_s
-        events.find { |e| e.name == name } ||
-          events.find { |e| e.id.to_i == name.to_i && !name.empty? }
+        werte.find { |e| e.name == name } ||
+          werte.find { |e| e.id.to_i == name.to_i && !name.empty? }
       end
     end
 
@@ -700,6 +776,23 @@ module Input
     return 8 if Rune::Input.down?(:up)
 
     0
+  end
+
+  # F3 (XP Input.dir8): Ziffernblock-Werte 1,2,3,4,6,7,8,9; 0 = keine.
+  # Diagonalen entstehen aus zwei gedrückten Achsen (wie RGSS selbst:
+  # 1=runter-links, 3=runter-rechts, 7=rauf-links, 9=rauf-rechts).
+  def self.dir8
+    runter = Rune::Input.down?(:down)
+    rauf = Rune::Input.down?(:up)
+    links = Rune::Input.down?(:left)
+    rechts = Rune::Input.down?(:right)
+    return 0 unless runter || rauf || links || rechts
+    return 1 if runter && links
+    return 3 if runter && rechts
+    return 7 if rauf && links
+    return 9 if rauf && rechts
+
+    dir4
   end
 
   def self.tasten(button)

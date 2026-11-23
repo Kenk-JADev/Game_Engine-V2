@@ -199,6 +199,10 @@ module Database
   }
   def self.map(id) = @test_maps.fetch(id)
   def self.map_ids = @test_maps.keys
+  # F4: load_game prüft die Zielkarte über playtest_map (nil = fehlt) -
+  # die Attrappe muss dieselbe Schnittstelle anbieten wie die echte
+  # Database, sonst bricht der Spielstand-Lauftest ab.
+  def self.playtest_map(id) = @test_maps[id]
   def self.system = { 'start' => { 'map' => 'start' } }
 end
 

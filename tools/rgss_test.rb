@@ -172,9 +172,40 @@ check('$game_party.use_item akzeptiert auch das Schlüsselwort target') do
   $game_party.use_item('heiltrank', target: 'arik') && Party.find('arik').hp == 50 && Party.find('mira').hp == 45
 end
 
+# F3 (XP Game_Party): actors/steps/item_number.
+check('$game_party.actors = Party.actors') { $game_party.actors.equal?(Party.actors) }
+check('$game_party.item_number = item_count (XP-Name)') do
+  $game_party.item_number('heiltrank') == $game_party.item_count('heiltrank')
+end
+check('F3: $game_player.increase_steps zählt auch $game_party.steps') do
+  vorher = $game_party.steps
+  $game_player.increase_steps
+  $game_party.steps == vorher + 1 && $game_player.steps.positive?
+end
+
 $game_player.moveto(2.0, 3.0)
 check('moveto setzt Spieler + Bodenhöhe') { Rune::Player.position == [2.0, 0.2, 3.0] }
 check('x/z-Leser') { $game_player.x == 2.0 && $game_player.z == 3.0 }
+
+# F6 (XP-Koordinaten): $game_player.y ist die Kartenebene (= Welt-z),
+# nicht die Welthöhe (position[1] = 0.2 steckt nur in position).
+check('F6: $game_player.y = Kartenebene, nicht Höhe') do
+  $game_player.y == 3.0 && $game_player.z == 3.0 && $game_player.position[1] == 0.2
+end
+check('F6: fehlende XP-Methoden laufen (straighten/turn/transparent/center)') do
+  p = $game_player
+  p.straighten
+  p.turn_up
+  p.turn_left
+  p.turn_right
+  p.turn_down
+  p.center(1.0, 2.0)
+  p.update
+  p.transparent = true
+  t = p.transparent
+  p.transparent = false
+  (p.direction == 2) && t && (p.moving? == false) && (p.move_route_forcing == false)
+end
 
 check('$game_map: Karte/Name/Masse') do
   $game_map.map_id == 'welt01' && $game_map.display_name == 'Testkarte' &&
@@ -182,6 +213,10 @@ check('$game_map: Karte/Name/Masse') do
 end
 check('$game_map.event per ID und Name') do
   $game_map.event(7)&.name == 'Wache' && $game_map.event('Wache')&.id == 7
+end
+check('F3: $game_map.events = Hash {id => Event} wie XP') do
+  h = $game_map.events
+  h.is_a?(Hash) && h[7]&.name == 'Wache'
 end
 
 puts '== $game_screen (Wetter) =='
@@ -213,6 +248,16 @@ Rune::Input.down = [:up]
 check('dir4: oben = 8') { Input.dir4 == 8 }
 Rune::Input.down = []
 check('dir4: keine Richtung = 0') { Input.dir4.zero? }
+
+# F3 (XP Input.dir8): Ziffernblock 1..9, 0 = keine.
+Rune::Input.down = %i[left up]
+check('dir8: rauf-links = 7') { Input.dir8 == 7 }
+Rune::Input.down = %i[down right]
+check('dir8: runter-rechts = 3') { Input.dir8 == 3 }
+Rune::Input.down = [:down]
+check('dir8: nur unten = 2') { Input.dir8 == 2 }
+Rune::Input.down = []
+check('dir8: keine Richtung = 0') { Input.dir8.zero? }
 check('press? nutzt down?') do
   Rune::Input.down = [:down]
   Input.press?(Input::DOWN)

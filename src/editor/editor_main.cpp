@@ -7248,7 +7248,7 @@ void ev_cmd_visibility() {
         SetWindowTextW(g_ev.lbl_val1, L"Tempo m/s");
         SetWindowTextW(g_ev.lbl_val2, L"Warten (1/0)");
         // Etappe 19h.2: Schritte = XP-Vokabular (move_up, turn_left, wait,
-        // XP-Codes 11..57, deutsche Kurznamen gehen weiter) - mover.rb-Kopf.
+        // XP-Codes 1..45, deutsche Kurznamen gehen weiter) - mover.rb-Kopf.
         SetWindowTextW(g_ev.lbl_val3, L"Parameter");
         SetWindowTextW(g_ev.lbl_text, L"Schritte pro Zeile; Ziel: NPC-Name/spieler; an = wiederholen.");
     }

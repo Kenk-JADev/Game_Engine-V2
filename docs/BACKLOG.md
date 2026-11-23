@@ -21,6 +21,17 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 ---
 
 ## Offen
+### [Engine] Esc-Menü kann über offenem Textfenster aufgehen — offen (F5-Nebenbefund)
+- Symptom: Während ein Event-Text offen ist, öffnet Esc das Pause-Menü über
+  dem Text; nach Schliessen des Menüs liegt das Textfenster wieder darunter.
+  (Die Physik-Pause von F5 greift in beiden Fällen korrekt.)
+- Vermutung/Analyse: `Game.update` prüft Esc/`@menu` VOR
+  `@interpreter.update(dt)` - es fehlt eine `busy_text?/busy_choices?`-Sperre
+  fürs Öffnen. XP lässt `Scene_Menu` bei `message_window_showing` nicht zu.
+- Betroffene Stellen: `game/main.rb` (Menü-Esc-Block vor interpreter.update),
+  `game/engine/interpreter.rb`.
+- Gefunden in: Runde 11 (Fix-Batch F5, 2026-11-23).
+
 ### [Tests/Editor] RGSS-Editor, Kartenmarker und Windows-Anzeige interaktiv prüfen — offen (Live)
 - Die neuen F11-Zeilen-/Scroll-/DPI-Funktionen, NPC-/Event-Doppelklicks,
   das Rechtsklick-Startmenü und die EXE-Beschreibung sind implementiert.

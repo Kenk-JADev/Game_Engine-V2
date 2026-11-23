@@ -81,7 +81,7 @@ module MapCheck
   # Etappe 19g, XP-Vokabular seit 19h.2: muss zu Mover::SCHRITTE passen
   # (move_route_test prüft das - mapcheck.rb wird früher geladen als
   # mover.rb, deshalb keine Referenz). Deutsche Kurznamen (up/down/...) und
-  # XP-Codes ('11'..'57') versteht der Mover zusätzlich als Aliase.
+  # XP-Codes ('1'..'45') versteht der Mover zusätzlich als Aliase.
   MOVER_SCHRITTE = %w[
     move_down move_left move_right move_up
     move_lower_left move_lower_right move_upper_left move_upper_right
@@ -94,12 +94,13 @@ module MapCheck
     move_animation_on move_animation_off
     stop_animation_on stop_animation_off
     direction_fix_on direction_fix_off through_on through_off
+    transparent_on transparent_off
     always_on_top_on always_on_top_off
-    change_graphic change_opacity change_blending script
+    change_graphic change_opacity change_blending play_se script
   ].freeze
 
   # Deutsche Kurznamen aus Etappe 19g (Mover::ALIASE) bleiben gültig; die
-  # XP-Befehls-Codes ('11'..'57') versteht der Mover ebenfalls - beide
+  # XP-Befehls-Codes ('1'..'45') versteht der Mover ebenfalls - beide
   # Alias-Formen sind hier bewusst nicht doppelt gepflegt: Der Sync der
   # Hauptliste wird in move_route_test.rb gegen Mover::SCHRITTE assertet,
   # die Aliase gegen Mover::ALIASES.keys.
@@ -109,14 +110,18 @@ module MapCheck
   ].freeze
 
   # XP-Befehls-Codes (Mover::XP_CODES) - eigene Liste aus demselben Grund.
+  # Reihenfolge wie in RPG Maker XP/MV: 0 = Ende-Marker, 1..11 Bewegung,
+  # 12..15 vor/zurück/Sprung/Warte, 16..26 Drehen, 27..38 Schalter/Tempo/
+  # Animation/Through, 39..40 Transparent, 41..43 Grafik/Deckkraft/Blendung,
+  # 44 SE, 45 Script.
   MOVER_XP_CODES = %w[
-    11 12 13 14 15 16 17 18 19 20 21 22 23 24 25
-    26 27 28 29 30 31 32 33 34 35 36 37 38 39 40
-    41 42 43 44 45 46 47 48 49 50 51 52 53 57
+    0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15
+    16 17 18 19 20 21 22 23 24 25 26 27 28 29 30
+    31 32 33 34 35 36 37 38 39 40 41 42 43 44 45
   ].freeze
 
   # Schritte, die den Route-Parameter 'code' brauchen (19h.2).
-  MOVER_CODE_PFLICHT = %w[switch_on switch_off change_speed script].freeze
+  MOVER_CODE_PFLICHT = %w[switch_on switch_off change_speed play_se script].freeze
   SPEICHER_SLOTS = (1..3).freeze
 
   module_function
@@ -254,6 +259,18 @@ module MapCheck
 
     def zahl?(v) = v.is_a?(Numeric)
     def text?(v) = v.is_a?(String) && !v.strip.empty?
+
+    # F1: numerischen XP-Code ('27') auf den Schritt-Namen (switch_on)
+    # auflösen - über Mover::XP_CODES, die beim Karten-Scan geladen ist.
+    # In reinen MapCheck-Attrappen (ohne Mover) bleibt der Rohtext.
+    def xp_schritt(s)
+      name = s.to_s
+      if defined?(Mover) && Mover.const_defined?(:XP_CODES)
+        Mover::XP_CODES[name] || name
+      else
+        name
+      end
+    end
 
     # Optionaler y-Versatz ist bei null/fehlendem Feld wie 0 zu behandeln.
     def pruefe_y(objekt, wo)
@@ -833,9 +850,11 @@ module MapCheck
           melde(WARNUNG, w, "'speed' muss eine Zahl > 0 sein")
         end
         # 19h.2: Schritte mit Parameter brauchen 'code' (Schaltername,
-        # Tempo, Ruby-Code) - sonst läuft der Schritt ins Leere.
+        # Tempo, SE-Name, Ruby-Code) - sonst läuft der Schritt ins Leere.
+        # F1: numerische XP-Codes vorher auflösen ('27' == switch_on),
+        # sonst feuert die Warnung nur bei Namenstext.
         if steps.is_a?(Array) &&
-           steps.any? { |s| MOVER_CODE_PFLICHT.include?(s.to_s) } &&
+           steps.any? { |s| MOVER_CODE_PFLICHT.include?(xp_schritt(s)) } &&
            !text?(c['code'])
           melde(WARNUNG, w, "Schritte #{MOVER_CODE_PFLICHT.join('/')} brauchen 'code'")
         end

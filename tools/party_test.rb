@@ -120,18 +120,23 @@ check('heal_all voll') { arik.hp == arik.max_hp && mira.mp == mira.max_mp }
 Party.add_item('kristall', 2)
 Party.add_gold(77)
 arik.hp = 33
+Party.increase_steps   # F3: XP Game_Party#steps wird mitgespeichert
+Party.increase_steps
 snap = Party.snapshot
 check('Snapshot hat Gold/Items/Helden') do
   snap['gold'] == 77 && snap['items']['kristall'] == 2 &&
     snap['actors'].first['hp'] == 33
 end
+check('Snapshot hat Steps (F3)') { snap['steps'] == Party.steps && snap['steps'] >= 2 }
 Party.setup(Database.database)   # frische Party (voll HP, Start-Inventar)
 check('frische Party unabhängig') { Party.gold == 120 && arik.hp != 33 || true }
+check('Frische Setup nullt Steps') { Party.steps == 0 }
 Party.restore!(snap)
 check('Restore: Gold') { Party.gold == 77 }
 check('Restore: Items') { Party.item_count('kristall') == 2 }
 check('Restore: HP') { Party.find('arik').hp == 33 }
 check('Restore: Stufen aus Datenbank') { Party.find('arik').level == 1 }
+check('Restore: Steps (F3, alte Spielstände ohne key = 0)') { Party.steps == snap['steps'] }
 
 # --- 6) Interpreter-Befehle -------------------------------------------------
 GameState.reset!({})

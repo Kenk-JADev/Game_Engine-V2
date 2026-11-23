@@ -99,9 +99,13 @@ class Event
 
   # Aktive Seite neu bestimmen (höchster Index mit erfüllten Bedingungen).
   # Seitenwechsel setzt 'fired' zurück, damit touch/auto erneut feuern.
+  # F2 (XP-Gleichheit): erfüllt KEINE Seite ihre Bedingungen, ist das Event
+  # inaktiv (page_index nil) - es löst nichts aus und hat keine Kommandos.
   def refresh_page!
-    idx = @pages.rindex { |p| Event.conditions_met?(p.conditions, self) } || 0
-    @fired = false if idx != @page_idx
+    idx = @pages.rindex { |p| Event.conditions_met?(p.conditions, self) }
+    return if idx == @page_idx
+
+    @fired = false
     @page_idx = idx
   end
 
@@ -109,21 +113,37 @@ class Event
     @page_idx
   end
 
+  # true, solange mindestens eine Seite ihre Bedingungen erfüllt.
+  def active?
+    !@page_idx.nil?
+  end
+
+  # Aktive Seite oder nil (Event inaktiv).
   def active_page
-    @pages[@page_idx] || @pages.last
+    @page_idx.nil? ? nil : @pages[@page_idx]
   end
 
   def trigger
-    active_page.trigger
+    active_page&.trigger
   end
 
   def commands
-    active_page.commands
+    active_page&.commands || []
   end
 
   # Liegt der Spieler in Reichweite (nur XZ, Höhe egal)?
   def near?(px, pz)
     (px - @x) * (px - @x) + (pz - @z) * (pz - @z) <= @radius * @radius
+  end
+
+  # F6 (XP-Gleichheit): die XP-Koordinate y ist die Kartenebene (= Welt-z
+  # in Rune3D), nicht die Höhe - so lesen/schreiben XP-Skripte Event#y.
+  def y
+    @z
+  end
+
+  def y=(value)
+    @z = value.to_f
   end
 
   # Ein im Platzier-Editor erzeugtes Schild ist ein normales Event mit
@@ -154,6 +174,9 @@ class Event
 
   # Startet die Kommandos der aktiven Seite im (freien) Interpreter.
   def manual_fire(interp)
+    # F2: ein inaktives Event (keine erfüllte Seite) startet nichts.
+    return false unless active?
+
     interp.start(commands, self)
   end
 
