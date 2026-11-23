@@ -19,6 +19,39 @@ Rune3D.exe  ──┬── src/core    Win32-Fenster, Input, Log, Zeit
                             main.rb        dein Spiel (F5 = neu laden)
 ```
 
+## Hauptfenster und Karten (19w)
+
+Das separate `RuneEditor.exe` hat eine gruppierte Werkzeugleiste mit
+vorhandenen Funktionen, links die scrollbare Palette **über** dem Kartenbaum,
+in der Mitte den bestehenden D3D11-Viewport und rechts den scrollbaren
+Objektinspektor. Eine waagerechte Trennleiste verändert die Höhe der beiden
+linken Bereiche; die gleichen Schritte sind über **Ansicht** ohne Maus
+erreichbar. Die Wunschhöhe ist Sitzungszustand, keine gespeicherte Einstellung.
+Bei schmaler Fläche wird der Eigenschaftenknopf mit **F2** beschriftet.
+
+`main_layout.h` berechnet die Spalten und Kontrollrechtecke in DPI-skalierten
+Einheiten und klemmt kleine Fenster ohne Spaltenüberschneidung. Palette und
+Inspektor sind native Kinder (`main_panel_win.h`); `WM_COMMAND`, `WM_NOTIFY`
+und `WM_CONTEXTMENU` werden an das Hauptfenster durchgereicht. Scrollen,
+Tab-Fokus und DPI-Wechsel verändern die Position der Controls, nicht ihren
+Inhalt. Toolbar-Icons und Schrift werden beim DPI-Wechsel neu erzeugt. Der
+Renderer erhält die Viewport-**Clientgröße**; frühe Größenmeldungen vor der
+Rendererinitialisierung dürfen noch kein Bild rendern.
+
+`main_tree_win.h` erkennt die Wurzel auch ohne Karten und selektiert das
+Rechtsklickziel. Für Eigenschaften, Neu und Kontextmenü wartet eine
+vorgemerkte Aktion auf den bestehenden Auswahl-/Speicherabgleich. Auswahl,
+Projektepoch und Dateiname werden geprüft; nach dem Kontextmenü zusätzlich
+die Kartenepoch. Ein Abbruch oder verändertes Ziel verwirft die Aktion.
+Kartenformulare, Konfliktprüfung, Datentreue und Datei-Transaktionen bleiben
+die bestehenden Pfade; Objekt-Undo erfasst weiterhin keine anderen Datentypen.
+
+Automatisiert: `tools/json_test.cpp` prüft portable Geometrie und Zielschutz;
+unter Windows kommen unsichtbare Win32-Panels, Nachrichten und TreeView
+hinzu. Lokal wurden die Windows-Quellen nur crosskompiliert, nicht ausgeführt.
+Weder diese Tests noch WARP ersetzen den noch offenen interaktiven
+[Windows-/DPI-/Hardwaretest](WINDOWS_MAIN_LIVE_TEST.md).
+
 ## Frame-Ablauf
 
 1. `Window::pump()` — Nachrichten, Tasten, Mausdelta
@@ -726,7 +759,7 @@ Wichtig: `CreateIconIndirect` verlangt eine ECHT monochrome Maske
 Farb-Bitmap als Maske ist undefiniert und brachte die Titelzeichnung
 zum Absturz (0xc0000005 im Live-Test gefunden und behoben).
 
-**Mindestfenster-Grösse:** WM_GETMINMAXINFO im Editor begrenzt das
+**Mindestfenster-Grösse (historisch 18a, in 19w ersetzt):** WM_GETMINMAXINFO im Editor begrenzte das
 Fenster auf mindestens 1024x640 - das Layout bricht beim Verkleinern
 nicht mehr.
 
@@ -774,7 +807,7 @@ Drift). `Weather.load_map(map)` aktiviert es beim Kartenstart,
 `weather`-Objekt ins Karten-JSON (live per WM_COMMAND getestet, siehe
 log/live17h.ps1).
 
-**Editor-Werkzeugleiste:** Toolbar unter dem Menü mit 8 Buttons
+**Editor-Werkzeugleiste (historisch 17h; aktueller Stand siehe 19w):** Toolbar unter dem Menü mit 8 Buttons
 (Speichern, Karten-Eigenschaften, Events, Scripts, Materialbase,
 Datenbank, Sound-Test, Playtest). Die Icons zeichnet der Editor zur
 Laufzeit in GDI (16x16, keine Ressourcen-Datei - wie Texturen/Sounds
@@ -2692,6 +2725,8 @@ Fenster (Drossel-Falle aus 18j gilt nicht für echtes Maximieren).
 
 ## Kartenbaum wie RPG Maker XP (Etappe 18k)
 
+Historischer Stand; seit 19w liegt der Kartenbaum unter der Palette.
+
 Der Editor bekommt links oben eine **Kartenliste als Baum** (TreeView) -
 das zentrale Navigationselement des RPG Maker XP:
 
@@ -2782,6 +2817,8 @@ programmatisches Resize + Viewport-Log, kein [ERROR]), 16 headless
 Tests grün, Build ohne Warnungen.
 
 ## Responsives Editor-Layout (Etappe 18i)
+
+Historische Maße und Live-Ergebnisse; das aktuelle Layout ist in 19w beschrieben.
 
 Problem (aus Screenshot gemeldet): Bei kleinem Fenster schoben sich
 „Undo (Strg+Z)" / „Redo (Strg+Y)" in die Statusleiste, die Labels waren

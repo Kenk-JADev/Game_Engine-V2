@@ -26,6 +26,9 @@
 #include "editor/event_layout.h"
 #include "editor/event_view_win.h"
 #include "editor/listbox_win.h"
+#include "editor/main_layout.h"
+#include "editor/main_panel_win.h"
+#include "editor/main_tree_win.h"
 #include "editor/map_document.h"
 #include "editor/map_props_form.h"
 #include "editor/number_format.h"
@@ -1927,6 +1930,131 @@ bool f6_test_controls(const std::string& source, std::vector<F6TestControl>& con
     return controls.size() >= 50;
 }
 
+bool main_test_inside(rune::editor::MainRect child, rune::editor::MainRect parent) {
+    return child.w >= 0 && child.h >= 0 && child.x >= parent.x && child.y >= parent.y &&
+        static_cast<std::int64_t>(child.x) + child.w <= static_cast<std::int64_t>(parent.x) + parent.w &&
+        static_cast<std::int64_t>(child.y) + child.h <= static_cast<std::int64_t>(parent.y) + parent.h;
+}
+
+void main_layout_tests() {
+    using namespace rune::editor;
+    std::printf("== Hauptfenster: Palette, Kartenbaum und 3D-Ansicht ==\n");
+    const MainWindowLayout normal = main_window_layout(1440, 880, 28, 24, 180, 96);
+    check("Palette über Trennleiste und Kartenbaum", normal.palette.y == 28 &&
+          normal.palette.y + normal.palette.h == normal.splitter.y &&
+          normal.splitter.y + normal.splitter.h <= normal.maps_label.y &&
+          normal.maps_label.y + normal.maps_label.h <= normal.maps_tree.y &&
+          normal.maps_tree.y + normal.maps_tree.h <= normal.content_bottom);
+    check("3D-Ansicht zentral, Inspektor rechts und Status unten",
+          normal.viewport.x == normal.palette.w &&
+          normal.viewport.x + normal.viewport.w == normal.inspector.x &&
+          normal.inspector.x + normal.inspector.w == 1440 &&
+          normal.viewport.y + normal.viewport.h == 856 && normal.content_bottom == 856);
+    check("Kartenaktionen liegen vollständig neben der Überschrift",
+          main_test_inside(normal.maps_label, {0, 28, normal.palette.w, 828}) &&
+          main_test_inside(normal.maps_new, {0, 28, normal.palette.w, 828}) &&
+          main_test_inside(normal.maps_props, {0, 28, normal.palette.w, 828}) &&
+          normal.maps_label.x + normal.maps_label.w <= normal.maps_new.x &&
+          normal.maps_new.x + normal.maps_new.w <= normal.maps_props.x &&
+          normal.maps_props.x + normal.maps_props.w <= normal.palette.w);
+
+    const int larger = main_map_height_for_split(1024, 640, 28, 24, -500, 96);
+    const int smaller = main_map_height_for_split(1024, 640, 28, 24, 5000, 96);
+    const MainWindowLayout upper = main_window_layout(1024, 640, 28, 24, larger, 96);
+    const MainWindowLayout lower = main_window_layout(1024, 640, 28, 24, smaller, 96);
+    check("Splitter begrenzt beide Bereiche auch bei extremem Ziehen",
+          larger > smaller && upper.palette.h >= 140 && lower.map_height >= 90 &&
+          upper.maps_tree.h > 0 && lower.palette.h > 0);
+    check("Splitter-Treffer nur innerhalb der Leiste",
+          main_rect_contains(normal.splitter, normal.splitter.x + 1, normal.splitter.y + 1) &&
+          !main_rect_contains(normal.splitter, normal.splitter.x + normal.splitter.w, normal.splitter.y) &&
+          !main_rect_contains(normal.splitter, normal.splitter.x, normal.splitter.y - 1));
+    const MainWindowLayout squeezed = main_window_layout(800, 260, 28, 24, 320, 96);
+    const MainWindowLayout restored = main_window_layout(800, 800, 28, 24, 320, 96);
+    check("Verkleinern klemmt nur den Istwert, nicht den späteren Wunsch",
+          squeezed.map_height < 320 && restored.map_height == 320);
+    check("Kartenaktion nach Abbruch oder anderer Auswahl verworfen",
+          main_map_action_matches(2, 2, 2) && !main_map_action_matches(2, 2, 1) &&
+          !main_map_action_matches(2, 1, 1) && main_map_action_matches(-1, -1, 1) &&
+          !main_map_action_matches(-1, 0, 0));
+    check("Kartenaktion wartet auf Rückfrage und vollständigen Auswahlabgleich",
+          main_map_action_can_post(true, false, false, false, false) &&
+          !main_map_action_can_post(false, false, false, false, false) &&
+          !main_map_action_can_post(true, true, false, false, false) &&
+          !main_map_action_can_post(true, false, true, false, false) &&
+          !main_map_action_can_post(true, false, false, true, false) &&
+          !main_map_action_can_post(true, false, false, false, true));
+    check("Kartenaktion bleibt an Projekt und Dateinamen gebunden",
+          main_map_action_target_matches(1, 1, 1, 8, 8, "wald.json", "wald.json") &&
+          !main_map_action_target_matches(1, 1, 1, 8, 9, "wald.json", "wald.json") &&
+          !main_map_action_target_matches(1, 1, 1, 8, 8, "wald.json", "dorf.json") &&
+          !main_map_action_target_matches(1, 1, 1, 8, 8, "", "") &&
+          main_map_action_target_matches(-1, -1, 1, 8, 8, "", "dorf.json"));
+    const MainWindowLayout narrow = main_window_layout(1024, 768, 56, 48, 180, 192);
+    check("schmaler Monitor erhält Kartenüberschrift und kompakten F2-Knopf",
+          narrow.maps_label.w >= main_layout_scale(52, 192) &&
+          narrow.maps_new.w == main_layout_scale(42, 192) &&
+          narrow.maps_props.w > 0 && main_map_props_compact(narrow.maps_props.w, 192) &&
+          !main_map_props_compact(normal.maps_props.w, 96));
+
+    const MainWindowLayout twice = main_window_layout(2880, 1760, 56, 48, 180, 192);
+    check("200 Prozent skalieren Spalten, Splitter und Kartenbereich",
+          twice.palette.w == 2 * normal.palette.w && twice.splitter.h == 2 * normal.splitter.h &&
+          twice.map_height == 2 * normal.map_height && twice.maps_tree.h == 2 * normal.maps_tree.h);
+    check("DPI-Fallback und extreme Eingaben begrenzt",
+          main_layout_dpi(0) == 96 && main_layout_dpi(UINT_MAX) == 768 &&
+          main_window_layout(-1, -1, INT_MAX, INT_MAX, INT_MAX, UINT_MAX).viewport.w == 0);
+
+    bool windows_fit = true, palette_fit = true, inspector_fit = true;
+    const unsigned dpis[] = {96, 120, 144, 192};
+    const int widths[] = {320, 700, 1024, 1440};
+    const int heights[] = {180, 360, 640, 880};
+    for (unsigned dpi : dpis) for (int w : widths) for (int h : heights) {
+        const int px_w = main_layout_scale(w, dpi), px_h = main_layout_scale(h, dpi);
+        const int tb = main_layout_scale(28, dpi), sb = main_layout_scale(24, dpi);
+        const MainWindowLayout x = main_window_layout(px_w, px_h, tb, sb, 180, dpi);
+        const MainRect client{0, 0, px_w, px_h};
+        windows_fit = windows_fit && main_test_inside(x.palette, client) &&
+            main_test_inside(x.splitter, client) && main_test_inside(x.maps_label, client) &&
+            main_test_inside(x.maps_new, client) && main_test_inside(x.maps_props, client) &&
+            main_test_inside(x.maps_tree, client) && main_test_inside(x.viewport, client) &&
+            main_test_inside(x.inspector, client) &&
+            x.palette.x + x.palette.w <= x.viewport.x &&
+            x.viewport.x + x.viewport.w <= x.inspector.x &&
+            x.palette.y + x.palette.h <= x.splitter.y &&
+            x.splitter.y + x.splitter.h <= x.maps_tree.y &&
+            x.maps_tree.y + x.maps_tree.h <= x.content_bottom;
+    }
+    for (unsigned dpi : dpis) for (int h : {0, 400, 800}) {
+        const int width = main_layout_scale(214, dpi);
+        const int content = std::max(main_layout_scale(h, dpi), main_palette_min_height(dpi));
+        const MainPaletteLayout p = main_palette_layout(width, main_layout_scale(h, dpi), dpi);
+        const MainRect bounds{0, 0, width, content};
+        palette_fit = palette_fit && main_test_inside(p.tools, bounds) &&
+            main_test_inside(p.prefabs, bounds) && main_test_inside(p.prefab_list, p.prefabs) &&
+            main_test_inside(p.actions, bounds) && main_test_inside(p.rotate, p.actions) &&
+            main_test_inside(p.remove, p.actions) && main_test_inside(p.duplicate, p.actions) &&
+            main_test_inside(p.undo, bounds) && main_test_inside(p.redo, bounds) &&
+            p.tools.y + p.tools.h <= p.prefabs.y && p.prefabs.y + p.prefabs.h <= p.actions.y &&
+            p.actions.y + p.actions.h <= p.undo.y;
+        for (const MainRect& radio : p.radios) palette_fit = palette_fit && main_test_inside(radio, p.tools);
+        const int iw = main_layout_scale(258, dpi);
+        const int ih = std::max(main_layout_scale(h, dpi), main_inspector_min_height(dpi));
+        const MainInspectorLayout q = main_inspector_layout(iw, main_layout_scale(h, dpi), dpi);
+        const MainRect ib{0, 0, iw, ih};
+        inspector_fit = inspector_fit && main_test_inside(q.objects_label, ib) &&
+            main_test_inside(q.objects, ib) && main_test_inside(q.props, ib) &&
+            q.objects.y + q.objects.h <= q.props.y && main_test_inside(q.apply, q.props) &&
+            main_test_inside(q.hint, q.props);
+        for (int i = 0; i < 4; ++i)
+            inspector_fit = inspector_fit && main_test_inside(q.labels[i], q.props) &&
+                main_test_inside(q.fields[i], q.props);
+    }
+    check("kleine und große Fenster bei 100 bis 200 Prozent ohne Spaltenüberschneidung", windows_fit);
+    check("Palette bleibt im scrollbaren Inhalt ohne Überlappung", palette_fit);
+    check("Inspektor bleibt im scrollbaren Inhalt ohne Überlappung", inspector_fit);
+}
+
 void event_layout_tests(const std::string& root) {
     using namespace rune::editor;
     std::printf("== F6: Arbeitsfläche, DPI und Scrollen ==\n");
@@ -2209,6 +2337,198 @@ void event_view_windows_tests() {
           after_move.right <= current_work.right && after_move.bottom <= current_work.bottom);
     check("F6-Testfenster zerstört", DestroyWindow(window) != 0);
     event_view_dispose(view);
+    UnregisterClassW(cls, instance);
+}
+
+static int main_test_last_command = 0, main_test_last_code = 0;
+static HWND main_test_last_sender = nullptr, main_test_context_sender = nullptr;
+static LPARAM main_test_context_position = 0;
+static bool main_test_veto_selection = false;
+
+LRESULT CALLBACK main_test_owner_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
+    if (msg == WM_COMMAND) {
+        main_test_last_command = LOWORD(wp);
+        main_test_last_code = HIWORD(wp);
+        main_test_last_sender = reinterpret_cast<HWND>(lp);
+        return 42;
+    }
+    if (msg == WM_CONTEXTMENU) {
+        main_test_context_sender = reinterpret_cast<HWND>(wp);
+        main_test_context_position = lp;
+        return 33;
+    }
+    if (msg == WM_NOTIFY && lp) {
+        const NMHDR* nm = reinterpret_cast<const NMHDR*>(lp);
+        if (nm->idFrom == 9201 && (nm->code == TVN_SELCHANGINGW || nm->code == TVN_SELCHANGINGA))
+            return main_test_veto_selection ? TRUE : FALSE;
+        if (nm->idFrom == 9999) return 77;
+        return 0;
+    }
+    return DefWindowProcW(h, msg, wp, lp);
+}
+
+void main_test_panel_place(rune::editor::MainPanel& panel, int width, int height) {
+    const auto layout = rune::editor::main_palette_layout(width, height, panel.dpi);
+    rune::editor::main_panel_place(panel, GetDlgItem(panel.window, 9101), layout.prefab_list);
+    rune::editor::main_panel_place(panel, GetDlgItem(panel.window, 9102), layout.undo);
+}
+
+HTREEITEM main_test_tree_add(HWND tree, HTREEITEM parent, const wchar_t* text, LPARAM index) {
+    TVINSERTSTRUCTW insert{};
+    insert.hParent = parent;
+    insert.hInsertAfter = TVI_LAST;
+    insert.item.mask = TVIF_TEXT | TVIF_PARAM;
+    insert.item.pszText = const_cast<wchar_t*>(text);
+    insert.item.lParam = index;
+    return reinterpret_cast<HTREEITEM>(SendMessageW(tree, TVM_INSERTITEMW, 0,
+                                                    reinterpret_cast<LPARAM>(&insert)));
+}
+
+bool main_test_tree_point(HWND tree, HTREEITEM item, POINT& point) {
+    RECT rect{};
+    std::memcpy(&rect, &item, sizeof(item));
+    if (!SendMessageW(tree, TVM_GETITEMRECT, TRUE, reinterpret_cast<LPARAM>(&rect))) return false;
+    point.x = (rect.left + rect.right) / 2;
+    point.y = (rect.top + rect.bottom) / 2;
+    return ClientToScreen(tree, &point) != 0;
+}
+
+// Echte, unsichtbare Win32-Panels und TreeView-Nachrichten. Sie prüfen keine
+// Darstellung, Hardware-GPU oder tatsächliche Mehrmonitor-DPI-Interaktion.
+void main_window_windows_tests() {
+    using namespace rune::editor;
+    std::printf("== Windows: Hauptfenster-Panels und Kartenbaum (unsichtbar) ==\n");
+    INITCOMMONCONTROLSEX common{};
+    common.dwSize = sizeof(common);
+    common.dwICC = ICC_TREEVIEW_CLASSES;
+    const bool common_ready = InitCommonControlsEx(&common) != 0;
+    check("TreeView-Klasse initialisiert", common_ready);
+    if (!common_ready) return;
+    const HINSTANCE instance = GetModuleHandleW(nullptr);
+    const wchar_t* cls = L"RuneMainLayoutTest";
+    WNDCLASSW wc{};
+    wc.hInstance = instance;
+    wc.lpfnWndProc = main_test_owner_proc;
+    wc.lpszClassName = cls;
+    const ATOM registered = RegisterClassW(&wc);
+    check("Testfensterklasse registriert", registered != 0);
+    if (!registered) return;
+    HWND owner = CreateWindowExW(0, cls, L"Hauptfenster-Test", WS_OVERLAPPED,
+                                 0, 0, 700, 600, nullptr, nullptr, instance, nullptr);
+    check("unsichtbares Testfenster angelegt", owner != nullptr);
+    if (!owner) { UnregisterClassW(cls, instance); return; }
+
+    MainPanel panel;
+    const bool created = main_panel_create(panel, owner, 9100, 96,
+                                           main_palette_min_height, main_test_panel_place);
+    check("scrollbare Palette angelegt", created);
+    if (!created) { DestroyWindow(owner); UnregisterClassW(cls, instance); return; }
+    HWND list = CreateWindowExW(0, L"ListBox", nullptr,
+        WS_CHILD | WS_VISIBLE | WS_VSCROLL | LBS_NOTIFY | LBS_HASSTRINGS,
+        0, 0, 10, 10, panel.window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(9101)), instance, nullptr);
+    HWND edit = CreateWindowExW(0, L"Edit", L"Entwurf Ä", WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP,
+        0, 0, 10, 10, panel.window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(9102)), instance, nullptr);
+    check("native Panel-Controls angelegt", list && edit);
+    if (!list || !edit) { DestroyWindow(owner); UnregisterClassW(cls, instance); return; }
+    SendMessageW(list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Baum"));
+    SendMessageW(list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Haus"));
+    SendMessageW(list, LB_SETCURSEL, 1, 0);
+    SendMessageW(edit, EM_SETSEL, 1, 4);
+    panel.ready = true;
+    SetWindowPos(panel.window, nullptr, 0, 0, 230, 160, SWP_NOZORDER | SWP_NOACTIVATE);
+    main_panel_update(panel);
+    int width = 0, height = 0;
+    main_panel_size(panel.window, width, height);
+    check("kleiner Ausschnitt erhält vertikalen Überhang", panel.content_height > height && panel.y == 0);
+    check("Scrollleiste erscheint bei Überhang", width < 230);
+    main_panel_scroll_to(panel, INT_MAX);
+    check("Scrollen erreicht das begrenzte Ende", panel.y == event_scroll_max(panel.content_height, height) &&
+          f6_test_visible_rect(panel.window, edit));
+    wchar_t text[64]{};
+    DWORD begin = 0, end = 0;
+    GetWindowTextW(edit, text, static_cast<int>(sizeof(text) / sizeof(text[0])));
+    SendMessageW(edit, EM_GETSEL, reinterpret_cast<WPARAM>(&begin), reinterpret_cast<LPARAM>(&end));
+    check("Scrollen erhält Entwurf, Text- und Prefab-Auswahl", std::wcscmp(text, L"Entwurf Ä") == 0 &&
+          begin == 1 && end == 4 && SendMessageW(list, LB_GETCURSEL, 0, 0) == 1);
+    main_panel_scroll_to(panel, 0);
+    main_panel_reveal(panel, edit);
+    check("Fokus-Nachführung erreicht verborgenes Feld", panel.y > 0 && f6_test_visible_rect(panel.window, edit));
+    const int old_y = panel.y;
+    SendMessageW(panel.window, WM_VSCROLL, SB_LINEUP, reinterpret_cast<LPARAM>(list));
+    check("Scrollmeldung eines Kindes verändert nicht den Panel-Ausschnitt", panel.y == old_y);
+    main_test_last_command = 0;
+    const LRESULT command_result = SendMessageW(panel.window, WM_COMMAND,
+        MAKEWPARAM(9102, BN_CLICKED), reinterpret_cast<LPARAM>(edit));
+    NMHDR notify{};
+    notify.hwndFrom = list;
+    notify.idFrom = 9999;
+    const LRESULT notify_result = SendMessageW(panel.window, WM_NOTIFY, 9999, reinterpret_cast<LPARAM>(&notify));
+    check("Befehle und Benachrichtigungen unverändert weitergereicht", command_result == 42 &&
+          main_test_last_command == 9102 && main_test_last_code == BN_CLICKED &&
+          main_test_last_sender == edit && notify_result == 77);
+    const LPARAM position = MAKELPARAM(24, 35);
+    const LRESULT context_result = SendMessageW(panel.window, WM_CONTEXTMENU,
+                                               reinterpret_cast<WPARAM>(list), position);
+    check("Kontextmenü-Nachricht unverändert weitergereicht", context_result == 33 &&
+          main_test_context_sender == list && main_test_context_position == position);
+
+    main_panel_scroll_to(panel, 0);
+    SendMessageW(panel.window, WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(-60)), 0);
+    const bool half_step = panel.wheel == -60 && panel.y == 0;
+    SendMessageW(panel.window, WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(-60)), 0);
+    UINT lines = 3;
+    if (!SystemParametersInfoW(SPI_GETWHEELSCROLLLINES, 0, &lines, 0)) lines = 3;
+    check("Mausrad sammelt Teilschritte", half_step && panel.wheel == 0 && (!lines || panel.y > 0));
+    main_panel_set_dpi(panel, 144);
+    main_panel_update(panel);
+    main_panel_size(panel.window, width, height);
+    const MainPaletteLayout scaled = main_palette_layout(width, panel.content_height, 144);
+    RECT actual{};
+    GetWindowRect(edit, &actual);
+    MapWindowPoints(nullptr, panel.window, reinterpret_cast<POINT*>(&actual), 2);
+    check("DPI-Wechsel skaliert Position und Größe des Inhalts", panel.dpi == 144 &&
+          actual.top == scaled.undo.y - panel.y && actual.bottom - actual.top == scaled.undo.h);
+    GetWindowTextW(edit, text, static_cast<int>(sizeof(text) / sizeof(text[0])));
+    check("DPI-Wechsel erhält Text und Listenauswahl", std::wcscmp(text, L"Entwurf Ä") == 0 &&
+          SendMessageW(list, LB_GETCURSEL, 0, 0) == 1);
+    SetWindowPos(panel.window, nullptr, 0, 0, 400, 1200, SWP_NOZORDER | SWP_NOACTIVATE);
+    main_panel_update(panel);
+    main_panel_size(panel.window, width, height);
+    check("größerer Ausschnitt begrenzt Scrollposition zurück", panel.y == 0 &&
+          f6_test_visible_rect(panel.window, edit));
+    check("Scrollleiste verschwindet ohne Überhang", width == 400 && panel.content_height == height);
+
+    HWND tree = CreateWindowExW(0, WC_TREEVIEWW, nullptr,
+        WS_CHILD | WS_VISIBLE | WS_BORDER | TVS_HASBUTTONS | TVS_HASLINES | TVS_LINESATROOT,
+        250, 0, 230, 200, owner, reinterpret_cast<HMENU>(static_cast<INT_PTR>(9201)), instance, nullptr);
+    check("Kartenbaum angelegt", tree != nullptr);
+    if (tree) {
+        SendMessageW(tree, CCM_SETUNICODEFORMAT, TRUE, 0);
+        const HTREEITEM root = main_test_tree_add(tree, TVI_ROOT, L"Projekt", 0);
+        SendMessageW(tree, TVM_SELECTITEM, TVGN_CARET, reinterpret_cast<LPARAM>(root));
+        check("leere Projektwurzel wird nicht für Karte 0 gehalten", root && main_tree_selected_index(tree) == -1);
+        const HTREEITEM a = main_test_tree_add(tree, root, L"Erste", 0);
+        const HTREEITEM b = main_test_tree_add(tree, root, L"Zweite", 1);
+        SendMessageW(tree, TVM_EXPAND, TVE_EXPAND, reinterpret_cast<LPARAM>(root));
+        SendMessageW(tree, TVM_SELECTITEM, TVGN_CARET, reinterpret_cast<LPARAM>(a));
+        POINT pa{}, pb{};
+        const bool positions = a && b && main_test_tree_point(tree, a, pa) && main_test_tree_point(tree, b, pb);
+        bool changed = false;
+        const bool clicked = positions && main_tree_select_at(tree, pb, changed);
+        check("Rechtsklick wählt die tatsächlich getroffene Karte", clicked && changed &&
+              main_tree_selected_index(tree) == 1);
+        main_test_veto_selection = true;
+        changed = false;
+        const bool vetoed = positions && !main_tree_select_at(tree, pa, changed);
+        main_test_veto_selection = false;
+        check("abgelehnte Auswahl bleibt unverändert", vetoed && !changed && main_tree_selected_index(tree) == 1);
+        POINT blank{220, 190};
+        ClientToScreen(tree, &blank);
+        changed = false;
+        check("Klick auf freie Fläche ändert keine Kartenauswahl",
+              !main_tree_select_at(tree, blank, changed) && !changed && main_tree_selected_index(tree) == 1);
+    }
+    check("Testfenster und Panel zerstört", DestroyWindow(owner) != 0 && panel.window == nullptr);
     UnregisterClassW(cls, instance);
 }
 
@@ -2573,8 +2893,10 @@ int main(int argc, char** argv) {
     map_document_tests(wurzel);
     object_props_tests(wurzel);
     event_form_tests(wurzel);
+    main_layout_tests();
     event_layout_tests(wurzel);
 #ifdef _WIN32
+    main_window_windows_tests();
     event_view_windows_tests();
     atomic_file_windows_tests();
 #endif

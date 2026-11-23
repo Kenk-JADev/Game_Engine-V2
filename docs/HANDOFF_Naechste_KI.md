@@ -1,6 +1,6 @@
-# Handoff für die nächste KI - Rune3D, Stand nach Etappe 19v
+# Handoff für die nächste KI - Rune3D, Stand nach Implementierung 19w
 
-**Stand:** Etappe 19v — Kampfzustand und gezielte Items; aktuellen Git-/CI-Status vor Weiterarbeit prüfen
+**Stand:** 19w Hauptfenster & Karten implementiert; interaktiver Windows-/DPI-/Hardwaretest offen. Aktuellen Git-/CI-Status vor Weiterarbeit prüfen.
 **Projekt:** `C:/Users/jusagu/Desktop/Engine` — Windows-Only 3D-RPG-Engine (C++20/Win32/D3D11 + echtes CRuby 3.4.11), Editor = eigenes Programm `RuneEditor.exe`.
 
 ## 0. Auftrag und Fortschritt (RPG-Maker-XP-Überholung)
@@ -43,6 +43,7 @@ Der User beauftragte eine Überarbeitung von Engine und Editor **im Stil von RPG
 | 19t | `c7b2f5d` (CI-Grün Run 45178315607) | Ingame-Editor entfernt, Szenenbau für Spiel/Launcher getrennt und echte Ruby-Laufzeit kopflos geprüft |
 | 19u | `bc237b3` (CI-Grün Run 45183821663) | Externer F4-Start mit gewählter Karte, Unicode-/Fehler-/F5-/Projektwechseltests |
 | 19v | `9441733` + `b2f34df` (CI-Grün Run 45192650255) | Party-/Kampfzustand, gezielte Items, Esc, Game Over und Abbruch/F5; Ruby-Regressionen und Live-Anleitung |
+| 19w | aktueller Commit; CI-Status prüfen | Hauptfenster: Palette über Kartenbaum, Splitter/Scrollen/DPI und geschützte Kartenaktionen; Windows-Live-Test offen |
 | 19o.6 | `326925b` (CI-Grün Run 44640705908) | F6: Monitor-Arbeitsfläche, DPI-skalierter Scroll-Ausschnitt, Fokus-Nachführung und portable/unsichtbare Windows-Tests |
 | 19o.5 | `4635c80` (CI-Grün Run 44628573472) | F6: datentreue Event-/Seiten-/Befehlsformulare, Pending-Schutz, bedarfsweise Altseitenmigration und C++/Ruby-Event-Brücke |
 | 19o.4 | `38ed554` (CI-Grün Run 44614856669) | Objektformular datentreu, Pending-/Drag-Schutz und sicheres Kartenladen; portable Tests |
@@ -88,8 +89,23 @@ Datei-Save-/Load nach Kampf-Item in einer temporären Kopie. Lokal Ruby 3.0.6:
 bestehende Warnungen. Die Laufzeit benutzt native Attrappen: kein interaktiver
 Kampf-/Hardware-GPU-Nachweis. Anleitung: `docs/WINDOWS_BATTLE_LIVE_TEST.md`.
 
-**Userwunsch:** Rune3D funktional ausbauen; RuneEditor bleibt das einzige
-vollständige Editorprogramm. Weitere konkrete Funktionen sind nicht priorisiert.
+Stand 19w: Der User hat das XP-inspirierte Design freigegeben und ausdrücklich
+**Hauptfenster & Karten** als ersten Bereich gewählt. Palette über Kartenbaum,
+Splitter, scrollbare Palette/Inspektor, vorhandene 3D-Arbeitsfläche und
+Karten-Schnellaktionen sind implementiert. Der Splitter wird nicht persistent
+gespeichert. Kartenaktionen warten auf den Auswahlabgleich und prüfen
+Projekt/Datei; die bestehenden Datenrückfragen und Speicherwege bleiben.
+Lokal: Ruby 3.4.13 28 OK/0 Fehler/1 Windows-EXE-Skip, MapCheck sauber;
+portable JSON-Suite 686/0, Terrain 51/0, Material 25/0, JSON-Brücke 14/0 und
+Event-Brücke 17/0; Repo-Hygiene 0 Fehler/2 bestehende Warnungen. Win64-
+Hauptfenster und Windows-Test wurden crosskompiliert und der Test verlinkt;
+das ist keine Windows-Ausführung. Aktuellen CI-Status prüfen. Interaktive
+Windows-/DPI-/Hardwareprüfung ist offen: `docs/WINDOWS_MAIN_LIVE_TEST.md`.
+
+**Userwunsch:** Das eigenständige RuneEditor-Programm funktional und optisch
+an den gezeigten XP-Screenshots orientieren, ohne den 3D-Viewport oder
+Datentreue aufzugeben. Weitere Dialogbereiche (u. a. F6/F9/F11) sind nicht
+Teil von 19w; nächste Priorität mit dem User abstimmen.
 
 **Nacharbeit 19a (notiert für die Historie):** Der erste CI-Lauf hat genau das getan,
 wofür er da ist: `build.ps1 -Test` übergab g++ Argumente mit angehängtem Komma
@@ -169,9 +185,9 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
   **Module:** `Database` (JSON laden, `database.json` seit 17g), `GameState`, `Party`+Actor (17g), `Event`/`Npc`/`Interpreter`, `Scripts` (Sandbox `Scripts::Context` mit Helfern say/switch/variable/teleport/sound/effect/item/gold/heal/weather…), `Pick`, `Effects`+`Weather` (Partikel via `Rune::Gfx.box`), `Textures`/`Sounds` (prozedural), `Project`, `Launcher`, `MapCheck` (19a: Karten-Daten
   prüfen, dieselben Regeln wie `issues_scan_map` im Editor; `Game.enter_map` meldet harte
   Fehler an `Issues`).
-- **Editor:** `src/editor/editor_main.cpp` (eine große Datei, ~9400 Zeilen). Eigene Fensterklassen: `RuneEditorMain`, Viewport `RuneEditorView`, Dialoge `RuneEditorDlg`/`DlgNew` (Karten), `RuneEditorEventDlg`, `ScriptDlg`, `MatDlg`, `DbDlg`, `SoundDlg` — **alle modeless**.
-- Editor-IDs: Menü 100–115 (115=TILESET; 112=SOUNDTEST, 113=PLAYTEST, 114=PROJECT), Haupt-Controls 3001–3033 (Toolbar 3025, Boden-malen-Radio 3026, Kartenbaum 3027, Höhe-malen-Radio 3029, Objektformular-Hinweis 3033), Karten-Dialog 4100–4115 (Wetter 4113/4114, **Block-Zonen 4115**), Projekt-Dialog 4201–4205, Tileset-Dialog 4301–4319 (Liste 4301, Kachelgröße 4303, Übernehmen 4304, Speichern 4305, Erzeugen 4306, Farben/Muster/Name 4307–4310, Schließen 4311, Vorschau 4312, Splat-Flächen X/Z/B/T 4313–4316, Hinzufügen 4317, Entfernen 4318, Flächen-Liste 4319), Event 5001–5056, Script 6001–6016, Material 7001–7013, DB 8001–8055, Sound 8101–8107. F-Tasten: F1 Hilfe, F2 Eigenschaften, F3 Materialbase, F4 Playtest, F6 Events, **F7 Tileset**, F8 Sound-Test, F9 Datenbank, F11 Scripts.
-- **Toolbar:** 8 Buttons, Icons prozedural per GDI gezeichnet (`make_toolbar_icon` + Namensraum `ico`), senden Menü-IDs via `WM_COMMAND`. F-Tasten: F1 Hilfe, F2 Eigenschaften, F3 Materialbase, F4 Playtest, F6 Events, F8 Sound-Test, F9 Datenbank, F11 Scripts.
+- **Editor:** `src/editor/editor_main.cpp` (eine große Datei, knapp 10000 Zeilen). Eigene Fensterklassen: `RuneEditorMain`, Viewport `RuneEditorView`, Dialoge `RuneEditorDlg`/`DlgNew` (Karten), `RuneEditorEventDlg`, `ScriptDlg`, `MatDlg`, `DbDlg`, `SoundDlg` — **alle modeless**.
+- Editor-IDs: Menü 100–120 (115=TILESET, 117=PLACEMENT, 118–120=Aufteilung; 112=SOUNDTEST, 113=PLAYTEST, 114=PROJECT), Haupt-Controls 3001–3037 (Toolbar 3025, Boden-malen-Radio 3026, Kartenbaum 3027, Höhe-malen-Radio 3029, Objektformular-Hinweis 3033, Palette/Inspektor 3034/3035, Karten-Neu/Eigenschaften 3036/3037), Karten-Dialog 4100–4115 (Wetter 4113/4114, **Block-Zonen 4115**), Projekt-Dialog 4201–4205, Tileset-Dialog 4301–4319 (Liste 4301, Kachelgröße 4303, Übernehmen 4304, Speichern 4305, Erzeugen 4306, Farben/Muster/Name 4307–4310, Schließen 4311, Vorschau 4312, Splat-Flächen X/Z/B/T 4313–4316, Hinzufügen 4317, Entfernen 4318, Flächen-Liste 4319), Event 5001–5056, Script 6001–6016, Material 7001–7013, DB 8001–8055, Sound 8101–8107. F-Tasten: F1 Hilfe, F2 Eigenschaften, F3 Materialbase, F4 Playtest, F6 Events, **F7 Tileset**, F8 Sound-Test, F9 Datenbank, F11 Scripts.
+- **Toolbar:** 12 Buttons in Gruppen, Icons prozedural und DPI-skaliert per GDI gezeichnet (`make_toolbar_icon` + Namensraum `ico`), senden Menü-IDs via `WM_COMMAND`. F-Tasten: F1 Hilfe, F2 Eigenschaften, F3 Materialbase, F4 Playtest, F6 Events, F8 Sound-Test, F9 Datenbank, F11 Scripts.
 - **Playtest:** Menü/Toolbar F4 → `save_map()` + `CreateProcessW` mit exakt zitiertem Projekt und ausgewählter Karten-ID sowie expliziter Engine-Wurzel als CWD; EXE in `build/` oder neben `game/`. `--map` verlangt `--project`; ohne Karte bleibt die Projekt-Startkarte. Ungültige/nicht eindeutig lesbare explizite Karten zeigen einen Fehler. F5 liest die Karte erneut, Titel/Projektwahl löscht die Vorgabe. Der Prozess ist keine Sandbox und kein Dateischnappschuss (Backlog).
 - **Wetter:** Karten-JSON `"weather":{"type":"kein|regen|schnee","intensity":1.0}`; `Weather.load_map/update/draw`; Interpreter `{"cmd":"weather",...}`; Editor-Dialog F2 schreibt das Feld.
 - **Link-Falle (`fclose`-Crash):** In `build.ps1` muss `-lucrtbase` **vor** `-lx64-ucrt-ruby340` stehen, sonst leitet der Linker Editor-stdio auf Ruby-CRT-Exports um → Zugriffsverletzung. Kommentar dort steht, nicht „aufräumen".
@@ -234,7 +250,7 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
   wiederholte Kopien. `atlas` bleibt als Projekttextur benutzbar; fehlende
   Basiszellen fallen auf Einzeltextur zurück. Die doppelte UV-Skalierung
   ist korrigiert; `terrain.tile` ist im Splatpfad weiterhin wirkungslos.
-  Das spätere XP-Design bleibt ausdrücklich im Backlog, nicht vorziehen.
+  Das XP-Design ist inzwischen freigegeben; 19w behandelt das Hauptfenster.
   Grenzen für andere Projektdateien und grafische Live-Tests: Backlog.
 - **Material-/Projekttexturen (19q):** Editor und Ruby halten geprüfte
   Projektverzeichnis-Handles, begrenzen JSON/RGBA/WIC, lehnen Reparsepunkte
@@ -335,7 +351,7 @@ mit GCC 16.2 warnungsfrei, `tex_import_test.rb` läuft dort dank `--strict` wirk
 - **Splat-Grenzen:** kein Weich-Übergang (Quad = eine Textur), Kacheldichte folgt der Terrain-Auflösung, `terrain.tile` wirkt im Splat-Pfad nicht. `Rune::Gfx.terrain_splats(base, liste)` nimmt String- UND Symbol-Schlüssel (JSON.parse liefert Strings — lange gesucht, siehe 18d).
 - **Mal-Werkzeug (18e):** Radio „Boden malen" (3026); Linksklick malt, Shift+Klick radiert (MK_SHIFT = 0x4, **nicht 0x8**), +/- ändert die Pinselgröße (1–64 m), Pinseltextur folgt der Tileset-Auswahl. Viewport ist ein KIND-Fenster: im Live-Test per `FindWindowExW(main, 0, 'RuneEditorView', $null)` finden, WM_LBUTTONDOWN direkt dorthin senden. `splat_edit()` ist der gemeinsame Kern (auch der Tileset-Dialog nutzt ihn).
 - **Problem-Backlog (18h):** Der Editor scannt die Karte nach jedem Laden (`issues_scan_map()`, Abschnitt vor `load_map` — steht VOR der Event-Editor-Sektion und nutzt deshalb die eigene Liste `ISSUE_CMD_TYPES`, nicht `EV_TYPES`!). Funde: unbekannte Prefab-Typen/Material-Overrides/Trigger/Befehle, kaputte Seiten + Bedingungen, fehlende then/else/options/branches/lines. Probleme-Dialog F10 (ID_MENU_PROBLEMS 116, IDs 5301–5304, Klasse `RuneEditorProblemsDlg`). Spiel: `game/engine/issues.rb` (`Issues.report(area, msg, severity:)` → Log + `log/issues.json`, `Issues.clear!` in `Game.setup`). Verdrahtet: Interpreter, Scripts, Party, Weather, Textures. Tests laden ohne boot.rb → dort `require 'issues'` ergänzen.
-- **Responsives Layout (18i):** `layout_children()` rechnet die Spaltenbreiten aus der Fensterbreite: `left_w = clamp(W*16/100, 214, 280)`, `right_w = clamp(W*19/100, 258, 340)`, Viewport bekommt den Rest. Die Werkzeugliste bekommt den freien Platz, der Bedienblock (7 Zeilen à 30 px, 6 px Lücke = 246 px) wird **darunter** verteilt — vorher standen feste y-Werte im Code, dadurch schoben sich Undo/Redo bei 1024×640 in die Statusleiste und bei großen Fenstern blieb unten alles leer. Undo/Redo jetzt **volle Spaltenbreite** (alte 96 px schnitten „(Strg+Z)/(Strg+Y)" ab). Statusleisten-Felder proportional (`W/8, W/9, W/6, -1`). Neu: `renderer_resize()` schreibt bei Änderung `Viewport: W x H` ins Log. Live-Test: `log/live18i.ps1` (18 Checks). Lambda-Falle: `move_child(HWND h, …)` kollidiert mit `int h` des Aufrufers → Parameter heißen `hwnd`/`ht`.
+- **Hauptfenster (19w):** `main_layout.h` berechnet DPI-skalierte Spalten, Palette über Kartenbaum und Splitter; `main_panel_win.h` führt Kinder-Nachrichten und Fokus in scrollbaren Panels. Der Viewport bleibt 3D und nutzt seine Clientgröße für die Swapchain. Rechtsklick wählt den getroffenen Baumknoten; Aktionen warten auf den abgesicherten Auswahlabgleich. Maus-/DPI-/GPU-Live-Test steht aus (`docs/WINDOWS_MAIN_LIVE_TEST.md`). Der frühere 18i-Livetest belegt nur das damalige Layout.
 - **Resize-Fakten (belegt):** Swapchain/Viewport folgen korrekt (`ResizeBuffers` fehlerfrei, Screenshot-Größe == Viewport-Größe), auch das Spiel behandelt `WM_SIZE` (`window.cpp` → `consume_resize()` → `renderer.resize()`). Bei Resize-Verdacht zürst `log/editor.log` auf `Viewport: …` prüfen. F12-Screenshot geht **nur** per echtem Tastendruck (`[EdClick]::Key(0x7B)`) — `PostMessage(WM_KEYDOWN)` wirkt nicht, weil `handle_shortcuts` `GetAsyncKeyState` fragt.
 - **Event-Seiten (18g):** Events haben `pages` (Liste aus `{conditions, trigger, commands}`); die Seite mit dem **höchsten Index** mit erfüllten Bedingungen gewinnt (Seite 0 = Standard, leere Bedingungen = immer). Bedingungen: `switch` {name,value} und `variable` {name,op,value} (UND-verknüpft). `Event.refresh_page!` läuft in main.rb vor den Trigger-Schleifen; **Seitenwechsel setzt `fired` zurück** (touch/auto feuern erneut). Alte Karten ohne `pages` → implizite Seite 0; seit 19o.5 wird erst bei Bedarf migriert und Top-Level-trigger/commands bleiben als Altdaten erhalten. Editor-IDs: Seitenliste 5046, Neue Seite 5047, Seite löschen 5048, Seite übernehmen 5049, Bedingungsfelder 5050–5054. Der Trigger-ComboBox (5015) sitzt jetzt in der Gruppenbox „Seite". Tests: `tools/event_pages_test.rb` (44 Checks), `log/live18g.ps1`.
 - **Event-Editor (18f):** 20 Befehlstypen mit Kategorie-Präfixen (Enum EvType ersetzt magische Indizes!), `choices` (Wahlmöglichkeiten mit Zweigen als „Wenn [x]:"-Kopfzeilen), `toggle_switch`, `move_player`, `weather`, `save_game`/`load_game`, Trigger `parallel`. Neue Tests: `tools/event18f_test.rb` (23 Checks, Mock-Muster wie event_test.rb). **Live-Test-Falle:** Strg+S wird bei Fokus im F6-Fenster nicht vom Hauptfenster verarbeitet. Zum Speichern das Hauptfenster fokussieren oder F6 schließen; seit 19o.5 werden offene F6-Eingaben vorher geklärt. `load_game` im Interpreter baut die Karte neu auf und ersetzt den laufenden Interpreter (dokumentiert).

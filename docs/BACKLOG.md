@@ -21,6 +21,27 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 ---
 
 ## Offen
+### [Tests/Editor] Hauptfenster und Karten auf Windows interaktiv prüfen — offen (Live)
+- Symptom/Status: Die 19w-Oberfläche mit Palette über Kartenbaum, Splitter,
+  scrollbarem Inspektor, Toolbar und gezielten Kartenaktionen ist implementiert,
+  aber noch nicht auf einem sichtbaren Windows-Desktop bedient worden.
+- Vermutung/Analyse: Portable Geometrietests, Win32-Crosskompilierung und
+  unsichtbare Controls können Fokus, Rendering, Monitordrehung/DPI, Tooltips
+  und tatsächliche Rückfrage-/Mausabläufe auf Hardware nicht abschließend belegen.
+- Betroffene Stellen: `src/editor/editor_main.cpp`, `main_layout.h`,
+  `main_panel_win.h`, `main_tree_win.h`, `tools/json_test.cpp`,
+  `docs/WINDOWS_MAIN_LIVE_TEST.md`. Schritte und Ergebnisse auf Zielrechner
+  dokumentieren; eine Anleitung oder WARP ist kein bestandener Live-Test.
+- Gefunden in: Etappe 19w (2026-11-19).
+
+### [Editor] Hauptfenster-Aufteilung wird nicht gespeichert — offen (Bedienung)
+- Symptom: Nach einem Neustart steht die Trennleiste wieder auf der
+  Standardhöhe statt auf der zuletzt gewählten Position.
+- Vermutung/Analyse: `wanted_map_height` ist nur Sitzungszustand; es gibt
+  noch keine gespeicherten Benutzereinstellungen für das Hauptfenster.
+- Betroffene Stellen: `src/editor/editor_main.cpp`, `src/editor/main_layout.h`.
+- Gefunden in: Etappe 19w (2026-11-19).
+
 ### [Tests/Engine] Kampfsteuerung auf Windows interaktiv prüfen — offen (Live)
 - 19v ergänzt zielgerichtete Items, gemeinsame HP-/MP-Werte, Esc-Routing und
   saubere Kampf-/Game-Over-Übergänge. Die Ruby-Tests nutzen native Attrappen;
@@ -41,25 +62,20 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Betroffene Stellen: `src/main.cpp`, `src/core/window.cpp`, `game/main.rb`,
   `tools/encounter_test.rb`, `docs/WINDOWS_BATTLE_LIVE_TEST.md`.
 
-### [Editor] Oberfläche später am RPG Maker XP ausrichten — offen (Design)
-- Wunsch: Die vom User gezeigten XP-Screenshots dienen als Vorbild für eine
-  spätere Überarbeitung; jetzt noch keine Design-Umsetzung.
-- Hauptfenster: klassische Menü-/Werkzeugleisten, links eine gut erreichbare
-  Palette und darunter der Kartenbaum, daneben eine große Arbeitsfläche und
-  unten eine Statusleiste. Die Arbeitsfläche bleibt für Rune3D eine 3D-Ansicht.
-- Datenbank: Kategorien als Reiter, links die Eintragsliste, rechts das
-  zugehörige Formular; eindeutige OK-/Abbrechen-/Übernehmen-Aktionen.
-- Event-Editor: Seitenreiter, Bedingungen/Grafik/Bewegung/Optionen/Trigger
-  links und die übersichtliche, strukturierte Befehlsliste rechts.
-- Weitere Vorbilder: Projekt anlegen mit Ordner, Titel und Speicherort;
-  Materialverwaltung als Ordner-/Dateiliste; Script-Editor mit Scriptliste,
-  Zeilennummern und Syntaxhervorhebung; übersichtliche Grafik-Auswahl.
-- Bei der Umsetzung Bedienbarkeit bei kleinen Fenstern und hohen DPI sowie
-  bestehende 3D-Funktionen und Datentreue erhalten. Sichtbare Kategorien
-  dürfen nicht als funktionsfähig ausgegeben werden, wenn sie es nicht sind.
-- Betroffene Stellen: Editor-Hauptfenster und Projekt-, F6-, F9-, Material-,
-  Tileset- und Script-Dialoge in `src/editor/`.
-- Gefunden in: User-Screenshots des RPG Maker XP.
+### [Editor] Weitere Dialoge am RPG Maker XP orientieren — offen (Design)
+- Symptom/Wunsch: Das Hauptfenster wurde in 19w als erster Bereich am
+  Screenshot-Vorbild ausgerichtet. Projekt-, Datenbank-, Event-, Material-,
+  Tileset- und Script-Dialoge wurden in dieser Etappe nicht neugestaltet.
+- Vermutung/Analyse: Jeder Bereich braucht eine eigene Funktions-/Datenprüfung;
+  vorhandene 3D-Funktionen, kleine Fenster und hohe DPI bleiben zu beachten.
+- Ideen aus den Screenshots: Datenbank mit Kategorien, Liste und Formular;
+  F6 mit Seitenreiter und strukturierter Befehlsliste; Projekt mit Titel und
+  Speicherort; Material-/Grafikauswahl sowie Scriptliste mit Zeilennummern
+  und Syntaxhervorhebung. Nicht implementierte Inhalte nicht als fertig zeigen.
+- Betroffene Stellen: Projekt-, F6-, F9-, Material-, Tileset- und Script-
+  Dialoge in `src/editor/`.
+- Gefunden in: User-Screenshots des RPG Maker XP; Priorität für die nächste
+  Etappe noch mit dem User abstimmen.
 
 ### [Tests/Editor/Engine] Material-Dateischutz auf Windows breit prüfen — offen (Live)
 - 19q implementiert handle-relative Materialzugriffe, Größen-/UTF-8-/JSON-
@@ -311,6 +327,14 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Etappe 19a.
 
 ## Erledigt
+### [Editor] XP-orientiertes Hauptfenster und Karten — implementiert (19w)
+- Palette über Kartenbaum, verstellbare Trennleiste, skalierte Toolbar,
+  scrollbare Seitenleisten und zentrale 3D-Ansicht; bestehende Kartenaktionen
+  bleiben an Auswahl, Projekt und Datei gebunden. Der interaktive Windows-/
+  DPI-/Hardwaretest bleibt als eigener offener Eintrag oben bestehen.
+- Betroffene Stellen: `src/editor/editor_main.cpp`, `main_layout.h`,
+  `main_panel_win.h`, `main_tree_win.h`, `tools/json_test.cpp`.
+
 ### [Engine] Kampfzustand und gezielte Items — implementiert (19v)
 - HP/MP verwenden die Party als einzige Quelle; aktuelle und maximale Werte
   bleiben erhalten, KO bleibt KO. Ein aktiver Kampf kann nicht ersetzt werden.

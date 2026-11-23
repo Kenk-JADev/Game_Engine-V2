@@ -88,7 +88,9 @@ function Get-ObjList {
 }
 function Get-PropField([int]$id) {
     $h = (Get-Process RuneEditor).MainWindowHandle
-    $ed = [EdClick]::GetDlgItem($h, $id)
+    # Seit dem scrollbaren Hauptfenster liegen die Felder im Inspektor (3035).
+    $panel = [EdClick]::GetDlgItem($h, 3035)
+    $ed = if ($panel -ne [IntPtr]::Zero) { [EdClick]::GetDlgItem($panel, $id) } else { [EdClick]::GetDlgItem($h, $id) }
     $sb = New-Object System.Text.StringBuilder 64
     [EdClick]::SendMessageStr($ed, 0x000D, [IntPtr]64, $sb) | Out-Null   # WM_GETTEXT
     return $sb.ToString()

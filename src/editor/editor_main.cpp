@@ -57,6 +57,9 @@
 #include "editor/event_form.h"
 #include "editor/event_view_win.h"
 #include "editor/listbox_win.h"
+#include "editor/main_layout.h"
+#include "editor/main_panel_win.h"
+#include "editor/main_tree_win.h"
 #include "editor/map_document.h"
 #include "editor/map_props_form.h"
 #include "editor/material_document.h"
@@ -97,6 +100,9 @@ enum {
     ID_MENU_TILESET   = 115,   // Etappe 18c: Tileset-Editor...
     ID_MENU_PROBLEMS  = 116,   // Etappe 18h: Probleme-Dialog (Backlog)
     ID_MENU_PLACEMENT = 117,   // Etappe 19n: NPCs, Schilder und Objekte
+    ID_MENU_MAPS_MORE  = 118,   // Trennleiste auch ohne Maus verstellen
+    ID_MENU_PALETTE_MORE = 119,
+    ID_MENU_LAYOUT_RESET = 120,
     ID_MENU_MAP_BASE  = 200,   // dynamische Karten-Einträge danach
 
     IDC_PREFAB_LIST   = 3001,
@@ -127,16 +133,18 @@ enum {
     IDC_ED_TEX        = 3023,
     IDC_LBL_TEX       = 3024,
     IDC_TOOLBAR       = 3025,
-    // Etappe 18k: Kartenbaum links oben (RPG-Maker-XP-Kartenliste).
+    // Kartenbaum unter der Palette; die Karten bleiben direkte Fensterkinder.
     IDC_MAPTREE       = 3027,
     IDC_LBL_MAPS      = 3028,
-    // Etappe 18l: Höhen-Malwerkzeug (Berge/Senken)
     IDC_BTN_HEIGHT    = 3029,
-    // Etappe 19c: Gruppenrahmen der linken Spalte + Kontextmenü Viewport/Liste
     IDC_GRP_TOOL      = 3030,
     IDC_GRP_PREFAB    = 3031,
     IDC_GRP_ACT       = 3032,
     IDC_LBL_PROPS_HINT = 3033,
+    IDC_PANEL_PALETTE = 3034,
+    IDC_PANEL_INSPECTOR = 3035,
+    IDC_MAP_NEW_BUTTON = 3036,
+    IDC_MAP_PROPS_BUTTON = 3037,
     ID_CTX_PLACE      = 3120,
     ID_CTX_FOCUS      = 3121,
     ID_CTX_DUP        = 3122,
@@ -262,18 +270,37 @@ void set_window_icons(HWND win, void (*draw)(HDC, int)) {
 }
 
 // ------------------------------------------------------------ Editor-Zustand
+enum class MapTreeActionKind { None, Properties, Context, New };
+
+struct MapTreeAction {
+    MapTreeActionKind kind = MapTreeActionKind::None;
+    int index = -1;
+    std::uint64_t project_epoch = 0;
+    std::string file;
+    LPARAM position = 0;
+};
+
 struct Editor {
     HWND main = nullptr;
     HWND view = nullptr;
     HWND status = nullptr;
     HWND list_prefab = nullptr;
-    HWND map_tree = nullptr;      // Etappe 18k: Kartenbaum links oben
+    HWND map_tree = nullptr;      // links unter der Palette
     HWND list_objs = nullptr;
+    MainPanel palette;
+    MainPanel inspector;
+    MainWindowLayout main_layout;
+    unsigned main_dpi = 96;
+    int wanted_map_height = MAIN_DEFAULT_MAP_HEIGHT;
+    bool splitter_drag = false;
+    int splitter_grab = 0;
+    bool map_props_compact = false;
     HWND ed_x = nullptr;
     HWND ed_z = nullptr;
     HWND ed_rot = nullptr;
     HWND ed_tex = nullptr;
-    HFONT font = nullptr;
+    HFONT font = nullptr;          // Schrift der bestehenden Dialoge
+    HFONT main_font = nullptr;     // eigene DPI-skalierte Hauptfenster-Schrift
     HMENU menu = nullptr;
     HMENU menu_map = nullptr;      // Karten-Untermenü (dynamisch)
     HWND   props_dlg = nullptr;    // offener Dialog (moduslos)
@@ -312,6 +339,8 @@ struct Editor {
     bool object_selection_resolving = false;
     bool map_selection_queued = false;
     bool map_selection_resolving = false;
+    MapTreeAction map_action;
+    bool map_action_queued = false;
     bool data_prompt_active = false;
     bool object_selection_delayed = false;
     bool map_selection_delayed = false;
@@ -366,8 +395,7 @@ constexpr UINT WM_OBJECT_LIST_FOCUS = WM_APP + 42;
 constexpr UINT WM_OBJECT_LIST_CONTEXT = WM_APP + 43;
 constexpr UINT WM_RECONCILE_MAP_SELECTION = WM_APP + 44;
 constexpr UINT WM_REBUILD_MAP_MENU = WM_APP + 45;
-constexpr UINT WM_TREE_OPEN_PROPS = WM_APP + 46;
-constexpr UINT WM_TREE_CONTEXT = WM_APP + 47;
+constexpr UINT WM_TREE_ACTION = WM_APP + 46;
 constexpr UINT WM_OBJECT_LIST_SORT = WM_APP + 48;
 constexpr UINT WM_TREE_RENAME_WARNING = WM_APP + 49;
 constexpr UINT WM_EVENT_SELECT_EVENT = WM_APP + 50;
@@ -375,6 +403,13 @@ constexpr UINT WM_EVENT_SELECT_PAGE = WM_APP + 51;
 constexpr UINT WM_EVENT_SELECT_COMMAND = WM_APP + 52;
 
 void event_requeue_selections();
+void maptree_schedule_action();
+
+void cancel_splitter_drag() {
+    const bool had_capture = g.splitter_drag;
+    g.splitter_drag = false;
+    if (had_capture && GetCapture() == g.main) ReleaseCapture();
+}
 
 void cancel_object_drag() {
     const bool had_capture = g.dragging;
@@ -408,6 +443,7 @@ BOOL CALLBACK collect_data_prompt_windows(HWND window, LPARAM param) {
 // Zuvor gesperrte Fenster bleiben gesperrt (z. B. beim modalen F5-Dialog).
 int data_prompt(HWND owner, const wchar_t* text, const wchar_t* title, UINT flags) {
     if (g.data_prompt_active) return IDCANCEL;
+    cancel_splitter_drag();
     if (!owner || !IsWindow(owner) || !IsWindowEnabled(owner)) owner = g.main;
     DataPromptWindows windows;
     windows.owner = owner;
@@ -437,6 +473,7 @@ int data_prompt(HWND owner, const wchar_t* text, const wchar_t* title, UINT flag
         PostMessageW(g.main, WM_REBUILD_MAP_MENU, 0, 0);
     }
     event_requeue_selections();
+    maptree_schedule_action();
     return result;
 }
 
@@ -470,6 +507,8 @@ void status_mode(const wchar_t* text);
 // Etappe 18k: Kartenbaum (XP-Kartenliste). Item-LPARAM = Karten-Index.
 void maptree_fill();
 void maptree_select_current();
+int maptree_selected();
+void maptree_update_buttons();
 
 // Etappe 18c: Tileset-Editor.
 void open_tileset_dialog();
@@ -2655,7 +2694,7 @@ void rebuild_map_menu() {
 // ----------------------------------------------------------------------------
 //  Etappe 18k: Kartenbaum (RPG-Maker-XP-Kartenliste)
 //
-//  Links oben im Hauptfenster: ein TreeView mit dem Projektnamen als Wurzel
+//  Links unter der Palette: ein TreeView mit dem Projektnamen als Wurzel
 //  und allen Karten als Einträge (Item-LPARAM = Karten-Index in map_files).
 //  Doppelklick öffnet die Eigenschaften, Rechtsklick gibt ein Kontextmenü
 //  (Eigenschaften / Umbenennen / Neue Karte / Löschen). Umbenennen läuft
@@ -2691,12 +2730,13 @@ void maptree_fill() {
     SendMessageW(g.map_tree, TVM_EXPAND, TVE_EXPAND,
                  reinterpret_cast<LPARAM>(root));
     maptree_select_current();
+    maptree_update_buttons();
 }
 
 // Markiert die aktuelle Karte im Baum (ohne Ladefehler auszulösen).
 void maptree_select_current() {
     if (!g.map_tree) return;
-    if (g.cur_map < 0) { TreeView_SelectItem(g.map_tree, nullptr); return; }
+    if (g.cur_map < 0) { TreeView_SelectItem(g.map_tree, nullptr); maptree_update_buttons(); return; }
     const HTREEITEM root = TreeView_GetRoot(g.map_tree);
     if (!root) return;
     for (HTREEITEM it = TreeView_GetChild(g.map_tree, root); it;
@@ -2707,23 +2747,73 @@ void maptree_select_current() {
         if (TreeView_GetItem(g.map_tree, &item) &&
             static_cast<int>(item.lParam) == g.cur_map) {
             TreeView_SelectItem(g.map_tree, it);
+            maptree_update_buttons();
             return;
         }
     }
     TreeView_SelectItem(g.map_tree, nullptr);
+    maptree_update_buttons();
 }
 
 // Karten-Index des markierten Baum-Eintrags (-1 = Wurzel/nichts markiert).
 int maptree_selected() {
-    if (!g.map_tree) return -1;
-    const HTREEITEM sel = TreeView_GetSelection(g.map_tree);
-    if (!sel) return -1;
-    TVITEMEXW item{};
-    item.mask = TVIF_PARAM | TVIF_CHILDREN;
-    item.hItem = sel;
-    if (!TreeView_GetItem(g.map_tree, &item)) return -1;
-    if (item.cChildren) return -1;   // Wurzel projiziert keine Karte
-    return static_cast<int>(item.lParam);
+    return main_tree_selected_index(g.map_tree);
+}
+
+// Aktionen warten, bis ein bereits angeforderter Kartenwechsel einschließlich
+// aller Datenrückfragen beendet ist. Nur die letzte Geste bleibt vorgemerkt.
+void maptree_schedule_action() {
+    if (!g.main || !main_map_action_can_post(g.map_action.kind != MapTreeActionKind::None,
+        g.map_action_queued, g.data_prompt_active, g.map_selection_queued, g.map_selection_resolving)) return;
+    g.map_action_queued = PostMessageW(g.main, WM_TREE_ACTION, 0, 0) != 0;
+    if (!g.map_action_queued) g.map_action = {};
+}
+
+void maptree_queue_action(MapTreeActionKind kind, int index, LPARAM position = 0) {
+    if (g.project_dir.empty() || (index >= 0 && static_cast<size_t>(index) >= g.map_files.size())) {
+        g.map_action = {};
+        return;
+    }
+    MapTreeAction action;
+    action.kind = kind;
+    action.index = index;
+    action.position = position;
+    action.project_epoch = g.project_epoch;
+    try {
+        if (index >= 0) action.file = g.map_files[static_cast<size_t>(index)];
+    } catch (...) {
+        g.map_action = {}; // keine Ausnahme aus einem Win32-Callback
+        return;
+    }
+    g.map_action = std::move(action);
+    if (index >= 0 && index != g.cur_map && !g.map_selection_queued && !g.map_selection_resolving) {
+        g.map_selection_queued = PostMessageW(g.main, WM_RECONCILE_MAP_SELECTION, 0, 0) != 0;
+        if (!g.map_selection_queued) {
+            g.map_action = {};
+            maptree_select_current();
+            return;
+        }
+    }
+    maptree_schedule_action();
+}
+
+bool maptree_action_matches(const MapTreeAction& action) {
+    const std::string_view current_file = g.cur_map >= 0 &&
+        static_cast<size_t>(g.cur_map) < g.map_files.size()
+        ? std::string_view(g.map_files[static_cast<size_t>(g.cur_map)]) : std::string_view{};
+    return main_map_action_target_matches(action.index, maptree_selected(), g.cur_map,
+        action.project_epoch, g.project_epoch, action.file, current_file);
+}
+
+void maptree_update_buttons() {
+    if (!g.main) return;
+    const bool available = !g.props_dlg && !g.project_dir.empty();
+    const int selected = maptree_selected();
+    EnableWindow(GetDlgItem(g.main, IDC_MAP_NEW_BUTTON), available ? TRUE : FALSE);
+    // Während eines noch nicht abgeglichenen Wechsels keine Aktion auf der
+    // vorherigen Karte anbieten. Nach erfolgreichem Laden wird erneut gesetzt.
+    EnableWindow(GetDlgItem(g.main, IDC_MAP_PROPS_BUTTON),
+                 available && selected >= 0 && selected == g.cur_map ? TRUE : FALSE);
 }
 
 // Umbenennen: Namen der Karte in map_root + Liste aktualisieren
@@ -2805,7 +2895,7 @@ void set_mode(int mode) {
     const int ids[6] = { 0, IDC_BTN_PLACE, IDC_BTN_SELECT, IDC_BTN_MOVE,
                          IDC_BTN_PAINT, IDC_BTN_HEIGHT };
     for (int m = 1; m <= 5; ++m)
-        SendMessageW(GetDlgItem(g.main, ids[m]), BM_SETCHECK,
+        SendMessageW(GetDlgItem(g.palette.window, ids[m]), BM_SETCHECK,
                      (m == mode) ? BST_CHECKED : BST_UNCHECKED, 0);
 }
 
@@ -2963,13 +3053,13 @@ void sync_property_fields() {
         if (valid && !g.object_field_editable[i]) protected_field = true;
         EnableWindow(controls[i], g.object_field_editable[i] ? TRUE : FALSE);
     }
-    EnableWindow(GetDlgItem(g.main, IDC_BTN_APPLY), valid ? TRUE : FALSE);
+    EnableWindow(GetDlgItem(g.inspector.window, IDC_BTN_APPLY), valid ? TRUE : FALSE);
     const wchar_t* hint = !object ? L"Objekt auswählen."
         : !valid ? L"Ungültiger Eintrag: Eigenschaften gesperrt."
         : protected_field ? L"Feld gesperrt: mehrfach oder nicht darstellbar."
         : !object_props_viewable(*object) ? L"Ungültige/extreme Position: keine Vorschau."
         : L"Änderungen übernehmen, dann mit Strg+S speichern.";
-    SetWindowTextW(GetDlgItem(g.main, IDC_LBL_PROPS_HINT), hint);
+    SetWindowTextW(GetDlgItem(g.inspector.window, IDC_LBL_PROPS_HINT), hint);
 }
 
 bool object_current_form(ObjectPropsForm& form, HWND* invalid = nullptr) {
@@ -3321,13 +3411,13 @@ int object_hit(const math::Vec3& eye, const math::Vec3& dir, float& out_t) {
 //  Win32: Steuerelemente und Fenster
 // ------------------------------------------------------------
 void apply_font(HWND h) {
-    SendMessageW(h, WM_SETFONT, reinterpret_cast<WPARAM>(g.font), TRUE);
+    SendMessageW(h, WM_SETFONT, reinterpret_cast<WPARAM>(g.main_font ? g.main_font : g.font), TRUE);
 }
 
 HWND make_control(const wchar_t* cls, const wchar_t* text, DWORD style,
-                  int x, int y, int w, int h, int id) {
+                  int x, int y, int w, int h, int id, HWND parent = nullptr) {
     HWND ctrl = CreateWindowExW(0, cls, text, WS_CHILD | WS_VISIBLE | style,
-                                x, y, w, h, g.main,
+                                x, y, w, h, parent ? parent : g.main,
                                 reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),
                                 GetModuleHandleW(nullptr), nullptr);
     apply_font(ctrl);
@@ -3356,21 +3446,37 @@ void renderer_resize(int w, int h) {
 //  nichts doppelt.
 // ============================================================================
 
-// Ein 16x16-Icon zeichnen: draw() malt in ein frisches HDC (weisser Grund).
-HICON make_toolbar_icon(void (*draw)(HDC)) {
+// Die Zeichner verwenden 16x16 logische Einheiten; GDI skaliert die Formen
+// für die tatsächliche Monitor-DPI. Die Icon-Maske muss monochrom sein.
+HICON make_toolbar_icon(void (*draw)(HDC), int size) {
     HDC screen = GetDC(nullptr);
     HDC mem = CreateCompatibleDC(screen);
-    HBITMAP bmp = CreateCompatibleBitmap(screen, 16, 16);
-    HBITMAP mask = CreateCompatibleBitmap(screen, 16, 16);
+    HBITMAP bmp = CreateCompatibleBitmap(screen, size, size);
+    HBITMAP mask = CreateBitmap(size, size, 1, 1, nullptr);
+    if (!screen || !mem || !bmp || !mask) {
+        if (bmp) DeleteObject(bmp);
+        if (mask) DeleteObject(mask);
+        if (mem) DeleteDC(mem);
+        if (screen) ReleaseDC(nullptr, screen);
+        return nullptr;
+    }
     HGDIOBJ old = SelectObject(mem, bmp);
-    RECT rc{ 0, 0, 16, 16 };
+    RECT rc{ 0, 0, size, size };
     FillRect(mem, &rc, reinterpret_cast<HBRUSH>(GetStockObject(WHITE_BRUSH)));
+    SetMapMode(mem, MM_ANISOTROPIC);
+    SetWindowExtEx(mem, 16, 16, nullptr);
+    SetViewportExtEx(mem, size, size, nullptr);
     draw(mem);
     SelectObject(mem, old);
 
-    // Maske: alles ausser dem Weissen der Ecken bleibt sichtbar; für die
-    // schlichten Formen reicht Schwarz (0) = opak.
     HDC mask_dc = CreateCompatibleDC(screen);
+    if (!mask_dc) {
+        DeleteObject(bmp);
+        DeleteObject(mask);
+        DeleteDC(mem);
+        ReleaseDC(nullptr, screen);
+        return nullptr;
+    }
     HGDIOBJ oldm = SelectObject(mask_dc, mask);
     FillRect(mask_dc, &rc, reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
     SelectObject(mask_dc, oldm);
@@ -3391,6 +3497,72 @@ HICON make_toolbar_icon(void (*draw)(HDC)) {
 
 // Zeichen-Helfer für die einzelnen Icons.
 namespace ico {
+
+void new_map(HDC dc) {           // Neue Karte
+    HPEN pen = CreatePen(PS_SOLID, 1, RGB(60, 85, 115));
+    HGDIOBJ op = SelectObject(dc, pen);
+    HBRUSH paper = CreateSolidBrush(RGB(240, 246, 252));
+    HGDIOBJ ob = SelectObject(dc, paper);
+    Rectangle(dc, 2, 1, 12, 14);
+    MoveToEx(dc, 4, 4, nullptr); LineTo(dc, 10, 4);
+    MoveToEx(dc, 4, 6, nullptr); LineTo(dc, 9, 6);
+    HPEN plus = CreatePen(PS_SOLID, 2, RGB(45, 145, 65));
+    SelectObject(dc, plus);
+    MoveToEx(dc, 10, 8, nullptr); LineTo(dc, 10, 15);
+    MoveToEx(dc, 7, 11, nullptr); LineTo(dc, 14, 11);
+    SelectObject(dc, op);
+    SelectObject(dc, ob);
+    DeleteObject(plus);
+    DeleteObject(paper);
+    DeleteObject(pen);
+}
+
+void placement(HDC dc) {         // NPCs und Objekte platzieren
+    HPEN pen = CreatePen(PS_SOLID, 1, RGB(95, 55, 40));
+    HGDIOBJ op = SelectObject(dc, pen);
+    HBRUSH fill = CreateSolidBrush(RGB(215, 151, 98));
+    HGDIOBJ ob = SelectObject(dc, fill);
+    Ellipse(dc, 5, 1, 11, 7);
+    Rectangle(dc, 4, 7, 12, 14);
+    MoveToEx(dc, 8, 7, nullptr); LineTo(dc, 8, 14);
+    SelectObject(dc, op);
+    SelectObject(dc, ob);
+    DeleteObject(fill);
+    DeleteObject(pen);
+}
+
+void tiles(HDC dc) {             // Tileset-Editor
+    HPEN pen = CreatePen(PS_SOLID, 1, RGB(58, 90, 51));
+    HGDIOBJ op = SelectObject(dc, pen);
+    HBRUSH grass = CreateSolidBrush(RGB(122, 183, 95));
+    HBRUSH earth = CreateSolidBrush(RGB(188, 156, 112));
+    HGDIOBJ ob = SelectObject(dc, grass);
+    Rectangle(dc, 1, 1, 8, 8);
+    Rectangle(dc, 8, 8, 15, 15);
+    SelectObject(dc, earth);
+    Rectangle(dc, 8, 1, 15, 8);
+    Rectangle(dc, 1, 8, 8, 15);
+    SelectObject(dc, op);
+    SelectObject(dc, ob);
+    DeleteObject(grass);
+    DeleteObject(earth);
+    DeleteObject(pen);
+}
+
+void camera(HDC dc) {            // Kamera zurücksetzen
+    HPEN pen = CreatePen(PS_SOLID, 1, RGB(50, 71, 96));
+    HGDIOBJ op = SelectObject(dc, pen);
+    HBRUSH body = CreateSolidBrush(RGB(145, 175, 205));
+    HGDIOBJ ob = SelectObject(dc, body);
+    Rectangle(dc, 1, 4, 15, 13);
+    Rectangle(dc, 4, 2, 9, 5);
+    SelectObject(dc, GetStockObject(WHITE_BRUSH));
+    Ellipse(dc, 5, 5, 12, 12);
+    SelectObject(dc, op);
+    SelectObject(dc, ob);
+    DeleteObject(body);
+    DeleteObject(pen);
+}
 
 void diskette(HDC dc) {          // Speichern
     HPEN pen = CreatePen(PS_SOLID, 1, RGB(40, 70, 110));
@@ -3517,173 +3689,236 @@ void playtest(HDC dc) {          // Playtest (grünes Dreieck)
 } // namespace ico
 
 static HWND g_toolbar = nullptr;
-static int  g_toolbar_h = 0;
+static HIMAGELIST g_toolbar_images = nullptr;
+static int g_toolbar_h = 0;
+
+struct ToolbarItem {
+    int command;
+    void (*draw)(HDC);
+    const wchar_t* tip;
+};
+
+// Trennzeichen gliedern die Leiste wie in einem klassischen Karteneditor.
+// Jeder sichtbare Knopf führt zu einer bereits vorhandenen Funktion.
+static const ToolbarItem TOOLBAR_ITEMS[] = {
+    {ID_MENU_MAPNEW,    ico::new_map,   L"Neue Karte"},
+    {ID_MENU_SAVE,      ico::diskette,  L"Karte speichern (Strg+S)"},
+    {0, nullptr, nullptr},
+    {ID_MENU_MAPPROPS,  ico::props,     L"Karten-Eigenschaften (F2)"},
+    {ID_MENU_PLACEMENT, ico::placement, L"NPCs, Schilder und Objekte (F5)"},
+    {ID_MENU_EVENTS,    ico::events,    L"Event-Editor (F6)"},
+    {ID_MENU_TILESET,   ico::tiles,     L"Tileset-Editor (F7)"},
+    {0, nullptr, nullptr},
+    {ID_MENU_MATERIALS, ico::materials, L"Materialbase (F3)"},
+    {ID_MENU_DATABASE,  ico::database,  L"Datenbank (F9)"},
+    {ID_MENU_SCRIPTS,   ico::scripts,   L"Script-Editor (F11)"},
+    {ID_MENU_SOUNDTEST, ico::speaker,   L"Sound-Test (F8)"},
+    {0, nullptr, nullptr},
+    {ID_MENU_RESETCAM,  ico::camera,    L"Kamera zurücksetzen"},
+    {ID_MENU_PLAYTEST,  ico::playtest,  L"Playtest starten (F4)"},
+};
 
 int toolbar_height() {
     return g_toolbar_h;
 }
 
-void create_toolbar(HWND parent) {
-    if (g_toolbar) return;
-
-    InitCommonControls();
-    g_toolbar = CreateWindowExW(0, TOOLBARCLASSNAMEW, nullptr,
-                                WS_CHILD | WS_VISIBLE | TBSTYLE_TOOLTIPS |
-                                CCS_NODIVIDER | CCS_NOPARENTALIGN,
-                                0, 0, 0, 0, parent,
-                                reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_TOOLBAR)),
-                                GetModuleHandleW(nullptr), nullptr);
-    SendMessageW(g_toolbar, TB_BUTTONSTRUCTSIZE, sizeof(TBBUTTON), 0);
-    SendMessageW(g_toolbar, TB_SETBITMAPSIZE, 0, MAKELPARAM(16, 16));
-
-    // Imageliste aus den prozeduralen Icons.
-    HIMAGELIST il = ImageList_Create(16, 16, ILC_COLOR32, 8, 0);
-    struct { void (*draw)(HDC); } defs[] = {
-        ico::diskette, ico::props,    ico::events,  ico::scripts,
-        ico::materials, ico::database, ico::speaker, ico::playtest,
-    };
-    for (auto& d : defs) {
-        HICON ic = make_toolbar_icon(d.draw);
-        ImageList_AddIcon(il, ic);
-        DestroyIcon(ic);
+void toolbar_set_dpi(unsigned dpi) {
+    if (!g_toolbar) return;
+    const int icon_size = std::max(1, main_layout_scale(16, dpi));
+    HIMAGELIST images = ImageList_Create(icon_size, icon_size, ILC_COLOR32 | ILC_MASK, 12, 0);
+    bool complete = images != nullptr;
+    for (const ToolbarItem& item : TOOLBAR_ITEMS) {
+        if (!item.draw || !complete) continue;
+        HICON icon = make_toolbar_icon(item.draw, icon_size);
+        if (!icon || ImageList_AddIcon(images, icon) < 0) complete = false;
+        if (icon) DestroyIcon(icon);
     }
-    SendMessageW(g_toolbar, TB_SETIMAGELIST, 0, reinterpret_cast<LPARAM>(il));
-
-    // Buttons: dieselben IDs wie das Menü - WM_COMMAND verteilt schon.
-    TBBUTTON btns[8]{};
-    for (int i = 0; i < 8; ++i) {
-        btns[i].iBitmap = i;
-        btns[i].fsState = TBSTATE_ENABLED;
-        btns[i].fsStyle = BTNS_BUTTON;
+    if (complete) {
+        SendMessageW(g_toolbar, TB_SETBITMAPSIZE, 0, MAKELPARAM(icon_size, icon_size));
+        HIMAGELIST old = reinterpret_cast<HIMAGELIST>(
+            SendMessageW(g_toolbar, TB_SETIMAGELIST, 0, reinterpret_cast<LPARAM>(images)));
+        g_toolbar_images = images;
+        if (old) ImageList_Destroy(old);
+    } else if (images) {
+        ImageList_Destroy(images);
     }
-    btns[0].idCommand = ID_MENU_SAVE;
-    btns[1].idCommand = ID_MENU_MAPPROPS;
-    btns[2].idCommand = ID_MENU_EVENTS;
-    btns[3].idCommand = ID_MENU_SCRIPTS;
-    btns[4].idCommand = ID_MENU_MATERIALS;
-    btns[5].idCommand = ID_MENU_DATABASE;
-    btns[6].idCommand = ID_MENU_SOUNDTEST;
-    btns[7].idCommand = ID_MENU_PLAYTEST;
-    SendMessageW(g_toolbar, TB_ADDBUTTONS, 8, reinterpret_cast<LPARAM>(btns));
-
-    // Tooltip-Texte direkt an die Buttons hängen.
-    const wchar_t* tips[8] = {
-        L"Karte speichern (Strg+S)", L"Karten-Eigenschaften (F2)",
-        L"Event-Editor (F6)", L"Script-Editor (F11)",
-        L"Materialbase (F3)", L"Datenbank: Helden/Items (F9)",
-        L"Sound-Test (F8)", L"Playtest starten (F4)"
-    };
-    for (int i = 0; i < 8; ++i) {
-        TBBUTTONINFO bi{};
-        bi.cbSize = sizeof(bi);
-        bi.dwMask = TBIF_TEXT;
-        bi.pszText = const_cast<LPWSTR>(tips[i]);
-        SendMessageW(g_toolbar, TB_SETBUTTONINFO, btns[i].idCommand,
-                     reinterpret_cast<LPARAM>(&bi));
+    const int button_w = main_layout_scale(26, dpi), button_h = main_layout_scale(24, dpi);
+    SendMessageW(g_toolbar, TB_SETBUTTONSIZE, 0, MAKELPARAM(button_w, button_h));
+    for (size_t i = 0; i < sizeof(TOOLBAR_ITEMS) / sizeof(TOOLBAR_ITEMS[0]); ++i) {
+        if (TOOLBAR_ITEMS[i].command) continue;
+        TBBUTTONINFOW info{};
+        info.cbSize = sizeof(info);
+        info.dwMask = TBIF_BYINDEX | TBIF_SIZE;
+        info.cx = static_cast<WORD>(main_layout_scale(8, dpi));
+        SendMessageW(g_toolbar, TB_SETBUTTONINFOW, static_cast<WPARAM>(i), reinterpret_cast<LPARAM>(&info));
     }
-
-    // Höhe ermitteln (TB_GETBUTTONSIZE liefert MAKELONG(breite, höhe)).
-    const DWORD bs = static_cast<DWORD>(
-        SendMessageW(g_toolbar, TB_GETBUTTONSIZE, 0, 0));
-    g_toolbar_h = HIWORD(bs) > 0 ? HIWORD(bs) : 24;
+    const DWORD size = static_cast<DWORD>(SendMessageW(g_toolbar, TB_GETBUTTONSIZE, 0, 0));
+    g_toolbar_h = std::max(main_layout_scale(28, dpi), static_cast<int>(HIWORD(size)));
     SendMessageW(g_toolbar, TB_AUTOSIZE, 0, 0);
 }
 
-void layout_children() {
-    if (!g.view || !g.status) return;   // WM_SIZE kommt schon vor dem Aufbau
-    RECT rc;
-    GetClientRect(g.main, &rc);
-    const int W = rc.right, H = rc.bottom;
+void create_toolbar(HWND parent) {
+    if (g_toolbar) return;
+    g_toolbar = CreateWindowExW(0, TOOLBARCLASSNAMEW, nullptr,
+                                WS_CHILD | WS_VISIBLE | TBSTYLE_FLAT | TBSTYLE_TOOLTIPS |
+                                CCS_NODIVIDER | CCS_NOPARENTALIGN | CCS_NORESIZE,
+                                0, 0, 1, 1, parent,
+                                reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_TOOLBAR)),
+                                GetModuleHandleW(nullptr), nullptr);
+    if (!g_toolbar) return;
+    SendMessageW(g_toolbar, TB_BUTTONSTRUCTSIZE, sizeof(TBBUTTON), 0);
+    SendMessageW(g_toolbar, TB_SETBITMAPSIZE, 0, MAKELPARAM(16, 16));
+    // Texte bleiben für Tooltips/Barrierefreiheit verfügbar, vergrößern aber
+    // die klassischen Icon-Knöpfe nicht zu einer breiten Textleiste.
+    SendMessageW(g_toolbar, TB_SETEXTENDEDSTYLE, 0, TBSTYLE_EX_MIXEDBUTTONS);
+    TBBUTTON buttons[sizeof(TOOLBAR_ITEMS) / sizeof(TOOLBAR_ITEMS[0])]{};
+    int image = 0;
+    for (size_t i = 0; i < sizeof(TOOLBAR_ITEMS) / sizeof(TOOLBAR_ITEMS[0]); ++i) {
+        const ToolbarItem& item = TOOLBAR_ITEMS[i];
+        buttons[i].fsState = TBSTATE_ENABLED;
+        buttons[i].idCommand = item.command;
+        buttons[i].iString = -1;
+        if (item.command) {
+            buttons[i].iBitmap = image++;
+            buttons[i].fsStyle = BTNS_BUTTON;
+        } else {
+            buttons[i].iBitmap = main_layout_scale(8, g.main_dpi);
+            buttons[i].fsStyle = BTNS_SEP;
+        }
+    }
+    SendMessageW(g_toolbar, TB_ADDBUTTONS,
+                 sizeof(buttons) / sizeof(buttons[0]), reinterpret_cast<LPARAM>(buttons));
+    for (const ToolbarItem& item : TOOLBAR_ITEMS) {
+        if (!item.command) continue;
+        TBBUTTONINFOW info{};
+        info.cbSize = sizeof(info);
+        info.dwMask = TBIF_TEXT;
+        info.pszText = const_cast<LPWSTR>(item.tip);
+        SendMessageW(g_toolbar, TB_SETBUTTONINFOW, item.command, reinterpret_cast<LPARAM>(&info));
+    }
+    toolbar_set_dpi(g.main_dpi);
+}
+
+void palette_place(MainPanel& panel, int width, int content_height) {
+    const MainPaletteLayout p = main_palette_layout(width, content_height, panel.dpi);
+    auto put = [&](int id, MainRect rect) { main_panel_place(panel, GetDlgItem(panel.window, id), rect); };
+    put(IDC_GRP_TOOL, p.tools);
+    const int radios[5] = {IDC_BTN_PLACE, IDC_BTN_SELECT, IDC_BTN_MOVE, IDC_BTN_PAINT, IDC_BTN_HEIGHT};
+    for (int i = 0; i < 5; ++i) put(radios[i], p.radios[i]);
+    put(IDC_GRP_PREFAB, p.prefabs);
+    put(IDC_PREFAB_LIST, p.prefab_list);
+    put(IDC_GRP_ACT, p.actions);
+    put(IDC_BTN_ROTATE, p.rotate);
+    put(IDC_BTN_DELETE, p.remove);
+    put(IDC_BTN_DUPLICATE, p.duplicate);
+    put(IDC_BTN_UNDO, p.undo);
+    put(IDC_BTN_REDO, p.redo);
+}
+
+void inspector_place(MainPanel& panel, int width, int content_height) {
+    const MainInspectorLayout p = main_inspector_layout(width, content_height, panel.dpi);
+    auto put = [&](int id, MainRect rect) { main_panel_place(panel, GetDlgItem(panel.window, id), rect); };
+    put(IDC_LBL_OBJECTS, p.objects_label);
+    put(IDC_OBJ_LIST, p.objects);
+    put(IDC_GRP_PROPS, p.props);
+    const int labels[4] = {IDC_LBL_X, IDC_LBL_Z, IDC_LBL_ROT, IDC_LBL_TEX};
+    const int fields[4] = {IDC_ED_X, IDC_ED_Z, IDC_ED_ROT, IDC_ED_TEX};
+    for (int i = 0; i < 4; ++i) { put(labels[i], p.labels[i]); put(fields[i], p.fields[i]); }
+    put(IDC_BTN_APPLY, p.apply);
+    put(IDC_LBL_PROPS_HINT, p.hint);
+}
+
+BOOL CALLBACK main_font_child(HWND child, LPARAM param) {
+    const HWND parent = GetParent(child);
+    if ((parent == g.main && child != g.view && child != g_toolbar &&
+         child != g.palette.window && child != g.inspector.window) ||
+        parent == g.palette.window || parent == g.inspector.window) {
+        SendMessageW(child, WM_SETFONT, static_cast<WPARAM>(param), TRUE);
+    }
+    return TRUE;
+}
+
+void main_set_dpi(unsigned dpi) {
+    const unsigned old_dpi = g.main_dpi;
+    g.main_dpi = main_layout_dpi(dpi);
+    main_panel_set_dpi(g.palette, g.main_dpi);
+    main_panel_set_dpi(g.inspector, g.main_dpi);
+    if (HFONT font = event_view_make_font(g.main_dpi)) {
+        const HFONT old = g.main_font;
+        g.main_font = font;
+        if (g.main) EnumChildWindows(g.main, main_font_child, reinterpret_cast<LPARAM>(font));
+        if (old) DeleteObject(old);
+    }
+    if (g.list_prefab)
+        SendMessageW(g.list_prefab, LB_SETITEMHEIGHT, 0, main_layout_scale(22, g.main_dpi));
+    if (g.map_tree) SendMessageW(g.map_tree, TVM_SETITEMHEIGHT, static_cast<WPARAM>(-1), 0);
+    if (g.list_objs && old_dpi != g.main_dpi) {
+        // Von Nutzern angepasste Spaltenbreiten beim Monitorwechsel bewahren.
+        for (int i = 0; i < 6; ++i) {
+            const int old_width = ListView_GetColumnWidth(g.list_objs, i);
+            ListView_SetColumnWidth(g.list_objs, i,
+                std::max(1, event_layout_rescale(old_width, old_dpi, g.main_dpi)));
+        }
+    }
+    toolbar_set_dpi(g.main_dpi);
+}
+
+void layout_children(bool resize_renderer = true) {
+    if (!g.main || !g.view || !g.status || !g.palette.window || !g.inspector.window) return;
+    RECT client{};
+    GetClientRect(g.main, &client);
+    const int width = std::max(0, static_cast<int>(client.right));
+    const int height = std::max(0, static_cast<int>(client.bottom));
     SendMessageW(g.status, WM_SIZE, 0, 0);
-
-    RECT sb;
-    GetWindowRect(g.status, &sb);
-    const int sb_h = sb.bottom - sb.top;
-    const int tb_h = toolbar_height();      // Etappe 17h: Werkzeugleiste
-    // Etappe 18i: Die Spalten wachsen mit dem Fenster (begrenzt). Bei 1024x640
-    // bleiben die alten Mindestbreiten, bei grossen Fenstern bekommen
-    // Objektliste und Beschriftungen mehr Platz; der Viewport nimmt den Rest.
-    const int left_w  = std::clamp(W * 16 / 100, 214, 280);
-    const int right_w = std::clamp(W * 19 / 100, 258, 340);
-    const int view_x = left_w;
-    const int view_w = std::max(100, W - left_w - right_w);
-    const int view_h = std::max(100, H - sb_h - tb_h);
-
-    SetWindowPos(g.view, nullptr, view_x, tb_h, view_w, view_h,
-                 SWP_NOZORDER | SWP_NOACTIVATE);
-
-    // Statusleisten-Felder proportional zur Fensterbreite (früher fest 160/
-    // 130/220 - bei schmalen Fenstern wurde das letzte Feld zu eng).
-    const int sb_parts[4] = { std::max(120, W / 8), std::max(100, W / 9),
-                              std::max(170, W / 6), -1 };
-    SendMessageW(g.status, SB_SETPARTS, 4, reinterpret_cast<LPARAM>(sb_parts));
-
-    // Linke Spalte: Etappe 18k teilt sie in Kartenbaum (oben) und Werkzeuge
-    // (unten). Der Baum behält eine feste Höhe, Werkzeugliste + Bedienblock
-    // verteilen sich daruber wie bisher (18i-Logik).
-    const int lw = left_w - 16;
-    const int bx = 8;
-    const int bw2 = (lw - 8) / 2;
-    const int tree_h = 150;                              // Kartenbaum
-    // Etappe 19c: feste Höhen der Gruppen, Prefab-Liste bekommt den Rest.
-    const int grp_tool_h = 5 * 26 + 26;    // 5 Radios + Rahmentitel
-    const int grp_act_h  = 2 * 32 + 30;    // 2 Aktionszeilen + Rahmentitel
-    const int undo_h     = 34;
-    const int y_tool = tb_h + tree_h + 4;
-    const int y_prefab = y_tool + grp_tool_h + 6;
-    const int y_act = H - sb_h - 8 - undo_h - grp_act_h;
-    const int y_undo = H - sb_h - 6 - undo_h;
-
-    auto move_child = [](HWND hwnd, int x, int y, int w, int ht) {
-        if (hwnd) SetWindowPos(hwnd, nullptr, x, y, w, ht,
-                               SWP_NOZORDER | SWP_NOACTIVATE);
+    RECT status{};
+    GetWindowRect(g.status, &status);
+    const int status_h = std::max(0, static_cast<int>(status.bottom - status.top));
+    const int toolbar_h = toolbar_height();
+    const MainRect old_split = g.main_layout.splitter;
+    const MainWindowLayout layout = main_window_layout(width, height, toolbar_h, status_h,
+                                                       g.wanted_map_height, g.main_dpi);
+    g.main_layout = layout;
+    auto move = [](HWND child, MainRect r) {
+        if (child) SetWindowPos(child, nullptr, r.x, r.y, r.w, r.h,
+                                SWP_NOZORDER | SWP_NOACTIVATE);
     };
-    // Etappe 18k: Kartenbaum + KARTEN-Label oben.
-    move_child(GetDlgItem(g.main, IDC_LBL_MAPS), bx, tb_h + 8, lw, 20);
-    move_child(g.map_tree, bx, tb_h + 30, lw, tree_h - 30);
-    // Modus-Gruppe: Radios untereinander, volle Breite.
-    move_child(GetDlgItem(g.main, IDC_GRP_TOOL), bx - 4, y_tool, lw + 8, grp_tool_h);
-    const int radios[5] = { IDC_BTN_PLACE, IDC_BTN_SELECT, IDC_BTN_MOVE,
-                            IDC_BTN_PAINT, IDC_BTN_HEIGHT };
-    for (int r = 0; r < 5; ++r)
-        move_child(GetDlgItem(g.main, radios[r]), bx + 6, y_tool + 18 + r * 26, lw - 12, 24);
-    // Prefab-Gruppe füllt die Mitte (kein toter Leerraum mehr).
-    move_child(GetDlgItem(g.main, IDC_GRP_PREFAB), bx - 4, y_prefab, lw + 8,
-               std::max(90, y_act - 6 - y_prefab));
-    move_child(g.list_prefab, bx + 6, y_prefab + 18, lw - 12,
-               std::max(60, y_act - 6 - y_prefab - 26));
-    // Aktions-Gruppe + Undo/Redo am Spaltenende.
-    move_child(GetDlgItem(g.main, IDC_GRP_ACT), bx - 4, y_act, lw + 8, grp_act_h);
-    move_child(GetDlgItem(g.main, IDC_BTN_ROTATE), bx + 6, y_act + 18, bw2, 28);
-    move_child(GetDlgItem(g.main, IDC_BTN_DELETE), bx + bw2 + 12, y_act + 18, bw2, 28);
-    move_child(GetDlgItem(g.main, IDC_BTN_DUPLICATE), bx + 6, y_act + 50, lw - 12, 28);
-    move_child(GetDlgItem(g.main, IDC_BTN_UNDO), bx, y_undo, bw2, 30);
-    move_child(GetDlgItem(g.main, IDC_BTN_REDO), bx + bw2 + 8, y_undo, bw2, 30);
+    move(g_toolbar, {0, 0, width, toolbar_h});
+    move(g.palette.window, layout.palette);
+    move(g.inspector.window, layout.inspector);
+    move(GetDlgItem(g.main, IDC_LBL_MAPS), layout.maps_label);
+    move(GetDlgItem(g.main, IDC_MAP_NEW_BUTTON), layout.maps_new);
+    const HWND map_props = GetDlgItem(g.main, IDC_MAP_PROPS_BUTTON);
+    move(map_props, layout.maps_props);
+    const bool compact_props = main_map_props_compact(layout.maps_props.w, g.main_dpi);
+    if (map_props && compact_props != g.map_props_compact) {
+        SetWindowTextW(map_props, compact_props ? L"F2" : L"Eigenschaften");
+        g.map_props_compact = compact_props;
+    }
+    move(g.map_tree, layout.maps_tree);
+    move(g.view, layout.viewport);
+    main_panel_update(g.palette);
+    main_panel_update(g.inspector);
 
-    // Rechte Spalte: Objektliste wächst nach oben, Eigenschaften bleiben
-    // unten (fixe Höhe) und nutzen die neue Breite für die Eingabefelder.
-    const int rx = W - right_w;
-    const int rw = right_w - 16;
-    const int py = H - sb_h - 242;
-    move_child(GetDlgItem(g.main, IDC_LBL_OBJECTS), rx + 8, tb_h + 8, rw, 20);
-    move_child(g.list_objs, rx + 8, tb_h + 30, rw,
-               std::max(80, py - tb_h - 38));
-    move_child(GetDlgItem(g.main, IDC_GRP_PROPS), rx + 4, py, right_w - 8, 238);
-    move_child(GetDlgItem(g.main, IDC_LBL_X), rx + 14, py + 28, 60, 20);
-    move_child(g.ed_x, rx + 80, py + 24, right_w - 100, 24);
-    move_child(GetDlgItem(g.main, IDC_LBL_Z), rx + 14, py + 60, 60, 20);
-    move_child(g.ed_z, rx + 80, py + 56, right_w - 100, 24);
-    move_child(GetDlgItem(g.main, IDC_LBL_ROT), rx + 14, py + 92, 60, 20);
-    move_child(g.ed_rot, rx + 80, py + 88, right_w - 100, 24);
-    move_child(GetDlgItem(g.main, IDC_LBL_TEX), rx + 14, py + 124, 60, 20);
-    move_child(g.ed_tex, rx + 80, py + 120, right_w - 100, 24);
-    move_child(GetDlgItem(g.main, IDC_BTN_APPLY), rx + 14, py + 158,
-               right_w - 28, 30);
-    move_child(GetDlgItem(g.main, IDC_LBL_PROPS_HINT), rx + 14, py + 192,
-               right_w - 28, 36);
+    // Das erste Feld enthält Bedienhinweise und Warnungen; die restlichen
+    // Felder zeigen Objektzahl, Cursor und Raster/FPS.
+    const int parts[4] = {width * 40 / 100, width * 52 / 100, width * 77 / 100, -1};
+    SendMessageW(g.status, SB_SETPARTS, 4, reinterpret_cast<LPARAM>(parts));
+    // Auch die frühere Leistenposition löschen, damit beim Ziehen keine
+    // verbliebenen Linien auf dem Hauptfenster-Hintergrund stehen bleiben.
+    RECT previous{old_split.x, old_split.y, old_split.x + old_split.w, old_split.y + old_split.h};
+    RECT splitter{layout.splitter.x, layout.splitter.y,
+                  layout.splitter.x + layout.splitter.w, layout.splitter.y + layout.splitter.h};
+    InvalidateRect(g.main, &previous, TRUE);
+    InvalidateRect(g.main, &splitter, TRUE);
 
-    // Renderer auf die neue Viewport-Grösse bringen.
-    renderer_resize(view_w, view_h);
+    if (resize_renderer) {
+        // Der Viewport hat WS_EX_CLIENTEDGE: die Swapchain muss zum inneren
+        // Client-Rechteck passen, nicht zur äußeren Fenstergröße.
+        RECT view{};
+        GetClientRect(g.view, &view);
+        renderer_resize(static_cast<int>(view.right - view.left),
+                        static_cast<int>(view.bottom - view.top));
+    }
 }
 
 void update_title() {
@@ -4158,6 +4393,9 @@ void push_placements() {
 }
 
 void render_frame() {
+    // WM_SIZE kann schon beim Anlegen/Positionieren des Hauptfensters kommen,
+    // bevor Viewport und D3D-Renderer bereit sind.
+    if (!g.view || !g.renderer) return;
     RECT rc;
     GetClientRect(g.view, &rc);
     const int w = std::max(1, static_cast<int>(rc.right));
@@ -4441,9 +4679,15 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             case WM_REBUILD_MAP_MENU:
                 g.map_menu_delayed = true;
                 return 0;
+            case WM_TREE_ACTION:
+                // Nach der Rückfrage erneut zustellen; Identität und Auswahl
+                // werden erst nach dem Kartenabgleich geprüft.
+                g.map_action_queued = false;
+                return 0;
             case WM_OBJECT_LIST_FOCUS: case WM_OBJECT_LIST_CONTEXT: case WM_OBJECT_LIST_SORT:
-            case WM_TREE_OPEN_PROPS: case WM_TREE_CONTEXT: case WM_TREE_RENAME_WARNING:
+            case WM_TREE_RENAME_WARNING:
             case WM_COMMAND: case WM_CONTEXTMENU: case WM_CLOSE:
+            case WM_LBUTTONDOWN: case WM_MOUSEMOVE:
                 return 0;
             case WM_NOTIFY: {
                 const NMHDR* nm = reinterpret_cast<const NMHDR*>(lp);
@@ -4507,37 +4751,130 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_RECONCILE_MAP_SELECTION: {
             g.map_selection_queued = false;
             if (g.map_selection_resolving) return 0;
-            if (g.props_dlg) { maptree_select_current(); return 0; }
-            const int next = maptree_selected();
-            if (next < 0 || next == g.cur_map) return 0;
-            g.map_selection_resolving = true;
-            if (load_map(next)) {
-                sync_object_list();
-                sync_property_fields();
-                update_title();
-                status_mode(L"Karte geladen");
-            } else {
+            if (g.props_dlg) {
+                g.map_action = {};
                 maptree_select_current();
+                return 0;
             }
-            g.map_selection_resolving = false;
+            const int next = maptree_selected();
+            if (next >= 0 && next != g.cur_map) {
+                g.map_selection_resolving = true;
+                if (load_map(next)) {
+                    sync_object_list();
+                    sync_property_fields();
+                    update_title();
+                    status_mode(L"Karte geladen");
+                } else {
+                    maptree_select_current();
+                }
+                g.map_selection_resolving = false;
+            }
+            maptree_schedule_action();
             return 0;
         }
         case WM_REBUILD_MAP_MENU:
             rebuild_map_menu();
             return 0;
-        case WM_TREE_OPEN_PROPS: {
-            const int expected = static_cast<int>(wp) - 1;
-            if (expected >= 0 && g.cur_map == expected && maptree_selected() == expected)
-                open_map_props();
-            return 0;
-        }
         case WM_GETMINMAXINFO: {
-            // Etappe 18a: Mindestgrösse, damit das Layout nicht bricht.
+            if (!lp) break;
+            const unsigned dpi = main_layout_dpi(GetDpiForWindow(h));
+            DWORD style = static_cast<DWORD>(GetWindowLongPtrW(h, GWL_STYLE));
+            const DWORD ex_style = static_cast<DWORD>(GetWindowLongPtrW(h, GWL_EXSTYLE));
+            if (!style) style = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN;
+            RECT frame{0, 0, main_layout_scale(700, dpi), main_layout_scale(360, dpi)};
+            if (!AdjustWindowRectExForDpi(&frame, style, TRUE, ex_style, dpi))
+                AdjustWindowRectEx(&frame, style, TRUE, ex_style);
+            int min_w = std::max(1, static_cast<int>(frame.right - frame.left));
+            int min_h = std::max(1, static_cast<int>(frame.bottom - frame.top));
+            EventLayoutRect work{};
+            if (event_view_work_area(h, nullptr, work)) {
+                min_w = std::min(min_w, std::max(1, work.right - work.left));
+                min_h = std::min(min_h, std::max(1, work.bottom - work.top));
+            }
             MINMAXINFO* mmi = reinterpret_cast<MINMAXINFO*>(lp);
-            mmi->ptMinTrackSize.x = 1024;
-            mmi->ptMinTrackSize.y = 640;
+            mmi->ptMinTrackSize.x = min_w;
+            mmi->ptMinTrackSize.y = min_h;
             return 0;
         }
+        case WM_DPICHANGED: {
+            if (!lp) break;
+            cancel_splitter_drag();
+            main_set_dpi(LOWORD(wp));
+            EventLayoutRect target = event_view_rect(*reinterpret_cast<const RECT*>(lp)), work{};
+            if (event_view_work_area(h, reinterpret_cast<const RECT*>(lp), work))
+                target = event_layout_fit(work, target);
+            SetWindowPos(h, nullptr, target.left, target.top, target.right - target.left,
+                         target.bottom - target.top, SWP_NOZORDER | SWP_NOACTIVATE);
+            layout_children();
+            main_panel_reveal(g.palette, GetFocus());
+            main_panel_reveal(g.inspector, GetFocus());
+            return 0;
+        }
+        case WM_PAINT: {
+            PAINTSTRUCT paint{};
+            HDC dc = BeginPaint(h, &paint);
+            const MainRect& split = g.main_layout.splitter;
+            if (split.w > 0 && split.h > 0) {
+                RECT line{split.x, split.y, split.x + split.w, split.y + split.h};
+                DrawEdge(dc, &line, EDGE_ETCHED, BF_TOP | BF_BOTTOM);
+                const int half = std::min(split.w / 3, main_layout_scale(18, g.main_dpi));
+                const int cx = split.x + split.w / 2, cy = split.y + split.h / 2;
+                HPEN pen = CreatePen(PS_SOLID, 1, GetSysColor(COLOR_BTNSHADOW));
+                HGDIOBJ old = SelectObject(dc, pen);
+                MoveToEx(dc, cx - half, cy, nullptr); LineTo(dc, cx + half, cy);
+                SelectObject(dc, old);
+                DeleteObject(pen);
+            }
+            EndPaint(h, &paint);
+            return 0;
+        }
+        case WM_SETCURSOR: {
+            if (LOWORD(lp) != HTCLIENT) break;
+            POINT point{};
+            GetCursorPos(&point);
+            ScreenToClient(h, &point);
+            if (g.splitter_drag || main_rect_contains(g.main_layout.splitter, point.x, point.y)) {
+                SetCursor(LoadCursorW(nullptr, IDC_SIZENS));
+                return TRUE;
+            }
+            break;
+        }
+        case WM_LBUTTONDOWN: {
+            const int x = GET_X_LPARAM(lp), y = GET_Y_LPARAM(lp);
+            if (!g.props_dlg && main_rect_contains(g.main_layout.splitter, x, y)) {
+                cancel_object_drag();
+                g.splitter_drag = true;
+                g.splitter_grab = y - g.main_layout.splitter.y;
+                SetCapture(h);
+                if (GetCapture() != h) g.splitter_drag = false;
+                return 0;
+            }
+            break;
+        }
+        case WM_MOUSEMOVE:
+            if (g.splitter_drag) {
+                if (GetCapture() != h) { g.splitter_drag = false; return 0; }
+                RECT client{}, status{};
+                GetClientRect(h, &client);
+                GetWindowRect(g.status, &status);
+                g.wanted_map_height = main_map_height_for_split(
+                    static_cast<int>(client.right), static_cast<int>(client.bottom), toolbar_height(),
+                    static_cast<int>(status.bottom - status.top), GET_Y_LPARAM(lp) - g.splitter_grab,
+                    g.main_dpi);
+                // Nur die linke Spalte ändert sich; keine D3D-Swapchain neu anlegen.
+                layout_children(false);
+                return 0;
+            }
+            break;
+        case WM_LBUTTONUP:
+            if (g.splitter_drag) { cancel_splitter_drag(); return 0; }
+            break;
+        case WM_CAPTURECHANGED:
+            g.splitter_drag = false;
+            return 0;
+        case WM_CANCELMODE:
+            cancel_splitter_drag();
+            break;
         case WM_SIZE:
             if (wp != SIZE_MINIMIZED) {
                 layout_children();
@@ -4641,8 +4978,37 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                         g.cam_pitch = -0.5f;
                     }
                     return 0;
+                case ID_MENU_MAPS_MORE:
+                case ID_MENU_PALETTE_MORE:
+                case ID_MENU_LAYOUT_RESET: {
+                    if (id == ID_MENU_LAYOUT_RESET) {
+                        g.wanted_map_height = MAIN_DEFAULT_MAP_HEIGHT;
+                    } else {
+                        RECT client{}, status{};
+                        GetClientRect(h, &client);
+                        GetWindowRect(g.status, &status);
+                        const int step = main_layout_scale(40, g.main_dpi);
+                        const int split = g.main_layout.splitter.y +
+                            (id == ID_MENU_MAPS_MORE ? -step : step);
+                        g.wanted_map_height = main_map_height_for_split(
+                            static_cast<int>(client.right), static_cast<int>(client.bottom),
+                            toolbar_height(), static_cast<int>(status.bottom - status.top), split, g.main_dpi);
+                    }
+                    layout_children(false);
+                    main_panel_reveal(g.palette, GetFocus());
+                    main_panel_reveal(g.inspector, GetFocus());
+                    return 0;
+                }
                 case ID_MENU_MAPPROPS:
                     open_map_props();
+                    return 0;
+                case IDC_MAP_PROPS_BUTTON: {
+                    const int selected = maptree_selected();
+                    if (selected >= 0) maptree_queue_action(MapTreeActionKind::Properties, selected);
+                    return 0;
+                }
+                case IDC_MAP_NEW_BUTTON:
+                    maptree_queue_action(MapTreeActionKind::New, maptree_selected());
                     return 0;
                 case ID_MENU_MAPNEW:
                     open_map_new();
@@ -4707,7 +5073,10 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                                 L"  F6 Event-Editor    F7 Tileset    F8 Sound-Test\n"
                                 L"  F9 Datenbank (Helden/Items/Gegner/Truppen)\n"
                                 L"  F11 Script-Editor\n\n"
-                                L"Menü Karte: neue Karten anlegen, zwischen ihnen wechseln\n"
+                                L"Links: Palette über dem Kartenbaum; Trennleiste ziehen.\n"
+                                L"Ansicht: Bereiche vergrößern oder Aufteilung zurücksetzen.\n"
+                                L"Karten: Neu, Eigenschaften (F2) oder Rechtsklick auf eine Karte.\n"
+                                L"Bei wenig Platz lassen sich die Seitenleisten scrollen.\n"
                                 L"Playtest: speichert die gewählte Karte und startet\n"
                                 L"Rune3D.exe mit Projekt und Karte (ohne Titelbildschirm).\n\n"
                                 L"Der Editor arbeitet nur auf den Kartendaten - "
@@ -4719,8 +5088,8 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                         g.sel_prefab = static_cast<int>(SendMessageW(g.list_prefab, LB_GETCURSEL, 0, 0));
                         set_mode(1);
                         status_mode((L"Setzen: " + utf8_to_wide(
-                            g.sel_prefab < static_cast<int>(g.prefabs.size())
-                                ? g.prefabs[g.sel_prefab].name : std::string("?"))).c_str());
+                            g.sel_prefab >= 0 && g.sel_prefab < static_cast<int>(g.prefabs.size())
+                                ? g.prefabs[static_cast<size_t>(g.sel_prefab)].name : std::string("?"))).c_str());
                     }
                     return 0;
                 case ID_CTX_PLACE:
@@ -4842,6 +5211,17 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         // Umbenennen per Inplace-Edit (TVS_EDITLABELS).
         case WM_NOTIFY: {
             const NMHDR* nm = reinterpret_cast<const NMHDR*>(lp);
+            if (!nm) break;
+            if (g_toolbar && nm->code == TTN_GETDISPINFOW && nm->hwndFrom == reinterpret_cast<HWND>(
+                    SendMessageW(g_toolbar, TB_GETTOOLTIPS, 0, 0))) {
+                auto* tip = reinterpret_cast<NMTTDISPINFOW*>(lp);
+                for (const ToolbarItem& item : TOOLBAR_ITEMS) {
+                    if (item.command && static_cast<UINT_PTR>(item.command) == nm->idFrom) {
+                        tip->lpszText = const_cast<LPWSTR>(item.tip);
+                        return 0;
+                    }
+                }
+            }
             // Etappe 19c: Objektliste (ListView) - Auswahl, Sortierung,
             // Doppelklick (Kamera) und Rechtsklick (Kontextmenü).
             if (nm->idFrom == IDC_OBJ_LIST && nm->hwndFrom) {
@@ -4887,6 +5267,7 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 }
                 case TVN_SELCHANGED: {
                     const NMTREEVIEWW* tv = reinterpret_cast<const NMTREEVIEWW*>(lp);
+                    maptree_update_buttons();
                     if ((tv->action == TVC_BYMOUSE || tv->action == TVC_BYKEYBOARD) &&
                         !g.map_selection_queued) {
                         g.map_selection_queued = PostMessageW(h, WM_RECONCILE_MAP_SELECTION, 0, 0) != 0;
@@ -4897,7 +5278,7 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                     // Erst den Kartenwechsel abgleichen; nach Abbruch nicht
                     // versehentlich Eigenschaften der alten Karte öffnen.
                     const int selected = maptree_selected();
-                    if (selected >= 0) PostMessageW(h, WM_TREE_OPEN_PROPS, static_cast<WPARAM>(selected + 1), 0);
+                    if (selected >= 0) maptree_queue_action(MapTreeActionKind::Properties, selected);
                     return 0;
                 }
                 case TVN_BEGINLABELEDIT: {
@@ -4931,17 +5312,41 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             break;
         }
 
-        // Kontextmenü erst nach einem evtl. noch ausstehenden Kartenwechsel
-        // öffnen; andernfalls könnte Abbrechen Aktionen auf die alte Karte richten.
-        case WM_CONTEXTMENU:
+        // Ein Rechtsklick wählt den tatsächlich getroffenen Kartenknoten.
+        // Den Wechsel wie bei Linksklick erst nach der TreeView-Nachricht und
+        // mit denselben Rückfragen abgleichen; bei Abbruch kein Menü auf der
+        // alten Karte öffnen. Shift+F10 behält die Tastaturauswahl.
+        case WM_CONTEXTMENU: {
             if (reinterpret_cast<HWND>(wp) != g.map_tree) break;
-            PostMessageW(h, WM_TREE_CONTEXT, static_cast<WPARAM>(maptree_selected() + 1), lp);
-            return 0;
-        case WM_TREE_CONTEXT: {
             if (g.props_dlg) { SetForegroundWindow(g.props_dlg); return 0; }
-            const int idx = static_cast<int>(wp) - 1;
-            if (maptree_selected() != idx || (idx >= 0 && idx != g.cur_map)) return 0;
-            POINT pt{ GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
+            const POINT screen{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+            if (!(screen.x == -1 && screen.y == -1)) {
+                bool changed = false;
+                main_tree_select_at(g.map_tree, screen, changed);
+            }
+            maptree_queue_action(MapTreeActionKind::Context, maptree_selected(), lp);
+            return 0;
+        }
+        case WM_TREE_ACTION: {
+            g.map_action_queued = false;
+            // Eine neue Auswahl kann zwischen PostMessage und Zustellung
+            // eingetroffen sein. Der Auswahlabgleich stellt die Aktion erneut zu.
+            if (g.map_selection_queued || g.map_selection_resolving) return 0;
+            MapTreeAction action = std::move(g.map_action);
+            g.map_action = {};
+            if (g.props_dlg || !maptree_action_matches(action)) return 0;
+            if (action.kind == MapTreeActionKind::Properties) {
+                if (action.index >= 0) open_map_props();
+                return 0;
+            }
+            if (action.kind == MapTreeActionKind::New) {
+                open_map_new();
+                return 0;
+            }
+            if (action.kind != MapTreeActionKind::Context) return 0;
+            const int idx = action.index;
+            const std::uint64_t map_epoch = g.map_epoch;
+            POINT pt{ GET_X_LPARAM(action.position), GET_Y_LPARAM(action.position) };
             if (pt.x == -1 && pt.y == -1) {
                 RECT rect{};
                 GetWindowRect(g.map_tree, &rect);
@@ -4960,7 +5365,9 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             const int cmd = TrackPopupMenu(popup, TPM_RIGHTBUTTON | TPM_RETURNCMD,
                                            pt.x, pt.y, 0, h, nullptr);
             DestroyMenu(popup);
-            if (idx >= 0 && (idx != g.cur_map || maptree_selected() != idx)) return 0;
+            // TrackPopupMenu pumpt Nachrichten: Karte, Projekt und Auswahl
+            // müssen auch nach dem Schließen noch dieselben sein.
+            if (g.props_dlg || g.map_epoch != map_epoch || !maptree_action_matches(action)) return 0;
             switch (cmd) {
                 case IDM_TREE_PROPS:  if (idx >= 0) open_map_props(); break;
                 case IDM_TREE_RENAME:
@@ -4977,8 +5384,16 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         }
 
         case WM_DESTROY:
+            cancel_splitter_drag();
             PostQuitMessage(0);
             return 0;
+        case WM_NCDESTROY:
+            // Kinder und Toolbar sind jetzt zerstört und nutzen Schrift/Icons
+            // nicht mehr. Die Dialogschrift g.font gehört weiterhin dem Editor.
+            if (g.main_font) { DeleteObject(g.main_font); g.main_font = nullptr; }
+            if (g_toolbar_images) { ImageList_Destroy(g_toolbar_images); g_toolbar_images = nullptr; }
+            g_toolbar = nullptr;
+            break;
     }
     return DefWindowProcW(h, msg, wp, lp);
 }
@@ -5215,6 +5630,7 @@ LRESULT CALLBACK dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 g.props_dlg = nullptr;
                 g.dlg_mode = 0;
                 if (g.map_tree) EnableWindow(g.map_tree, TRUE);
+                maptree_update_buttons();
             }
             if (g_dlg == h) g_dlg = nullptr;
             return 0;
@@ -5667,6 +6083,7 @@ void open_map_props() {
     g.props_dlg = g_dlg;      // moduslos: Hauptschleife rendert weiter
     g.dlg_mode = 1;
     if (g.map_tree) EnableWindow(g.map_tree, FALSE);
+    maptree_update_buttons();
     ShowWindow(g_dlg, SW_SHOW);
     SetFocus(GetDlgItem(g_dlg, IDLG_NAME));
 }
@@ -5855,6 +6272,7 @@ void open_map_new() {
     g.props_dlg = g_dlg;      // moduslos: Hauptschleife rendert weiter
     g.dlg_mode = 2;
     if (g.map_tree) EnableWindow(g.map_tree, FALSE);
+    maptree_update_buttons();
     ShowWindow(g_dlg, SW_SHOW);
     SetFocus(GetDlgItem(g_dlg, IDLG_NAME));
 }
@@ -9190,6 +9608,10 @@ int main(int argc, char** argv) {
     HMENU view_menu = CreatePopupMenu();
     AppendMenuW(view_menu, MF_STRING, ID_MENU_RESETCAM, L"Kamera zurücksetzen");
     AppendMenuW(view_menu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(view_menu, MF_STRING, ID_MENU_MAPS_MORE, L"Kartenbereich vergrößern");
+    AppendMenuW(view_menu, MF_STRING, ID_MENU_PALETTE_MORE, L"Palette vergrößern");
+    AppendMenuW(view_menu, MF_STRING, ID_MENU_LAYOUT_RESET, L"Aufteilung zurücksetzen");
+    AppendMenuW(view_menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(view_menu, MF_STRING | MF_GRAYED, 0,
                 L"Mausrad = Zoom (Dolly) | Shift+Rad = Höhe");
     AppendMenuW(view_menu, MF_STRING | MF_GRAYED, 0,
@@ -9239,72 +9661,104 @@ int main(int argc, char** argv) {
     wcv.hbrBackground = CreateSolidBrush(RGB(16, 24, 32));
     RegisterClassW(&wcv);
 
+    const DWORD main_style = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN;
     RECT adj{ 0, 0, 1440, 880 };
-    AdjustWindowRect(&adj, WS_OVERLAPPEDWINDOW, TRUE);
+    AdjustWindowRect(&adj, main_style, TRUE);
     g.main = CreateWindowExW(0, L"RuneEditorMain", L"RuneEditor",
-                             WS_OVERLAPPEDWINDOW,
-                             CW_USEDEFAULT, CW_USEDEFAULT,
+                             main_style, CW_USEDEFAULT, CW_USEDEFAULT,
                              adj.right - adj.left, adj.bottom - adj.top,
                              nullptr, g.menu, hInst, nullptr);
     if (!g.main) return 1;
+    main_set_dpi(GetDpiForWindow(g.main));
+
+    // Startgröße in logischen Einheiten, aber niemals größer als die
+    // Arbeitsfläche des Monitors, auf dem Windows das Fenster platziert hat.
+    RECT frame{0, 0, main_layout_scale(1440, g.main_dpi), main_layout_scale(880, g.main_dpi)};
+    if (!AdjustWindowRectExForDpi(&frame, main_style, TRUE, 0, g.main_dpi))
+        AdjustWindowRectEx(&frame, main_style, TRUE, 0);
+    RECT initial{};
+    GetWindowRect(g.main, &initial);
+    EventLayoutRect wanted{static_cast<int>(initial.left), static_cast<int>(initial.top),
+        static_cast<int>(initial.left + frame.right - frame.left),
+        static_cast<int>(initial.top + frame.bottom - frame.top)};
+    EventLayoutRect work{};
+    if (event_view_work_area(g.main, nullptr, work)) wanted = event_layout_fit(work, wanted);
+    SetWindowPos(g.main, nullptr, wanted.left, wanted.top, wanted.right - wanted.left,
+                 wanted.bottom - wanted.top, SWP_NOZORDER | SWP_NOACTIVATE);
 
     // Etappe 18a: eigenes Fenster-Icon (Runenstein, prozedural gezeichnet).
     set_window_icons(g.main, draw_icon_editor);
 
-    // Etappe 17h: Werkzeugleiste unter dem Menü.
+    // Klassische Werkzeugleiste und scrollbare Palette oberhalb des Kartenbaums.
     create_toolbar(g.main);
+    if (!g_toolbar || !main_panel_create(g.palette, g.main, IDC_PANEL_PALETTE, g.main_dpi,
+                                         main_palette_min_height, palette_place)) {
+        MessageBoxW(g.main, L"Die Werkzeugpalette konnte nicht geöffnet werden.",
+                    L"RuneEditor", MB_OK | MB_ICONERROR);
+        DestroyWindow(g.main);
+        return 1;
+    }
+    const HWND palette = g.palette.window;
+    make_control(L"Button", L"Werkzeug (Modus)", BS_GROUPBOX,
+                 0, 0, 1, 1, IDC_GRP_TOOL, palette);
+    make_control(L"Button", L"Setzen", BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP,
+                 0, 0, 1, 1, IDC_BTN_PLACE, palette);
+    make_control(L"Button", L"Auswählen", BS_AUTORADIOBUTTON,
+                 0, 0, 1, 1, IDC_BTN_SELECT, palette);
+    make_control(L"Button", L"Verschieben", BS_AUTORADIOBUTTON,
+                 0, 0, 1, 1, IDC_BTN_MOVE, palette);
+    make_control(L"Button", L"Boden malen", BS_AUTORADIOBUTTON,
+                 0, 0, 1, 1, IDC_BTN_PAINT, palette);
+    make_control(L"Button", L"Höhe malen", BS_AUTORADIOBUTTON,
+                 0, 0, 1, 1, IDC_BTN_HEIGHT, palette);
+    make_control(L"Button", L"Objekt-Typ (Prefab)", BS_GROUPBOX | WS_GROUP,
+                 0, 0, 1, 1, IDC_GRP_PREFAB, palette);
+    g.list_prefab = make_control(L"ListBox", nullptr,
+                                 WS_VSCROLL | WS_BORDER | WS_TABSTOP | LBS_NOTIFY | LBS_HASSTRINGS,
+                                 0, 0, 1, 1, IDC_PREFAB_LIST, palette);
+    make_control(L"Button", L"Objekt-Aktionen", BS_GROUPBOX,
+                 0, 0, 1, 1, IDC_GRP_ACT, palette);
+    make_control(L"Button", L"Drehen (R)", BS_PUSHBUTTON | WS_GROUP | WS_TABSTOP,
+                 0, 0, 1, 1, IDC_BTN_ROTATE, palette);
+    make_control(L"Button", L"Löschen", BS_PUSHBUTTON | WS_TABSTOP,
+                 0, 0, 1, 1, IDC_BTN_DELETE, palette);
+    make_control(L"Button", L"Duplizieren", BS_PUSHBUTTON | WS_TABSTOP,
+                 0, 0, 1, 1, IDC_BTN_DUPLICATE, palette);
+    make_control(L"Button", L"Undo", BS_PUSHBUTTON | WS_TABSTOP,
+                 0, 0, 1, 1, IDC_BTN_UNDO, palette);
+    make_control(L"Button", L"Redo", BS_PUSHBUTTON | WS_TABSTOP,
+                 0, 0, 1, 1, IDC_BTN_REDO, palette);
+    g.palette.ready = true;
 
-    // Etappe 18k: Kartenbaum links oben (XP-Kartenliste).
-    make_control(L"Static", L"KARTEN", 0, 8, 8, 180, 20, IDC_LBL_MAPS);
+    // Der Kartenbaum bleibt ein direktes Hauptfensterkind; alle bestehenden
+    // Auswahl-, Umbenennungs- und Speicherprüfungen bleiben dadurch bestehen.
+    make_control(L"Static", L"Karten", 0, 0, 0, 1, 1, IDC_LBL_MAPS);
+    make_control(L"Button", L"Neu", BS_PUSHBUTTON | WS_TABSTOP,
+                 0, 0, 1, 1, IDC_MAP_NEW_BUTTON);
+    make_control(L"Button", L"Eigenschaften", BS_PUSHBUTTON | WS_TABSTOP,
+                 0, 0, 1, 1, IDC_MAP_PROPS_BUTTON);
     g.map_tree = make_control(WC_TREEVIEWW, nullptr,
                               WS_BORDER | TVS_HASBUTTONS | TVS_HASLINES |
                               TVS_LINESATROOT | TVS_EDITLABELS |
                               TVS_SHOWSELALWAYS | WS_TABSTOP,
-                              8, 30, 198, 130, IDC_MAPTREE);
+                              0, 0, 1, 1, IDC_MAPTREE);
+    maptree_update_buttons();
 
-    // Etappe 19c: linke Spalte als drei benannte Gruppen wie in den anderen
-    // Dialogen des Editors: erst der Modus (Radios, genau einer aktiv), dann
-    // der Objekt-Typ (Prefab-Liste füllt den Rest), dann die Aktionen.
-    make_control(L"Button", L"Werkzeug (Modus)", BS_GROUPBOX,
-                 4, 168, 206, 156, IDC_GRP_TOOL);
-    make_control(L"Button", L"Setzen", BS_AUTORADIOBUTTON | WS_GROUP,
-                 14, 186, 186, 24, IDC_BTN_PLACE);
-    make_control(L"Button", L"Auswählen", BS_AUTORADIOBUTTON,
-                 14, 212, 186, 24, IDC_BTN_SELECT);
-    make_control(L"Button", L"Verschieben", BS_AUTORADIOBUTTON,
-                 14, 238, 186, 24, IDC_BTN_MOVE);
-    make_control(L"Button", L"Boden malen", BS_AUTORADIOBUTTON,
-                 14, 264, 186, 24, IDC_BTN_PAINT);
-    // Etappe 18l: Berge/Senken direkt an der Stelle malen (Default flach, da
-    // neue Karten Amplitude 0 haben); Shift+Klick trägt ab.
-    make_control(L"Button", L"Höhe malen", BS_AUTORADIOBUTTON,
-                 14, 290, 186, 24, IDC_BTN_HEIGHT);
-    make_control(L"Button", L"Objekt-Typ (Prefab)", BS_GROUPBOX | WS_GROUP,
-                 4, 330, 206, 300, IDC_GRP_PREFAB);
-    g.list_prefab = make_control(L"ListBox", nullptr,
-                                 WS_VSCROLL | WS_BORDER | LBS_NOTIFY | LBS_HASSTRINGS,
-                                 14, 348, 186, 272, IDC_PREFAB_LIST);
-    make_control(L"Button", L"Objekt-Aktionen", BS_GROUPBOX,
-                 4, 636, 206, 96, IDC_GRP_ACT);
-    make_control(L"Button", L"Drehen (R)", BS_PUSHBUTTON | WS_GROUP,
-                 14, 654, 88, 28, IDC_BTN_ROTATE);
-    make_control(L"Button", L"Löschen", BS_PUSHBUTTON,
-                 108, 654, 92, 28, IDC_BTN_DELETE);
-    make_control(L"Button", L"Duplizieren", BS_PUSHBUTTON,
-                 14, 686, 186, 28, IDC_BTN_DUPLICATE);
-    make_control(L"Button", L"Undo (Strg+Z)", BS_PUSHBUTTON,
-                 8, 738, 96, 30, IDC_BTN_UNDO);
-    make_control(L"Button", L"Redo (Strg+Y)", BS_PUSHBUTTON,
-                 110, 738, 96, 30, IDC_BTN_REDO);
-
-    // Rechte Spalte: Objektliste + Eigenschaften
-    make_control(L"Static", L"OBJEKTE", 0, 1188, 8, 200, 20, IDC_LBL_OBJECTS);
-    // Etappe 19c: Objektliste als ListView im Bericht-Modus: Spalten statt
-    // einzeiliger Kurztexte, sortierbar per Kopflick, ganze Zeile markierbar.
+    // Auch der Inspektor scrollt bei sehr niedrigen Fenstern, statt Liste und
+    // Eingabefelder übereinander oder außerhalb des Fensters zu platzieren.
+    if (!main_panel_create(g.inspector, g.main, IDC_PANEL_INSPECTOR, g.main_dpi,
+                           main_inspector_min_height, inspector_place)) {
+        MessageBoxW(g.main, L"Der Objektinspektor konnte nicht geöffnet werden.",
+                    L"RuneEditor", MB_OK | MB_ICONERROR);
+        DestroyWindow(g.main);
+        return 1;
+    }
+    const HWND inspector = g.inspector.window;
+    make_control(L"Static", L"Objekte", 0, 0, 0, 1, 1, IDC_LBL_OBJECTS, inspector);
     g.list_objs = make_control(WC_LISTVIEWW, nullptr,
                                WS_BORDER | LVS_REPORT | LVS_SINGLESEL |
                                LVS_SHOWSELALWAYS | WS_TABSTOP,
-                               1188, 30, 242, 400, IDC_OBJ_LIST);
+                               0, 0, 1, 1, IDC_OBJ_LIST, inspector);
     ListView_SetExtendedListViewStyle(g.list_objs,
                                       LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES |
                                       LVS_EX_DOUBLEBUFFER);
@@ -9318,35 +9772,36 @@ int main(int argc, char** argv) {
             lc.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_FMT;
             lc.fmt = LVCFMT_LEFT;
             lc.pszText = const_cast<wchar_t*>(cols[c].titel);
-            lc.cx = cols[c].breite;
+            lc.cx = main_layout_scale(cols[c].breite, g.main_dpi);
             ListView_InsertColumn(g.list_objs, c, &lc);
         }
     }
     make_control(L"Button", L"Eigenschaften", BS_GROUPBOX,
-                 1184, 613, 250, 238, IDC_GRP_PROPS);
-    make_control(L"Static", L"X", 0, 1194, 648, 60, 20, IDC_LBL_X);
-    g.ed_x = make_control(L"Edit", nullptr, WS_BORDER | ES_RIGHT | ES_AUTOHSCROLL,
-                          1264, 644, 158, 24, IDC_ED_X);
-    make_control(L"Static", L"Z", 0, 1194, 680, 60, 20, IDC_LBL_Z);
-    g.ed_z = make_control(L"Edit", nullptr, WS_BORDER | ES_RIGHT | ES_AUTOHSCROLL,
-                          1264, 676, 158, 24, IDC_ED_Z);
-    make_control(L"Static", L"Drehung", 0, 1194, 712, 60, 20, IDC_LBL_ROT);
-    g.ed_rot = make_control(L"Edit", nullptr, WS_BORDER | ES_RIGHT | ES_AUTOHSCROLL,
-                            1264, 708, 158, 24, IDC_ED_ROT);
-    make_control(L"Static", L"Material", 0, 1194, 744, 60, 20, IDC_LBL_TEX);
-    g.ed_tex = make_control(L"Edit", nullptr, WS_BORDER | ES_LEFT | ES_AUTOHSCROLL,
-                            1264, 740, 158, 24, IDC_ED_TEX);
+                 0, 0, 1, 1, IDC_GRP_PROPS, inspector);
+    make_control(L"Static", L"X", 0, 0, 0, 1, 1, IDC_LBL_X, inspector);
+    g.ed_x = make_control(L"Edit", nullptr, WS_BORDER | WS_TABSTOP | ES_RIGHT | ES_AUTOHSCROLL,
+                          0, 0, 1, 1, IDC_ED_X, inspector);
+    make_control(L"Static", L"Z", 0, 0, 0, 1, 1, IDC_LBL_Z, inspector);
+    g.ed_z = make_control(L"Edit", nullptr, WS_BORDER | WS_TABSTOP | ES_RIGHT | ES_AUTOHSCROLL,
+                          0, 0, 1, 1, IDC_ED_Z, inspector);
+    make_control(L"Static", L"Drehung", 0, 0, 0, 1, 1, IDC_LBL_ROT, inspector);
+    g.ed_rot = make_control(L"Edit", nullptr, WS_BORDER | WS_TABSTOP | ES_RIGHT | ES_AUTOHSCROLL,
+                            0, 0, 1, 1, IDC_ED_ROT, inspector);
+    make_control(L"Static", L"Material", 0, 0, 0, 1, 1, IDC_LBL_TEX, inspector);
+    g.ed_tex = make_control(L"Edit", nullptr, WS_BORDER | WS_TABSTOP | ES_LEFT | ES_AUTOHSCROLL,
+                            0, 0, 1, 1, IDC_ED_TEX, inspector);
     for (HWND field : {g.ed_x, g.ed_z, g.ed_rot, g.ed_tex})
         SendMessageW(field, EM_SETLIMITTEXT, 1000000, 0);
-    make_control(L"Button", L"Übernehmen", BS_PUSHBUTTON,
-                 1194, 774, 228, 30, IDC_BTN_APPLY);
+    make_control(L"Button", L"Übernehmen", BS_PUSHBUTTON | WS_TABSTOP,
+                 0, 0, 1, 1, IDC_BTN_APPLY, inspector);
     make_control(L"Static", L"Objekt auswählen.", 0,
-                 1194, 808, 228, 36, IDC_LBL_PROPS_HINT);
+                 0, 0, 1, 1, IDC_LBL_PROPS_HINT, inspector);
+    g.inspector.ready = true;
 
     // Viewport + Statusleiste
     g.view = CreateWindowExW(WS_EX_CLIENTEDGE, L"RuneEditorView", nullptr,
-                             WS_CHILD | WS_VISIBLE,
-                             214, toolbar_height(), 960, 830, g.main,
+                             WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+                             0, 0, 1, 1, g.main,
                              reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_VIEWPORT)),
                              hInst, nullptr);
     g.status = CreateWindowExW(0, STATUSCLASSNAMEW, nullptr,
@@ -9354,15 +9809,19 @@ int main(int argc, char** argv) {
                                0, 0, 0, 0, g.main,
                                reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_STATUSBAR)),
                                hInst, nullptr);
+    if (!g.view || !g.status) {
+        MessageBoxW(g.main, L"Die 3D-Arbeitsfläche konnte nicht geöffnet werden.",
+                    L"RuneEditor", MB_OK | MB_ICONERROR);
+        DestroyWindow(g.main);
+        return 1;
+    }
     apply_font(g.status);
-    const int sb_parts[4] = { 160, 130, 220, -1 };
-    SendMessageW(g.status, SB_SETPARTS, 4, reinterpret_cast<LPARAM>(sb_parts));
+    SendMessageW(g.list_prefab, LB_SETITEMHEIGHT, 0, main_layout_scale(22, g.main_dpi));
+    layout_children(false); // vor Renderer::init auf die echte Clientgröße setzen
 
     // Renderer auf den Viewport
     static gfx::Renderer renderer;
     static world::Terrain terrain;
-    g.renderer = &renderer;
-    g.terrain = &terrain;
     RECT vr;
     GetClientRect(g.view, &vr);
     if (!renderer.init(g.view, std::max(1, static_cast<int>(vr.right)),
@@ -9372,6 +9831,8 @@ int main(int argc, char** argv) {
                     L"RuneEditor", MB_OK | MB_ICONERROR);
         return 1;
     }
+    g.renderer = &renderer;
+    g.terrain = &terrain;
     rune::app().renderer = &renderer;
     rune::app().terrain = &terrain;
     renderer.set_sky(0x3D6FB5, 0xBFD8EC);
@@ -9454,8 +9915,28 @@ int main(int argc, char** argv) {
                 event_view_reveal_new_focus(g_ev.view, g_ev.win);
                 continue;
             }
+            const HWND old_focus = GetFocus();
+            const bool main_child = msg.hwnd == g.main || IsChild(g.main, msg.hwnd);
+            const int focused_id = old_focus ? GetDlgCtrlID(old_focus) : 0;
+            const bool radio_arrow = focused_id == IDC_BTN_PLACE || focused_id == IDC_BTN_SELECT ||
+                                     focused_id == IDC_BTN_MOVE || focused_id == IDC_BTN_PAINT ||
+                                     focused_id == IDC_BTN_HEIGHT;
+            const bool navigation = msg.message == WM_KEYDOWN &&
+                (msg.wParam == VK_TAB || (radio_arrow &&
+                 (msg.wParam == VK_UP || msg.wParam == VK_DOWN ||
+                  msg.wParam == VK_LEFT || msg.wParam == VK_RIGHT)));
+            if (!g.props_dlg && !g.data_prompt_active && main_child && navigation &&
+                IsDialogMessageW(g.main, &msg)) {
+                main_panel_reveal(g.palette, GetFocus());
+                main_panel_reveal(g.inspector, GetFocus());
+                continue;
+            }
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
+            if (GetFocus() != old_focus) {
+                main_panel_reveal(g.palette, GetFocus());
+                main_panel_reveal(g.inspector, GetFocus());
+            }
             if (event_editor_open()) event_view_reveal_new_focus(g_ev.view, g_ev.win);
         }
         if (!running) break;

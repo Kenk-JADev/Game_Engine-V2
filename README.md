@@ -23,8 +23,11 @@ Laufzeit neu geladen werden.
 
 **Editor** (Nebenfenster meist moduslos; F5 ist modal):
 
+- Hauptfenster mit Menü-/Werkzeugleiste, scrollbarer Palette links über dem
+  Kartenbaum, zentraler 3D-Arbeitsfläche, Objektinspektor und Statusleiste;
+  die Aufteilung links ist verstellbar
 - Kartenbaum wie die XP-Kartenliste: anlegen, umbenennen (inplace), löschen,
-  Doppelklick = Eigenschaften
+  Doppelklick = Eigenschaften; Rechtsklick wählt zuerst die getroffene Karte
 - rechteckige Karten mit eigener Größe, Nebel, Panorama, Wetter
 - Objekte setzen / auswählen / verschieben / drehen / duplizieren / löschen,
   Undo + Redo, Raster
@@ -191,7 +194,7 @@ ruby tools\lint_repo.rb                        # Repo-Hygiene
 |---|---|---|
 | Ruby-Modultests | Engine-Logik mit `Rune::*`-Stubs (Events, Seiten, Interpreter, Party, Kampf, Wetter, Scripte, Projekte, Speichern) + Ruby/C++-Vokabular-Sync | `tools/*_test.rb`, Runner `tools/test_all.rb` |
 | Ruby-Laufzeit | Echter Bootstrap, Launcher, Szenenbau, F4/F5, Kampf-Eingabe und Save/Load mit nativen Attrappen | `tools/runtime_boot_test.rb`, `tools/map_objects_test.rb`, `tools/encounter_test.rb` |
-| C++-Logiktest | JSON und portable Editor-Formularmodelle, darunter F6-Transaktionen und Datentreue | `tools/json_test.cpp` |
+| C++-Logiktest | JSON, Editor-Formulare, Hauptfenster-Geometrie und Kartenaktionsschutz; unter Windows zusätzlich unsichtbare Panel-/Baumtests | `tools/json_test.cpp` |
 | C++-Terrain | Echte Geländegenerierung, Höhen-/Splat-Budgets, Atlasplan und Fehlerpfade ohne D3D | `tools/terrain_test.cpp` |
 | Materialien/Dateien | Verlustfreier JSON-Baum, unter Windows Handle-Konflikte, Junctions und Hardlinks | `tools/material_test.cpp` |
 | Windows-Projektpfade | UTF-8/UTF-16, Projekt-/Kartenscan, F9-Datei-I/O, F4-Kindprozess | `tools/windows_path_test.cpp` (`-Test`) |
@@ -202,7 +205,7 @@ ruby tools\lint_repo.rb                        # Repo-Hygiene
 | Event-Brücke | C++-F6-Änderungen gegen echte Ruby-Event- und Interpreter-Laufzeit | `tools/event_bridge_check.rb` |
 | Karten-Scan | Daten-Validierung (Befehle, Trigger, Bedingungen, Wegpunkte, Terrain) | `game/engine/mapcheck.rb` |
 | Repo-Hygiene | UTF-8, BOM, Doppelkodierung, Zeilenenden, Requires, Index | `tools/lint_repo.rb` |
-| Live-Tests | Interaktiver GUI-/Hardwaretest in isolierter Kopie (noch offen) | `docs/WINDOWS_MATERIAL_LIVE_TEST.md`, `docs/WINDOWS_BATTLE_LIVE_TEST.md` |
+| Live-Tests | Interaktiver GUI-/Hardwaretest in isolierter Kopie (noch offen) | `docs/WINDOWS_MAIN_LIVE_TEST.md`, `docs/WINDOWS_MATERIAL_LIVE_TEST.md`, `docs/WINDOWS_BATTLE_LIVE_TEST.md` |
 
 `tools/tex_import_test.rb` braucht eine gebaute `RuneEditor.exe` und wird ohne
 sie übersprungen (der Runner meldet das).
@@ -256,7 +259,29 @@ docs/                architecture.md, BACKLOG.md, HANDOFF_Naechste_KI.md
 
 ## Bedienung
 
-**Editor** (F1 zeigt dieselbe Liste im Programm):
+### Hauptfenster und Karten
+
+Links liegt die Werkzeugpalette **über** dem Kartenbaum. Die waagerechte
+Trennleiste dazwischen lässt sich ziehen; unter **Ansicht** kann man die
+Bereiche auch ohne Maus vergrößern oder die Aufteilung zurücksetzen. Bei
+wenig Höhe haben Palette und Objektinspektor eigene Scrollleisten. Die
+Aufteilung gilt nur für die laufende Sitzung. Die mittlere Arbeitsfläche
+bleibt der vorhandene 3D-Viewport; die Toolbar öffnet vorhandene Funktionen.
+
+Im Kartenbereich öffnet **Neu** den bestehenden Dialog zum Anlegen; mit
+**Eigenschaften** (auf schmaler Fläche als **F2** beschriftet) bzw. per
+Doppelklick wird die ausgewählte Karte bearbeitet. Rechtsklick wählt den
+getroffenen Knoten und öffnet nach dem Kartenwechsel das Kontextmenü für
+Eigenschaften, Umbenennen, Neu und Löschen. Auf der Projektwurzel sind nur
+passende Aktionen verfügbar. Beim Wechsel werden offene Objekt-/Event-
+Eingaben und ungespeicherte Änderungen wie bisher abgefragt; bei Abbruch
+bleibt die alte Karte aktiv. **Strg+S** speichert sie über den vorhandenen
+Dateischutz. Objekt-Undo/Redo umfasst weiterhin keine Events oder Böden.
+
+Die Windows-GUI, Monitorwechsel und Hardware-GPU müssen noch interaktiv
+geprüft werden: [Anleitung](docs/WINDOWS_MAIN_LIVE_TEST.md).
+
+**Editor** (F1 zeigt die Tastatur- und Mausbedienung im Programm):
 
 | Eingabe | Wirkung |
 |---|---|
