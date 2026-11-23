@@ -161,6 +161,18 @@ void windows_tests() {
                 CreateDirectoryW(data.c_str(), nullptr) && CreateDirectoryW(outside.c_str(), nullptr);
     check("isolierte Projektordner", dirs);
     if (!dirs) return;
+    // Das Arbeitsverzeichnis ist absichtlich NICHT der Projekt-Datenordner.
+    // So darf ein fälschlich gegen CWD aufgelöster Rename weder hier landen
+    // noch eine gleichnamige fremde Datei verändern.
+    const DWORD cwd_size = GetCurrentDirectoryW(0, nullptr);
+    std::wstring old_cwd(cwd_size, L'\0');
+    const DWORD cwd_length = cwd_size ? GetCurrentDirectoryW(cwd_size, old_cwd.data()) : 0;
+    const bool cwd_ok = cwd_length && cwd_length < cwd_size;
+    if (cwd_ok) old_cwd.resize(cwd_length);
+    const std::wstring cwd_sentinel = outside + L"\\textures.json";
+    const bool cwd_changed = cwd_ok && put(cwd_sentinel, "CWD UNBERUEHRT", CREATE_NEW) &&
+                             SetCurrentDirectoryW(outside.c_str());
+    check("abweichendes Arbeitsverzeichnis mit fremdem Manifest", cwd_changed);
     const std::wstring project_a = L"A";
     ProjectStore store;
     check("verankerte Projektwurzel öffnen", store.open(root, &project_a) == Result::Ok);
@@ -198,6 +210,8 @@ void windows_tests() {
     check("Rennen: ursprünglicher Inhalt bleibt in benannter Sicherung", !recovery.empty() && get(backup, read) && read == saved);
     const bool restored = DeleteFileW(json.c_str()) && MoveFileW(backup.c_str(), json.c_str());
     check("Sicherung im Test wiederhergestellt", restored && get(json, read) && read == saved);
+    check("Manifest im fremden Arbeitsverzeichnis bleibt unverändert",
+          cwd_changed && get(cwd_sentinel, read) && read == "CWD UNBERUEHRT");
 
     Handle first_texture;
     std::string first_name;
@@ -258,6 +272,8 @@ void windows_tests() {
     RemoveDirectoryW(blink.c_str()); RemoveDirectoryW(bd.c_str()); RemoveDirectoryW(bp.c_str());
     RemoveDirectoryW(clink.c_str()); RemoveDirectoryW(cd.c_str()); RemoveDirectoryW(cp.c_str());
     RemoveDirectoryW(dlink.c_str());
+    check("Arbeitsverzeichnis zurückgesetzt", !cwd_changed || SetCurrentDirectoryW(old_cwd.c_str()));
+    DeleteFileW(cwd_sentinel.c_str());
     DeleteFileW(sentinel.c_str()); RemoveDirectoryW(outside.c_str());
     RemoveDirectoryW(projects.c_str());
     check("Testverzeichnis vollständig entfernt", RemoveDirectoryW(wroot.c_str()) != 0);

@@ -174,7 +174,7 @@ inline Result open_relative(HANDLE parent, const std::wstring& name, ACCESS_MASK
 }
 
 inline Result open_directory(HANDLE parent, const std::wstring& name, Handle& out) {
-    Result r = open_relative(parent, name, FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES,
+    Result r = open_relative(parent, name, FILE_LIST_DIRECTORY | FILE_TRAVERSE | FILE_READ_ATTRIBUTES,
                              FILE_SHARE_READ | FILE_SHARE_WRITE, FILE_OPEN, 0, out);
     if (r != Result::Ok) return r;
     r = inspect(out.get(), true);
@@ -214,9 +214,9 @@ inline bool write_locked(HANDLE file, const std::string& data) {
     return FlushFileBuffers(file) != 0;
 }
 
-// Umbenennung des bereits verifizierten Handles im SELBEN Ordner. FALSE
-// bedeutet: niemals ein zwischenzeitlich angelegtes Ziel ersetzen.
-inline bool rename_same_directory(HANDLE file, std::wstring_view target) noexcept {
+// Umbenennung des bereits verifizierten Handles relativ zum gehaltenen
+// Zielordner. Kein Pfad-Fallback: FALSE ersetzt nie ein bestehendes Ziel.
+inline bool rename_same_directory(HANDLE file, HANDLE directory, std::wstring_view target) noexcept {
     // Nur intern erzeugte Sicherungsnamen und das feste Manifestziel sind
     // zulässig. Weder Validierung noch Aufruf dürfen nach dem ersten Rename
     // allokieren: auch OOM muss den Rückweg zum alten Namen offenlassen.
@@ -226,17 +226,37 @@ inline bool rename_same_directory(HANDLE file, std::wstring_view target) noexcep
             if ((target[i] < L'0' || target[i] > L'9') && target[i] != L'-') return false;
     }
     if (target.size() > 255) return false;
+    using NtSet = NTSTATUS (NTAPI *)(HANDLE, PIO_STATUS_BLOCK, PVOID, ULONG, FILE_INFORMATION_CLASS);
+    using NtError = ULONG (WINAPI *)(NTSTATUS);
+    HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+    if (!ntdll) { SetLastError(ERROR_MOD_NOT_FOUND); return false; }
+    const auto set = reinterpret_cast<NtSet>(GetProcAddress(ntdll, "NtSetInformationFile"));
+    const auto to_error = reinterpret_cast<NtError>(GetProcAddress(ntdll, "RtlNtStatusToDosError"));
+    if (!set || !to_error) { SetLastError(ERROR_PROC_NOT_FOUND); return false; }
+
+    // FILE_RENAME_INFORMATION aus ntifs.h; die nutzbare Layoutdefinition ist
+    // nicht in allen Win32-SDKs öffentlich. Der native Aufruf erhält genau ein
+    // einzelnes Zielsegment und das bereits geprüfte Verzeichnishandle.
+    // SetFileInformationByHandle löst einfache Namen dagegen gegen das
+    // Arbeitsverzeichnis auf bzw. akzeptiert RootDirectory nicht zuverlässig.
+    struct NativeRenameInfo {
+        BOOLEAN replace_if_exists;
+        HANDLE root_directory;
+        ULONG name_bytes;
+        WCHAR name[1];
+    };
     const std::size_t bytes = target.size() * sizeof(wchar_t);
-    // Windows verlangt mindestens sizeof(FILE_RENAME_INFO) + Dateiname;
-    // FileNameLength zählt nur die Zeichenbytes ohne das Nullzeichen.
-    const std::size_t length = sizeof(FILE_RENAME_INFO) + bytes;
-    alignas(FILE_RENAME_INFO) unsigned char storage[sizeof(FILE_RENAME_INFO) + 255 * sizeof(wchar_t)]{};
-    auto* info = reinterpret_cast<FILE_RENAME_INFO*>(storage);
-    info->ReplaceIfExists = FALSE;
-    info->RootDirectory = nullptr; // einfacher Name im selben Verzeichnis
-    info->FileNameLength = static_cast<DWORD>(bytes);
-    std::memcpy(info->FileName, target.data(), bytes);
-    return SetFileInformationByHandle(file, FileRenameInfo, info, static_cast<DWORD>(length)) != 0;
+    const std::size_t length = sizeof(NativeRenameInfo) + bytes;
+    alignas(NativeRenameInfo) unsigned char storage[sizeof(NativeRenameInfo) + 255 * sizeof(wchar_t)]{};
+    auto* info = reinterpret_cast<NativeRenameInfo*>(storage);
+    info->replace_if_exists = FALSE;
+    info->root_directory = directory;
+    info->name_bytes = static_cast<ULONG>(bytes);
+    std::memcpy(info->name, target.data(), bytes);
+    IO_STATUS_BLOCK ios{};
+    const NTSTATUS status = set(file, &ios, info, static_cast<ULONG>(length), FileRenameInformation);
+    if (status < 0) { SetLastError(to_error(status)); return false; }
+    return true;
 }
 
 inline bool delete_owned_handle(HANDLE file) {
@@ -271,7 +291,7 @@ public:
         if (!to_wide(root_path, CP_ACP, root)) return Result::Invalid;
         std::wstring full;
         if (!absolute_path(root, full)) return Result::Invalid;
-        root_.reset(CreateFileW(full.c_str(), FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES,
+        root_.reset(CreateFileW(full.c_str(), FILE_LIST_DIRECTORY | FILE_TRAVERSE | FILE_READ_ATTRIBUTES,
                                 FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
                                 FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
         if (!root_.valid()) return Result::Io;
@@ -377,7 +397,7 @@ public:
             bool renamed = false;
             for (int i = 0; i < 100; ++i) {
                 backup = unique_name(L".bak");
-                if (rename_same_directory(original.get(), backup)) { renamed = true; break; }
+                if (rename_same_directory(original.get(), data_.get(), backup)) { renamed = true; break; }
                 const DWORD error = GetLastError();
                 if (error != ERROR_ALREADY_EXISTS && error != ERROR_FILE_EXISTS) break;
             }
@@ -387,8 +407,8 @@ public:
             }
         }
         if (before_promote) before_promote(context); // deterministischer Konflikttest
-        if (!rename_same_directory(staged.get(), L"textures.json")) {
-            const bool restored = !original.valid() || rename_same_directory(original.get(), L"textures.json");
+        if (!rename_same_directory(staged.get(), data_.get(), L"textures.json")) {
+            const bool restored = !original.valid() || rename_same_directory(original.get(), data_.get(), L"textures.json");
             if (!restored) recovery = std::move(backup);
             if (!delete_owned_handle(staged.get()) && recovery.empty()) recovery = std::move(temp);
             return Result::Conflict;
@@ -412,7 +432,7 @@ private:
         if (texture_dir_.valid()) return Result::Ok;
         Result r = open_directory(data_.get(), L"textures", texture_dir_);
         if (r != Result::Missing || !create) return r;
-        r = open_relative(data_.get(), L"textures", FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES,
+        r = open_relative(data_.get(), L"textures", FILE_LIST_DIRECTORY | FILE_TRAVERSE | FILE_READ_ATTRIBUTES,
                           FILE_SHARE_READ | FILE_SHARE_WRITE, FILE_CREATE, FILE_DIRECTORY_FILE, texture_dir_);
         if (r == Result::Conflict) return open_directory(data_.get(), L"textures", texture_dir_);
         if (r != Result::Ok) return r;
