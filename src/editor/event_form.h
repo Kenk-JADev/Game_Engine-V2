@@ -41,7 +41,7 @@ enum EvType {
     ET_SELF_SWITCH, ET_IF_SELF_SWITCH, ET_FADE,
     ET_MOVE_ROUTE, ET_INPUT_NUMBER, ET_BATTLE,
     ET_LOOP, ET_BREAK, ET_LABEL, ET_JUMP, ET_EXIT_EVENT, ET_ERASE_EVENT,
-    ET_BUTTON_INPUT, ET_TEXT_OPTIONS, ET_COUNT
+    ET_BUTTON_INPUT, ET_TEXT_OPTIONS, ET_COMMON_EVENT, ET_COUNT
 };
 inline constexpr const char* const EV_TYPES[ET_COUNT] = {
     "text", "choices", "log", "wait", "switch", "toggle_switch", "variable",
@@ -49,7 +49,7 @@ inline constexpr const char* const EV_TYPES[ET_COUNT] = {
     "weather", "effect", "sound", "item", "gold", "save_game", "load_game",
     "self_switch", "if_self_switch", "fade", "move_route", "input_number", "battle",
     "loop", "break", "label", "jump", "exit_event", "erase_event",
-    "button_input", "text_options"
+    "button_input", "text_options", "common_event"
 };
 inline constexpr const char* const EVENT_TRIGGERS[] = {"action", "touch", "auto", "parallel"};
 inline constexpr const char* const EVENT_OPS[] = {"==", "!=", "<", "<=", ">", ">="};
@@ -64,7 +64,8 @@ inline bool event_command_uses_field(int type, size_t field) {
             type == ET_EFFECT || type == ET_ITEM || type == ET_WEATHER || type == ET_SELF_SWITCH ||
             type == ET_IF_SELF_SWITCH || type == ET_FADE || type == ET_MOVE_ROUTE ||
             type == ET_INPUT_NUMBER || type == ET_BATTLE || type == ET_LABEL ||
-            type == ET_JUMP || type == ET_BUTTON_INPUT || type == ET_TEXT_OPTIONS;
+            type == ET_JUMP || type == ET_BUTTON_INPUT || type == ET_TEXT_OPTIONS ||
+            type == ET_COMMON_EVENT;
         case 1: return type == ET_WAIT || type == ET_VARIABLE || type == ET_IF_VARIABLE ||
             type == ET_TELEPORT || type == ET_MOVE_PLAYER || type == ET_SOUND || type == ET_EFFECT ||
             type == ET_GOLD || type == ET_HEAL || type == ET_WEATHER || type == ET_SAVE_GAME ||
@@ -706,6 +707,7 @@ inline std::vector<const char*> event_command_keys(int type) {
         case ET_LABEL: case ET_JUMP: return {"name"};
         case ET_BUTTON_INPUT: return {"name", "keys"};
         case ET_TEXT_OPTIONS: return {"position", "frame", "transparent"};
+        case ET_COMMON_EVENT: return {"name"};
         default: return {};
     }
 }
@@ -1017,7 +1019,7 @@ inline EventEdit event_command_prepare(const JsonValue* existing, const EventCom
         // marke/ziel der Sprünge sind Namen, Tasteneingabe eine Tastenliste.
         case ET_LOOP: case ET_BREAK: case ET_EXIT_EVENT: case ET_ERASE_EVENT:
             break;
-        case ET_LABEL: case ET_JUMP:
+        case ET_LABEL: case ET_JUMP: case ET_COMMON_EVENT:
             ok = name();
             break;
         case ET_BUTTON_INPUT:

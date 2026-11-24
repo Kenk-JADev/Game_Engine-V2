@@ -628,6 +628,10 @@ module RGSS
     $data_items  = liste_als_hash(db['items'])
     $data_skills = liste_als_hash(db['skills'])   # 20a: Fertigkeiten
     $data_states = liste_als_hash(db['states'])   # 20a: Zustände
+    # 20c: Gemeinsame Events - per Name (der Befehl 117 nennt keinen Index).
+    $data_common_events = ::Database.common_events.each_with_object({}) do |h, ziel|
+      ziel[h['name'].to_s] = h unless h['name'].to_s.empty?
+    end
     $data_weapons = {}   # Datenbank kennt noch keine Waffen (Backlog)
     $data_armors = {}    # ... und keine Rüstungen (Backlog)
     $data_system = ::Database.system

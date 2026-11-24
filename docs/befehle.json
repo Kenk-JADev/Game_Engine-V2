@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "stand": "Etappe 20c (Runde 27): 34 Befehle",
+  "stand": "Etappe 20c (Runde 27): 35 Befehle",
   "zweck": "Quellen-Register der Event-Befehlstypen. Vier Stellen im Baum müssen zu dieser Liste passen: CMD_TYPES (game/engine/mapcheck.rb), die Ausführung (game/engine/interpreter.rb), ISSUE_CMD_TYPES (src/editor/editor_main.cpp) und EvType/EV_TYPES (src/editor/event_form.h). Ein neuer Befehl ist erst fertig, wenn er hier UND in allen vier Stellen steht; tools/befehle_test.rb meldet die Lücke vor dem Commit.",
   "reihenfolge": "Die Reihenfolge ist die des Registers; die vier Stellen halten dieselbe Reihenfolge ein, damit Diffs lesbar bleiben.",
   "bereiche": [
@@ -370,6 +370,15 @@
         "transparent"
       ],
       "beschreibung": "Stellt Position, Rahmen und Transparenz des Nachrichtenfensters ein; gilt bis zum nächsten Aufruf und über Kartenwechsel (XP 104)."
+    },
+    {
+      "typ": "common_event",
+      "bereich": "Ablauf",
+      "pflicht": [
+        "name"
+      ],
+      "optional": [],
+      "beschreibung": "Ruft ein Gemeinsames Event aus database.json auf und führt dessen Befehle im laufenden Interpreter aus (XP 117)."
     }
   ]
 }

@@ -50,6 +50,23 @@ module Database
     load('database.json') || {}
   end
 
+  # Etappe 20c: Gemeinsame Events (XP $data_common_events). Sie stehen in
+  # database.json unter "common_events" und werden über den Namen aufgerufen
+  # (Rune3D nennt Daten beim Namen, nicht bei der Zahl - wie $data_skills).
+  # Fehlt der Abschnitt, gibt es keine - alte Projekte bleiben gültig.
+  def self.common_events
+    liste = database['common_events']
+    liste.is_a?(Array) ? liste.select { |e| e.is_a?(Hash) } : []
+  end
+
+  # Ein gemeinsames Event per Name; nil, wenn es keines mit diesem Namen gibt.
+  def self.common_event(name)
+    ziel = name.to_s
+    return nil if ziel.empty?
+
+    common_events.find { |e| e['name'].to_s == ziel }
+  end
+
   # Verzeichnisse namens *.json sind keine Karten. Dateilinks werden wie bei
   # normalen Ruby-Dateizugriffen gefolgt; dies ist keine Sandbox-Prüfung.
   # Die Endung kann auch .JSON heißen (wie im RuneEditor).

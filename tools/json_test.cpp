@@ -1582,9 +1582,10 @@ void event_form_tests(const std::string& wurzel) {
         R"({"cmd":"label","name":"marke"})", R"({"cmd":"jump","name":"marke"})",
         R"({"cmd":"exit_event"})", R"({"cmd":"erase_event"})",
         R"({"cmd":"button_input","name":"taste","keys":["e","escape"]})",
-        R"({"cmd":"text_options","position":"oben","frame":false,"transparent":true})"
+        R"({"cmd":"text_options","position":"oben","frame":false,"transparent":true})",
+        R"({"cmd":"common_event","name":"hinweis_speichern"})"
     };
-    check("Beispiel für jeden der 34 Befehlstypen vorhanden", samples.size() == ET_COUNT);
+    check("Beispiel für jeden der 35 Befehlstypen vorhanden", samples.size() == ET_COUNT);
     for (size_t i = 0; i < samples.size(); ++i) {
         JsonValue c = json_parse(samples[i]); c.set("extra_meta", json_parse(R"({"n":9007199254740993})"));
         const EventCommandForm f = event_command_form_read(c);

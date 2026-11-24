@@ -50,6 +50,7 @@
 #    {"cmd":"button_input","name":"taste","keys":["e"]} (Tasteneingabe, 20c)
 #    {"cmd":"text_options","position":"oben","frame":false,"transparent":true}
 #                                                       (Fenster-Optionen, 20c)
+#    {"cmd":"common_event","name":"zeit_ansage"}          (Gemeinsames Event, 20c; XP 117)
 #    {"cmd":"script","name":"projekt_script"}  |  {"cmd":"script","code":"..."}
 # ============================================================================
 
@@ -117,10 +118,13 @@ class Interpreter
 
   # Startet eine Kommandoliste. Wird bereits gesprochen, wird ignoriert.
   # owner: auslösendes Objekt (z. B. Event/NPC) für Effekt-Ursprung etc.
-  def start(commands, owner = nil)
+  # common: Name des gemeinsamen Events (Etappe 20c) - nur für Log/Tiefe.
+  def start(commands, owner = nil, common: nil)
     return false if running?
     @owner = owner
-    @stack.push(list: commands || [], index: 0)
+    rahmen = { list: commands || [], index: 0 }
+    rahmen[:common] = common if common
+    @stack.push(rahmen)
     true
   end
 
@@ -328,6 +332,8 @@ class Interpreter
           @button_input = { variable: cmd['name'].to_s, keys: tasten }
           return
         end
+      when 'common_event' # Gemeinsames Event aufrufen (Etappe 20c, XP 117)
+        gemeinsames_event(cmd['name'])
       when 'text_options' # Fenster-Optionen (Etappe 20c, XP 104)
         MessageWindow.set(position: cmd['position'],
                           frame: cmd.key?('frame') ? !!cmd['frame'] : nil,
@@ -432,6 +438,34 @@ class Interpreter
     end
     @owner.erase!
     Rune::Log.info("Event '#{@owner.respond_to?(:name) ? @owner.name : '?'}' gelöscht")
+    true
+  end
+
+  # Etappe 20c: Gemeinsames Event aufrufen (XP 117). Die Befehle laufen im
+  # selben Interpreter weiter; das aufrufende Event setzt danach fort.
+  # Unbekannte Namen und zu tiefe Aufrufketten werden gemeldet und
+  # übersprungen (kein Absturz, kein Hänger).
+  def gemeinsames_event(name)
+    ziel = name.to_s
+    if ziel.empty?
+      Rune::Log.warn('Interpreter: common_event ohne name übersprungen')
+      Issues.report('Interpreter', 'common_event ohne name')
+      return false
+    end
+    tiefe = @stack.count { |r| r[:common] }
+    if tiefe >= CommonEvents::MAX_TIEFE
+      Rune::Log.warn("Interpreter: common_event '#{ziel}' zu tief verschachtelt")
+      Issues.report('Interpreter', "common_event '#{ziel}' zu tief verschachtelt")
+      return false
+    end
+    eintrag = Database.common_event(ziel)
+    befehle = eintrag && eintrag['commands']
+    unless befehle.is_a?(Array)
+      Rune::Log.warn("Interpreter: gemeinsames Event '#{ziel}' fehlt")
+      Issues.report('Interpreter', "gemeinsames Event '#{ziel}' fehlt")
+      return false
+    end
+    @stack.push(list: befehle, index: 0, common: ziel)
     true
   end
 

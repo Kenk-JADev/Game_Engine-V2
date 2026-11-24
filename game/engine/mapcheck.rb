@@ -72,7 +72,7 @@ module MapCheck
     self_switch if_self_switch fade
     move_route input_number battle
     loop break label jump exit_event erase_event
-    button_input text_options
+    button_input text_options common_event
   ].freeze
 
   TRIGGER   = %w[action touch auto parallel].freeze
@@ -86,6 +86,9 @@ module MapCheck
   # Tastennamen der Tasteneingabe (XP 105). Die Tastennamen sind dieselben,
   # die Rune::Input kennt (src/ruby/vm.cpp: Buchstaben + Sondertasten).
   FENSTER_POSITIONEN = %w[oben mitte unten].freeze
+  # Etappe 20c: Trigger Gemeinsamer Events (CommonEvents::TRIGGER; hier als
+  # eigene Liste, weil mapcheck.rb vor common_events.rb geladen wird).
+  COMMON_TRIGGER = %w[none autorun parallel].freeze
   TASTEN = (%w[e space enter escape up down left right shift ctrl alt tab
                backspace] + ('a'..'z').to_a + (1..12).map { |n| "f#{n}" }).freeze
   # Etappe 19g, XP-Vokabular seit 19h.2: muss zu Mover::SCHRITTE passen
@@ -143,11 +146,22 @@ module MapCheck
   #   materials: bekannte Materialnamen (optional, sonst keine Tex-Prüfung)
   #   scripts:   bekannte Script-Namen (optional)
   #   maps:      bekannte Karten-Ids für Teleport-Ziele (optional)
+  #   common_events: bekannte Namen Gemeinsamer Events (optional, 20c)
   def scan(map, name: 'karte', prefabs: default_prefabs, materials: nil,
-           scripts: nil, maps: nil)
+           scripts: nil, maps: nil, common_events: nil)
     f = Sammler.new(name, prefabs: prefabs, materials: materials,
-                          scripts: scripts, maps: maps)
+                          scripts: scripts, maps: maps,
+                          common_events: common_events)
     f.karte(map)
+    f.liste
+  end
+
+  # Etappe 20c: database.json prüfen (bisher nur Karten). Geprüft werden die
+  # Gemeinsamen Events: eindeutige Namen, gültige Trigger, Schalter-Pflicht
+  # bei autorun/parallel und die Befehlslisten selbst.
+  def scan_database(db, name: 'database.json')
+    f = Sammler.new(name, prefabs: default_prefabs)
+    f.gemeinsame_events(db)
     f.liste
   end
 
@@ -232,12 +246,14 @@ module MapCheck
   class Sammler
     attr_reader :liste
 
-    def initialize(name, prefabs: nil, materials: nil, scripts: nil, maps: nil)
+    def initialize(name, prefabs: nil, materials: nil, scripts: nil, maps: nil,
+                   common_events: nil)
       @karte_name = name
       @prefabs    = prefabs
       @materials  = materials
       @scripts    = scripts
       @maps       = maps
+      @common_events = common_events
       @liste      = []
       # Etappe 19k.3: Block-Zonen der GEPRÜFTEN Karte (nicht der geladenen!) -
       # für die Lage-Prüfungen „steht in einer Block-Zone".
@@ -259,6 +275,53 @@ module MapCheck
       pruefe_blocked(map['blocked'])
       pruefe_encounters(map['encounters'])   # Etappe 19l: Zufallskämpfe
       pruefe_atmosphaere(map)
+    end
+
+    # Etappe 20c: Gemeinsame Events der Datenbank (öffentlich, weil
+    # scan_database sie direkt aufruft).
+    def gemeinsame_events(db)
+      return unless db.is_a?(Hash) && db.key?('common_events')
+
+      liste = db['common_events']
+      wo = "#{@karte_name} common_events"
+      unless liste.is_a?(Array)
+        melde(FEHLER, wo, 'ist keine Liste')
+        return
+      end
+
+      namen = []
+      liste.each_with_index do |e, i|
+        w = "#{wo} ##{i + 1}"
+        unless e.is_a?(Hash)
+          melde(FEHLER, w, 'ist kein Objekt')
+          next
+        end
+        w += " ('#{e['name']}')" if text?(e['name'])
+        if !text?(e['name'])
+          melde(FEHLER, w, "'name' fehlt oder ist leer")
+        else
+          melde(FEHLER, w, "Name '#{e['name']}' ist doppelt") if namen.include?(e['name'].to_s)
+          namen << e['name'].to_s
+        end
+        trig = e.key?('trigger') ? e['trigger'].to_s : 'none'
+        if !COMMON_TRIGGER.include?(trig)
+          melde(FEHLER, w, "unbekannter Trigger '#{trig}' (none/autorun/parallel)")
+        elsif trig != 'none' && !text?(e['switch'])
+          melde(WARNUNG, w,
+                "#{trig} ohne 'switch': läuft dauerhaft und blockiert andere Events")
+        end
+        if e.key?('switch') && !text?(e['switch'])
+          melde(FEHLER, w, "'switch' muss ein Name sein")
+        end
+        befehle = e['commands']
+        if !befehle.is_a?(Array)
+          melde(FEHLER, w, "'commands' fehlt/keine Liste")
+        elsif befehle.empty?
+          melde(WARNUNG, w, 'keine Befehle (Aufruf bewirkt nichts)')
+        else
+          pruefe_befehle(befehle, w)
+        end
+      end
     end
 
     private
@@ -964,6 +1027,14 @@ module MapCheck
                   "unbekannte Taste '#{t}' (z. B. e, space, escape, up, f1)")
           end
         end
+      when 'common_event'
+        # Etappe 20c: Gemeinsames Event aufrufen (XP 117).
+        name = c['name']
+        if !text?(name)
+          melde(FEHLER, w, "'name' fehlt oder ist leer")
+        elsif @common_events && !@common_events.include?(name.to_s)
+          melde(WARNUNG, w, "gemeinsames Event '#{name}' ist nicht definiert")
+        end
       when 'text_options'
         # Etappe 20c: Fenster-Optionen (XP 104).
         if c.key?('position') && !FENSTER_POSITIONEN.include?(c['position'].to_s)
@@ -1116,16 +1187,40 @@ if $PROGRAM_NAME == __FILE__
   wurzel = File.expand_path('../..', __dir__)
   ziele = ARGV.empty? ? [File.join(wurzel, 'game', 'data', 'maps'),
                          File.join(wurzel, 'projekte')] : ARGV
-  alle = MapCheck.scan_tree(*ziele, prefabs: Prefabs.ids)
+
+  # Etappe 20c: Datenbanken neben den Karten mitprüfen (Gemeinsame Events)
+  # und ihre Namen an die Karten-Prüfung geben - so fällt ein Tippfehler im
+  # Befehl "Gemeinsames Event" schon hier auf.
+  datenbanken = ziele.flat_map do |ziel|
+    basis = File.directory?(ziel) ? ziel : File.dirname(File.expand_path(ziel))
+    Dir.glob(File.join(basis, '**', 'database.json'))
+  end.uniq.sort
+  common_namen = []
+  datenbank_funde = {}
+  datenbanken.each do |pfad|
+    db = begin
+      JSON.parse(File.read(pfad, encoding: 'utf-8'))
+    rescue StandardError => e
+      datenbank_funde[pfad] = [MapCheck::Finding.new(MapCheck::FEHLER, File.basename(pfad),
+                                                     "nicht lesbar: #{e.message}")]
+      next
+    end
+    common_namen.concat(Array(db['common_events']).filter_map { |e| e['name'].to_s if e.is_a?(Hash) })
+    funde = MapCheck.scan_database(db, name: File.basename(pfad))
+    datenbank_funde[pfad] = funde unless funde.empty?
+  end
+
+  alle = MapCheck.scan_tree(*ziele, prefabs: Prefabs.ids, common_events: common_namen.uniq)
 
   fehler = 0
-  alle.sort.each do |pfad, funde|
+  alle.merge(datenbank_funde).sort.each do |pfad, funde|
     next if funde.empty?
 
     puts File.basename(pfad)
     funde.each { |f| puts "  #{f}" }
     fehler += funde.count(&:fehler?)
   end
-  puts(alle.values.flatten.empty? ? 'Alle Karten sauber.' : "Insgesamt: #{alle.values.flatten.size} Funde")
+  gesamt = alle.values.flatten + datenbank_funde.values.flatten
+  puts(gesamt.empty? ? 'Alle Karten sauber.' : "Insgesamt: #{gesamt.size} Funde")
   exit(fehler.zero? ? 0 : 1)
 end

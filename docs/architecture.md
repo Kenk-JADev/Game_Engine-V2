@@ -1732,6 +1732,76 @@ Spielstand inkl. altem Save, Befehlsreihenfolge, MP-Kosten, Heilung,
 "nicht genug MP", Schaden + Zustandschance, Selbst-Buff, Gift/Regeneration/
 Ablauf, 8-Zustände-Grenze, Zeichnung in beiden Phasen).
 
+## Ablauf-Befehle und Gemeinsame Events (Etappe 20c)
+
+Sechs Befehle der XP-Ablaufsteuerung plus zwei Nachrichten-/Eingabe-Befehle
+sind dazugekommen; das Register (`docs/befehle.json`) führt seither **35**
+Typen, und `tools/befehle_test.rb` erzwingt, dass `CMD_TYPES`
+(`mapcheck.rb`), `ISSUE_CMD_TYPES` (`editor_main.cpp`), `EvType`/`EV_TYPES`
+(`event_form.h`) und `interpreter.rb` dieselbe Reihenfolge halten.
+
+- **Schleife** (`loop`, XP 112 + 413): eigener Zweig `commands` im
+  Befehls-Objekt. Der Interpreter legt dafür einen Stack-Rahmen mit
+  `loop: true` an; ist die Liste am Ende, beginnt sie von vorn. `break`
+  (XP 113) sucht im Stack den innersten `loop`-Rahmen und verwirft ihn samt
+  allem, was darüber liegt - deshalb wirkt es auch aus Wenn-Zweigen heraus.
+  Eine **leere** Schleife wird beendet statt zu drehen; MapCheck warnt
+  zusätzlich, wenn im Körper weder `break`, `jump` noch `exit_event` steht.
+- **Marken** (`label`/`jump`, XP 118/119): `label` ist zur Laufzeit ein
+  No-Op, `jump` sucht die Marke **nur im aktuellen Befehls-Array** (also im
+  selben Block bzw. Zweig, wie XP es bei gleicher Einrückung tut) und setzt
+  den Laufzeiger hinter sie. Fehlt die Marke, bleibt der Zeiger stehen,
+  es wird gewarnt und `Issues` schreibt ins Backlog - das Event hängt nicht.
+- **Event-Ende** (`exit_event`, XP 115) leert den Stack; **Event löschen**
+  (`erase_event`, XP 116) ruft `Event#erase!` und beendet danach ebenfalls.
+  `Event#erased?` schaltet `active?`/`commands`/`manual_fire` ab; `Game.update`
+  nimmt gelöschte Events aus der Auslöser-Schleife, `pickables` aus dem
+  Picking, und blendet die Schild-Nodes (`@event_visuals`) genau dieses
+  Events einmalig aus. `enter_map` baut die Events neu - damit ist die
+  Löschung wie in XP bis zum Kartenwechsel befristet.
+- **Tasteneingabe** (`button_input`, XP 105): blockiert wie die
+  Zahleneingabe (eigener Zustand `@button_input`, `running?` beachtet ihn)
+  und schreibt die **1-basierte Position** der gedrückten Taste aus `keys`
+  in die Variable. Tastennamen sind die von `Rune::Input` (`src/ruby/vm.cpp`:
+  Buchstaben, `space`, `escape`, `up`, `f1`, ...); MapCheck kennt die Liste
+  (`TASTEN`) und warnt bei Tippfehlern.
+- **Fenster-Optionen** (`text_options`, XP 104): eigenes Modul
+  `game/engine/message_window.rb` (Position `oben`/`mitte`/`unten`, Rahmen,
+  Transparenz). Es liegt bewusst außerhalb des Interpreters, weil die
+  Einstellung in XP in `$game_system` steht und Kartenwechsel überlebt;
+  `Game.start_game` setzt bei Neustart/F5 die Defaults. `UI.message` zeichnet
+  danach oben/mitte/unten, ohne Rahmen oder mit 35 % Deckkraft.
+- **Gemeinsame Events** (`common_event`, XP 117): `database.json` bekommt
+  den optionalen Abschnitt `"common_events": [{"id","name","trigger",
+  "switch","commands"}]`. Angesprochen werden sie über den **Namen**
+  (`Database.common_event(name)`), nicht über einen Index - wie bei
+  `$data_skills` in Rune3D. `Database.common_events` liefert nur Objekte,
+  fehlt der Abschnitt bleiben alte Projekte gültig. Der Befehl legt die
+  Befehlsliste als weiteren Stack-Rahmen (`common: name`) auf; Aufrufketten
+  sind bis `CommonEvents::MAX_TIEFE` (8) erlaubt, danach wird gewarnt und
+  übersprungen. Unbekannte Namen und fehlende Listen ebenso - nie ein Hänger.
+- **Trigger**: `CommonEvents.tick(interp)` läuft in `Game.update` vor den
+  Karten-Events, wenn der Interpreter frei ist, und startet höchstens ein
+  Event pro Frame. `trigger` ist `none` (nur per Befehl), `autorun` (läuft
+  neu, solange der Schalter an ist) oder `parallel`; `switch` gibt
+  autorun/parallel frei. **Grenze:** Die Engine hat EINEN Interpreter -
+  "parallel" läuft deshalb zwischen anderen Events, nicht gleichzeitig
+  (dieselbe Grenze wie bei parallelen Karten-Events, LOGIK D3).
+- **Prüfung**: `MapCheck.scan_database(db)` prüft den neuen Abschnitt
+  (eindeutige Namen, Trigger-Vokabular, Schalter-Pflicht bei autorun/
+  parallel, Befehlslisten inklusive unbekannter Befehlstypen). Der
+  Karten-Scan kennt `common_events:` als Namensliste und warnt, wenn ein
+  `common_event`-Befehl einen unbekannten Namen nennt; die CLI
+  (`ruby -I game/engine game/engine/mapcheck.rb`) sammelt die Datenbanken
+  beider Datenbäume ein und prüft sie mit.
+- **RGSS**: `$data_common_events` ist ein Hash Name → Eintrag (XP nutzt
+  Indizes; Rune3D bleibt beim Namensmodell).
+
+**Tests:** `tools/ablauf_test.rb` (30 Checks), `tools/common_events_test.rb`
+(27 Checks), `tools/json_test.cpp` (720 Checks inkl. Beispiel je
+Befehlstyp), `tools/befehle_test.rb`, `tools/sync_test.rb`,
+`tools/mapcheck_test.rb`.
+
 ## Professionalisierung: Sync-Test + README (Etappe 19j)
 
 Die Sync-Pflicht für neue Befehlstypen (MapCheck::CMD_TYPES in Ruby =

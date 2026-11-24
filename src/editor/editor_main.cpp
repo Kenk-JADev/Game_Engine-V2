@@ -1213,7 +1213,7 @@ const char* const ISSUE_CMD_TYPES[] = {
     "self_switch", "if_self_switch", "fade",
     "move_route", "input_number", "battle",
     "loop", "break", "label", "jump", "exit_event", "erase_event",
-    "button_input", "text_options"
+    "button_input", "text_options", "common_event"
 };
 const int ISSUE_CMD_TYPE_COUNT =
     static_cast<int>(sizeof(ISSUE_CMD_TYPES) / sizeof(ISSUE_CMD_TYPES[0]));
@@ -7187,7 +7187,8 @@ const wchar_t* const EV_TYPE_LABELS[ET_COUNT] = {
     L"[Ablauf] Marke", L"[Ablauf] Sprung zu Marke",
     L"[Ablauf] Event beenden", L"[Ablauf] Event löschen",
     L"[Steuerung] Tasteneingabe",
-    L"[Nachricht] Fenster-Optionen"
+    L"[Nachricht] Fenster-Optionen",
+    L"[Ablauf] Gemeinsames Event"
 };
 const wchar_t* const EV_TRIGGERS[4] = { L"action", L"touch", L"auto", L"parallel" };
 const wchar_t* const EV_OPS[6] = { L"==", L"!=", L"<", L"<=", L">", L">=" };
@@ -7377,6 +7378,7 @@ std::string ev_cmd_label(const JsonValue& c) {
         return "Schleife (" + std::to_string(n) + (n == 1 ? " Befehl)" : " Befehle)");
     }
     if (type == "break") return "Schleife verlassen";
+    if (type == "common_event") return "Gemeinsames Event \"" + ev_str_of(c, "name") + "\"";
     if (type == "label") return "Marke \"" + ev_str_of(c, "name") + "\"";
     if (type == "jump") return "Sprung zu Marke \"" + ev_str_of(c, "name") + "\"";
     if (type == "exit_event") return "Event beenden";
@@ -7665,7 +7667,8 @@ void ev_cmd_visibility() {
                           t == ET_HEAL || t == ET_MOVE_PLAYER || t == ET_VARIABLE ||
                           t == ET_SELF_SWITCH || t == ET_IF_SELF_SWITCH ||
                           t == ET_LOOP || t == ET_BREAK || t == ET_EXIT_EVENT ||
-                          t == ET_ERASE_EVENT || t == ET_TEXT_OPTIONS;
+                          t == ET_ERASE_EVENT || t == ET_TEXT_OPTIONS ||
+                          t == ET_COMMON_EVENT;
     show(g_ev.lbl_text, is_text || has_hint);
     show(g_ev.ed_ce_text, is_text);
 
@@ -7743,6 +7746,10 @@ void ev_cmd_visibility() {
     if (t == ET_WAIT) SetWindowTextW(g_ev.lbl_val1, L"Sekunden");
     if (t == ET_LOG) SetWindowTextW(g_ev.lbl_text, L"Log-Text");
     if (t == ET_LABEL || t == ET_JUMP) SetWindowTextW(g_ev.lbl_name, L"Marke");
+    if (t == ET_COMMON_EVENT) {
+        SetWindowTextW(g_ev.lbl_name, L"Gemeinsames Event (Name)");
+        SetWindowTextW(g_ev.lbl_text, L"Name aus database.json \"common_events\"; der Interpreter führt die Befehle dort aus.");
+    }
     if (t == ET_BUTTON_INPUT) {
         SetWindowTextW(g_ev.lbl_name, L"Variable");
         SetWindowTextW(g_ev.lbl_text, L"Tasten (eine pro Zeile, z. B. e, escape, up)");

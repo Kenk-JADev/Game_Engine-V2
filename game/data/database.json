@@ -289,5 +289,20 @@
       "turns": 3,
       "desc": "Heilt 10 HP pro Runde (3 Runden)."
     }
+  ],
+  "common_events": [
+    {
+      "id": 1,
+      "name": "hinweis_speichern",
+      "trigger": "none",
+      "commands": [
+        {
+          "cmd": "text",
+          "lines": [
+            "Vergiss nicht zu speichern - F5 startet den Playtest neu."
+          ]
+        }
+      ]
+    }
   ]
 }

@@ -1230,6 +1230,10 @@ end
     end
 
     unless @interpreter.running?
+      # Etappe 20c: Gemeinsame Events mit Trigger (XP-Autorun/parallel)
+      # starten vor den Karten-Events, wie in XP Game_Map#update.
+      CommonEvents.tick(@interpreter) if defined?(CommonEvents)
+
       px, py, pz = Rune::Player.position
 
       # Auto-/Touch-Events (Etappe Z6, Designentscheidungen D1/D2):
