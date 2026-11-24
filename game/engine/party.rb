@@ -12,6 +12,12 @@
 #                    "power":40, "price":25, "desc":"Heilt 40 HP." } ]
 #    }
 #
+#  Stufenaufstieg (D4, Runde 22): Erfahrung läuft über `Party.gain_exp`
+#  (bzw. `actor.exp = n`); XP-Kurve mit Stufe 1 = 0 Exp und
+#  exp(n) = exp(n-1) + ((n-1) ** 2.7 + 0.5).to_i (XP: 2.4 +
+#  exp_inflation/100, Default 30). Rune3D speichert GESAMT-Exp, XP den Rest
+#  je Stufe - alte Spielstände bleiben damit gültig.
+#
 #  Party hält den veränderlichen Spielzustand (HP/MP, Gold, Inventar) und
 #  wandert als Snapshot in die Spielstände. Die Item-Definitionen bleiben in
 #  der Datenbank; das Inventar speichert nur Mengen.
@@ -21,6 +27,17 @@ class Party
   Actor = Struct.new(:id, :name, :klass, :level, :max_hp, :max_mp, :hp, :mp,
                      :atk, :def, :spi, :agi, :exp, keyword_init: true) do
     def damaged? = hp < max_hp
+
+    # XP-Route für Scripts: `$game_party.actors[0].exp += 50` (RGSS) bzw.
+    # `actor.exp = 50` löst denselben Stufenaufstieg aus wie Party.gain_exp.
+    def exp=(value)
+      Party.set_exp(self, value)
+    end
+
+    # Gesamt-Exp, die die nächste Stufe braucht (XP: Game_Actor#next_exp).
+    def next_exp
+      Party.exp_for_level(level.to_i + 1)
+    end
 
     def hp_line
       "#{name}  Lv #{level}  HP #{hp}/#{max_hp}  MP #{mp}/#{max_mp}"
@@ -33,6 +50,60 @@ class Party
 
   class << self
     attr_reader :actors, :items, :gold
+  end
+
+  # Höchste Stufe (XP: final_level = 99) und Kurven-Exponent.
+  MAX_LEVEL = 99
+  EXP_POW = 2.7
+
+  # Gesamt-Exp, die Stufe `level` verlangt (Stufe 1 = 0). Die Kurve wird
+  # einmal berechnet; Index = Stufe.
+  def self.exp_for_level(level)
+    stufe = level.to_i
+    return 0 if stufe <= 1
+    @exp_kurve ||= begin
+      kurve = [0, 0]
+      (2..MAX_LEVEL).each { |i| kurve[i] = kurve[i - 1] + (((i - 1) ** EXP_POW) + 0.5).to_i }
+      kurve
+    end
+    @exp_kurve[[stufe, MAX_LEVEL].min] || 0
+  end
+
+  # Erfahrung setzen (auch der Weg über `actor.exp = n`). Überschüssige
+  # Erfahrung hebt mehrere Stufen auf einmal. Rückgabe: neue Stufe.
+  def self.set_exp(actor, value)
+    return actor.level if actor.nil?
+    gesamtziel = actor[:exp] = [[value.to_i, 0].max, exp_for_level(MAX_LEVEL)].min
+    while actor.level.to_i < MAX_LEVEL && gesamtziel >= exp_for_level(actor.level.to_i + 1)
+      level_up!(actor)
+    end
+    actor.level
+  end
+
+  # Erfahrung gutschreiben (Kampfsieg). Rückgabe: Anzahl Stufen, die der
+  # Held dadurch aufgestiegen ist (0 = keine).
+  def self.gain_exp(actor, amount)
+    return 0 unless actor.respond_to?(:exp) && actor.respond_to?(:level)
+    vorher = actor.level.to_i
+    set_exp(actor, actor.exp.to_i + amount.to_i)
+    actor.level.to_i - vorher
+  end
+
+  # Stufe um eins erhöhen. Ohne Klassentabellen (XP: RPG::Class-Parameter)
+  # wächst jeder Wert prozentual; HP/MP werden um den Zuwachs aufgefüllt.
+  def self.level_up!(actor)
+    hp_plus = [(actor.max_hp.to_i * 0.08).round, 1].max
+    mp_plus = actor.max_mp.to_i.positive? ? [(actor.max_mp.to_i * 0.08).round, 1].max : 0
+    actor.level = actor.level.to_i + 1
+    actor.max_hp = actor.max_hp.to_i + hp_plus
+    actor.hp = [actor.hp.to_i + hp_plus, actor.max_hp].min
+    actor.max_mp = actor.max_mp.to_i + mp_plus
+    actor.mp = [actor.mp.to_i + mp_plus, actor.max_mp].min
+    %i[atk def spi agi].each do |wert|
+      actor[wert] = actor[wert].to_i + [((actor[wert].to_i) * 0.05).round, 1].max
+    end
+    Rune::Log.info("Party: #{actor.name} erreicht Stufe #{actor.level}")
+    actor.level
   end
 
   # Aus der Datenbank (Hash) neu aufsetzen; HP/MP starten voll.
@@ -233,7 +304,9 @@ class Party
       a = find(h['id'])
       next unless a
       a.level = (h['level'] || a.level).to_i
-      a.exp = (h['exp'] || a.exp).to_i
+      # Bewusst am Setter vorbei: ein alter Spielstand darf beim Laden keine
+      # Stufen aufholen (die Werte sind dort schon eingerechnet).
+      a[:exp] = (h['exp'] || a.exp).to_i
       a.hp = [[(h['hp'] || a.hp).to_i, a.max_hp].min, 0].max
       a.mp = [[(h['mp'] || a.mp).to_i, a.max_mp].min, 0].max
     end

@@ -189,7 +189,7 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 | Parameter-Logik | Str/Dex/Agi/Int → Atk/Def/Hit/Eva; Ausrüstung wirkt auf alle Werte | Basiswerte direkt, keine Ausrüstung |
 | Gegner-KI | Aktionstabelle mit Bedingungen (HP-%, Runde, Zustand, Ziele) | greift zufälligen lebenden Helden an |
 | Rundenlogik | Runde, Initiative nach AGI | Runde, Eingabereihenfolge |
-| EXP/Level | `exp=` löst **Level-Up** mit Wachstum und Klassen-Skills aus | EXP wird gutgeschrieben, **aber nie ein Level-Up** (tote Zahl) |
+| EXP/Level | `exp=` löst **Level-Up** mit Wachstum und Klassen-Skills aus | EXP gutgeschrieben; **seit Runde 22 Level-Up** (Kurve 2.7, Gesamt-Exp, prozentuales Wachstum, `actor.exp = n`), Klassen-Skills fehlen (20a) |
 | Beute | Gold + Drop mit Chance | ✅ gleich |
 | Wache (Guard) | ✅ | ❌ |
 | Animationen je Aktion | Animation1/Animation2 pro Battler | ❌ |
@@ -256,7 +256,7 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 
 | Etappe | Inhalt | Warum jetzt |
 |---|---|---|
-| **20a Kampf: Skills & Zustände** | DB `skills`+`states` (F9-Reiter), `battle.rb`: Skill-Befehl mit MP, Zustände pro Runde (Vergiftung usw.), Gegner-Aktionen mit Bedingungen, **Level-Up bei EXP (D4)** — danach Formel/Reihenfolge/Flucht schrittweise an XP annähern | Größte Spiel-Lücke; ohne Skills bleibt MP tot, EXP eine tote Zahl (D4) |
+| **20a Kampf: Skills & Zustände** | DB `skills`+`states` (F9-Reiter), `battle.rb`: Skill-Befehl mit MP, Zustände pro Runde (Vergiftung usw.), Gegner-Aktionen mit Bedingungen, **Level-Up bei EXP (D4)** — danach Formel/Reihenfolge/Flucht schrittweise an XP annähern | Größte Spiel-Lücke; ohne Skills bleibt MP tot (**Level-Up seit Runde 22 erledigt**, D4) |
 | **20b Menü wie XP** | Item (außerhalb Kampf), Skill, Status-Detail, Gold/Fortschritt — Scene_Menu als echtes XP-Menü | Braucht 20a fürs Skill-Fenster |
 | **20c Event-Befehle Welle 1 (Ablauf)** | `loop`/`break`/`label`/`jump`/`exit_event`/`erase_event`/`button_input`/`text_options` + **Common Events** (Datenhaltung + F6 + 117) | Struktur, die fast jedes XP-Projekt braucht |
 | **20d Event-Befehle Welle 2 (Daten)** | Variable-Operationen/Quellen, Timer (+Anzeige), erweiterte Bedingungen (Gold/Item/Actor/Button/Script), `party_member`, HP/SP/EXP/Level-Befehle, 134/135/136 als Befehle, **`$game_temp`-Calling-Flags auswerten** (`battle_calling`/`menu_calling`/`save_calling`/`player_transferring`, heute stumme Felder — LOGIK E.3) | Verdoppelt die Aussagekraft von Variablen/Schaltern; XP-Scripts, die Szenen über `$game_temp` starten, funktionieren dann |

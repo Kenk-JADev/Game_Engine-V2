@@ -128,6 +128,14 @@ module Scripts
     def set_variable(name, value) = GameState.set_variable(name.to_s, value.to_f)
     def add_variable(name, delta) = set_variable(name, variable(name) + delta.to_f)
 
+    # Erfahrung geben (D4, Runde 22): Held per id, XP-Stufenaufstieg inklusive.
+    # Rückgabe: Anzahl Stufen.
+    def gain_exp(id, amount)
+      actor = Party.find(id.to_s)
+      return 0 unless actor
+      Party.gain_exp(actor, amount.to_i)
+    end
+
     def player_position = Rune::Player.position
 
     def teleport(x, z, yaw: Math::PI)

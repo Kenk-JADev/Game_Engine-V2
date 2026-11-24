@@ -979,7 +979,10 @@ zeigt ein Panel daneben Helden, Gold und Inventar (`Party.status_lines`).
 
 **Script-Kontext** (`Scripts::Context`) kennt dafür: `party`,
 `gold(amount)`/`gold()`, `items`, `item_count`, `add_item`, `take_item`,
-`use_item`, `heal`.
+`use_item`, `heal`, **`gain_exp(id, amount)`** (Runde 22: XP-Stufenaufstieg,
+Rückgabe = Anzahl Stufen). Über RGSS geht derselbe Weg:
+`$game_party.actors[0].exp = n` (bzw. `+=`) löst `Party.set_exp` aus;
+`actor.next_exp`/`actor.level` lesen.
 
 **Editor:** Menü `Datenbank -> Datenbank (Helden/Items)...`
 (`ID_MENU_DATABASE = 111`) öffnet das moduslose Fenster
@@ -1590,7 +1593,11 @@ Gegner) -> Aktionsphase: Heldenaktionen nach Agilität sortiert (Items über
 `Party.use_item`), dann Gegnerzug (zufälliger lebender Held), dann
 Sieg-/Niederlage-Prüfung. Schaden = `atk - def/2`, ±15 % Streuung, min 1,
 Kritikchance `agi/64` (x3 Helden, +25 % Gegner). Sieg: Exp auf lebende
-Helden, Gold an die Party, Drop-Würfe; Niederlage: `$game_temp.gameover`
+Helden über `Party.gain_exp` (Stufenaufstieg wie XP, D4/Runde 22: Kurve
+`exp(n) = exp(n-1) + ((n-1) ** 2.7 + 0.5).to_i`, Gesamt-Exp, Höchststufe 99,
+Wachstum 8 % HP/MP und 5 % je Angriffswert, HP/MP werden um den Zuwachs
+aufgefüllt; Heldenwerte im Kampf lesen live aus dem Party-Actor, ein
+Aufstieg wirkt sofort), Gold an die Party, Drop-Würfe; Niederlage: `$game_temp.gameover`
 (-> `Game.to_title!` aus Game.update, 19h.2), außer `can_lose`. Flucht:
 50 %, ohne `can_escape` nicht möglich.
 

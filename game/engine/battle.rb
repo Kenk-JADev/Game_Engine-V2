@@ -42,7 +42,7 @@ module Battle
   # actor?/enemy? trennt sie).
   class Battler
     attr_accessor :name, :id
-    attr_reader :atk, :def, :spi, :agi, :actor, :defi
+    attr_reader :actor, :defi
 
     def initialize(id:, name:, hp:, mp: 0, max_hp: nil, max_mp: nil,
                    atk: 10, def_: 8, spi: 5, agi: 8, actor: false, defi: nil)
@@ -75,6 +75,14 @@ module Battle
     def max_mp = party_actor? ? [@defi.max_mp.to_i, 0].max : @max_mp
     def hp = party_actor? ? [[@defi.hp.to_i, 0].max, max_hp].min : @hp
     def mp = party_actor? ? [[@defi.mp.to_i, 0].max, max_mp].min : @mp
+
+    # D4 (Runde 22): Auch die Angriffswerte der Helden haben eine Quelle -
+    # ein Stufenaufstieg mitten im Kampf wirkt damit sofort (wie XP), statt
+    # erst im nächsten Kampf.
+    def atk = party_actor? ? @defi.atk.to_i : @atk
+    def def = party_actor? ? @defi.def.to_i : @def
+    def spi = party_actor? ? @defi.spi.to_i : @spi
+    def agi = party_actor? ? @defi.agi.to_i : @agi
 
     def hp=(value)
       value = [[value.to_i, 0].max, max_hp].min
@@ -586,7 +594,11 @@ module Battle
     unless exp.zero?
       @actors.each do |a|
         next if a.dead?
-        a.defi.exp += exp if a.defi.respond_to?(:exp)
+        next unless a.defi.respond_to?(:exp)
+        # D4 (Runde 22): XP-Stufenaufstieg - Überschuss zählt für die
+        # nächste Stufe, Statuswerte wachsen (Party.gain_exp).
+        stufen = Party.gain_exp(a.defi, exp)
+        log("#{a.name} steigt auf Stufe #{a.defi.level}!") if stufen.positive?
       end
       log("Sieg! #{exp} Exp erhalten")
     end

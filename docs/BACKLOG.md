@@ -21,6 +21,19 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 ---
 
 ## Offen
+### [Engine] Level-Up ohne Klassentabellen — bewusste Grenze (Runde 22)
+- Symptom: Stufenaufstieg wächst prozentual (8 % HP/MP, 5 % je
+  Angriffswert), XP rechnet dagegen aus `RPG::Class`-Kurven je Stufe.
+- Vermutung/Analyse: Unsere `database.json` kennt nur Startwerte
+  (`hp/mp/atk/def/spi/agi`), keine Klassen-/Parameterkurven; eine
+  Kurventabelle wäre ein neues Datenformat (Editor-F9-Reiter).
+- Betroffene Stellen: `game/engine/party.rb` (`level_up!`, `exp_for_level`),
+  `game/data/database.json`, Editor-Datenbankdialog.
+- Gefunden in: Runde 22 (D4 umgesetzt, Wachstum bewusst vereinfacht).
+- Zweite bewusste Abweichung: Rune3D speichert **Gesamt-Exp** (alte
+  Spielstände bleiben gültig), XP den Rest-Exp je Stufe; Schwelle ist
+  `exp_for_level(level+1)`.
+
 ### [Editor] Issue-Scan prüft `if_self_switch`-Zweige nicht — erledigt (Runde 20)
 - Symptom: Fehler in `then`/`else` von `if_self_switch` erscheinen im
   Editor-Issues-Dialog (F10) nicht, obwohl MapCheck sie findet.
