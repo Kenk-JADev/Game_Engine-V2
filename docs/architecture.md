@@ -193,7 +193,7 @@ rate, bytes)` nimmt einen Byte-String (16 Bit mono, little-endian,
 Hüllkurve, Rauschen für Schritte): `schritt`, `klick`, `jingle`,
 `ablehnen`, `sprung`, `landung`. Abspielen: `Rune::Sound.play(name, volume)`.
 
-Verkabelt sind: Menü-Klick (Launcher), Schrittgeräusche nach Laufstrecke
+Verkabelt sind: Menü-Klick (Esc-Menü), Schrittgeräusche nach Laufstrecke
 (0.6 m Gehen / 0.85 m Rennen, über `Input.down?(:shift)`), Sprung und
 Landung sowie der neue Event-Befehl `{'cmd' => 'sound', 'name' => ..., 'volume' => ...}`
 im Interpreter (z. B. Jingle beim Kristall-Bergen). Fehlt winmm oder
@@ -246,8 +246,9 @@ Wieder-Herausziehen läuft geglättet (5/s). Ist das Hindernis näher als
 0.5-m-Schritten bis 2.5 m) — Zaun und Brunnen werden überflogen statt
 dass das Bild in der Wand landet. Der Ist-Zustand steht im HUD
 (`third d=7.0 a=3.9 k=3.9 l=0.5`: Soll-, Ist-Distanz, Kollisionsdistanz,
-Anhebung) via `Rune::Camera.info`. Der Launcher-Überblicksabstand (28 m)
-gilt nur im Launcher — beim Spielstart stellt `Game.setup` auf 7 m.
+Anhebung) via `Rune::Camera.info`. Der Titel-Überblicksabstand (28 m)
+gilt nur auf dem `Scene_Title`-Titelbild — beim Spielstart stellt
+`Game.setup` auf 7 m.
 
 **Pixel-Schärfe (14b):** Der Textur-Sampler nutzt
 `D3D11_FILTER_MIN_MAG_MIP_POINT` statt linear — Texel bleiben auch aus der
@@ -287,7 +288,8 @@ stoppt also vor dem Spieler statt durch ihn zu laufen.
 Der historische Ruby-Szeneneditor mit F4-Editorzweig und internem
 Playtest-/Snapshot-Wechsel wurde in 19t entfernt. Karten werden im separaten
 `RuneEditor.exe` bearbeitet; dessen F4 startet einen eigenen Rune3D-Prozess.
-Der Laufzeit-Szenenbau für Spiel und Launcher lebt nun in `MapObjects`.
+Der Laufzeit-Szenenbau für Spiel und Titelbildschirm lebt nun in
+`MapObjects`.
 Das bisherige interne `Editor` und `Game.playtest_start/stop` sind keine
 verfügbaren Ruby-APIs mehr. Der getrennte Prozess ist keine Sandbox und
 verwendet reguläre Spielstände und Script-Dateizugriffe.
@@ -340,7 +342,7 @@ erhalten.
 **Rechteckige Karten:** `Terrain::generate(width, height, resolution,
 seed, amplitude)` baut jetzt Rechtecke (Zellen bleiben quadratisch,
 `res_z` wird proportional abgeleitet). Alte Karten mit `size` laufen
-weiter (Fallback in boot.rb, launcher.rb, main.rb, Editor).
+weiter (Fallback in boot.rb, main.rb, Editor).
 
 **Karten-JSON (neue Felder, alle optional):**
 
@@ -887,8 +889,10 @@ an/aus. Der Editor initialisiert dafür die waveOut-Engine
 speichert die ausgewählte Karte und startet Rune3D als eigenen Prozess
 mit `--project <name> --map <karten-id>`. Ohne Kartenauswahl gilt die
 Projekt-Startkarte. Projekt und Karte werden unverändert über die Wide-CLI
-übergeben; eine ungültige ausdrückliche Auswahl zeigt einen Fehler. Bei
-`--project` ohne Karte fällt ein unbekanntes Projekt auf den Launcher zurück.
+übergeben; eine ungültige ausdrückliche Auswahl zeigt einen Fehler. Ein
+unbekanntes Projekt mit `--project`-Karte bricht den Playtest ab (F4);
+ohne F4 wählt die Engine das Projekt intern (last_played → erstes) und
+startet auf dem `Scene_Title`.
 
 **Geprüft:** `ruby -I game/engine tools/weather_test.rb` (22 Checks),
 alle 13 Tests grün, Live-Test log/live17h.ps1 (Toolbar, Zoom,
@@ -966,7 +970,7 @@ Kontext-Helfer - 39 Checks) sowie alle bisherigen Tests grün.
   — sie wirken auch im sonst abgeflachten Dorfkern und sind vollständig
   deterministisch reproduzierbar (F5, Saveload, Playtest).
 - Default: Neue Karten sind flach (`amplitude` 0). `game/main.rb` und der
-  Launcher erzeugen ohne Angabe Amplitude 0 — Berge entstehen durch Malen.
+  Editor erzeugen ohne Angabe Amplitude 0 — Berge entstehen durch Malen.
 
 **Editor:** Fünftes Werkzeug „Höhe malen" (ID 3029). Linksklick hebt um
 +2 m pro Klick, Shift+Klick senkt um −2 m, Mehrfachklicken stapelt (klickt man
@@ -1334,14 +1338,15 @@ $game_-Wrapper) - Ruby-Modding ist das Produktziel.
 `self_switch(letter, value = nil)` (lesen ohne, setzen mit Argument; nur mit
 Besitzer-Event) ergänzen say/switch/variable/teleport/sound/effect/log.
 
-**Launcher-Ersteinrichtung (:first):** `Launcher.activate` ruft
-`Project.ensure_demo` NICHT mehr automatisch. Ohne Projekte startet der
-Titelbildschirm im Zustand `:first`: Willkommenspanel mit
-[Enter/N] = neues Projekt (Name tippen, Slug wird automatisch eindeutig),
-[D] = Demo-Projekt „Dorf" anlegen und direkt spielen, [Esc] = beenden.
-Nach dem Löschen des letzten Projekts landet man ebenfalls in `:first`
-(früher: leere Liste). Kulisse bleibt die Demo-Welt aus game/data - sie
-braucht kein Projekt.
+**Titel ohne Projekt (AB, Runde 12):** `Scene_Title` erzeugt kein
+Projekt mehr selbst (die Launcher-Zustände `:first`/`:name`/`:del` sind
+entfallen; `Project.ensure_demo` läuft nur noch in Tests). Ohne Projekte
+zeigt der Titel den Hinweis „Noch kein Projekt - im Editor Neues
+Projekt anlegen" und blendet Neues Spiel/Fortsetzen aus; beenden geht
+über „Spiel beenden". Die Kulisse ist weiter die Demo-Welt aus
+game/data - sie braucht kein Projekt. Neuanlage ausschließlich im
+Editor (`create_project`, Y3/Y4: Slug wie Ruby, Startkarte `welt01`,
+Mini-Datenbank mit Start-Held).
 
 **Game-Zugriffe für die Wrapper:** `Game.events`/`Game.npcs` (neu) liefern
 die Events/NPCs der aktuellen Karte; `Game.map_id` kam mit 19d.
@@ -1873,7 +1878,7 @@ für `bc237b3` ist grün. Die Zwei-Karten-Live-Prüfung nach
 ## Rune3D-Laufzeit ohne Ingame-Editor (Etappe 19t)
 
 `boot.rb` lädt `map_objects.rb` statt des entfernten `editor.rb`.
-`Game.enter_map` und `Launcher.build_backdrop` erzeugen je eine eigene
+`Game.enter_map` und `Scene_Title#bau_kulisse` erzeugen je eine eigene
 `MapObjects`-Instanz, die mit `Prefabs.instantiate`, Geländehöhe und
 `Scene.refresh_solids` die Spiel- bzw. Kulissenszene aufbaut. Die alten
 `ed_*`-Knotennamen bleiben für Scripts bestehen; die Zuordnung und das

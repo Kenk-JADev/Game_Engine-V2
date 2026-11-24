@@ -2351,35 +2351,85 @@ std::vector<std::string> scan_projects() {
     return project_names_on_disk(g.root);
 }
 
-// Neues Projekt anlegen: Verzeichnis-Gerüst + system.json + Startkarte.
-bool create_project(const std::string& name) {
-    for (char c : name) {
-        const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-                        (c >= '0' && c <= '9') || c == '_';
-        if (!ok) {
-            core::log_error("Projektname ungültig (nur Buchstaben/Zahlen/_): " + name);
-            return false;
+// Ordnername für neue Projekte - spiegelt Ruby Project.slug (Y4):
+// klein, äöüß -> aous, andere Zeichen -> _, max. 32, sonst "projekt".
+static std::string project_slug(const std::string& name) {
+    std::string out;
+    bool sep = false;
+    for (size_t i = 0; i < name.size(); ) {
+        unsigned char c = static_cast<unsigned char>(name[i]);
+        if (c >= 'A' && c <= 'Z') c = static_cast<unsigned char>(c - 'A' + 'a');
+        if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) {
+            if (sep && !out.empty()) out.push_back('_');
+            sep = false;
+            out.push_back(static_cast<char>(c));
+            ++i;
+        } else if (c == 0xC3 && i + 1 < name.size()) {
+            // Ruby s.tr('äöüß', 'aous'): ä=C3A4 ö=C3B6 ü=C3BC ß=C39F
+            const unsigned char d = static_cast<unsigned char>(name[i + 1]);
+            char mapped = 0;
+            if (d == 0xA4) mapped = 'a';
+            else if (d == 0xB6) mapped = 'o';
+            else if (d == 0xBC) mapped = 'u';
+            else if (d == 0x9F) mapped = 's';
+            if (mapped) {
+                if (sep && !out.empty()) out.push_back('_');
+                sep = false;
+                out.push_back(mapped);
+                i += 2;
+                continue;
+            }
+            sep = true;   // fremdes C3-Zeichen wird zum Trenner (wie Ruby)
+            ++i;
+        } else {
+            sep = true;
+            ++i;
         }
     }
-    const std::string base = g.root + "\\projekte\\" + name;
+    if (out.empty()) return "projekt";
+    if (out.size() > 32) out.resize(32);
+    return out;
+}
+
+// Neues Projekt anlegen: Verzeichnis-Gerüst + system.json + leere Startkarte
+// welt01 (Y4, spiegelt Project.create) + Mini-Datenbank mit Start-Held/Item
+// (Y3). Rückgabe: der Ordnername (ggf. mit _2-Uniquifier), "" bei Fehler.
+std::string create_project(const std::string& name) {
+    if (name.empty()) return "";
+    const std::string slug = project_slug(name);
+    std::string folder = slug;
+    const std::vector<std::string> taken = project_names_on_disk(g.root);
+    if (std::find(taken.begin(), taken.end(), folder) != taken.end()) {
+        folder.clear();
+        for (int n = 2; n < 10000 && folder.empty(); ++n) {
+            const std::string cand = slug + "_" + std::to_string(n);
+            if (std::find(taken.begin(), taken.end(), cand) == taken.end())
+                folder = cand;
+        }
+        if (folder.empty()) {
+            core::log_error("Kein freier Projektordner für: " + name);
+            return "";
+        }
+    }
+    const std::string base = g.root + "\\projekte\\" + folder;
     // CREATE_DIRECTORY ist exklusiv: ein inzwischen angelegtes Projekt
     // niemals mit den folgenden Dateien überschreiben.
     if (!core::win_path::create_directory(base)) {
-        core::log_error("Projektordner existiert bereits oder ist nicht anlegbar: " + name);
-        return false;
+        core::log_error("Projektordner existiert bereits oder ist nicht anlegbar: " + folder);
+        return "";
     }
     if (!core::win_path::create_directory(base + "\\data") ||
         !core::win_path::create_directory(base + "\\data\\maps") ||
         !core::win_path::create_directory(base + "\\saves")) {
-        core::log_error("Projektgerüst unvollständig; bitte prüfen: " + name);
-        return false; // nur die eigene, möglicherweise unvollständige Anlage bleibt zurück
+        core::log_error("Projektgerüst unvollständig; bitte prüfen: " + folder);
+        return ""; // nur die eigene, möglicherweise unvollständige Anlage bleibt zurück
     }
 
-    // system.json: Titel + Startpunkt auf die neue Karte.
+    // system.json: Anzeigename = getippter Titel, Startkarte = welt01 (Y4).
     JsonValue sys = JsonValue::make_obj();
     sys.set("name", JsonValue::make_str(name));
     JsonValue start = JsonValue::make_obj();
-    start.set("map", JsonValue::make_str(name));
+    start.set("map", JsonValue::make_str("welt01"));
     start.set("x", JsonValue::make_num(0.0, false));
     start.set("z", JsonValue::make_num(0.0, false));
     start.set("yaw", JsonValue::make_num(3.14159, false));
@@ -2387,23 +2437,55 @@ bool create_project(const std::string& name) {
     sys.set("switches", JsonValue::make_obj());
     sys.set("variables", JsonValue::make_obj());
     if (!write_file(base + "\\data\\system.json", json_write(sys))) {
-        core::log_error("system.json nicht schreibbar: " + name);
-        return false;
+        core::log_error("system.json nicht schreibbar: " + folder);
+        return "";
     }
 
-    // leere scripts.json + database.json mit Start-Held/Item.
+    // leere scripts.json (Ruby-Project.create braucht keine; der Editor
+    // erwartet sie für den Script-Editor).
     JsonValue scripts = JsonValue::make_obj();
     scripts.set("scripts", JsonValue::make_arr());
     write_file(base + "\\data\\scripts.json", json_write(scripts));
+
+    // Y3: Mini-Datenbank mit Start-Held und Start-Item (wie Project.create);
+    // leere actors/items-Arrays ließen die Party leer und sagten jeden
+    // Kampf mit "keine Helden" ab.
     JsonValue db = JsonValue::make_obj();
     db.set("gold", JsonValue::make_num(0, true));
-    db.set("actors", JsonValue::make_arr());
-    db.set("items", JsonValue::make_arr());
+    JsonValue actor = JsonValue::make_obj();
+    actor.set("id", JsonValue::make_str("held"));
+    actor.set("name", JsonValue::make_str("Held"));
+    actor.set("class", JsonValue::make_str("Abenteurer"));
+    actor.set("level", JsonValue::make_num(1, true));
+    actor.set("hp", JsonValue::make_num(100, true));
+    actor.set("mp", JsonValue::make_num(20, true));
+    actor.set("atk", JsonValue::make_num(10, true));
+    actor.set("def", JsonValue::make_num(8, true));
+    actor.set("spi", JsonValue::make_num(8, true));
+    actor.set("agi", JsonValue::make_num(8, true));
+    actor.set("exp", JsonValue::make_num(0, true));
+    JsonValue actors = JsonValue::make_arr();
+    actors.arr.push_back(std::move(actor));
+    db.set("actors", std::move(actors));
+    JsonValue item = JsonValue::make_obj();
+    item.set("id", JsonValue::make_str("heiltrank"));
+    item.set("name", JsonValue::make_str("Heiltrank"));
+    item.set("kind", JsonValue::make_str("heal"));
+    item.set("power", JsonValue::make_num(40, true));
+    item.set("price", JsonValue::make_num(25, true));
+    item.set("start", JsonValue::make_num(1, true));
+    item.set("desc", JsonValue::make_str("Heilt 40 HP eines Helden."));
+    JsonValue items = JsonValue::make_arr();
+    items.arr.push_back(std::move(item));
+    db.set("items", std::move(items));
+    db.set("enemies", JsonValue::make_arr());
+    db.set("troops", JsonValue::make_arr());
     write_file(base + "\\data\\database.json", json_write(db));
 
-    // Startkarte (wie "Neue Karte", flach, 240x240).
+    // Startkarte welt01 (wie "Neue Karte", flach, 240x240) - die ID folgt
+    // XP (MAP001-Style), nicht mehr dem Projektnamen (Y4).
     JsonValue map = JsonValue::make_obj();
-    map.set("name", JsonValue::make_str(name));
+    map.set("name", JsonValue::make_str("Neue Welt"));
     JsonValue ter = JsonValue::make_obj();
     ter.set("width", JsonValue::make_num(240.0, false));
     ter.set("height", JsonValue::make_num(240.0, false));
@@ -2427,12 +2509,12 @@ bool create_project(const std::string& name) {
     map.set("panorama", pan);
     map.set("note", JsonValue::make_str(""));
     map.set("weather", JsonValue::make_obj());
-    if (!write_file(base + "\\data\\maps\\" + name + ".json", json_write(map))) {
-        core::log_error("Startkarte nicht schreibbar: " + name);
-        return false;
+    if (!write_file(base + "\\data\\maps\\welt01.json", json_write(map))) {
+        core::log_error("Startkarte nicht schreibbar: " + folder);
+        return "";
     }
-    core::log_info("Neues Projekt angelegt: " + name);
-    return true;
+    core::log_info("Neues Projekt angelegt: " + folder);
+    return folder;
 }
 
 // Auf ein Projekt umschalten (Karten/Texturen/Menüs/Listen komplett neu).
@@ -2569,8 +2651,9 @@ LRESULT CALLBACK project_dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 if (name.empty()) { MessageBoxW(h, L"Bitte einen Namen eingeben.",
                                                L"Neues Projekt", MB_OK); return 0; }
                 if (g.cur_map >= 0 && !prepare_map_departure()) return 0;
-                if (create_project(name)) {
-                    if (switch_project(name, true)) {
+                const std::string folder = create_project(name);
+                if (!folder.empty()) {
+                    if (switch_project(folder, true)) {
                         DestroyWindow(h);
                         status_mode((L"Neues Projekt: " + utf8_to_wide(name)).c_str());
                     } else {
@@ -2578,8 +2661,9 @@ LRESULT CALLBACK project_dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                                     L"Neues Projekt", MB_OK | MB_ICONWARNING);
                     }
                 } else {
-                    MessageBoxW(h, L"Projekt konnte nicht angelegt werden (Name ungültig\n"
-                                   L"oder bereits vorhanden?).", L"Neues Projekt", MB_OK);
+                    MessageBoxW(h, L"Projekt konnte nicht angelegt werden (Ordner\n"
+                                   L"bereits vorhanden oder nicht anlegbar?).",
+                                L"Neues Projekt", MB_OK);
                 }
                 return 0;
             }

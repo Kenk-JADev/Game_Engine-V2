@@ -220,7 +220,10 @@ end
 # Globalen wollen wir prüfen, nicht ein nachträgliches RGSS.setup im Test.
 $project_root = File.join(Rune::ROOT, 'game', 'data')
 load File.join(Rune::ROOT, 'game', 'main.rb')
-require 'launcher'
+# Titel-Szenen wie im echten boot.rb (AB): Launcher existiert nicht mehr.
+require 'scene_base'
+require 'scene_title'
+require 'scene_file'
 
 $fail = 0
 def check(name)
@@ -248,6 +251,9 @@ end
 
 def prepare
   Battle.abort!
+  # Nach to_title! steht der Modus auf :title; Setup soll wieder ins Spiel
+  # führen (F5-Neustart), nicht den Titel neu aufbauen.
+  Game.instance_variable_set(:@mode, nil)
   Game.setup
   Game.instance_variable_set(:@intro, nil)
   Rune::Input.keys = []
@@ -335,12 +341,12 @@ ensure
   karte['objects'] = [] if karte
   Rune::World.ready = false
 end
-check('Launcher-Kulisse verwendet denselben Szenenaufbau ohne Editor') do
+check('Titel-Kulisse (Scene_Title) verwendet denselben Szenenaufbau ohne Editor') do
   karte = Database.map('start')
   karte['objects'] = [{ 'type' => 'haus', 'x' => 0, 'z' => 0 }]
-  Launcher.build_backdrop
-  scene = Launcher.instance_variable_get(:@scene)
-  builder = Launcher.instance_variable_get(:@map_objects)
+  titel = Scene_Title.new
+  scene = titel.instance_variable_get(:@scene)
+  builder = titel.instance_variable_get(:@map_objects)
   knoten = scene.root.children.find { |node| node.name == 'ed_0_0' }
   knoten && builder.object_index(knoten) == 0 && !defined?(Editor)
 ensure
@@ -681,7 +687,7 @@ check('direkter Rücksprung zum Titel beendet auch einen aktiven Kampf') do
   game_frame(0.016)
   was_paused = Rune::Simulation.paused
   Game.to_title!
-  was_paused && Game.instance_variable_get(:@mode) == :launcher && !Battle.active? &&
+  was_paused && Game.instance_variable_get(:@mode) == :title && !Battle.active? &&
     !$game_temp.in_battle && !Rune::Simulation.paused
 ensure
   Rune::Input.keys = []
@@ -772,7 +778,7 @@ check('Game Over nach Event-Kampf hat Vorrang vor den Folgebefehlen') do
   game_frame(0.016)
   defeated = Battle.result == :niederlage && $game_temp.gameover && !Battle.active?
   game_frame(0.016)
-  defeated && Game.instance_variable_get(:@mode) == :launcher && !GameState.switch('nach_niederlage') &&
+  defeated && Game.instance_variable_get(:@mode) == :title && !GameState.switch('nach_niederlage') &&
     !$game_temp.gameover && !Rune::Simulation.paused
 ensure
   Rune::Input.keys = []
@@ -953,6 +959,8 @@ check('Game.setup erhält Leerzeichen und Unicode im RUNE_PROJECT-Namen exakt') 
   Project.define_singleton_method(:data_path) { |_value| File.join(Rune::ROOT, 'game', 'data') }
   $project_root = nil
   $project_name = nil
+  # Vorherige Titel-Checks stehen auf :title; dieser Start prüft F4/ENV.
+  Game.instance_variable_set(:@mode, nil)
   Game.setup
   $project_name.b == name.b && Project.instance_variable_get(:@touched_name).b == name.b &&
     $project_root == File.join(Rune::ROOT, 'game', 'data')

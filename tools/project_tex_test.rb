@@ -148,7 +148,7 @@ begin
       Rune::Gfx.get('gras')[:pixels].bytes == [255, 0, 0, 255]
   end
   Textures.end_project
-  check('Launcher-Rückkehr entfernt Projekt und stellt Basis wieder her') do
+  check('Rückkehr zum Titel (Textures.end_project) stellt die Basis wieder her') do
     !Rune::Gfx.get('nur_a') && Rune::Gfx.get('gras')[:pixels] == Textures.gras
   end
 

@@ -1,6 +1,6 @@
 # Handoff für die nächste KI - Rune3D, Stand nach Implementierung 19y
 
-**Stand:** 19y RGSS-Editor, Kartenmarker, Projektstart und eigene EXE-Metadaten implementiert. Aktuellen Git-/CI-Status prüfen; interaktiver Windows-/DPI-/Hardwaretest und Bestätigung auf dem Rechner des Users sind offen.
+**Stand:** 19y RGSS-Editor, Kartenmarker, Projektstart und eigene EXE-Metadaten implementiert; **Runde 12 (AB): Scene_Title/Scene_File statt Launcher** (launcher.rb entfernt, interne Projekt-Auflösung, Y3/Y4 im Editor). Aktuellen Git-/CI-Status prüfen; interaktiver Windows-/DPI-/Hardwaretest und Bestätigung auf dem Rechner des Users sind offen.
 **Projekt:** `C:/Users/jusagu/Desktop/Engine` — Windows-Only 3D-RPG-Engine (C++20/Win32/D3D11 + echtes CRuby 3.4.11), Editor = eigenes Programm `RuneEditor.exe`.
 
 ## 0. Auftrag und Fortschritt (RPG-Maker-XP-Überholung)
@@ -46,6 +46,7 @@ Der User beauftragte eine Überarbeitung von Engine und Editor **im Stil von RPG
 | 19w | `d9a236c` (CI-Grün Run 45224317716) | Hauptfenster: Palette über Kartenbaum, Splitter/Scrollen/DPI und geschützte Kartenaktionen; Windows-Live-Test offen |
 | 19y | aktuellen Git-/CI-Status prüfen | F11 RGSS, Marker-Doppelklick, Rechtsklick-Spielerstart, eigene EXE-Version und isolierter UI-Smoke |
 | 19x | `39eab54`; CI-Lauf 45231512626 grün | Ruby-Stdlib paketieren, fehlendes JSON diagnostizieren und isolierten Start von Editor/Spiel testen |
+| AB/12 | dieser Commit (CI-Status siehe Actions) | Scene_Title/Scene_File statt Launcher: `Scene_Base` (main = 1 Frame), interne Projektauflösung (last_played → erstes), Continue → Slot-Wähler, Menü „Zum Titel", UI-rahmen/abdunkeln, Y3/Y4 (Slug+welt01+Start-Held in `create_project`) |
 | 19o.6 | `326925b` (CI-Grün Run 44640705908) | F6: Monitor-Arbeitsfläche, DPI-skalierter Scroll-Ausschnitt, Fokus-Nachführung und portable/unsichtbare Windows-Tests |
 | 19o.5 | `4635c80` (CI-Grün Run 44628573472) | F6: datentreue Event-/Seiten-/Befehlsformulare, Pending-Schutz, bedarfsweise Altseitenmigration und C++/Ruby-Event-Brücke |
 | 19o.4 | `38ed554` (CI-Grün Run 44614856669) | Objektformular datentreu, Pending-/Drag-Schutz und sicheres Kartenladen; portable Tests |

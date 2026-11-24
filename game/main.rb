@@ -306,6 +306,12 @@ end
     @time = data['time'].to_f
     reset_step_tracking
     Rune::Log.info("Geladen: Slot #{slot} (Karte '#{@map['name']}', Spielzeit #{@time.to_i}s)")
+    # Vom Titel/Ladeschirm geladen (Scene_File): Szene verlassen und
+    # wieder in den Spielmodus - auch wenn gerade pausiert war.
+    $scene = nil
+    @mode = :game
+    Rune::Input.capture = true
+    Rune::Simulation.paused = false
     true
   rescue StandardError => e
     Rune::Log.error("Laden fehlgeschlagen: #{e.message}")
@@ -322,10 +328,67 @@ end
   # Zurück zum Titelbildschirm (19h.2: $game_temp.to_title/gameover wie XP).
   def self.to_title!
     Battle.abort! if defined?(Battle)
-    @menu = nil
-    @mode = :launcher
-    Launcher.activate
+    enter_title!
     Rune::Log.info('Zurück zum Titelbildschirm ($game_temp)')
+  end
+
+  # Scene_Title betreten (AB): Das Projekt bleibt gebunden (Continue liest
+  # die Spielstände desselben Projekts), F4-Vorgaben fallen weg. Projekt-
+  # Skripte (autoload) laufen VOR der Szene - XP: Default-Skript zuerst,
+  # danach die Projekt-Skripte, die Scene_Title überschreiben oder $scene
+  # selbst setzen dürfen.
+  def self.enter_title!
+    @menu = nil
+    @mode = :title
+    @menu_sel = 0
+    @intro = nil
+    clear_playtest_start
+    Rune::Input.capture = false
+    $scene = nil   # Reste einer Vorgänger-Szene; Scripts dürfen neu setzen
+    Database.reset!
+    Scripts.load_project
+    Scripts.run_startup
+    $scene ||= Scene_Title.new(projekt: $project_name)
+    # Titel-BGM optional aus system.json (title_bgm), sonst der Spielton.
+    bgm = Database.system['title_bgm'].to_s
+    Rune::Sound.loop(bgm.empty? ? 'musik' : bgm, 0.15)
+    Rune::Log.info("Titelbildschirm (Scene_Title, Projekt: " \
+                   "#{$project_name || 'keines'})")
+  end
+
+  # Internes Projekt für den normalen Start (AB): zuletzt gespielt, sonst
+  # das erste alphabetisch. Neue Projekte entstehen nur im Editor (Y3/Y4).
+  def self.resolve_internal_project!
+    name = Project.preferred
+    return false if name.nil?
+
+    Project.touch(name)
+    $project_name = name
+    $project_root = Project.data_path(name)
+    Database.reset!
+    sys = Database.system
+    Rune::Window.title = "#{sys['name'] || name} - Rune3D"
+    Rune::Log.info("Projekt '#{name}' intern gewählt " \
+                   "(#{Database.map_ids.size} Karten)")
+    true
+  end
+
+  # Ein gebundenes Projekt explizit neu starten (Tests, Werkzeuge) - der
+  # Ersatz für den alten Launcher.start. Der Titelmodus wird vor dem Setup
+  # aufgehoben, damit start_game greift.
+  def self.start_project(name)
+    clear_playtest_start
+    Project.touch(name)
+    $project_name = name
+    $project_root = Project.data_path(name)
+    Database.reset!
+    sys = Database.system
+    Rune::Window.title = "#{sys['name'] || name} - Rune3D"
+    @mode = nil
+    setup
+    Rune::Input.capture = true
+    $scene = nil
+    self
   end
 
   # Bereits gesetztes Game Over muss vor weiteren Event-Befehlen greifen;
@@ -413,9 +476,7 @@ end
         Rune::Sound.play('ablehnen', 0.7)
       end
     when :title
-      @menu = nil
-      @mode = :launcher
-      Launcher.activate   # aktiviert dort auch die Titel-Musik neu
+      to_title!   # enter_title! baut Scene_Title auf und startet die Titelmusik
     end
   end
 
@@ -428,7 +489,7 @@ end
     mx = w / 2 - mw / 2
     my = h / 2 - mh / 2
     UI.panel(mx, my, mw, mh, UI::PANEL, 0.95)
-    Launcher.rahmen(mx, my, mw, mh, UI::ACCENT, 0.6)
+    UI.rahmen(mx, my, mw, mh, UI::ACCENT, 0.6)
     UI.text(mx + 20, my + 16, 'Menü', UI::TEXT, 20)
     items.each_with_index do |it, i|
       y = my + 52 + i * 34
@@ -453,7 +514,7 @@ end
       return if py + ph > h   # kein Platz: ganz weglassen
     end
     UI.panel(px, py, pw, ph, UI::PANEL, 0.95)
-    Launcher.rahmen(px, py, pw, ph, UI::ACCENT, 0.6)
+    UI.rahmen(px, py, pw, ph, UI::ACCENT, 0.6)
     UI.text(px + 20, py + 14, 'Party', UI::TEXT, 18)
     lines.each_with_index do |line, i|
       UI.text(px + 20, py + 44 + i * 28, line, UI::TEXT, 14)
@@ -487,8 +548,16 @@ end
     @prompt = nil
     Issues.clear!   # Etappe 18h: Backlog startet pro Session/F5 neu
 
-    # Ohne Projekt: Titelbildschirm (RPG-Maker-Stil). --project startet
-    # direkt; eine einmal gelesene --map-Vorgabe gehört nur zu diesem Projekt.
+    # F5 auf dem Titelbildschirm: Szene neu aufbauen, nicht ins Spiel
+    # springen (der Modus überlebt das Neuladen von main.rb).
+    if @mode == :title && !recovering
+      enter_title!
+      return
+    end
+
+    # Ohne Projekt: interne Auswahl (F4 > last_played > erstes Projekt),
+    # dann Scene_Title. --project startet direkt; eine einmal gelesene
+    # --map-Vorgabe gehört nur zu diesem Projekt. Anlage nur im Editor.
     if $project_root.nil?
       requested_map = ENV.delete('RUNE_PLAYTEST_MAP')
       # Projektverzeichnisnamen sind exakt; führende Leerzeichen sind auf
@@ -520,13 +589,27 @@ end
       elsif !requested_map.nil?
         playtest_failed("Projekt '#{env_project}' wurde nicht gefunden.")
         return
+      elsif !env_project.empty?
+        # F4 ohne Kartenwahl: ein angefordertes, aber unbekanntes Projekt
+        # ist ein Fehler - kein stiller Wechsel auf einen anderen Start.
+        playtest_failed("Projekt '#{env_project}' wurde nicht gefunden.")
+        return
       else
-        @mode = :launcher
-        Rune::Simulation.paused = false if recovering
-        Launcher.activate
+        # Normaler Start ohne F4: intern auflösen (zuletzt gespielt, sonst
+        # das erste Projekt) und auf den Scene_Title. Gibt es kein Projekt,
+        # zeigt der Titel den Hinweis, im Editor Neues Projekt anzulegen.
+        resolve_internal_project!
+        enter_title!
         return
       end
     end
+    start_game
+  end
+
+  # Spielstart im gebundenen Projekt: System-Startkarte (oder die
+  # ausdrücklich gewählte F4-Karte), RGSS-Globale, Projekt-Skripte.
+  # Genutzt von F4 (direkt), F5, dem Titel (Neues Spiel) und den Tests.
+  def self.start_game
     clear_playtest_start if @playtest_project && @playtest_project != $project_name
 
     # Eine ausdrücklich gewünschte Karte muss eindeutig existieren und ein
@@ -540,10 +623,9 @@ end
       end
     end
     @mode = :game
+    $scene = nil          # Titel/Ladeschirm gehört nicht ins Spiel
     Rune::Simulation.paused = false   # F5: Spiel startet laufend
-    if recovering
-      Rune::Input.capture = true
-    end
+    Rune::Input.capture = true        # auch für den Start vom Titel
 
     # Der Editor kann während des Playtests den Projektstart verschieben.
     # F5/Neustart liest system.json deshalb erneut, ohne andere Caches zu leeren.
@@ -569,7 +651,7 @@ end
     # Spieler auch bei F5. Den neuen Spieler daher auf der Startkarte würfeln.
     $game_player.make_encounter_count
     Rune::Camera.mode = :third
-    Rune::Camera.distance = 7   # Launcher-Überblick (28) -> normaler Follow-Cam
+    Rune::Camera.distance = 7   # Titel-Überblick (28) -> normaler Follow-Cam
     Rune::Sound.loop('musik', 0.22)   # im Spiel etwas lauter als im Titel
     # Opt-in-RGSS-Projektscripte: nach Aufbau von Karte und $game_*-Globalen,
     # vor dem ersten Spielframe, in der Reihenfolge des Script-Editors.
@@ -581,10 +663,22 @@ end
   end
 
   def self.update(dt)
-    # Titelbildschirm und fehlgeschlagener Playtest starten keine Spiel-Frames.
-    if @mode == :launcher
+    # Titel (Scene_Title/Scene_File) und fehlgeschlagener Playtest starten
+    # keine Spiel-Frames.
+    if @mode == :title
       Rune::Simulation.paused = true   # F5: keine Physik auf dem Titelbild
-      Launcher.update(dt)
+      if $scene.nil?
+        # Szene durch einen Fehler verloren: einmal neu aufbauen, sonst
+        # beenden (Flucht über Esc), damit kein schwarzer Leerlauf entsteht.
+        begin
+          enter_title!
+        rescue StandardError => e
+          Rune::Log.error("Titelbildschirm: #{e.class}: #{e.message}")
+          Rune::App.quit if Rune::Input.pressed?(:escape)
+          return
+        end
+      end
+      Graphics.scene_update   # ruft $scene.main (ein Frame, kein Loop)
       return
     elsif @mode == :playtest_error
       Rune::App.quit if Rune::Input.pressed?(:escape)
@@ -654,7 +748,7 @@ end
     end
 
     # Sound: Schritte, Sprung, Landung (nur im Spiel, nicht im Menü).
-    unless @mode == :launcher
+    if @mode == :game
       px, py, pz = Rune::Player.position
       on_ground = Rune::Player.on_ground?
       if @last_pos
@@ -914,8 +1008,14 @@ end
   end
 
   def self.draw
-    if @mode == :launcher
-      Launcher.draw
+    if @mode == :title
+      Rune::Gfx.clear_color = 0x131A24
+      if $scene && $scene.respond_to?(:draw)
+        $scene.draw
+      else
+        UI.text(40, 40, 'Titelbildschirm nicht verfügbar', UI::DANGER, 18)
+        UI.text(40, 72, '[Esc] Beenden', UI::TEXT_DIM, 14)
+      end
       return
     elsif @mode == :playtest_error
       Rune::Gfx.clear_color = 0x131A24
@@ -977,7 +1077,7 @@ end
 
     # Menü-Overlay ganz zum Schluss.
     if @menu
-      Launcher.abdunkeln(Rune::Window.width)
+      UI.abdunkeln(Rune::Window.width)
       draw_menu
     end
   end

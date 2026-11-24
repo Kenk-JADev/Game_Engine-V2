@@ -46,11 +46,9 @@ module UI
   end
   def self.panel(*_args); end
   def self.text(_x, _y, value, *_args) = @texts << value.to_s
+  def self.abdunkeln(*_args); end   # battle.rb ruft UI.abdunkeln (ehem. Launcher)
 end
 
-module Launcher
-  def self.abdunkeln(*_args); end
-end
 module Game
   def self.gy(*_args) = 0.0
 end

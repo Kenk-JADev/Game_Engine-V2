@@ -31,6 +31,23 @@ module UI
     panel(x, y, w, h, color, alpha)
   end
 
+  # Dünner Rahmen (UI.frame füllt die Fläche!). Ehemals Launcher.rahmen -
+  # der Launcher ist seit AB gefallen, Menü/Kampf/Titel nutzen das hier.
+  def self.rahmen(x, y, w, h, color = ACCENT, alpha = 0.6)
+    b = 2
+    Rune::Gfx.rect(x, y, w, b, color, alpha)
+    Rune::Gfx.rect(x, y + h - b, w, b, color, alpha)
+    Rune::Gfx.rect(x, y, b, h, color, alpha)
+    Rune::Gfx.rect(x + w - b, y, b, h, color, alpha)
+  end
+
+  # Halbtransparente Abdunklung hinter Dialogen (Menü, Kampf, Titel).
+  # Ehemals Launcher.abdunkeln.
+  def self.abdunkeln(w = Rune::Window.width, h = Rune::Window.height,
+                     alpha = 0.55)
+    Rune::Gfx.rect(0, 0, w, h, 0x060A12, alpha)
+  end
+
   def self.text(x, y, s, color = TEXT, size = 18)
     Rune::Gfx.text(x, y, s.to_s, color, size)
   end

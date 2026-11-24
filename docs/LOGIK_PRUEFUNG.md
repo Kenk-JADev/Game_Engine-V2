@@ -362,18 +362,19 @@ ergänzt; die Einträge unten sind jeweils als behoben markiert.
 
 ## K. Launcher/Titel & Game-Over — XP `Scene_Title`/`Scene_File`/`Scene_Gameover`
 
-> **Vorgabe (s. AB):** Der Spiel-Launcher entfällt! Die Game-Engine startet
-> künftig in eine **Scene_Title** (New Game/Continue/Shutdown), per
-> Script-Editor austauschbar; **neue Projekte gibt es nur noch im Editor**.
-> Die Tabelle unten beschreibt den **Ist-Zustand bis zur Umsetzung**.
+> **Vorgabe (s. AB):** Der Spiel-Launcher entfällt! Die Game-Engine
+> startet in eine **Scene_Title** (New Game/Continue/Shutdown), per
+> Script-Editor austauschbar; **neue Projekte gibt es nur noch im
+> Editor**. **Umgesetzt in Runde 12:** `launcher.rb` entfernt,
+> `Scene_Base`/`Scene_Title`/`Scene_File` eingeführt (Details in AB).
 
 | XP | Rune3D | Status |
 |---|---|---|
-| Titel: New Game / Continue / Shutdown | Projektliste: Enter=Start, **L=letzter Spielstand direkt**, N=Neu, D=Löschen, Esc=Beenden | ⚠️ Erweiterung um Projektebene (bewusst, mehr als XP); aber: **kein Slot-Wähler am Titel** (XP: Continue → `Scene_File` mit 3 Slots), L überspringt die Auswahl |
-| Slot-Vorschau (Spielzeit, Zeitstempel, Party-Gesichter) | Menü-Panel: „(belegt: Zeitstempel)" | ⚠️ Spielzeit/Party/Karte werden nicht angezeigt (Daten liegen teilweise schon vor: `time`, `map`) |
+| Titel: New Game / Continue / Shutdown | `Scene_Title`: Neues Spiel / Fortsetzen / Spiel beenden (`command_new_game/command_continue/command_shutdown`); Esc beendet nicht (XP-treu) | ✅ seit Runde 12 |
+| Slot-Vorschau (Spielzeit, Zeitstempel, Party-Gesichter) | `Scene_File` zeigt Karte + Zeitstempel; Esc-Menü-Panel weiter „(belegt: Zeitstempel)" | ⚠️ Spielzeit/Party-Gesichter fehlen weiter (Daten liegen vor: `time`, `map`) |
 | `Scene_Gameover`: Game-Over-Bild, Tastendruck → Titel | — | ❌ **fehlt komplett**: `process_temp_scene_change` springt bei `$game_temp.gameover` sofort zum Titel (`to_title!`) — der Spieler sieht nur das Log „Die Party ist besiegt…" |
-| Shutdown | Esc beendet | ✅ |
-| Fortsetzen-Liste mit Beschriftung „File 1…" | Slots nur im Esc-Menü | ⚠️ s. oben |
+| Shutdown | Menüpunkt „Spiel beenden" = `Rune::App.quit` (Esc auf dem Titel beendet bewusst nicht, XP-treu) | ✅ |
+| Fortsetzen-Liste mit Beschriftung „File 1…" | `Scene_File` (Continue vom Titel) mit 3 Slots + Vorschau | ✅ seit Runde 12 (K-Lücke geschlossen; das Esc-Menü behält seine Inline-Slots) |
 
 **Fix-Kandidaten (klein, sichtbar):** Game-Over-Bildschirm (aufbauend auf
 `Fade`/UI, Tastendruck → `to_title!`), Slot-Anzeige mit Spielzeit/Karte,
@@ -699,19 +700,24 @@ leere Map wie in anderen Engines"):
   **XP kopiert beim Neuprojekt die Default-Akteure** (`$data_actors`).
   → Fix: Starter-Held + Start-Item in *beide* Anlage-Pfade schreiben
   (Mini-Database, ein Actor reicht), Kommentar und Code angleichen.
+  **→ erledigt (Runde 12):** `Project.starter_database` (held/Abenteurer
+  + Heiltrank `start: 1`, leere `enemies`/`troops`) wird von Ruby-`create`
+  und C++-`create_project` identisch geschrieben; `project_test` prüft
+  beide Felder.
 - **Y4 — Zwei unabhängige Anlagen mit verschiedenen Konventionen:**
 
-  | | Launcher `Project.create` (Ruby) | Editor `create_project` (C++) |
+  | | Ruby `Project.create` (Referenz/Tests) | Editor `create_project` (C++) |
   |---|---|---|
-  | Namensregeln | Slug: a–z, äöüß→aous, Leerzeichen/`-_.`→`_`, max 32, Uniquifier `_2` | nur `[A-Za-z0-9_]`, Ablehnung statt Uniquifier |
-  | Anzeigename | getippter Titel | = Ordnername |
-  | Startkarten-ID | **`welt01`** (unabhängig, XP-Style wie `MAP001`) | **`<projektname>`** (Karten-ID = Projektname) |
-  | `database.json`/`scripts.json` | fehlen komplett (läuft leer) | leer angelegt |
+  | Namensregeln | Slug: a–z, äöüß→aous, Leerzeichen/`-_.`→`_`, max 32, Uniquifier `_2` | ~~nur `[A-Za-z0-9_]`, Ablehnung statt Uniquifier~~ → **Runde 12:** `project_slug` spiegelt Ruby inkl. `_2` |
+  | Anzeigename | getippter Titel | = Ordnername (jetzt `system.json.name` = getippter Titel) |
+  | Startkarten-ID | **`welt01`** (unabhängig, XP-Style wie `MAP001`) | ~~`<projektname>`~~ → **Runde 12:** `welt01` + `start.map=welt01` |
+  | `database.json`/`scripts.json` | ~~fehlen komplett~~ → **Runde 12:** Mini-Database (Y3) | **Runde 12:** Mini-Database mit Helden/Item (Y3) |
   | `saves/` | erst beim ersten Speichern | sofort |
 
-  → Konsolidieren: eine gemeinsame Spezifikation für „Neues Projekt"
-  (Regeln, Karten-ID `welt01`, Mini-Database in beiden Pfaden).
-  `welt01` ist die XP-nähere Konvention.
+  **→ erledigt (Runde 12):** Konsolidierung erledigt (Regeln, Karten-ID
+  `welt01`, Mini-Database in beiden Pfaden); `welt01` ist die
+  XP-nähere Konvention. Offen bleibt nur die Redundanz zweier
+  Implementierungen (siehe BACKLOG).
 - **Priorität (vom Nutzer gesetzt):** Der Demo-Drift (Y1) ist Beiwerk —
   die Vorlage dient nur als Seed; der zentrale Flow ist
   **Name → leere Karte → bauen**. Y3/Y4 haben Vorrang vor Y1.
@@ -773,6 +779,34 @@ leere Map wie in anderen Engines"):
 6. **Offene Kleinentscheidung:** F4-Playtest startet weiter direkt auf
    der Karte oder künftig wie XP über die Titelszene?
 
+**Umsetzung (Runde 12) — erledigt:**
+- `launcher.rb` gelöscht; `scene_base.rb` (`Scene_Base`: `main` = **ein
+  Frame pro Tick**, kein blockierendes `loop`), `scene_title.rb`
+  (`Scene_Title` mit XP-Methoden `command_new_game/command_continue/
+  command_shutdown`) und `scene_file.rb` (`Scene_File`, 3 Slots mit
+  Vorschau Karte+Zeitstempel, Esc zurück) neu in `boot.rb`.
+- Interne Projekt-Auflösung: `Project.preferred` (last_played → erstes
+  alphabetisch) + `Game.resolve_internal_project!`; ohne Projekt zeigt
+  der Titel den Editor-Hinweis (Anlage nur im Editor, `:first`/`:name`/
+  `:del` entfallen).
+- **Entscheidung Punkt 6:** F4-Playtest startet **weiter direkt auf der
+  Karte** (kein Umweg über den Titel) — dokumentierte, bewusste Abweichung
+  von XP; rund zehn Playtest-Tests hängen am Direktstart.
+- Override-Kette: `enter_title!` lädt `Scripts.load_project` +
+  `run_startup` **vor** `$scene ||= Scene_Title.new` — nur
+  `autoload`-Skripte führen aus (die Invarianten „Event-Skripte laufen
+  nie automatisch" bleiben gültig); danach darf ein Skript `Scene_Title`
+  neu definieren oder `$scene` selbst setzen.
+- Menü „Zum Titelbildschirm" und `$game_temp.to_title` → `to_title!` →
+  `enter_title!`; `rahmen`/`abdunkeln` wanderten nach `UI` (auch Kampf).
+- Titel-BGM: `system.json`-Schlüssel `title_bgm` (optional, sonst
+  `musik`); Titelbild ist die 3D-Kulisse (erste Karte des Projekts).
+- **Bewusst XP-treu:** Esc auf dem Titel beendet *nicht* (Beenden nur
+  über „Spiel beenden" = `Rune::App.quit`).
+- Y3/Y4 mitgezogen: beide Anlagepfade schreiben die Mini-Datenbank;
+  C++ `create_project` slugt wie Ruby und legt die Startkarte `welt01`
+  an (Details unter AA).
+
 **Auswirkungen auf bisherige Befunde:** K beschreibt nur noch den
 Ist-Zustand; Y3 (Starter-Helden) bleibt für „New Game" relevant; Y4
 verschiebt sich vollständig in den Editor; „Projektliste/Neu/Löschen im
@@ -795,7 +829,7 @@ Spiel" entfällt (Doku: `XP_VERGLEICH`-Zeile165 korrigieren,
    (XP-Referenz-Assertion, Inaktiv-Fall, RGSS-Alias-Checks) + Doku.~~
    **→ umgesetzt in Runde 11** (Caveat: Routen-Codes heißen jetzt
    0–45 inkl. Ende-Marker `0`; Bestandsdaten betroffen: keine).
-2. **Scene_Title-Etappe (AB — Nutzer-Vorgabe):** Launcher aus dem Spiel
+2. ~~**Scene_Title-Etappe (AB — Nutzer-Vorgabe):** Launcher aus dem Spiel
    nehmen, interne Projekt-Auflösung (F4 → `last_played` → erstes),
    Engine-`Scene_Title` (New Game/Continue/Shutdown) + `Scene_File`-
    Slot-Wähler, `$scene`-Override-Pfad über Script-Editor
@@ -803,7 +837,10 @@ Spiel" entfällt (Doku: `XP_VERGLEICH`-Zeile165 korrigieren,
    `$scene = Scene_Title.new`. Gleichzeitig **Y3/Y4** in
    `create_project` ziehen (Starter-Held, Karten-ID `welt01`,
    Namensregeln angleichen); `XP_VERGLEICH`-Zeile
-   „Scene_Title | Launcher | ✅" korrigieren.
+   „Scene_Title | Launcher | ✅" korrigieren.~~
+   **→ umgesetzt in Runde 12** (F4 bleibt bewusst Direktstart;
+   `title_bgm` optional aus `system.json`, 2D-Titelgrafik + Editor-
+   Rundlauf der Zusatzschlüssel im BACKLOG).
 3. **Datenpflege Demo (Y):** `tools/sync_demo.rb` (Vorlage `game/data`
    → `projekte/dorf`), Truppen+encounters nachziehen, tote
    Skript-Kommentare bereinigen oder Demo-Event mit `script`-Befehl

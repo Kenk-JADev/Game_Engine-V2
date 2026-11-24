@@ -52,6 +52,22 @@ check('Start zeigt auf welt01 bei 0/0') {
   sys['start']['map'] == 'welt01' && sys['start']['x'] == 0.0 && sys['start']['z'] == 0.0
 }
 
+db_path = File.join(Project.data_path(name), 'database.json')
+check('Y3: database.json mit Start-Held und Start-Item existiert') do
+  File.exist?(db_path)
+end
+if File.exist?(db_path)
+  db = JSON.parse(File.read(db_path, encoding: 'UTF-8'))
+  check('Y3: ein Start-Held (XP kopiert die Default-Akteure)') do
+    db['actors'].is_a?(Array) && db['actors'].size == 1 &&
+      !db['actors'][0]['name'].to_s.empty? && db['actors'][0]['hp'].to_i.positive?
+  end
+  check('Y3: Start-Item wird in die Party übernommen (start > 0)') do
+    db['items'].is_a?(Array) && db['items'].size >= 1 &&
+      db['items'][0]['start'].to_i.positive?
+  end
+end
+
 map = JSON.parse(File.read(File.join(Project.data_path(name), 'maps', 'welt01.json'), encoding: 'UTF-8'))
 check('Neue Welt ist leer (nur Gras)') { map['objects'].empty? && map['events'].empty? }
 check('Neue Welt hat Terrain + Startpunkt') {

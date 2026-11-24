@@ -370,6 +370,29 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Betroffene Stellen: Repo-Wurzel, `README.md`.
 - Gefunden in: Etappe 19a.
 
+### [Engine/Editor] Titel-BGM/-Grafik aus system.json nur angedeutet — offen (AB-Rest)
+- Symptom: `enter_title!` (`game/main.rb`) liest ein optionales
+  `system.json`-Feld `title_bgm` (Fallback: `musik`); ein Feld für eine
+  2D-Titelgrafik existiert nicht (Titelbild ist die 3D-Kulisse). Ob der
+  Editor-Systemdialog beim Speichern fremde Zusatzschlüssel erhält, ist
+  nicht geprüft.
+- Vermutung/Analyse: Der Editor schreibt system.json aus bekannten
+  Feldern neu → `title_bgm` geht verloren, sobald man den Systemdialog
+  öffnet und speichert.
+- Betroffene Stellen: `game/main.rb` (`enter_title!`),
+  `src/editor/editor_main.cpp` (Systemdialog), `game/data/system.json`.
+- Gefunden in: Runde 12 (Scene_Title, AB-Punkt 2).
+
+### [Editor/Ruby] Zwei Anlagepfade für neue Projekte — offen (Redundanz)
+- Symptom: `Project.create` (Ruby) und `create_project` (C++) bauen
+  dasselbe Projektgerüst; seit Runde 12 inhaltlich synchron (Slug,
+  `welt01`, Mini-Datenbank), aber doppelt gepflegt.
+- Vermutung/Analyse: Der Ruby-Pfad dient Tests/Referenz, der C++-Pfad
+  dem Editor; Konsolidierung erst, wenn eine gemeinsame Spezifikation
+  (z. B. JSON-Template oder Werkzeug) existiert.
+- Betroffene Stellen: `game/engine/project.rb`, `src/editor/editor_main.cpp`.
+- Gefunden in: Runde 12 (Y4-Nachgang).
+
 ## Erledigt
 ### [Ruby/Editor/Engine] Fehlende JSON-Standardbibliothek — implementiert (19x)
 - Symptom: `game/editor/boot.rb` → `textures.rb` meldete `LoadError: json`.

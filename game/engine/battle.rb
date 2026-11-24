@@ -689,7 +689,7 @@ module Battle
     end
 
     # Abdunkeln wie im Menü.
-    Launcher.abdunkeln(w)
+    UI.abdunkeln(w)
 
     # Befehlsfenster (links).
     if %i[command item target item_target].include?(@phase)

@@ -27,6 +27,25 @@ module Project
 
   def valid?(name) = list.include?(name)
 
+  # Bevorzugtes Projekt für den internen Start (AB, ohne Launcher):
+  # zuletzt gespielt (last_played aus system.json), sonst das erste
+  # alphabetisch. nil, wenn kein Projekt existiert.
+  def preferred
+    names = list
+    return nil if names.empty?
+
+    best = nil
+    best_last = ''
+    names.each do |n|
+      last = read_system(n)['last_played'].to_s
+      next if last.empty? || last <= best_last
+
+      best = n
+      best_last = last
+    end
+    best || names.first
+  end
+
   def read_system(name)
     p = File.join(data_path(name), 'system.json')
     return {} unless File.exist?(p)
@@ -153,8 +172,24 @@ module Project
     "#{base}_#{n}"
   end
 
-  # Neues Projekt anlegen: leere Welt (nur Gras), Startpunkt in der Mitte.
-  # Rückgabe: der Projektordnername.
+  # Mini-Datenbank für neue Projekte (Y3/XP): ein Start-Held und ein
+  # Start-Item. Leere Arrays würden die Party leer lassen und jeden Kampf
+  # mit "keine Helden" abbrechen; XP kopiert die Default-Akteure ($data_actors).
+  # Der Editor (create_project) spiegelt denselben Inhalt.
+  def starter_database
+    { 'gold' => 0,
+      'actors' => [{ 'id' => 'held', 'name' => 'Held', 'class' => 'Abenteurer',
+                     'level' => 1, 'hp' => 100, 'mp' => 20, 'atk' => 10,
+                     'def' => 8, 'spi' => 8, 'agi' => 8, 'exp' => 0 }],
+      'items' => [{ 'id' => 'heiltrank', 'name' => 'Heiltrank', 'kind' => 'heal',
+                    'power' => 40, 'price' => 25, 'start' => 1,
+                    'desc' => 'Heilt 40 HP eines Helden.' }],
+      'enemies' => [],
+      'troops' => [] }
+  end
+
+  # Neues Projekt anlegen: leere Welt (nur Gras), Startpunkt in der Mitte,
+  # Mini-Datenbank mit Start-Held (Y3). Rückgabe: der Projektordnername.
   def create(title)
     name = unique_slug(title)
     Dir.mkdir(BASE) unless Dir.exist?(BASE)
@@ -170,6 +205,10 @@ module Project
     }
     File.write(File.join(data_path(name), 'system.json'),
                JSON.pretty_generate(system) + "\n", encoding: 'UTF-8')
+
+    # Y3: Start-Held + Start-Item wie im Editor-Pfad (nie leere Arrays).
+    File.write(File.join(data_path(name), 'database.json'),
+               JSON.pretty_generate(starter_database) + "\n", encoding: 'UTF-8')
 
     map = {
       'name'     => 'Neue Welt',

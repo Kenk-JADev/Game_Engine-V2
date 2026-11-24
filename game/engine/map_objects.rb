@@ -1,5 +1,6 @@
 #encoding: utf-8
-# Laufzeit-Szenenbau für die Prefab-Objekte einer Karte. Spiel und Launcher
+# Laufzeit-Szenenbau für die Prefab-Objekte einer Karte. Spiel und
+# Titelbildschirm
 # verwenden denselben Aufbau; die Bearbeitung gehört zu RuneEditor.exe.
 class MapObjects
   def initialize(scene, height_at:)

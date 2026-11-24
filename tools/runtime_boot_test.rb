@@ -1,6 +1,6 @@
 #encoding: utf-8
 # ============================================================================
-#  Echte Ruby-Bootstrap-/Launcher-/Spiel-Integration in einer temporären Kopie.
+#  Echte Ruby-Bootstrap-/Titel-/Spiel-Integration in einer temporären Kopie.
 #  Native Win32-/D3D-/Sound-APIs sind Attrappen: kein GUI-/Hardwaretest.
 #     ruby tools/runtime_boot_test.rb
 # ============================================================================
@@ -222,9 +222,51 @@ if ARGV[0] == '--playtest-child'
           File.binwrite(path, before)
         end
       end
+      # Titel-Flow in Einzelchecks: so zeigt die CI genau, wo die Kette
+      # bricht (Scene_Title -> Scene_File -> Abbruch -> Laden).
+      titel_slot = File.join(Project.saves_dir(PLAYTEST_PROJECT), 'slot1.json')
+      check('Titel: to_title! zeigt Scene_Title mit Projekt') do
+        Game.save_game(1)
+        Game.to_title!
+        Game.instance_variable_get(:@mode) == :title && $scene.is_a?(Scene_Title)
+      end
+      check('Titel: Down+Enter öffnet die Scene_File') do
+        Rune::Input.keys = [:down]   # Fortsetzen wählen
+        runtime_frame(0.016)
+        Rune::Input.keys = [:enter]
+        runtime_frame(0.016)
+        $scene.is_a?(Scene_File)
+      ensure
+        Rune::Input.keys = []
+      end
+      check('Scene_File: Esc kehrt zum selben Titel zurück') do
+        Rune::Input.keys = [:escape]
+        runtime_frame(0.016)
+        $scene.is_a?(Scene_Title)
+      ensure
+        Rune::Input.keys = []
+      end
+      check('Scene_File: Slot 1 lädt zurück ins Spiel (PLAYTEST_MAP)') do
+        Rune::Input.keys = [:enter]  # Fortsetzen erneut (Auswahl bleibt)
+        runtime_frame(0.016)
+        offen = $scene.is_a?(Scene_File)
+        Rune::Input.keys = []        # Kante freigeben: Enter muss neu gedrückt
+        runtime_frame(0.016)         # werden - sonst kein Zweitdruck-Event.
+        Rune::Input.keys = [:enter]  # Slot 1 laden
+        runtime_frame(0.016)
+        geladen = Game.instance_variable_get(:@mode) == :game && $scene.nil? &&
+          Game.map_id == PLAYTEST_MAP
+        offen && geladen
+      ensure
+        Rune::Input.keys = []
+        Game.instance_variable_set(:@intro, nil)
+        # Slot wieder entfernen: spätere Szenarien (battle_save) beginnen
+        # mit der Prüfung, dass Slot1 noch leer ist.
+        File.delete(titel_slot) if File.exist?(titel_slot)
+      end
       check('nach Titelbildschirm und erneuter Wahl gilt wieder die normale Projekt-Startkarte') do
         Game.to_title!
-        Launcher.start(PLAYTEST_PROJECT)
+        Game.start_project(PLAYTEST_PROJECT)
         Game.map_id == 'start' && Game.map['name'] == 'Projekt-Start'
       end
       check('F5 nach manueller Projektwahl erhält den normalen Start') do
@@ -233,7 +275,7 @@ if ARGV[0] == '--playtest-child'
       end
       check('Kartenübernahme läuft nicht in ein anderes Projekt mit gleicher Karten-ID aus') do
         Game.to_title!
-        Launcher.start(OTHER_PROJECT)
+        Game.start_project(OTHER_PROJECT)
         Game.map_id == 'b_start' && Game.map['name'] == 'Projekt B'
       end
       check('kein Fehler im Laufzeit-Log') { Rune::Log.errors.empty? }
@@ -521,23 +563,39 @@ Dir.mktmpdir('rune-laufzeit-') do |root|
   previous_map = ENV.delete('RUNE_PLAYTEST_MAP')
   begin
     Dir.chdir(root) do
-      check('echter Bootstrap lädt Launcher und Demo-Kulisse ohne Ingame-Editor') do
+      check('echter Bootstrap startet auf Scene_Title ohne Ingame-Editor') do
         load File.join(root, 'game', 'engine', 'boot.rb')
         !defined?(Editor) && !File.exist?(File.join(root, 'game', 'engine', 'editor.rb')) &&
-          Game.instance_variable_get(:@mode) == :launcher &&
-          Launcher.instance_variable_get(:@scene).root.children.any? { |n| n.name.start_with?('ed_') }
+          Game.instance_variable_get(:@mode) == :title &&
+          $scene.is_a?(Scene_Title)
       end
-      check('Launcher aktualisiert und zeichnet den echten Szenenbaum') do
+      check('Titel ohne Projekt zeichnet die Kulisse und den Editor-Hinweis') do
         vorher = Rune::Gfx.boxes
         runtime_frame(0.016)
-        Rune::Gfx.boxes > vorher && Rune::Gfx.texts.any? { |t| t.include?('Willkommen') }
+        $scene.instance_variable_get(:@scene).root.children.any? { |n| n.name.start_with?('ed_') } &&
+          Rune::Gfx.boxes > vorher &&
+          Rune::Gfx.texts.any? { |t| t.include?('Noch kein Projekt') }
       end
-      check('Demo-Projekt startet über den echten Launcher mit Hindernissen und Events') do
+      check('Nach Projektanlage bindet der nächste Start das Projekt intern') do
         Project.ensure_demo
-        Launcher.start('dorf')
+        # Frischer Kaltstart wie nach einem Neustart der Engine: ohne F4
+        # gewinnt last_played, sonst das erste Projekt (hier: dorf).
+        Game.instance_variable_set(:@mode, nil)
+        Game.setup
+        Game.instance_variable_get(:@mode) == :title &&
+          $project_name == 'dorf' && $scene.is_a?(Scene_Title) &&
+          $scene.instance_variable_get(:@projekt) == 'dorf'
+      end
+      check('Neues Spiel startet die Startkarte mit Hindernissen und Events') do
+        Rune::Input.keys = [:enter]
+        runtime_frame(0.016)
+        Rune::Input.keys = []
         scene = Game.instance_variable_get(:@scene)
-        Game.map_id == 'dorf' && scene.root.children.any? { |n| n.name.start_with?('ed_') } &&
+        Game.instance_variable_get(:@mode) == :game && $scene.nil? &&
+          Game.map_id == 'dorf' && scene.root.children.any? { |n| n.name.start_with?('ed_') } &&
           Rune::Physics.solid_count.positive? && Game.events.size == 6 && Rune::Input.captured?
+      ensure
+        Rune::Input.keys = []
       end
       check('F4 im echten Spiel-Tick ändert weder Editorzustand noch Kartendatei') do
         map_path = File.join(Project.data_path('dorf'), 'maps', 'dorf.json')

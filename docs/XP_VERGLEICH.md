@@ -162,7 +162,7 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 
 | XP-Szene | Rune3D | Status |
 |---|---|---|
-| Scene_Title (New Game/Continue/Shutdown, per Script überschreibbar) | **Vorgabe:** echte Scene_Title statt Launcher (LOGIK_PRUEFUNG AB) — Ist: Projekt-Launcher | ❌ Ist = Launcher, Umsetzung geplant |
+| Scene_Title (New Game/Continue/Shutdown, per Script überschreibbar) | `Scene_Title` + `Scene_File` (Continue → Slot-Wähler), Launcher entfernt, Override via Projekt-autoload vor dem Szenenaufbau (LOGIK_PRUEFUNG AB, Runde 12) | ✅ |
 | Scene_Map | Game (3D-Karte) | ✅ |
 | Scene_Menu (Item/Skill/Equip/Status/Save/End + PlayTime/Steps/Gold) | Esc-Menü: Speichern/Laden/Titel + Party-Panel | ⚠️ stark reduziert |
 | Scene_Item (Items außerhalb des Kampfs) | — | ❌ |
