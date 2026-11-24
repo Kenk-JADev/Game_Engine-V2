@@ -585,9 +585,11 @@ Laden normalisiert.
 
 **Spiel (`game/engine/event.rb`):** `EventPage` ist ein Struct (conditions,
 trigger, commands). `refresh_page!` bestimmt die aktive Seite neu und setzt
-beim **Seitenwechsel** `fired` zurück — touch/auto-Events feuern auf der
-neuen Seite erneut (klassisches RPG-Maker-Verhalten, z. B. eine Tür, die
-nach dem Schalter-UMlegen beim zweiten Berühren offen ist). `trigger` und
+beim **Seitenwechsel** `fired` zurück — touch-Events feuern auf der neuen
+Seite erneut (klassisches RPG-Maker-Verhalten, z. B. eine Tür, die nach dem
+Schalter-UMlegen beim zweiten Berühren offen ist); bei `auto` sperrt `fired`
+nicht mehr (Z6/D1: XP-Autorun), es merkt nur das erste Log je Seite.
+`trigger` und
 `commands` delegieren an die aktive Seite; `manual_fire` startet deren
 Kommandos. `main.rb` ruft `refresh_page!` für alle Events auf, bevor die
 Trigger-Schleifen laufen.
@@ -2413,9 +2415,11 @@ Eingabe, Welt, Textfenster und Teleport. Damit ist alles ohne C++-Neubau
 | `game/engine/event.rb` | `Event` — Position, Radius, Auslöser, Kommandoliste |
 | `game/engine/interpreter.rb` | `Interpreter` — führt Kommandos aus, hält das Textfenster |
 
-**Auslöser:** `action` (in Reichweite + `E`) · `touch` (Betreten, einmalig) ·
-`auto` (beim Kartenstart). Es läuft immer nur **ein** Interpreter; solange das
-Textfenster offen ist, wird nichts Neues ausgelöst.
+**Auslöser:** `action` (in Reichweite + `E`) · `touch` (Wiederbetreten:
+jede Ankunft in Reichweite, Z6/D2) · `auto` (XP-Autorun: Neustart, sobald
+der Interpreter frei ist, bis zum Seitenwechsel, Z6/D1). Es läuft immer nur
+**ein** Interpreter; solange das Textfenster offen ist, wird nichts Neues
+ausgelöst.
 
 **Kommandos** (in `game/data/maps/*.json`):
 

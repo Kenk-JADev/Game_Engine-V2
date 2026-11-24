@@ -150,8 +150,8 @@ ergänzt; die Einträge unten sind jeweils als behoben markiert.
 
 | # | Thema | XP | Rune3D | Empfehlung |
 |---|---|---|---|---|
-| D1 | **`auto`-Trigger** | **Autorun:** startet jeden Frame neu, läuft endlos bis Seitenwechsel/`erase` (klassisch: Self-Switch am Ende, sonst Endlosschleife) — `021:214` + `check_event_trigger_auto` | feuert **einmal pro Seite** (`fired`) | Für XP-Exaktheit: auf Autorun umstellen. Demo hat kein `auto`-Event → unkritisch. Alternative: einmalig lassen und als Abweichung dokumentieren. |
-| D2 | **`touch`-Trigger** | feuert bei **jeder** Ankunft des Spielers auf dem Event-Feld erneut (`Game_Player`, `check_event_trigger_here([1,2])` bei `last_moving`); Event-Touch feuert dauernd, solange Event auf Spielerfeld | **einmal pro Seite** (RADIUS + `fired`), nie wieder vor Seitenwechsel | XP-treu: bei Wiederbetreten erneut feuern (Self-Switch macht es einmalig — wie XP-Autoren es gewöhnt sind). |
+| D1 | **`auto`-Trigger** | **Autorun:** startet jeden Frame neu, läuft endlos bis Seitenwechsel/`erase` (klassisch: Self-Switch am Ende, sonst Endlosschleife) — `021:214` + `check_event_trigger_auto` | feuert **einmal pro Seite** (`fired`) | Für XP-Exaktheit: auf Autorun umstellen. Demo hat kein `auto`-Event → unkritisch. Alternative: einmalig lassen und als Abweichung dokumentieren. **→ entschieden (Z6): XP-treu umgesetzt in Runde 17** (Neustart in `main.rb`, `fired` nur noch Log-Marke). |
+| D2 | **`touch`-Trigger** | feuert bei **jeder** Ankunft des Spielers auf dem Event-Feld erneut (`Game_Player`, `check_event_trigger_here([1,2])` bei `last_moving`); Event-Touch feuert dauernd, solange Event auf Spielerfeld | **einmal pro Seite** (RADIUS + `fired`), nie wieder vor Seitenwechsel | XP-treu: bei Wiederbetreten erneut feuern (Self-Switch macht es einmalig — wie XP-Autoren es gewöhnt sind). **→ entschieden (Z6): XP-treu umgesetzt in Runde 17** (Rearm beim Verlassen der Nähe in `main.rb`). |
 | D3 | **NPCs/Events während Text** | Karten-Update dreht Events **permanent** weiter (eigene Parallel-Interpreter je Event, autonome Bewegung auch bei offenem Textfenster) | **Ein** Interpreter; während er läuft: keine Seiten-Refreshs, NPCs stehen, Trigger aus (Backlog: parallele Events) | Bekannte Backlog-Grenze. Kleinster wirksamer Schritt: `@npcs.update` + `refresh_page!` auch bei laufendem Interpreter ausführen (Zwischenstand zu XP). |
 | D4 | **Kampf-Details** | Reihenfolge: alle Kämpfer gemischt nach `agi + rand(10+agi/4)`; Formel mit Treffer/Miss, `str`-Skalierung, Elementen, Kritik `4*dex/agi` (×2), Wache (÷2), Varianz; Flucht `50*actors_agi/enemies_agi`; EXP für alle lebenden + `cant_get_exp?`-Freigabe; **Level-Up in `exp=`** | Reihenfolge: erst Held-Block (nach agi), dann Gegner; vereinfachte Formel (kein Miss/Wache/Element, Kritik agi-basiert ×3/×1.25); Flucht fest 50 %; EXP nur für lebende Held; **kein Level-Up (EXP wirkt nie)** | Für 20a (Kampf-Skills/Zustände) mitziehen: Level-Up zuerst (tote Zahl), dann Formel/Reihenfolge schrittweise angleichen. |
 | D5 | **Wahl-Abbruch** | Show Choices mit optionalem Abbruch-Zweig (403) | cancel-Feld + Abbruch-Zweig vorhanden; Esc gehört während Eingaben der Eingabe, nicht dem Menü | → **umgesetzt (Runde 16):** `cancel`/`cancel_branch` in Engine+Editor+MapCheck+Tests; XP-Default „nicht erlaubt“ bleibt Standard. |
@@ -879,8 +879,13 @@ Spiel" entfällt (Doku: `XP_VERGLEICH`-Zeile165 korrigieren,
    Editor mit „Wenn Abbruch:"-Kopfzeile, MapCheck+Issue-Scan,
    Esc-Routing Menü↔Eingabe, Tests event18f/mapcheck/runtime_boot/
    json; optional: Kombi-Fenster Text+Wahl (M) bleibt bewusst offen).
-6. **Designentscheidung mit dir:** D1 (`auto` = XP-Autorun) und D2
-   (`touch` = Wiedereintritt) — Demo hat keine betroffenen Events.
+6. ~~**Designentscheidung mit dir:** D1 (`auto` = XP-Autorun) und D2
+   (`touch` = Wiedereintritt) — Demo hat keine betroffenen Events.~~
+   **→ entschieden und umgesetzt in Runde 17** (beide XP-treu: D1
+   Autorun-Neustart bis Seitenwechsel, D2 Wiederbetreten mit Rearm
+   beim Verlassen der Nähe; Tests D1/D2 in `encounter_test`, Auto-
+   Save/Load-Check angepasst; Demo hat weiterhin keine betroffenen
+   Events — nur der Wegweiser ist `touch`).
 7. **Roadmap `docs/XP_VERGLEICH.md`:** 20a Kampf (zieht D4/Level-Up),
    dann 20d (Variable-Operationen/Bedingungen) — dort auch die
    `$game_temp`-Calling-Flags sinnvoll anbinden; **neu aufgenommen:

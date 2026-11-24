@@ -212,6 +212,7 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 | Karte scrollen | ✅ | 3D-Kamera (andere Mechanik) |
 | Common Events | ✅ | ❌ |
 | Event-Seiten/Bedingungen | ✅ | ✅ (inkl. Self-Switches A–D) |
+| Event-Trigger | `auto` = Autorun (bis Seitenwechsel), `touch` = Wiederbetreten | ✅ (Z6/D1+D2, LOGIK Runde 17) |
 | Bewegungsroute | ✅ | ✅ (XP-Schrittnamen + Codes 0–45, F1 geprüft) |
 | Spieler-Start/Teleport | ✅ | ✅ |
 

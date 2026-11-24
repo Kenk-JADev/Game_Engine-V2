@@ -13,13 +13,16 @@
 #
 #  Es gewinnt immer die Seite mit dem HÖCHSTEN Index, deren Bedingungen
 #  erfüllt sind (Seite 0 = Standard, leere Bedingungen = immer erfüllt).
-#  Wechselt die aktive Seite, wird das Event als "noch nicht ausgelöst"
-#  behandelt - touch/auto-Events feuern auf der neuen Seite erneut.
+#  Wechselt die aktive Seite, wird "fired" zurückgesetzt - touch feuert
+#  auf der neuen Seite erneut (auto läuft ohnehin weiter, bis die Seite
+#  inaktiv wird oder ein Befehl sie wechselt; Z6/D1).
 #
 #  Auslöser (trigger, pro Seite):
 #    "action"   - Spieler muss in Reichweite sein und E drucken
-#    "touch"    - feuert einmalig, sobald der Spieler in Reichweite kommt
-#    "auto"     - feuert einmalig beim Kartenstart
+#    "touch"    - feuert bei jeder Ankunft in Reichweite (Z6/D2:
+#                 Verlassen der Nähe stellt 'fired' wieder her)
+#    "auto"     - XP-Autorun (Z6/D1): startet neu, sobald der Interpreter
+#                 frei ist, bis zum Seitenwechsel
 #    "parallel" - startet immer wieder, wenn der Interpreter frei ist (18f)
 #  Kommandos laufen durch den Interpreter. Die Auslöse-Logik steht in der
 #  Spiellogik (main.rb), nicht hier - das Event bleibt reine Daten.

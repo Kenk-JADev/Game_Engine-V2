@@ -895,15 +895,33 @@ end
         Rune::Player.push_out(nx, nz, n.block_radius)
       end
 
-      # Auto-/Touch-Events (einmalig je Kartenstart)
+      # Auto-/Touch-Events (Etappe Z6, Designentscheidungen D1/D2):
+      # Der ganze Block läuft nur, wenn der Interpreter frei ist.
+      #  - auto = XP-Autorun (D1): startet jedes Frame neu und läuft bis
+      #    zum Seitenwechsel (klassisch: Self-Switch am Ende, sonst
+      #    Endlosschleife wie in XP). 'fired' sperrt auto nicht mehr - es
+      #    merkt nur das erste Log je Seite.
+      #  - touch = XP-Wiederbetreten (D2): feuert bei jeder Ankunft in
+      #    der Nähe erneut; Verlassen der Nähe stellt 'fired' wieder her
+      #    (ein Self-Switch macht es einmalig - wie XP-Autoren es
+      #    gewöhnt sind).
       event_liste.each do |e|
-        next unless %w[touch auto].include?(e.trigger)
-        next if e.fired
-        if (e.trigger == 'auto') || e.near?(px, pz)
+        trig = e.trigger
+        next unless %w[touch auto].include?(trig)
+        if trig == 'auto'
+          Rune::Log.info("Event '#{e.name}' ausgelöst (auto)") unless e.fired
           e.fired = true
-          Rune::Log.info("Event '#{e.name}' ausgelöst (#{e.trigger})")
           e.manual_fire(@interpreter)
           break
+        end
+        if e.near?(px, pz)
+          next if e.fired
+          e.fired = true
+          Rune::Log.info("Event '#{e.name}' ausgelöst (touch)")
+          e.manual_fire(@interpreter)
+          break
+        elsif e.fired
+          e.fired = false # D2: Nähe verlassen - nächste Ankunft feuert neu
         end
       end
 

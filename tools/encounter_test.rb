@@ -523,9 +523,63 @@ check('NPC-Auto-Event bleibt nach Game-Save/Load mit Project-Attrappe ausgelöst
   geladen = Game.load_game(1)
   wiederhergestellt = Game.npcs.first.event.fired
   game_frame(0.016)
-  ausgelöst && gespeichert && geladen && wiederhergestellt && !Game.interpreter.running?
+  # D1 (Z6): XP-Autorun startet nach dem Laden erneut - 'fired' sperrt
+  # auto nicht mehr, die aktive Seite läuft weiter (oder der geladene
+  # Zustand läuft ohnehin schon - beide Wege enden mit laufendem Event).
+  ausgelöst && gespeichert && geladen && wiederhergestellt &&
+    Game.interpreter.running?
 ensure
   karte.delete('npcs') if karte
+end
+# Z6/D1: XP-Autorun - auto startet neu, sobald der Interpreter frei ist,
+# und läuft bis zum Seitenwechsel. Bewiesen über toggle_switch: an, dann
+# wieder aus = zweiter Lauf (alte Semantik bliebe nach dem ersten Lauf stehn).
+check('D1: XP-Autorun startet neu, sobald der Interpreter frei ist') do
+  prepare
+  karte = Database.map('start')
+  karte['events'] << { 'id' => 9, 'name' => 'Loop', 'x' => 0, 'z' => 0, 'trigger' => 'auto',
+                       'commands' => [{ 'cmd' => 'toggle_switch', 'name' => 'z6_loop' }] }
+  Game.enter_map('start')
+  Game.instance_variable_set(:@intro, nil)
+  game_frame(0.016) # Start: toggle-Schritt vorgemerkt
+  gestartet = Game.interpreter.running?
+  game_frame(0.016) # toggle läuft -> an; Autorun startet sofort neu
+  erster = GameState.switch('z6_loop')
+  game_frame(0.016) # toggle läuft -> aus (zweiter Lauf)
+  neustart = !GameState.switch('z6_loop') && Game.interpreter.running?
+  gestartet && erster && neustart
+ensure
+  karte['events'].clear if karte
+end
+# Z6/D2: touch feuert bei jeder Ankunft erneut; Verlassen der Nähe
+# stellt 'fired' wieder her (ein Self-Switch bleibt der einmalige Weg).
+check('D2: Touch-Event feuert bei jeder Ankunft erneut (Wiederbetreten)') do
+  prepare
+  karte = Database.map('start')
+  karte['events'] << { 'id' => 9, 'name' => 'Kontakt', 'x' => 7, 'z' => 0, 'radius' => 0.5,
+                       'trigger' => 'touch',
+                       'commands' => [{ 'cmd' => 'toggle_switch', 'name' => 'z6_touch' }] }
+  Game.enter_map('start')
+  Game.instance_variable_set(:@intro, nil)
+  Rune::Player.pos = [0.0, 0.0, 0.0]
+  counter(99) # Teleports dürfen keinen Zufallskampf auslösen
+  ev = Game.events.find { |e| e.name == 'Kontakt' }
+  game_frame(0.016) # Spieler noch außerhalb
+  Rune::Player.pos = [7.0, 0.0, 0.0]
+  game_frame(0.016) # Ankunft 1: startet
+  game_frame(0.016) # toggle läuft -> an
+  erste = GameState.switch('z6_touch') && ev.fired
+  Rune::Player.pos = [0.0, 0.0, 0.0]
+  game_frame(0.016) # Nähe verlassen -> wieder scharf
+  scharf = !ev.fired
+  Rune::Player.pos = [7.0, 0.0, 0.0]
+  game_frame(0.016) # Ankunft 2: startet erneut
+  game_frame(0.016) # toggle läuft -> aus
+  zweiter = !GameState.switch('z6_touch')
+  erste && scharf && zweiter
+ensure
+  Rune::Player.pos = [0.0, 0.0, 0.0]
+  karte['events'].clear if karte
 end
 check('Touch-Event verdrängt kein NPC-Gespräch und hat im selben Frame Vorrang') do
   prepare
