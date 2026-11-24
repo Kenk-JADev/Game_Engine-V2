@@ -264,7 +264,10 @@ def prepare
   game_frame(0.016)
 end
 
-def step(distance = 0.7)
+# W (Runde 26): Begegnungen zählen pro Kachel (1,0 m), nicht pro
+# Schritt-Sound (0,60 m). Ein Testschritt legt deshalb etwas mehr als eine
+# Kachel zurück, damit er genau einen Begegnungsschritt auslöst.
+def step(distance = 1.05)
   x, y, z = Rune::Player.position
   Rune::Player.pos = [x + distance, y, z]
   game_frame(0.016)
@@ -963,14 +966,22 @@ check('Bewegung in der Luft zählt nicht als Encounter-Schritt') do
 ensure
   Rune::Player.ground = true
 end
-check('Rennen nutzt die längere Schrittstrecke von 0,85 m') do
+check('W: Begegnungen zählen pro Kachel, nicht pro Schritt-Sound') do
   prepare
   counter(1)
-  Rune::Input.keys = [:shift]
-  step(0.7)
+  step(0.7)                      # 0,7 m: ein Schritt-Sound, aber keine Kachel
   erst = !Battle.active? && $game_player.encounter_count == 1
-  step(0.2)
+  step(0.4)                      # zusammen 1,1 m -> genau eine Kachel
   erst && Battle.active?
+end
+check('W: Rennen verkürzt die Kachelstrecke nicht') do
+  prepare
+  counter(2)
+  Rune::Input.keys = [:shift]
+  step(1.05)
+  erst = !Battle.active? && $game_player.encounter_count == 1
+  step(1.05)
+  erst && Battle.active?      # zwei Kacheln, egal wie schnell gelaufen wurde
 ensure
   Rune::Input.keys = []
 end
@@ -982,7 +993,7 @@ check('schrittweise Spieler-Route zählt trotz interner Teleports') do
     game_frame(0.05)
     break if Battle.active?
   end
-  Battle.active? && Rune::Player.position[0] > 0.6
+  Battle.active? && Rune::Player.position[0] > 1.0
 end
 check('ungültige IDs werden übersprungen, eine gültige startet trotzdem') do
   prepare

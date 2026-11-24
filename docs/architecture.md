@@ -1884,8 +1884,11 @@ Event-Befehl. Seit 19l lösen Karten selbst Kämpfe aus - wie XP
   IDs; `encounter_step` fällt bei ungültigem Wert auf 30 zurück.
   `$game_player.make_encounter_count` würfelt `rand(n) + rand(n) + 1`
   (im Mittel n Schritte), `decrease_encounter_count` zählt bis 0 herunter.
-- **Spiel** (`main.rb`): Boden-Schritt-Events (wie der Schritt-Sound:
-  0,60 m beim Gehen, 0,85 m beim Rennen) zählen herunter. Bei 0, nicht
+- **Spiel** (`main.rb`): Gelaufene Strecke zählt herunter - seit Runde 26
+  eine Kachel pro `Game::KACHEL_METER = 1.0` Meter (XP zählt pro
+  Kachel-Schritt; vorher zählte jeder Schritt-Sound von 0,60/0,85 m, was
+  Begegnungen rund 40 % zu häufig machte). Der Schritt-Sound und
+  `$game_party.steps` bleiben an 0,60/0,85 m gebunden. Bei 0, nicht
   leerer Liste, keinem laufenden Event und nicht gesperrten Begegnungen
   startet `battle_start` (Flucht erlaubt, Niederlage = Game Over) und
   würfelt neu. Ein gleichzeitiges Touch-/Auto-Event hat Vorrang, und im

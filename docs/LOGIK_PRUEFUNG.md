@@ -29,7 +29,7 @@ kein Performance-Hotspot (Skalierungshinweise), Undo bestätigt
 objekt-only.
 **Prüfrunde 6 (Teile V–W):** Esc-Menü vs. `Scene_Menu`, Zufallskämpfe,
 Teardown-Audit — Menü parst pro Frame bis zu 12 Save-JSONs (Cache
-fehlt), Encounter-Kadenz ~40 % schneller als XP (0,60 m vs. Kachel),
+fehlt), Encounter-Kadenz seit Runde 26 pro Kachel statt pro Schritt-Sound,
 Slip-Damage fehlt (Zustände seit 20a nur im Kampf), Teardown/F5
 **sauber ohne Leak** ✓.
 **Prüfrunde 7 (Teil Y, Datenpipeline End-to-End):** Editor↔Laufzeit
@@ -588,12 +588,15 @@ Roadmap-Baustein (20x analog zu 20f Bilder).
   Neuwürfelung beim Kartenstart/Transfer ✓; `encounter_disabled` wird
   geprüft ✓; Interpreter-läuft-Sperre und Event-vor-Kampf-Priorität ✓;
   `liste.sample` = XP `rand(list.size)` ✓.
-- ⚠️ **Kadenz anders:** XP dezimiert **pro fertigem Kachel-Schritt**
-  (`022:264`, nur wenn kein Touch-Event beim Ankunft feuerte); Rune3D
-  pro **0,60 m** (0,85 m rennend) über die Schritt-Sound-Logik
-  (`main.rb:644–653`) → Begegnungen laufen je Meter **~40 % schneller**
-  als bei XP. Kleine D-Minus-Ergänzung (nicht D-markiert, weil
-  Kadenz-Empfindlichkeit projektabhängig).
+- ✅ **Kadenz angeglichen (Runde 26, W):** XP dezimiert **pro fertigem
+  Kachel-Schritt** (`022:264`). Rune3D zählte früher jeden Schritt-Sound
+  (0,60 m, rennend 0,85 m) und lief damit je Meter ~40 % zu schnell; seit
+  Runde 26 zählt `Game::KACHEL_METER = 1.0` einen Begegnungsschritt pro
+  Meter gelaufenen Weges (Teleports/Sprünge ausgenommen). Der Schritt-Sound
+  bleibt bei 0,60/0,85 m, `$game_party.steps` zählt weiterhin jeden
+  Schritt-Sound. Geprüft von `tools/encounter_test.rb`
+  („W: Begegnungen zählen pro Kachel", „W: Rennen verkürzt die
+  Kachelstrecke nicht").
 - ⚠️ **Slip-Damage fehlt:** XP ruft bei gerader `$game_party.steps`
   `check_map_slip_damage` (Zustands-Schaden, `014:292`). Die Zustände
   selbst gibt es seit **20a** (Runde 23) im Kampf; auf der Karte fehlen
@@ -891,8 +894,9 @@ Spiel" entfällt (Doku: `XP_VERGLEICH`-Zeile165 korrigieren,
    angleichen (W).~~ **→ umgesetzt in Runde 14** (echte
    `Scene_Gameover` statt Sofort-Titel, Karte+Spielzeit in Menü und
    `Scene_File`, ▾-Blinkzeiger, `@menu_items`-Cache, Playtime/Steps im
-   Party-Panel, `'system'`-Snapshot ins Savegame inkl. `save_count`;
-   Encounter-Kadenz (W) bewusst offen).
+   Party-Panel, `'system'`-Snapshot ins Savegame inkl. `save_count`).
+   **Encounter-Kadenz (W) umgesetzt in Runde 26**: eine Kachel = 1 m
+   (`Game::KACHEL_METER`), Schritt-Sound unverändert.
 5. ~~**Dialoge/XP-Parity klein:** Wahl-Abbruch (cancel/Else-Zweig) in
    Engine+Editor, optional Text+Wahl im selben Fenster (M).~~
    **→ umgesetzt in Runde 16** (`cancel`/`cancel_branch` in Engine+

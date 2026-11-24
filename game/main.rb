@@ -126,10 +126,18 @@ end
   # Teleports sind keine gelaufenen Schritte. Die nächste Position wird neu
   # als Referenz aufgenommen; auch ein vorher angesammelter Teil-Schritt
   # darf weder einen Sound noch einen Zufallskampf auslösen.
+  # W (Runde 26): XP zählt einen Schritt pro Kachel. Rune3D zählte bisher
+  # jeden Schritt-Sound (0,60 m, rennend 0,85 m) als Begegnungsschritt -
+  # dadurch kamen Zufallskämpfe rund 40 % zu häufig. Eine Kachel entspricht
+  # hier KACHEL_METER Metern; der Schritt-Sound bleibt bei 0,60/0,85 m.
+  KACHEL_METER = 1.0
+
   def self.reset_step_tracking
     @last_pos = nil
     @step_dist = 0.0
     @step_event = nil
+    @kachel_dist = 0.0
+    @kachel_schritt = nil
     @was_air = nil
   end
 
@@ -1138,6 +1146,15 @@ end
             Rune::Sound.play('schritt', rennt ? 0.55 : 0.40)
             @step_event = true   # 19h.2: $game_player.increase_steps
           end
+          # Begegnungen zählen pro Kachel (W): Sprünge und Teleports
+          # (grosse Distanzen) zählen nicht als gelaufener Weg.
+          if dist < 3.0
+            @kachel_dist = (@kachel_dist || 0.0) + dist
+            if @kachel_dist >= KACHEL_METER
+              @kachel_dist -= KACHEL_METER
+              @kachel_schritt = true
+            end
+          end
         end
       end
       Rune::Sound.play('sprung', 0.5) if on_ground && Rune::Input.pressed?(:space)
@@ -1152,12 +1169,14 @@ end
     Mover.update(dt)  # Etappe 19g: Bewegungsrouten laufen IMMER (auch bei Text)
     Graphics.update         # Etappe 19h.2: RGSS-Frame-Zähler (frame_count)
     $game_system.update(dt) if $game_system   # 19h.2: XP-Timer tickt
-    # Einen Schritt für Begegnungen vormerken. Ob er zählt, entscheiden wir
-    # nach Events und laufenden Kämpfen; F4 hat im Spiel keine Editorfunktion.
-    encounter_schritt = @step_event && $game_player &&
+    # Eine Kachel für Begegnungen vormerken (W: XP zählt pro Kachel, nicht
+    # pro Schritt-Sound). Ob sie zählt, entscheiden wir nach Events und
+    # laufenden Kämpfen; F4 hat im Spiel keine Editorfunktion.
+    encounter_schritt = @kachel_schritt && $game_player &&
                         !(defined?(Battle) && Battle.active?)
     $game_player.increase_steps if $game_player && @step_event
     @step_event = nil
+    @kachel_schritt = nil
     Graphics.scene_update   # Etappe 19h: $scene.main (RGSS-Szenen-Schleife)
     if defined?(Battle) && Battle.active?
       Rune::Simulation.paused = true

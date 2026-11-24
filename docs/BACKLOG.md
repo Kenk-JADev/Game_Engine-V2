@@ -129,6 +129,18 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
   `draw_menu_screen`), `tools/menu_test.rb`.
 - Gefunden in: Etappe 20b (Roadmap aus `docs/XP_VERGLEICH.md` §8).
 
+### [Engine] `$game_party.steps` bleibt feiner als XP — offen (Bewusst)
+- Seit Runde 26 zählen Zufallskämpfe pro Kachel (1 m, `Game::KACHEL_METER`).
+  `$game_party.steps` und der Schritt-Sound hängen weiterhin am
+  physischen Schritt (0,60 m, rennend 0,85 m); XP zählt `steps` pro
+  Kachel. Wer `steps` in Scripts für Schaden/Erfolge nutzt, bekommt
+  dadurch mehr Schritte als bei XP.
+- Ein Karten-/Optionsfeld „Meter pro Kachel" gibt es bewusst nicht: eine
+  Kachel ist in Rune3D 1 m (Terrain-Kachelgröße ist ein Materialwert).
+- Betroffene Stellen: `game/main.rb` (`@step_dist`, `@kachel_dist`,
+  `KACHEL_METER`), `docs/LOGIK_PRUEFUNG.md` (Encounter-Abschnitt).
+- Gefunden in: Runde 26 (W aus der Logikprüfung, Teil W).
+
 ### [Engine] Mausblick nach Esc im Kampf — offen (Bedienung)
 - Esc bricht im Kampf eine Auswahl ab oder versucht Flucht. Die native
   Hauptschleife gibt dabei zusätzlich immer den Mausfang frei; nach dem Kampf
