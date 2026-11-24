@@ -56,6 +56,7 @@
 #    {"cmd":"if_script","code":"$game_party.gold > 100","then":[...],"else":[...]}
 #    {"cmd":"save_access","allowed":false} / menu_access / encounter_access
 #                                                       (20d; XP 134/135/136)
+#    {"cmd":"timer","mode":"start","seconds":120}       (Timer, 20d; XP 124)
 #    {"cmd":"script","name":"projekt_script"}  |  {"cmd":"script","code":"..."}
 # ============================================================================
 
@@ -244,6 +245,8 @@ class Interpreter
         zugriff_setzen(cmd, :menu_disabled)
       when 'encounter_access'  # Etappe 20d: Zufallskämpfe erlauben/sperren (XP 136)
         zugriff_setzen(cmd, :encounter_disabled)
+      when 'timer'  # Etappe 20d: Timer steuern (XP 124)
+        timer_steuern(cmd)
       when 'teleport'
         Rune::Player.teleport(cmd['x'].to_f, Game.gy(cmd['x'].to_f, cmd['z'].to_f) + 0.2,
                               cmd['z'].to_f)
@@ -526,6 +529,37 @@ class Interpreter
       return false
     end
     vgl.call(a, b)
+  end
+
+  # Etappe 20d: Timer (XP 124). "start" setzt die Restzeit (Sekunden), "stop"
+  # hält an und löscht sie; die Anzeige hängt nur an $game_system.timer_working
+  # (XP zeigt das Fenster automatisch, solange der Timer läuft).
+  def timer_steuern(cmd)
+    modus = (cmd['mode'] || 'start').to_s.downcase
+    unless defined?($game_system) && $game_system.respond_to?(:timer_start)
+      Rune::Log.warn('Interpreter: timer ohne $game_system ignoriert')
+      Issues.report('Interpreter', 'timer ohne $game_system')
+      return false
+    end
+    # Bewusst if/elsif statt case: sync_test liest alle "when"-Zeilen mit
+    # 4er-Einzug als Operator-Tabelle von compare_variable.
+    sekunden = (cmd['seconds'] || 0).to_f
+    if modus != 'start' && modus != 'stop'
+      Rune::Log.warn("Interpreter: timer-Modus '#{modus}' unbekannt (start/stop)")
+      Issues.report('Interpreter', "timer-Modus '#{modus}' unbekannt")
+      return false
+    end
+    if modus == 'start' && sekunden > 0
+      $game_system.timer_start(sekunden)
+      Rune::Log.info("Timer gestartet: #{sekunden} s")
+    else
+      # "stop" und "start" mit 0 s: laufenden Timer anhalten und löschen.
+      Rune::Log.warn('Interpreter: timer start ohne Sekunden -> stop') if modus == 'start'
+      $game_system.timer_working = false
+      $game_system.timer = 0
+      Rune::Log.info('Timer gestoppt') if modus == 'stop'
+    end
+    true
   end
 
   # Etappe 20d: "Wenn Script" - der Ausdruck liefert selbst den Wahrheitswert

@@ -75,6 +75,7 @@ module MapCheck
     button_input text_options common_event
     if_gold if_item if_script
     save_access menu_access encounter_access
+    timer
   ].freeze
 
   TRIGGER   = %w[action touch auto parallel].freeze
@@ -91,6 +92,7 @@ module MapCheck
   # Etappe 20c: Trigger Gemeinsamer Events (CommonEvents::TRIGGER; hier als
   # eigene Liste, weil mapcheck.rb vor common_events.rb geladen wird).
   COMMON_TRIGGER = %w[none autorun parallel].freeze
+  TIMER_MODI = %w[start stop].freeze     # Etappe 20d (XP 124)
   TASTEN = (%w[e space enter escape up down left right shift ctrl alt tab
                backspace] + ('a'..'z').to_a + (1..12).map { |n| "f#{n}" }).freeze
   # Etappe 19g, XP-Vokabular seit 19h.2: muss zu Mover::SCHRITTE passen
@@ -1048,6 +1050,18 @@ module MapCheck
               melde(WARNUNG, w, "'value' sollte nicht negativ sein (Item-Menge)")
             end
           end
+        end
+      when 'timer'
+        # Etappe 20d: Timer steuern (XP 124).
+        modus = c.key?('mode') ? c['mode'].to_s : 'start'
+        unless TIMER_MODI.include?(modus)
+          melde(FEHLER, w, "unbekannter timer-Modus '#{modus}' (start/stop)")
+        end
+        if c.key?('seconds') && !(zahl?(c['seconds']) && c['seconds'] >= 0)
+          melde(WARNUNG, w, "'seconds' muss eine Zahl >= 0 sein")
+        end
+        if modus == 'start' && !(zahl?(c['seconds']) && c['seconds'] > 0)
+          melde(WARNUNG, w, "timer start ohne Sekunden hat keine Wirkung")
         end
       when 'save_access', 'menu_access', 'encounter_access'
         # Etappe 20d: XP 134/135/136 - Speichern/Menü/Zufallskämpfe sperren.

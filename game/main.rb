@@ -1503,6 +1503,9 @@ end
 
     # 2D-Overlay zuletzt
     UI.hud
+    # Etappe 20d: Timer-Fenster oben rechts (XP 124/Window_Timer) - sichtbar,
+    # solange der Timer arbeitet.
+    UI.timer($game_system.timer_seconds) if $game_system && $game_system.timer_working
     # Z8: Text und Wahl in EINEM Fenster (XP-Kombi-Fenster). Die Optionen
     # stehen unter dem Text; fehlt einer der beiden Teile, bleibt er leer.
     wahl = @interpreter.busy_choices? ? @interpreter.choices : nil

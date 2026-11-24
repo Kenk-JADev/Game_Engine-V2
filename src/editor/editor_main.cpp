@@ -1215,7 +1215,7 @@ const char* const ISSUE_CMD_TYPES[] = {
     "loop", "break", "label", "jump", "exit_event", "erase_event",
     "button_input", "text_options", "common_event",
     "if_gold", "if_item", "if_script",
-    "save_access", "menu_access", "encounter_access"
+    "save_access", "menu_access", "encounter_access", "timer"
 };
 const int ISSUE_CMD_TYPE_COUNT =
     static_cast<int>(sizeof(ISSUE_CMD_TYPES) / sizeof(ISSUE_CMD_TYPES[0]));
@@ -7194,7 +7194,8 @@ const wchar_t* const EV_TYPE_LABELS[ET_COUNT] = {
     L"[Verzweigung] Wenn Gold", L"[Verzweigung] Wenn Item",
     L"[Verzweigung] Wenn Script",
     L"[System] Speichern erlauben", L"[System] Menü erlauben",
-    L"[System] Zufallskämpfe erlauben"
+    L"[System] Zufallskämpfe erlauben",
+    L"[System] Timer"
 };
 const wchar_t* const EV_TRIGGERS[4] = { L"action", L"touch", L"auto", L"parallel" };
 const wchar_t* const EV_OPS[6] = { L"==", L"!=", L"<", L"<=", L">", L">=" };
@@ -7393,6 +7394,11 @@ std::string ev_cmd_label(const JsonValue& c) {
                ev_num_str(ev_num_of(c, "value", 1.0), 0);
     }
     if (type == "if_script") return "Wenn Script: " + ev_str_of(c, "code");
+    if (type == "timer") {
+        const std::string modus = ev_str_of(c, "mode", "start");
+        if (modus == "stop") return "Timer stoppen";
+        return "Timer starten (" + ev_num_str(ev_num_of(c, "seconds"), 0) + " s)";
+    }
     if (type == "save_access" || type == "menu_access" || type == "encounter_access") {
         const char* was = type == "save_access" ? "Speichern"
                         : type == "menu_access" ? "Menü" : "Zufallskämpfe";
@@ -7689,7 +7695,7 @@ void ev_cmd_visibility() {
                           t == ET_SELF_SWITCH || t == ET_IF_SELF_SWITCH ||
                           t == ET_LOOP || t == ET_BREAK || t == ET_EXIT_EVENT ||
                           t == ET_ERASE_EVENT || t == ET_TEXT_OPTIONS ||
-                          t == ET_COMMON_EVENT || t == ET_IF_SCRIPT ||
+                          t == ET_COMMON_EVENT || t == ET_IF_SCRIPT || t == ET_TIMER ||
                           t == ET_SAVE_ACCESS || t == ET_MENU_ACCESS ||
                           t == ET_ENCOUNTER_ACCESS;
     show(g_ev.lbl_text, is_text || has_hint);
@@ -7788,6 +7794,9 @@ void ev_cmd_visibility() {
                            SetWindowTextW(g_ev.lbl_val1, L"Anzahl");
                            SetWindowTextW(g_ev.lbl_text, L"Vergleicht die Menge dieses Items im Inventar."); }
     if (t == ET_IF_SCRIPT) SetWindowTextW(g_ev.lbl_text, L"Ruby-Ausdruck; wahr, wenn das Ergebnis nicht nil/false ist.");
+    if (t == ET_TIMER) { SetWindowTextW(g_ev.lbl_name, L"Modus (start/stop)");
+                         SetWindowTextW(g_ev.lbl_val1, L"Sekunden");
+                         SetWindowTextW(g_ev.lbl_text, L"start zeigt die Restzeit oben rechts, stop blendet sie aus (XP 124)."); }
     if (t == ET_SAVE_ACCESS) SetWindowTextW(g_ev.lbl_text, L"an = Speichern erlauben, aus = sperren ($game_system.save_disabled).");
     if (t == ET_MENU_ACCESS) SetWindowTextW(g_ev.lbl_text, L"an = Menü erlauben, aus = sperren ($game_system.menu_disabled).");
     if (t == ET_ENCOUNTER_ACCESS) SetWindowTextW(g_ev.lbl_text, L"an = Zufallskämpfe erlauben, aus = sperren.");

@@ -1830,6 +1830,21 @@ XP-Bedingungslücken und die drei Sperr-Befehle:
 **Tests:** `tools/bedingungen_test.rb` (26 Checks), `tools/sync_test.rb`
 (when-Zeilen + Operator-Tabelle), `tools/json_test.cpp` (738 Checks).
 
+### Timer (XP 124) und Timer-Anzeige
+
+`{"cmd":"timer","mode":"start","seconds":120}` startet den Spieltimer,
+`mode: "stop"` hält ihn an und löscht die Restzeit (Register: **42 Typen**).
+Die Laufzeit steckt in `$game_system` (`timer` in Frames, `timer_working`),
+wird von `Game.update` über `GameSystem#update(dt)` heruntergezählt und liegt
+über den `system`-Snapshot im Spielstand — ein geladener Spielstand setzt den
+Timer also fort. `Game.draw` zeichnet bei `timer_working` das Fenster
+`UI.timer` oben rechts (`mm:ss`, XP-`Window_Timer`); unter 0 zeigt es `00:00`
+und stoppt. `timer start` mit 0 Sekunden wirkt wie `stop` (Warnung im Log),
+ein unbekannter Modus landet im Issue-Backlog.
+
+**Tests:** `tools/timer_test.rb` (20 Checks: Herunterzählen, Befehlsvarianten,
+Zeichnung, MapCheck), `json_test` 741 Checks.
+
 ## Professionalisierung: Sync-Test + README (Etappe 19j)
 
 Die Sync-Pflicht für neue Befehlstypen (MapCheck::CMD_TYPES in Ruby =

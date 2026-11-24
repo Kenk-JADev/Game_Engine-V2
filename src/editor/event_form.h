@@ -43,7 +43,8 @@ enum EvType {
     ET_LOOP, ET_BREAK, ET_LABEL, ET_JUMP, ET_EXIT_EVENT, ET_ERASE_EVENT,
     ET_BUTTON_INPUT, ET_TEXT_OPTIONS, ET_COMMON_EVENT,
     ET_IF_GOLD, ET_IF_ITEM, ET_IF_SCRIPT,
-    ET_SAVE_ACCESS, ET_MENU_ACCESS, ET_ENCOUNTER_ACCESS, ET_COUNT
+    ET_SAVE_ACCESS, ET_MENU_ACCESS, ET_ENCOUNTER_ACCESS,
+    ET_TIMER, ET_COUNT
 };
 inline constexpr const char* const EV_TYPES[ET_COUNT] = {
     "text", "choices", "log", "wait", "switch", "toggle_switch", "variable",
@@ -53,7 +54,7 @@ inline constexpr const char* const EV_TYPES[ET_COUNT] = {
     "loop", "break", "label", "jump", "exit_event", "erase_event",
     "button_input", "text_options", "common_event",
     "if_gold", "if_item", "if_script",
-    "save_access", "menu_access", "encounter_access"
+    "save_access", "menu_access", "encounter_access", "timer"
 };
 inline constexpr const char* const EVENT_TRIGGERS[] = {"action", "touch", "auto", "parallel"};
 inline constexpr const char* const EVENT_OPS[] = {"==", "!=", "<", "<=", ">", ">="};
@@ -74,7 +75,8 @@ inline bool event_command_uses_field(int type, size_t field) {
             type == ET_TELEPORT || type == ET_MOVE_PLAYER || type == ET_SOUND || type == ET_EFFECT ||
             type == ET_GOLD || type == ET_HEAL || type == ET_WEATHER || type == ET_SAVE_GAME ||
             type == ET_LOAD_GAME || type == ET_FADE || type == ET_MOVE_ROUTE || type == ET_INPUT_NUMBER ||
-            type == ET_CHOICES || type == ET_IF_GOLD || type == ET_IF_ITEM;
+            type == ET_CHOICES || type == ET_IF_GOLD || type == ET_IF_ITEM ||
+            type == ET_TIMER;
         case 2: return type == ET_VARIABLE || type == ET_TELEPORT || type == ET_MOVE_PLAYER ||
             type == ET_EFFECT || type == ET_ITEM || type == ET_MOVE_ROUTE || type == ET_INPUT_NUMBER ||
             type == ET_BATTLE || type == ET_TEXT_OPTIONS;
@@ -672,6 +674,7 @@ inline EventCommandForm event_command_form_read(const JsonValue& c) {
             break;
         case ET_SAVE_ACCESS: case ET_MENU_ACCESS: case ET_ENCOUNTER_ACCESS:
             f.flag = flag("allowed", 0); break;
+        case ET_TIMER: f.name = text("mode", "start"); f.val1 = num("seconds", "0"); break;
         case ET_TEXT_OPTIONS:
             f.name = text("position", "unten");
             f.flag = flag("frame", 0);
@@ -725,6 +728,7 @@ inline std::vector<const char*> event_command_keys(int type) {
         case ET_IF_ITEM: return {"name", "op", "value", "then", "else"};
         case ET_IF_SCRIPT: return {"code", "name", "then", "else"};
         case ET_SAVE_ACCESS: case ET_MENU_ACCESS: case ET_ENCOUNTER_ACCESS: return {"allowed"};
+        case ET_TIMER: return {"mode", "seconds"};
         default: return {};
     }
 }
@@ -1054,6 +1058,19 @@ inline EventEdit event_command_prepare(const JsonValue* existing, const EventCom
         case ET_SAVE_ACCESS: case ET_MENU_ACCESS: case ET_ENCOUNTER_ACCESS:
             ok = boolean("allowed", "cmd_flag", before.flag, after.flag);
             break;
+        case ET_TIMER: {
+            // Etappe 20d: moderiert wie fade - "start"/"stop", Sekunden >= 0.
+            if (fresh || before.name != after.name) {
+                std::string modus = after.name.empty() && fresh ? "start" : after.name;
+                std::transform(modus.begin(), modus.end(), modus.begin(),
+                               [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                if (modus != "start" && modus != "stop")
+                    ok = fail("cmd_name", "Modus muss 'start' oder 'stop' sein.");
+                else ok = text("mode", "cmd_name", before.name, modus, false, false, true);
+            }
+            if (ok) ok = v1("seconds", false, "0", false, true, 0, unlimited);
+            break;
+        }
         case ET_BUTTON_INPUT:
             ok = name() && list("keys", "cmd_text", before.text, after.text, true);
             break;

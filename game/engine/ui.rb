@@ -303,6 +303,19 @@ module UI
     text(x + 12, y + 6, line, TEXT_DIM, 16)
   end
 
+  # Etappe 20d: Timer-Fenster (XP 124/Window_Timer) oben rechts. Zeigt die
+  # Restzeit als mm:ss; läuft nur, solange der Timer arbeitet.
+  def self.timer(seconds, x: nil, y: 12, w: 132, h: 44)
+    rest = [seconds.to_f, 0.0].max
+    minuten = (rest / 60).floor
+    sek = (rest % 60).floor
+    label = format('%02d:%02d', minuten, sek)
+    links = x || (Rune::Window.width - w - 16)
+    panel(links, y, w, h, PANEL, 0.62)
+    panel(links, y, w, 2, ACCENT, 0.8)
+    text(links + w / 2 - 24, y + 10, label, ACCENT, 22)
+  end
+
   # "-0.0" ist hässlich, im HUD soll dort "0.0" stehen.
   def self.num(s)
     s.gsub('-0.0', ' 0.0')

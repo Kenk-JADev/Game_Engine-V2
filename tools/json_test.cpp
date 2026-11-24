@@ -1588,9 +1588,10 @@ void event_form_tests(const std::string& wurzel) {
         R"({"cmd":"if_item","name":"heiltrank","op":">=","value":2,"then":[],"else":[]})",
         R"({"cmd":"if_script","code":"true","then":[],"else":[]})",
         R"({"cmd":"save_access","allowed":false})", R"({"cmd":"menu_access","allowed":true})",
-        R"({"cmd":"encounter_access","allowed":false})"
+        R"({"cmd":"encounter_access","allowed":false})",
+        R"({"cmd":"timer","mode":"start","seconds":120})"
     };
-    check("Beispiel für jeden der 41 Befehlstypen vorhanden", samples.size() == ET_COUNT);
+    check("Beispiel für jeden der 42 Befehlstypen vorhanden", samples.size() == ET_COUNT);
     for (size_t i = 0; i < samples.size(); ++i) {
         JsonValue c = json_parse(samples[i]); c.set("extra_meta", json_parse(R"({"n":9007199254740993})"));
         const EventCommandForm f = event_command_form_read(c);
@@ -1622,6 +1623,7 @@ void event_form_tests(const std::string& wurzel) {
             case ET_TEXT_OPTIONS: changed.name = "mitte"; break;
             case ET_IF_SCRIPT: changed.text = "false"; break;
             case ET_IF_GOLD: case ET_IF_ITEM: changed.val1 = "7"; break;
+            case ET_TIMER: changed.val1 = "30"; break;
             default: changed.name = "neuer_name"; break;
         }
         const EventEdit patched = event_command_prepare(&c, f, changed);
