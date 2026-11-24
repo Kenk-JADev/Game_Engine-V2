@@ -280,10 +280,10 @@ void pl_cancel(HWND h) {
 void pl_accept(HWND h) {
     if (!pl_apply()) return;
     if (json_write(g_pl.work) != json_write(g.map_root)) {
-        // Objektänderungen müssen im bestehenden Objekt-Undo liegen, damit
-        // ältere Schnappschüsse sie nicht unbemerkt überschreiben können.
-        const JsonValue* new_objects = g_pl.work.find("objects");
-        if (g.objects && new_objects && json_write(*g.objects) != json_write(*new_objects)) push_undo();
+        // Z8: Der Schnappschuss ist die ganze Karte. Objekt-, NPC- und
+        // Schilder-Änderungen landen dadurch in EINEM Undo-Strang, und der
+        // Schnappschuss kann sie später nicht unbemerkt überschreiben.
+        push_undo();
         // F6 muss vor dem Öffnen geschlossen sein: seine Befehlszeiger würden
         // beim Ersetzen der Wurzel ungültig. Alle anderen Fenster sind gesperrt.
         cancel_object_drag();

@@ -260,11 +260,13 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Betroffene Stellen: `Renderer::update_atlas`, `Terrain::generate_splat`.
 - Gefunden in: Etappe 18d.
 
-### [Editor] Undo/Redo deckt nur Objekte ab — offen
-- Symptom: Strg+Z/Y betrifft nur das `objects`-Array; Splat-Flächen, NPC-/Schild-Platzierungen, Event-/Seiten- und DB-Änderungen sind nicht rückholbar.
-- Vermutung/Analyse: Undo-Stapel snapshottet nur `objects`; für Events/Splats fehlt ein zweiter Stapel oder ein gemeinsamer Karten-Snapshot.
-- Betroffene Stellen: `src/editor/editor_main.cpp` (`push_undo`, Event-Dialog, Tileset-Dialog).
-- Gefunden in: Etappen 17c/18d/18g.
+### [Editor] Undo/Redo deckte nur Objekte ab — erledigt (Runde 19, Z8/T)
+- Symptom: Strg+Z/Y betraf nur das `objects`-Array; Splat-Flächen, NPC-/Schild-Platzierungen, Event-/Seiten- und DB-Änderungen waren nicht rückholbar.
+- Vermutung/Analyse: Undo-Stapel snapshottete nur `objects`; für Events/Splats fehlte ein zweiter Stapel oder ein gemeinsamer Karten-Snapshot.
+- Fix: gemeinsamer Karten-Schnappschuss (`g.map_root` als JSON, Cap 50) mit `restore_map_snapshot()`; Push-Orte in F6, F5, Karten-Eigenschaften, Berg-/Boden-Pinsel, F7 und Kartenbaum-Umbenennen (`push_undo_text` nur bei Erfolg).
+- Betroffene Stellen: `src/editor/editor_main.cpp` (`push_undo`, `restore_map_snapshot`, Event-/Platzier-/Tileset-Dialog), `src/editor/placement_dialog.h`.
+- Gefunden in: Etappen 17c/18d/18g; behoben in Runde 19.
+- **Bewusste Grenzen:** Karten anlegen/löschen und F2/F5-Dateitransaktionen sind Dateioperationen; der Projektstart (`system.json`) liegt außerhalb der Karte.
 
 ### [Editor] Statusleisten-/Textinhalte per SendMessage von außen nicht lesbar — offen (Test-Wissen)
 - Symptom: `SB_GETTEXTW` (WM_USER+13 = 0x40D, nicht 0x40E!) über Prozessgrenzen stürzt den Editor ab.
@@ -580,7 +582,8 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
   eine zu kleine Ziffernzahl klemmt den Startwert nicht still.
 - Tests: portable C++-Suite, Sanitizer, Win64-Cross-Kompilierung,
   Ruby-Tests und C++/Ruby-Event-Brücke. Echter Windows-GUI-/DPI-Test bleibt
-  offen (siehe Live-Test-Eintrag und Handoff); Event-Undo bleibt offen.
+  offen (siehe Live-Test-Eintrag und Handoff). Event-Undo ist seit Runde 19
+  vorhanden (Karten-Schnappschuss, siehe Editor-Eintrag oben).
 - Betroffene Stellen: `src/editor/event_form.h`, `editor_main.cpp`,
   `tools/json_test.cpp`, `tools/event_bridge_check.rb`, `tools/sync_test.rb`.
 

@@ -371,7 +371,8 @@ struct Editor {
     float drag_y = 0.0f;           // Höhenebene des gezogenen Objekts
     float drag_anchor_x = 0.0f, drag_anchor_z = 0.0f, drag_grid = 1.0f;
     JsonValue drag_original;       // Werte vor dem ersten Drag-Schritt
-    std::vector<std::string> undo_stack;   // JSON-Schnappschüsse (vor Aktion)
+    // Z8: Schnappschüsse der GANZEN Karte (vor Aktion), nicht nur objects.
+    std::vector<std::string> undo_stack;
     std::vector<std::string> redo_stack;
     float grid = 1.0f;
     bool dirty = false;
@@ -497,9 +498,10 @@ void delete_current_map();
 bool apply_props_from_dlg();
 bool apply_new_from_dlg();
 void push_undo();
+void push_undo_text(std::string text);
 void undo_action();
 void redo_action();
-void restore_objects(const std::string& text);
+void restore_map_snapshot(const std::string& text);
 void update_title();
 void sync_object_list();
 void sync_property_fields();
@@ -541,6 +543,7 @@ bool event_editor_focused();
 bool event_editor_pending();
 bool resolve_event_edits();
 bool resolve_event_editor();
+void ev_refresh();
 
 // Etappe 19n: Platzier-Dialog für NPCs, Schilder und Objekte.
 void open_placement_dialog(int npc_index = -1);
@@ -2061,8 +2064,10 @@ LRESULT CALLBACK tileset_dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                         L"Die Änderung ersetzt ungültige vorhandene Terrain-Daten. Trotzdem übernehmen?",
                         L"Terrain", MB_YESNO | MB_DEFBUTTON2 | MB_ICONWARNING) != IDYES) return 0;
                     if (!ts_same_map()) return 0;
+                    const std::string vorher = json_write(g.map_root);
                     JsonValue* ter = writable_terrain();
                     if (!ter) return 0;
+                    push_undo_text(vorher);   // Z8: Bodenwechsel rückgängig
                     *ter = std::move(edit.value);
                     g_ts.texture_before = g_ts.sel;
                     g_ts.tile_before = tile_text;
@@ -2107,6 +2112,7 @@ LRESULT CALLBACK tileset_dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                     MessageBoxW(g_ts.win, L"Diese Fläche würde das Terrain-Budget überschreiten.",
                                 L"Terrain", MB_OK | MB_ICONWARNING); return 0;
                 }
+                const std::string vorher = json_write(g.map_root);
                 JsonValue* ter = writable_terrain();
                 if (!ter || !preview_unique(*ter, "splats")) return 0;
                 JsonValue* arr = ter->find("splats");
@@ -2116,6 +2122,7 @@ LRESULT CALLBACK tileset_dlg_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                     return 0;
                 }
                 if (!arr) arr = &ter->set("splats", JsonValue::make_arr());
+                push_undo_text(vorher);   // Z8: neue Fläche rückgängig
                 JsonValue e = JsonValue::make_obj();
                 e.set("tex", JsonValue::make_str(g_ts.sel));
                 e.set("x", JsonValue::make_num(xd));
@@ -2981,6 +2988,7 @@ bool maptree_apply_rename(int index, const std::string& new_name) {
         PostMessageW(g.main, WM_TREE_RENAME_WARNING, 2, 0);
         return false;
     }
+    push_undo();   // Z8: Umbenennen rückgängig (Name steht in der Karte)
     g.map_root.set("name", JsonValue::make_str(new_name));
     // Ein fehlendes name kann die Wurzel-Paarliste umallozieren.
     g.objects = g.map_root.find("objects");
@@ -3282,52 +3290,109 @@ void status_mode(const wchar_t* text) {
 }
 
 // ------------------------------------------------------------
-//  Undo/Redo (Etappe 17c): Objekt-Array als JSON-Schnappschuss.
-//  push_undo() VOR jeder Änderung aufrufen.
+//  Undo/Redo (Etappe 17c, erweitert Z8): Schnappschuss der GANZEN Karte.
+//  Bis Z8 lag nur g.objects im Schnappschuss - Events, Seiten, Befehle,
+//  NPCs, Terrain/Splats und die Karten-Eigenschaften waren damit nicht
+//  rückgängig zu machen. Jetzt ist der Schnappschuss das vollständige
+//  Karten-JSON; push_undo() VOR jeder Änderung aufrufen.
+//  Für Änderungen, die auch scheitern können, erst json_write() merken und
+//  den Schnappschuss nur bei Erfolg ablegen (push_undo_text) - ein
+//  fehlgeschlagener Klick soll kein leeres Undo hinterlassen.
 // ------------------------------------------------------------
-void push_undo() {
-    if (!g.objects) return;
-    g.undo_stack.push_back(json_write(*g.objects));
-    if (g.undo_stack.size() > 50) g.undo_stack.erase(g.undo_stack.begin());
+constexpr size_t UNDO_LIMIT = 50;
+
+void push_undo_text(std::string text) {
+    if (!g.map_root.is_obj()) return;
+    g.undo_stack.push_back(std::move(text));
+    if (g.undo_stack.size() > UNDO_LIMIT) g.undo_stack.erase(g.undo_stack.begin());
     g.redo_stack.clear();
 }
 
-void restore_objects(const std::string& text) {
+void push_undo() {
+    if (!g.map_root.is_obj()) return;
+    push_undo_text(json_write(g.map_root));
+}
+
+// Nach einem Schnappschuss-Wechsel kann sich ALLES geändert haben: Zeiger neu
+// holen, Terrain neu bauen, offene Fenster neu befüllen. F6 behält seinen
+// Selektor, weil ev_refresh() Pfade und Formulare aus dem neuen Baum ableitet.
+void restore_map_snapshot(const std::string& text) {
     cancel_object_drag();
+    JsonValue v;
     try {
-        JsonValue v = json_parse(text);
-        g.map_root.set("objects", v);
+        v = json_parse(text);
     } catch (...) {
         core::log_error("Undo: Schnappschuss ungültig");
         return;
     }
+    if (!v.is_obj()) {
+        core::log_error("Undo: Schnappschuss ist kein Kartenobjekt");
+        return;
+    }
+    g.map_root = std::move(v);
     g.objects = g.map_root.find("objects");
     g.sel_obj = -1;
+    g.marker_selection = MapMarkerSelection{};
+    g.marker_selection.map_epoch = g.map_epoch;
+    g.map_action_queued = false;
     g.dirty = true;
+
+    regen_terrain();                 // Höhen/Größe/Splats können sich ändern
+    apply_map_atmosphere_editor();    // Nebel/Panorama
+    refresh_project_start_marker();
+    if (g_ts.win) ts_fill_splats();   // F7 offen: Bodenliste nachziehen
+    if (event_editor_open()) ev_refresh();   // F6-Referenzen/Formulare neu ableiten
     sync_object_list();
     sync_property_fields();
+    issues_scan_map();
+    if (g.cur_map >= 0 && g.cur_map < static_cast<int>(g.map_names.size())) {
+        const JsonValue* nm = g.map_root.find("name");
+        if (nm && nm->is_str() && g.map_names[g.cur_map] != nm->str) {
+            g.map_names[g.cur_map] = nm->str;
+            rebuild_map_menu();
+            maptree_fill();
+            maptree_select_current();
+        }
+    }
     update_title();
 }
 
 void undo_action() {
     cancel_object_drag();
+    // Der Eigenschaften-Dialog hält einen "vorher"-Stand; ein Undo darunter
+    // würde ihn beim nächsten OK mit alten Werten überschreiben.
+    if (g.props_dlg) { status_mode(L"Rückgängig: bitte Karten-Eigenschaften schließen"); return; }
     if (!resolve_object_edits()) return;
+    // Offene F6-Eingaben NICHT stillschweigend übernehmen oder verwerfen: der
+    // Schnappschuss ersetzt den Baum, auf den sich die Felder beziehen.
+    if (event_editor_open() && event_editor_pending()) {
+        status_mode(L"Rückgängig: im Event-Editor zuerst Übernehmen oder Verwerfen");
+        return;
+    }
     if (g.undo_stack.empty()) { status_mode(L"Nichts rückgängig"); return; }
-    if (g.objects) g.redo_stack.push_back(json_write(*g.objects));
+    if (!g.map_root.is_obj()) return;
+    g.redo_stack.push_back(json_write(g.map_root));
     const std::string text = g.undo_stack.back();
     g.undo_stack.pop_back();
-    restore_objects(text);
+    restore_map_snapshot(text);
     status_mode(L"Rückgängig (Strg+Z)");
 }
 
 void redo_action() {
     cancel_object_drag();
+    if (g.props_dlg) { status_mode(L"Wiederholen: bitte Karten-Eigenschaften schließen"); return; }
     if (!resolve_object_edits()) return;
+    if (event_editor_open() && event_editor_pending()) {
+        status_mode(L"Wiederholen: im Event-Editor zuerst Übernehmen oder Verwerfen");
+        return;
+    }
     if (g.redo_stack.empty()) { status_mode(L"Nichts wiederholen"); return; }
-    if (g.objects) g.undo_stack.push_back(json_write(*g.objects));
+    if (!g.map_root.is_obj()) return;
+    g.undo_stack.push_back(json_write(g.map_root));
+    if (g.undo_stack.size() > UNDO_LIMIT) g.undo_stack.erase(g.undo_stack.begin());
     const std::string text = g.redo_stack.back();
     g.redo_stack.pop_back();
-    restore_objects(text);
+    restore_map_snapshot(text);
     status_mode(L"Wiederholt (Strg+Y)");
 }
 
@@ -4424,8 +4489,12 @@ LRESULT CALLBACK view_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 math::Vec3 hit{};
                 if (terrain_hit(g.cam_pos, dir, hit)) {
                     const bool sink = (wp & MK_SHIFT) != 0;
+                    // Z8: Schnappschuss vor dem Pinselstrich, abgelegt nur bei
+                    // Treffer - ein Klick ins Leere hinterlässt kein Undo.
+                    const std::string vorher = json_write(g.map_root);
                     const int n = height_edit(hit.x, hit.z, sink);
                     if (n > 0) {
+                        push_undo_text(vorher);
                         regen_terrain();
                         g.dirty = true;
                         update_title();
@@ -4448,8 +4517,10 @@ LRESULT CALLBACK view_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 math::Vec3 hit{};
                 if (terrain_hit(g.cam_pos, dir, hit)) {
                     const bool erase = (wp & MK_SHIFT) != 0;
+                    const std::string vorher = json_write(g.map_root);
                     if (splat_edit(hit.x, hit.z, g.paint_size, g.paint_size,
                                    g.paint_tex, erase, true)) {
+                        push_undo_text(vorher);   // Z8: Fläche/Radierer rückgängig
                         regen_terrain();
                         if (g_ts.win) ts_fill_splats();
                         g.dirty = true;
@@ -6579,12 +6650,16 @@ bool apply_props_from_dlg() {
 
     {
         JsonValue& root = g.map_root;
+        // Z8: Schnappschuss VOR dem Anwenden; abgelegt wird er erst, wenn
+        // wirklich etwas geändert wurde (kein leeres Undo bei "OK" ohne Änderung).
+        const std::string vorher = json_write(root);
         const MapPropsChanges general = map_props_apply(root, g_enc_dlg.props_before, props, blocked);
 
         // Fehlende/null/unbearbeitete Encounter-Felder bleiben unverändert;
         // beim Ändern behält enc auch unbekannte Eigenschaften und Duplikate.
         if (enc.changed) root.set("encounters", std::move(enc.value));
         if (!general.changed && !enc.changed) return true;
+        push_undo_text(vorher);
 
         // set()/erase() können die Wurzel-Vector-Einträge verschieben. Der
         // Objektzeiger muss vor dem nächsten Rendern neu geholt werden.
@@ -7684,6 +7759,8 @@ bool ev_apply(bool event_fields, bool page_fields, EvCommandApply command_mode) 
         ev_error(event_failure(JsonValue{}, "event", "Das Event wurde während der Rückfrage verändert.")); return false;
     }
     if (edit.changed) {
+        // Z8: ganze Karte in den Undo-Schnappschuss (Event, Seiten, Befehle).
+        push_undo();
         *current = std::move(edit.value);
         g.dirty = true;
     }
@@ -7725,6 +7802,7 @@ bool ev_commit_structural(EventEdit edit) {
     JsonValue* event = ev_selected_event();
     if (!event) return false;
     if (edit.changed) {
+        push_undo();   // Z8: Seiten/Befehle sind rückgängig zu machen
         *event = std::move(edit.value);
         g.dirty = true;
         update_title();
@@ -7791,6 +7869,7 @@ void ev_new_event() {
     page.set("commands", JsonValue::make_arr());
     JsonValue pages = JsonValue::make_arr(); pages.arr.push_back(std::move(page));
     e.set("pages", std::move(pages));
+    push_undo();   // Z8: neues Event rückgängig
     if (!events) {
         g_ev.refs.clear();
         events = &g.map_root.set("events", JsonValue::make_arr());
@@ -7808,6 +7887,7 @@ void ev_delete_event() {
     if (!ev_confirm_delete(L"Dieses Event")) return;
     JsonValue* events = ev_events();
     if (!events || g_ev.sel_event < 0 || static_cast<size_t>(g_ev.sel_event) >= events->arr.size()) return;
+    push_undo();   // Z8: gelöschtes Event samt Seiten/Befehlen zurückholen
     events->arr.erase(events->arr.begin() + g_ev.sel_event);
     if (g_ev.sel_event >= static_cast<int>(events->arr.size())) g_ev.sel_event = static_cast<int>(events->arr.size()) - 1;
     g_ev.sel_page = 0; g_ev.sel_cmd = -1;
@@ -7828,6 +7908,7 @@ void ev_duplicate_event() {
             L"Event duplizieren", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) return;
     JsonValue* events = ev_events();
     if (!events || g_ev.sel_event < 0 || static_cast<size_t>(g_ev.sel_event) >= events->arr.size()) return;
+    push_undo();   // Z8: Duplikat rückgängig
     events->arr.push_back(std::move(edit.value));
     g_ev.sel_event = static_cast<int>(events->arr.size()) - 1;
     g_ev.sel_page = 0; g_ev.sel_cmd = -1;

@@ -183,9 +183,10 @@ ergänzt; die Einträge unten sind jeweils als behoben markiert.
    Vergessen, aber jede neue Liste bedeutet 3–4 Stellen + Test-Anpassung.
    **Verbesserung:** eine gemeinsame Quelle (`game/data/befehle.json`,
    Backlog-Idee) — C++ und Ruby lesen dieselbe Datei; Doppel-Pflege fällt weg.
-2. **Undo/Redo nur für `objects`** (`editor_main.cpp:3157-3160`): Splats,
+2. ~~**Undo/Redo nur für `objects`** (`editor_main.cpp:3157-3160`): Splats,
    NPCs, Events, Höhen nicht rückholbar — XP hat zwar auch kein Editor-Undo,
-   aber für den 3D-Arbeitsfluss ist es der spürbarste Editor-Mangel (Backlog).
+   aber für den 3D-Arbeitsfluss ist es der spürbarste Editor-Mangel (Backlog).~~
+   **→ behoben in Runde 19 (Z8/T):** Schnappschuss der ganzen Karte.
 3. **Route-Schritte im F6 ungeprüft:** `MapCheck` validiert erst bei
    Kartenladen/F10; das Einfügen-Formular zeigt Fehler erst später an.
    **Verbesserung:** Validierung direkt beim Übernehmen (gleiche Listen,
@@ -311,8 +312,9 @@ ergänzt; die Einträge unten sind jeweils als behoben markiert.
   Formulare (F2/F6/F5-Richtung geprüft, 19o/19p). **Besser als XP**, das
   nur modale Dialoge kennt — aber nur, solange die Guards gewartet werden
   (drei Stellen: Objekt-, Event-, Datengrundlage).
-- **Offen (Backlog):** XP-Screenshot-Design für F6/F9/F11, Undo-Scope,
-  Spaltenbreiten/Splitter-Persistenz. Keine Logikfehler gefunden — die
+- **Offen (Backlog):** XP-Screenshot-Design für F6/F9/F11, Kartenbaum-
+  Hierarchie, Spaltenbreiten/Splitter-Persistenz (der Undo-Scope ist seit
+  Runde 19 erledigt). Keine Logikfehler gefunden — die
   Schwachstellen sind Doppelstrukturen (D.1) und Fehlende (D.2).
 
 ---
@@ -538,15 +540,30 @@ Roadmap-Baustein (20x analog zu 20f Bilder).
 ## T. Editor-Undo (Ergänzung zu G)
 
 - Undo/Redo korrekt gepaart ✓ (`undo_stack`/`redo_stack`, Cap 50,
-  `restore_objects` mit Validierung), `resolve_object_edits()` zieht
-  offene Eigenschaftsfelder vor dem Undo nach ✓, Drag drückt beim ersten
-  echten Versatz (`drag_undo_pushed`) ✓, Material-Dialog mit
-  Alt-Wert-Bestätigung ✓.
-- **Scope bleibt nur das `objects`-Array** (11 Push-Orte: platzieren,
-  löschen, drehen, duplizieren, Eigenschaften, Material, Drag).
-  **Events haben kein einziges `undo`** (`event_form.h` ohne
-  Undo-Bezug), Karteneigenschaften/Terrain/Notiz/Scripts ebenso nicht —
-  Backlog „undo nur Objekte" bestätigt und präzisiert.
+  `resolve_object_edits()` zieht offene Eigenschaftsfelder vor dem Undo
+  nach ✓, Drag drückt beim ersten echten Versatz (`drag_undo_pushed`) ✓,
+  Material-Dialog mit Alt-Wert-Bestätigung ✓.
+- **Befund (Runde 17):** Scope war nur das `objects`-Array (11 Push-Orte:
+  platzieren, löschen, drehen, duplizieren, Eigenschaften, Material, Drag).
+  Events hatten kein einziges `undo` (`event_form.h` ohne Undo-Bezug),
+  Karteneigenschaften/Terrain/Notiz/Scripts ebenso wenig — Backlog
+  „undo nur Objekte" bestätigt und präzisiert.
+- ~~**Ausbau (Z8/T):**~~ **→ umgesetzt in Runde 19.** Der Schnappschuss ist
+  jetzt die **ganze Karte** (`g.map_root`, JSON, Cap 50), nicht nur
+  `objects`. Push-Orte: Objektaktionen wie bisher, dazu F6 (Event/Seite/
+  Befehl übernehmen, Seite anlegen/löschen, Befehl einfügen/ändern/löschen/
+  verschieben, Event anlegen/duplizieren/löschen), Platzier-Dialog F5
+  (NPCs/Schilder/Objekte), Karten-Eigenschaften (Name/Terrain/Nebel/
+  Panorama/Wetter/Block-Zonen/Encounter/Notiz), Berg- und Boden-Pinsel,
+  F7-Bodenwechsel und -Flächen, Umbenennen im Kartenbaum.
+  `restore_map_snapshot()` holt Zeiger neu, baut Terrain, Atmosphäre,
+  Marker, F7-Liste und F6 (`ev_refresh()`) neu auf und markiert die Karte
+  als geändert. Scheiternde Aktionen legen keinen Schnappschuss ab
+  (`push_undo_text` nur bei Erfolg). Grenzen bleiben: Karten anlegen/
+  löschen und F2/F5-Dateitransaktionen (Dateioperationen) sowie der
+  Projektstart in `system.json` (nicht Teil der Karte); Undo verweigert mit
+  Statushinweis, solange der Eigenschaften-Dialog offen ist oder F6
+  unübernommene Eingaben hat.
 
 ---
 
@@ -907,5 +924,7 @@ Spiel" entfällt (Doku: `XP_VERGLEICH`-Zeile165 korrigieren,
    (prüft Register ↔ `CMD_TYPES` ↔ `ISSUE_CMD_TYPES` ↔ `EV_TYPES` ↔
    `interpreter.rb`) **fertig**, atomares Schreiben **fertig**
    (`Project.write_json` für create/create_map/save, Editor-`write_file`
-   → `editor_write_file_atomic`). **Offen:** Undo-Ausbau (T),
-   Kartenbaum-Hierarchie, XP-Dialogdesign (braucht deine Screenshots).
+   → `editor_write_file_atomic`). **Stand Runde 19:** Undo-Ausbau (T)
+   **fertig** (ganze Karte als Schnappschuss, Push-Orte in F6/F5/
+   Eigenschaften/Pinsel/F7/Kartenbaum). **Offen:** Kartenbaum-Hierarchie,
+   XP-Dialogdesign (braucht deine Screenshots).

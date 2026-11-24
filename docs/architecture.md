@@ -112,7 +112,8 @@ vorgemerkte Aktion auf den bestehenden Auswahl-/Speicherabgleich. Auswahl,
 Projektepoch und Dateiname werden geprüft; nach dem Kontextmenü zusätzlich
 die Kartenepoch. Ein Abbruch oder verändertes Ziel verwirft die Aktion.
 Kartenformulare, Konfliktprüfung, Datentreue und Datei-Transaktionen bleiben
-die bestehenden Pfade; Objekt-Undo erfasst weiterhin keine anderen Datentypen.
+die bestehenden Pfade. Das Undo erfasst seit Z8 die ganze Karte (siehe
+Abschnitt „Maus-Werkzeuge und Undo/Redo").
 
 Automatisiert: `tools/json_test.cpp` prüft portable Geometrie und Zielschutz;
 unter Windows kommen unsichtbare Win32-Panels, Nachrichten und TreeView
@@ -386,13 +387,38 @@ die neue X/Z-Position wird auf das Raster (`g.grid`, 1 m) gerundet und
 sofort in Eigenschaften-Feldern, Objektliste und Titel angezeigt.
 `WM_LBUTTONUP` beendet den Drag und gibt die Maus frei.
 
-**Undo/Redo:** Jede Mutation (`Setzen`, `Loeschen`, `Duplizieren`,
-`Eigenschaften uebernehmen`, Drag-Start) legt vorher einen
-JSON-Schnappschuss des kompletten `objects`-Arrays auf den Undo-Stapel
-(max. 50 Einträge, Redo wird bei neuer Aktion geleert). `Strg+Z` /
-`Strg+Y` sowie die Buttons *Undo*/*Redo* tauschen Schnappschüsse
-zwischen den beiden Stapeln; nach dem Wiederherstellen werden Liste und
-Felder neu synchronisiert und die Karte als geändert markiert.
+**Undo/Redo:** Seit Z8 ist der Schnappschuss die **ganze Karte**
+(`g.map_root` als JSON), nicht mehr nur `objects`. Damit sind auch Events,
+Seiten, Befehle, NPCs, Terrain/Splats, Block-Zonen, Encounter und die
+Karten-Eigenschaften rückholbar. Auf den Stapel kommt der Stand **vor** der
+Änderung (max. 50 Einträge, Redo wird bei neuer Aktion geleert);
+`Strg+Z` / `Strg+Y` sowie die Buttons *Undo*/*Redo* tauschen Schnappschüsse
+zwischen den beiden Stapeln.
+
+*Push-Orte:* Objekt setzen/löschen/drehen/duplizieren, Eigenschaften
+übernehmen, Drag-Start, Event übernehmen (F6: Event-, Seiten- und
+Befehlsfelder), Seite anlegen/löschen, Befehl einfügen/ändern/löschen/
+verschieben, Event anlegen/duplizieren/löschen, Platzier-Dialog (F5:
+NPCs/Schilder/Objekte), Karten-Eigenschaften (Name, Terrain, Nebel,
+Panorama, Wetter, Block-Zonen, Encounter, Notiz), Berg-/Boden-Pinsel,
+Bodenwechsel und Flächen in F7, Umbenennen im Kartenbaum.
+Für Änderungen, die auch scheitern können (Pinsel ins Leere, „OK" ohne
+Änderung), wird der Stand vorher nach `json_write()` gezogen und erst bei
+Erfolg abgelegt (`push_undo_text`) - ein wirkungsloser Klick hinterlässt
+kein Undo.
+
+*Wiederherstellen (`restore_map_snapshot`):* Schnappschuss parsen, Zeiger
+neu holen (`objects`, Markierung, Drag verwerfen), `regen_terrain()`,
+Atmosphäre, Projektstart-Marker, offene F7-Bodenliste und F6-Fenster neu
+aufbauen (`ev_refresh()` leitet Pfade und Formulare aus dem neuen Baum ab),
+Objektliste/Eigenschaften/F10/Kartenbaum/Menü/Titel nachziehen, Karte als
+geändert markieren. Karten- und Projektwechsel leeren beide Stapel.
+
+*Bewusste Grenzen:* Karten **anlegen/löschen** und F2/F5-Dateitransaktionen
+sind Dateioperationen und kein Undo-Schritt; der Projektstart (system.json)
+liegt außerhalb der Karte. Solange der Eigenschaften-Dialog offen ist oder
+der Event-Editor unübernommene Eingaben hat, verweigert Undo mit einem
+Hinweis in der Statusleiste, statt fremde Entwürfe zu verwerfen.
 
 **Geprüft:** Objekt setzen -> Strg+Z entfernt es -> Strg+Y stellt es
 wieder her; Drag im Verschieben-Modus ändert X/Z rastergenau (Log:
@@ -411,7 +437,9 @@ Entwürfe geklärt und das Fenster anschließend geschlossen (`load_map` ruft
 **Daten:** Der Dialog arbeitet direkt auf `g.map_root["events"]` und
 schreibt dieselben Schlüssel wie die Engine (`id`, `name`, `x`, `z`,
 `radius`, `trigger`, `commands`). Gespeichert wird unverändert mit
-`Strg+S` im Hauptfenster; Undo/Redo deckt weiterhin nur `objects` ab.
+`Strg+S` im Hauptfenster. Undo/Redo deckt seit Z8 auch Events, Seiten und
+Befehle ab (`push_undo()` vor jedem Commit; offene Eingaben müssen vorher
+übernommen oder verworfen werden).
 
 **Aufbau:** links Event-Liste mit *Neu* (setzt das Event auf die
 aktuelle Mausposition im Viewport), *Löschen* und *Duplizieren*
@@ -2205,7 +2233,9 @@ inkrementieren ganzzahlige Koordinaten exakt; fehlende, ungültige oder nicht
 verschiebbare Koordinaten bleiben erhalten und werden gemeldet. Bei neu
 eingegebenem `input_number` muss `initial` zur Ziffernzahl passen, damit
 Ruby den Wert nicht still klemmt; unveränderte historische Werte bleiben.
-F2/F5 erfordern weiterhin ein geschlossenes F6-Fenster, Event-Undo fehlt.
+F2/F5 erfordern weiterhin ein geschlossenes F6-Fenster (seine
+Befehlsreferenzen zeigen in den Kartenbaum); Undo deckt seit Z8 auch Events
+und Karten-Eigenschaften ab.
 
 `tools/json_test.cpp` prüft alle 26 Typen, Migration, Batch-Rollback,
 Duplikate, große Zahlen, Schutz und echte Karten. `event_bridge_check.rb`
@@ -2373,9 +2403,10 @@ verwirft, Strg+S speichert), deaktiviert die übrigen Fenster und verlangt
 einen geschlossenen Event-Editor, damit dessen Formularzustand und die
 bearbeitete Kartenkopie nicht auseinanderlaufen.
 NPCs und Schilder samt Wegpunkten werden im Standalone-Editor angezeigt.
-Objektänderungen aus F5 werden im vorhandenen Objekt-Undo abgelegt; NPC-/
-Schildänderungen sind noch nicht rückholbar. Der Undo-Stapel wird bei jedem
-Kartenladen geleert, damit keine Objekte aus einer anderen Karte auftauchen.
+Der Platzier-Dialog legt vor dem Ersetzen der Wurzel einen Schnappschuss der
+ganzen Karte ab (Z8); Objekt-, NPC- und Schilder-Änderungen liegen damit im
+selben Undo-Strang. Der Undo-Stapel wird bei jedem Kartenladen geleert, damit
+keine Daten aus einer anderen Karte auftauchen.
 
 Laufzeit: `Npc` und `Prefabs.instantiate` berücksichtigen optionales `y`;
 Kollision und E-Reichweite bleiben wie bisher zweidimensional in X/Z.
