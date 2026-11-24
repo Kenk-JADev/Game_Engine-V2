@@ -258,9 +258,18 @@ im Hauptmenü schließt `Game.update` das Menü (sonst ginge Esc zwei Ebenen
 weit). Das Party-Panel links bleibt wie bisher, Spielzeit und Schritte
 stehen weiterhin darin.
 
-**Tests:** `tools/menu_test.rb` (33 Checks: Befehlsliste, Itemliste und
+**Parteigesichter (Nacharbeit zu 20b):** XP zeigt Face-Grafiken aus
+`Graphics/Faces`; Rune3D lädt keine Bilddateien für Gesichter. `UI.gesicht`
+zeichnet deshalb ein prozedurales Gesicht: Farbfläche (`"face": 0xRRGGBB`
+in der Datenbank oder stabil aus dem Namen abgeleitet, `UI.gesicht_farbe`),
+Initialen und ein HP-Streifen, optional mit Auswahlrahmen. Es erscheint im
+Party-Panel des Menüs (24 px je Held) und auf der Statusseite (64 px). Das
+Party-Panel sitzt jetzt rechts neben der Befehlsliste (XP-Layout) und weicht
+dem offenen Unterfenster.
+
+**Tests:** `tools/menu_test.rb` (40 Checks: Befehlsliste, Itemliste und
 Zielwahl, wirkungslose Items, Esc-Ebenen, Fertigkeiten-/Statusseiten,
-Zeichnen aller Unterfenster, Zahlenkürzel).
+Zeichnen aller Unterfenster, Gesichter, Zahlenkürzel).
 
 ## NPCs (Etappe 13)
 

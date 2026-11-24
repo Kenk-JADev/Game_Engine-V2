@@ -52,6 +52,45 @@ module UI
     Rune::Gfx.text(x, y, s.to_s, color, size)
   end
 
+  # --- Parteigesichter (Nacharbeit zu 20b) -----------------------------------------
+  # XP zeigt Face-Grafiken aus Graphics/Faces. Rune3D hat keine Bilddateien
+  # für Gesichter, deshalb ein prozedurales Gesicht: Farbfläche mit den
+  # Initialen und einem HP-Streifen. Die Farbe kommt aus der Datenbank
+  # ("face": 0xRRGGBB) oder stabil aus dem Namen.
+  GESICHTER = [0x5A7FB0, 0x9A6BB0, 0xB08A5A, 0x5AA88A, 0xB05A6B, 0x6B8FB0].freeze
+
+  def self.gesicht_farbe(name)
+    text = name.to_s
+    return GESICHTER[0] if text.empty?
+
+    GESICHTER[text.each_byte.sum % GESICHTER.size]
+  end
+
+  def self.initialen(name)
+    teile = name.to_s.split(/\s+/).reject(&:empty?)
+    return '?' if teile.empty?
+
+    teile.map { |t| t[0] }.join[0, 2].upcase
+  end
+
+  # size = Kantenlänge; farbe überschreibt die Namensfarbe (Datenbank),
+  # hp/max_hp zeichnen den Lebensstreifen am unteren Rand, auswahl den Rahmen.
+  def self.gesicht(x, y, size, name, farbe: nil, hp: nil, max_hp: nil, auswahl: false)
+    farbe ||= gesicht_farbe(name)
+    panel(x, y, size, size, farbe, 0.85)
+    rahmen(x, y, size, size, auswahl ? ACCENT : 0x0B1016, auswahl ? 0.95 : 0.5)
+    groesse = [size / 3, 11].max
+    schrift = initialen(name)
+    text(x + (size - groesse * schrift.length) / 2, y + size / 2 - groesse / 2,
+         schrift, 0x0B1016, groesse)
+    return unless max_hp.to_i.positive?
+
+    anteil = [[hp.to_f / max_hp.to_f, 0.0].max, 1.0].min
+    panel(x + 3, y + size - 7, size - 6, 4, 0x220A0A, 0.9)
+    panel(x + 3, y + size - 7, ((size - 6) * anteil).round, 4,
+          anteil > 0.5 ? 0x86D993 : 0xE86A6A, 0.95)
+  end
+
   # --- Button-Framework (Etappe 16a) ----------------------------------------
 
   # Frame starten: registrierte Flächen des letzten Frames einfrieren.

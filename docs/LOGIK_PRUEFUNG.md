@@ -349,7 +349,7 @@ ergänzt; die Einträge unten sind jeweils als behoben markiert.
 | `$game_system` (Timer, `save_count`, **menu/save/encounter_disabled**, Windowskin, BGM) | `'system'`-Snapshot im Spielstand (`Game.system_snapshot`: Sperr-Flags, Timer, `save_count`, das Save-Game zählt wie XP mit); alte Spielstände ohne `'system'` behalten die Defaults (`system_restore!` = Noop) | ✅ seit Runde 14 (Windowskin/BGM weiter nicht gespeichert — braucht Audio-Infrastruktur, s. N) |
 | `$game_screen` (Tone/Flash/Shake, **Wetter**) | — | ⚠️ Laufzeit-Wetter-Änderungen gehen verloren (Karten-Wetter wird aus der Karten-JSON wiederhergestellt) |
 | `Graphics.frame_count` (Spielzeit) | `time` | ✅ |
-| Zeichen für die Slot-Vorschau (Gesichter) | `save_info` liefert `saved` + `map` + `time`; Menü und `Scene_File` zeigen Karte · Spielzeit (Runde 14); Party-Gesichter fehlen | ⚠️ nur noch Gesichter (mit 20b) |
+| Zeichen für die Slot-Vorschau (Gesichter) | `save_info` liefert `saved` + `map` + `time`; Menü und `Scene_File` zeigen Karte · Spielzeit (Runde 14). **Seit Runde 25** zeichnet das Menü prozedurale Parteigesichter (`UI.gesicht`: Farbe/Initialen/HP-Streifen); die Slot-Vorschau bleibt Text | ⚠️ Gesichter nur im Menü, nicht in den Slots |
 | Editor-Schreibschutz | — | ⚠️ `Project.save` schreibt direkt (kein Temp+Rename) — Karten/F9 sind geschützt, Spielstände nicht (Backlog gilt); XP ist ebenso ungeschützt, wir haben aber die besseren Werkzeuge parat |
 
 ### Weitere Befunde

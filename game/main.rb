@@ -775,9 +775,20 @@ end
                            '[Hoch/Runter] Wählen   [Enter] OK   [1..8] direkt   [Esc] Zurück',
             UI::TEXT_DIM, 13)
 
-    # 20b: Unterfenster (Gegenstände/Fertigkeiten/Status) rechts neben dem Menü.
-    draw_menu_screen(mx + mw + 24, my) if @menu_screen
+    # 20b: Rechte Spalte - offenes Unterfenster (Gegenstände/Fertigkeit/
+    # Status) hat Vorrang, sonst das Party-Panel wie in XP (Scene_Menu).
+    spalte_w = 380
+    spalte_x = mx + mw + 24
+    spalte_x = [w - spalte_w - 12, 12].max if spalte_x + spalte_w > w - 12
+    if @menu_screen
+      draw_menu_screen(spalte_x, my, spalte_w)
+    else
+      draw_party_panel(spalte_x, my, spalte_w)
+    end
+  end
 
+  # Party-Panel im Menü: Gesichter, HP-Zeilen, Gold, Spielzeit und Schritte.
+  def self.draw_party_panel(x, y, breite)
     # Etappe 17g: Party-Status (Helden, Gold, Inventar) neben dem Menü.
     # V: Playtime/Steps wie XP Scene_Menu ins Panel (Spielzeit = @time,
     # Schritte = $game_party.steps aus F3).
@@ -785,45 +796,54 @@ end
     stufen = (defined?($game_party) && $game_party) ? $game_party.steps.to_i : 0
     extra = ["Spielzeit  #{zeit_text(@time)}", "Schritte  #{stufen}"]
     alle = lines + extra
-    pw = 380
+    pw = breite
     ph = 60 + alle.size * 28
-    px = mx - pw - 24
-    py = my
-    if px < 12   # bei schmalen Fenstern unter das Menü
-      px = mx
-      py = my + mh + 16
-      return if py + ph > h   # kein Platz: ganz weglassen
-    end
+    px = x
+    py = y
+    return if py + ph > Rune::Window.height - 8   # kein Platz: weglassen
     UI.panel(px, py, pw, ph, UI::PANEL, 0.95)
     UI.rahmen(px, py, pw, ph, UI::ACCENT, 0.6)
     UI.text(px + 20, py + 14, 'Party', UI::TEXT, 18)
     alle.each_with_index do |line, i|
-      UI.text(px + 20, py + 44 + i * 28, line,
-              i < lines.size ? UI::TEXT : UI::TEXT_DIM, 14)
+      if i < Party.actors.size
+        held = Party.actors[i]
+        UI.gesicht(px + 16, py + 40 + i * 28, 24, held.name,
+                   farbe: Party.face_color(held), hp: held.hp, max_hp: held.max_hp)
+        UI.text(px + 48, py + 44 + i * 28, line, UI::TEXT, 14)
+      else
+        UI.text(px + 20, py + 44 + i * 28, line, UI::TEXT_DIM, 14)
+      end
     end
   end
 
 
   # Unterfenster zeichnen: links die Liste, oben eine Überschrift, unten die
   # Rückmeldung bzw. die Bedienhinweise (XP zeigt dieselben Fenster getrennt).
-  def self.draw_menu_screen(x, y)
-    w = Rune::Window.width
-    breite = [w - x - 24, 300].max
+  def self.draw_menu_screen(x, y, breite)
     titel, zeilen, cursor = menu_screen_content
-    hoehe = 60 + [zeilen.size, 1].max * 26 + 34
+    # Gesichter (20b-Nacharbeit): Statusseite mit Parteigesicht (XP: Face-Grafik),
+    # die Werte rutschen entsprechend nach rechts.
+    held = @menu_screen == :status_detail ? Party.actors[@menu_hero] : nil
+    gesicht = held ? 64 : 0
+    text_x = x + 20 + (gesicht.positive? ? gesicht + 16 : 0)
+    hoehe = [60 + [zeilen.size, 1].max * 26 + 34, gesicht.zero? ? 0 : 60 + gesicht + 10].max
     UI.panel(x, y, breite, hoehe, UI::PANEL, 0.95)
     UI.rahmen(x, y, breite, hoehe, UI::ACCENT, 0.6)
     UI.text(x + 20, y + 14, titel, UI::TEXT, 18)
+    if gesicht.positive?
+      UI.gesicht(x + 20, y + 46, gesicht, held.name, farbe: Party.face_color(held),
+                 hp: held.hp, max_hp: held.max_hp, auswahl: true)
+    end
     if zeilen.empty?
-      UI.text(x + 20, y + 46, '—', UI::TEXT_DIM, 14)
+      UI.text(text_x, y + 46, '—', UI::TEXT_DIM, 14)
     else
       zeilen.each_with_index do |zeile, i|
         zy = y + 46 + i * 26
         if cursor == i
           UI.panel(x + 12, zy - 3, breite - 24, 24, 0x2A4A66, 0.9)
-          UI.text(x + 20, zy, "> #{zeile}", UI::ACCENT, 14)
+          UI.text(text_x, zy, "> #{zeile}", UI::ACCENT, 14)
         else
-          UI.text(x + 20, zy, "  #{zeile}", UI::TEXT, 14)
+          UI.text(text_x, zy, "  #{zeile}", UI::TEXT, 14)
         end
       end
     end

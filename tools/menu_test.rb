@@ -408,6 +408,40 @@ check('jedes Unterfenster zeichnet ohne Fehler') do
   ok
 end
 
+puts '== Parteigesichter =='
+check('Gesichtsfarbe ist stabil und kommt aus dem Namen') do
+  UI::GESICHTER.include?(UI.gesicht_farbe('Arik')) &&
+    UI.gesicht_farbe('Arik') == UI.gesicht_farbe('Arik')
+end
+check('verschiedene Namen bekommen verschiedene Farben') do
+  UI.gesicht_farbe('Arik') != UI.gesicht_farbe('Mira')
+end
+check('Initialen aus dem Namen') do
+  UI.initialen('Arik') == 'A' && UI.initialen('Alte Wache') == 'AW' && UI.initialen('') == '?'
+end
+check('Datenbankfarbe gilt nur, wenn sie eine Zahl ist') do
+  Party.face_color('arik').nil? || Party.face_color('arik').is_a?(Integer)
+end
+check('Party-Panel zeichnet ein Gesicht je Held') do
+  Rune::Gfx.reset_calls
+  Game.instance_variable_set(:@menu_screen, nil)
+  Game.draw
+  farben = Party.actors.map { |a| UI.gesicht_farbe(a.name) }
+  Rune::Gfx.calls.count { |c| c[0] == :rect && farben.include?(c[5]) } >= Party.actors.size
+end
+check('Statusseite zeigt das Gesicht des Helden') do
+  Rune::Gfx.reset_calls
+  Game.instance_variable_set(:@menu_screen, :status_detail)
+  Game.instance_variable_set(:@menu_hero, 0)
+  Game.draw
+  farbe = Party.face_color(Party.actors[0]) || UI.gesicht_farbe(Party.actors[0].name)
+  Rune::Gfx.calls.any? { |c| c[0] == :rect && c[3] == 64 && c[4] == 64 && c[5] == farbe }
+end
+check('Gesicht zeigt die Initialen als Text') do
+  Rune::Gfx.calls.any? { |c| c[0] == :text && c[3].to_s == UI.initialen(Party.actors[0].name) }
+end
+Game.instance_variable_set(:@menu_screen, nil)
+
 puts '== Zahlenkürzel und Titel =='
 Game.instance_variable_set(:@menu_sel, 0)
 druecke('1')

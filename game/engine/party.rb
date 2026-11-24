@@ -201,6 +201,19 @@ class Party
     list.find { |h| h.is_a?(Hash) && h['id'].to_s == id.to_s }
   end
 
+  # Gesichtsfarbe eines Helden (20b-Nacharbeit): optional "face" in database.json,
+  # sonst nil - die UI leitet dann eine stabile Farbe aus dem Namen ab.
+  def self.face_color(actor)
+    id = actor.is_a?(String) ? actor : (actor.respond_to?(:id) ? actor.id.to_s : nil)
+    return nil if id.nil?
+
+    eintrag = (Database.database['actors'] || []).find { |h| h.is_a?(Hash) && h['id'].to_s == id }
+    wert = eintrag && eintrag['face']
+    return nil unless wert.is_a?(Integer) && wert >= 0
+
+    wert
+  end
+
   def self.item_name(id)
     (item_def(id) || {})['name'] || id.to_s
   end

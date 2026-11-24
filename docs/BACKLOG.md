@@ -118,11 +118,13 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 ### [Engine] Menü deckt noch nicht alle XP-Szenen ab — offen (Feature-Fehlend)
 - Stand 20b (Runde 24): Gegenstand (mit Zielwahl), Fertigkeit (Ansehen),
   Status, Speichern/Laden, Titel.
+- Parteigesichter gibt es seit Runde 25 als prozedurale Flächen
+  (`UI.gesicht`, Menü und Statusseite).
 - Es fehlen: **Equip** (es gibt keine Waffen/Rüstungen in der Datenbank),
-  Parteigesichter (XP zeigt Gesichter im Menü und in den Spielstand-Slots),
-  Quest-/Fortschrittsanzeige, Anwenden von Fertigkeiten außerhalb des
-  Kampfes (XP erlaubt das ebenfalls nicht), `@@menu_index`-Gedächtnis
-  (Rune3D startet immer bei 0).
+  Gesichter in der Spielstand-Vorschau und im Kampfstatus (dort weiterhin
+  Textzeilen; Slot-Infos bleiben Text), Quest-/Fortschrittsanzeige,
+  Anwenden von Fertigkeiten außerhalb des Kampfes (XP erlaubt das
+  ebenfalls nicht), `@@menu_index`-Gedächtnis (Rune3D startet immer bei 0).
 - Betroffene Stellen: `game/main.rb` (`menu_items`, `update_menu_screen`,
   `draw_menu_screen`), `tools/menu_test.rb`.
 - Gefunden in: Etappe 20b (Roadmap aus `docs/XP_VERGLEICH.md` §8).
