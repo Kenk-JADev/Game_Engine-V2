@@ -38,6 +38,12 @@ end
     @events || []
   end
 
+  # Etappe 20c: Darstellungs-Nodes je Event (Index wie @events) - erase_event
+  # blendet damit genau das gelöschte Event aus. Leer vor dem ersten enter_map.
+  def self.event_visuals
+    @event_visuals || []
+  end
+
   def self.npcs
     @npcs || []
   end
@@ -51,7 +57,10 @@ end
     # Namen verwenden und soll dabei nicht versehentlich Objekte verlieren.
     old_nodes = (@placement_visuals || []).each_with_object({}) { |node, set| set[node] = true }
     scene.root.children.reject! { |node| old_nodes.key?(node) }
-    @placement_visuals = (@events || []).each_with_index.flat_map { |event, i| event.add_visual(scene, i) }
+    # Etappe 20c: Nodes je Event merken, damit erase_event genau die
+    # Darstellung DIESES Events ausblenden kann.
+    @event_visuals = (@events || []).each_with_index.map { |event, i| event.add_visual(scene, i) }
+    @placement_visuals = @event_visuals.flatten(1)
     (@npcs || []).each(&:refresh_terrain_height)
   end
 
@@ -191,7 +200,8 @@ end
     $game_player.make_encounter_count if $game_player
     @scene = build
     # Schilder sind normale Events mit optionaler visueller Darstellung.
-    @placement_visuals = @events.each_with_index.flat_map { |event, i| event.add_visual(@scene, i) }
+    @event_visuals = @events.each_with_index.map { |event, i| event.add_visual(@scene, i) }
+    @placement_visuals = @event_visuals.flatten(1)
     @scene.refresh_solids
     @npcs = (@map['npcs'] || []).map { |h| Npc.new(h, @scene) }
     Effects.clear
@@ -1010,6 +1020,8 @@ end
     Database.reload_system
     # Spielzustand aus system.json zurücksetzen (bei F5 ebenfalls).
     GameState.reset!(Database.system)
+    # Etappe 20c: Fenster-Optionen (XP 104) starten mit den XP-Defaults.
+    MessageWindow.reset! if defined?(MessageWindow)
     Party.setup(Database.database)
     Scripts.load_project
 
@@ -1198,7 +1210,14 @@ end
     #
     # Auch NPCs besitzen ein Event. Dieselbe Trigger-Verarbeitung erlaubt
     # insbesondere Gespräche per E, nicht nur per Maus-Picking.
-    event_liste = @events + @npcs.map(&:event)
+    # Etappe 20c: ein per erase_event gelöschtes Event löst nichts mehr aus
+    # und verschwindet aus der Darstellung (bis zum nächsten Kartenwechsel).
+    @events.each_with_index do |event, i|
+      next unless event.erased? && @event_visuals && !event.visual_hidden
+      @event_visuals[i].to_a.each { |node| node.visible = false unless node.nil? }
+      event.visual_hidden = true
+    end
+    event_liste = (@events + @npcs.map(&:event)).reject(&:erased?)
     event_liste.each(&:refresh_page!)
 
     # NPCs bewegen (Position des zugehörigen Events folgt).
@@ -1325,8 +1344,8 @@ end
 
       list << n
     end
-    list.concat(@events)
-    list.concat(@npcs.map(&:event))
+    list.concat(@events.reject(&:erased?))
+    list.concat(@npcs.map(&:event).reject(&:erased?))
     list
   end
 
@@ -1484,7 +1503,13 @@ end
     # stehen unter dem Text; fehlt einer der beiden Teile, bleibt er leer.
     wahl = @interpreter.busy_choices? ? @interpreter.choices : nil
     if @interpreter.busy_text? || wahl
-      UI.message(@interpreter.visible_lines, wahl, wartet: @interpreter.text_waiting?)
+      # Etappe 20c: Position/Rahmen/Transparenz aus dem text_options-Befehl
+      # (XP 104). MessageWindow liegt außerhalb des Interpreters, damit die
+      # Einstellung Kartenwechsel überlebt wie in XP.
+      UI.message(@interpreter.visible_lines, wahl, wartet: @interpreter.text_waiting?,
+                 position: (defined?(MessageWindow) ? MessageWindow.position : 'unten'),
+                 frame: (defined?(MessageWindow) ? MessageWindow.frame? : true),
+                 transparent: (defined?(MessageWindow) ? MessageWindow.transparent? : false))
     end
     UI.nummer_eingabe(@interpreter.num_input) if @interpreter.busy_number?
     Battle.draw if defined?(Battle) && (Battle.active? || @interpreter.busy_battle?)

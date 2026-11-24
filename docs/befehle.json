@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "stand": "Etappe Z8 (Runde 18)",
+  "stand": "Etappe 20c (Runde 27): 34 Befehle",
   "zweck": "Quellen-Register der Event-Befehlstypen. Vier Stellen im Baum müssen zu dieser Liste passen: CMD_TYPES (game/engine/mapcheck.rb), die Ausführung (game/engine/interpreter.rb), ISSUE_CMD_TYPES (src/editor/editor_main.cpp) und EvType/EV_TYPES (src/editor/event_form.h). Ein neuer Befehl ist erst fertig, wenn er hier UND in allen vier Stellen steht; tools/befehle_test.rb meldet die Lücke vor dem Commit.",
   "reihenfolge": "Die Reihenfolge ist die des Registers; die vier Stellen halten dieselbe Reihenfolge ein, damit Diffs lesbar bleiben.",
   "bereiche": [
@@ -301,6 +301,75 @@
         "can_lose"
       ],
       "beschreibung": "Startet den Kampf gegen eine Truppe aus der Datenbank und wartet auf das Ergebnis."
+    },
+    {
+      "typ": "loop",
+      "bereich": "Ablauf",
+      "pflicht": [
+        "commands"
+      ],
+      "optional": [],
+      "beschreibung": "Wiederholt die Befehle im Schleifenkörper, bis ein break, ein Sprung aus dem Block oder das Event-Ende ihn verlässt (XP 112/413)."
+    },
+    {
+      "typ": "break",
+      "bereich": "Ablauf",
+      "pflicht": [],
+      "optional": [],
+      "beschreibung": "Verlässt die innerste Schleife; danach läuft der Befehl nach der Schleife weiter (XP 113)."
+    },
+    {
+      "typ": "label",
+      "bereich": "Ablauf",
+      "pflicht": [
+        "name"
+      ],
+      "optional": [],
+      "beschreibung": "Setzt eine Sprungmarke im aktuellen Befehlsblock; zur Laufzeit passiert nichts (XP 118)."
+    },
+    {
+      "typ": "jump",
+      "bereich": "Ablauf",
+      "pflicht": [
+        "name"
+      ],
+      "optional": [],
+      "beschreibung": "Springt zur gleichnamigen Marke im selben Befehlsblock und läuft hinter ihr weiter (XP 119)."
+    },
+    {
+      "typ": "exit_event",
+      "bereich": "Ablauf",
+      "pflicht": [],
+      "optional": [],
+      "beschreibung": "Beendet dieses Event sofort; die restlichen Befehle der Liste laufen nicht mehr (XP 115)."
+    },
+    {
+      "typ": "erase_event",
+      "bereich": "Ablauf",
+      "pflicht": [],
+      "optional": [],
+      "beschreibung": "Löscht dieses Event bis zum nächsten Kartenwechsel - keine Auslöser, kein Anklicken, keine Darstellung (XP 116)."
+    },
+    {
+      "typ": "button_input",
+      "bereich": "Zustand",
+      "pflicht": [
+        "name",
+        "keys"
+      ],
+      "optional": [],
+      "beschreibung": "Wartet auf eine der genannten Tasten und schreibt ihre 1-basierte Position in der Liste in die Variable (XP 105)."
+    },
+    {
+      "typ": "text_options",
+      "bereich": "Text",
+      "pflicht": [],
+      "optional": [
+        "position",
+        "frame",
+        "transparent"
+      ],
+      "beschreibung": "Stellt Position, Rahmen und Transparenz des Nachrichtenfensters ein; gilt bis zum nächsten Aufruf und über Kartenwechsel (XP 104)."
     }
   ]
 }

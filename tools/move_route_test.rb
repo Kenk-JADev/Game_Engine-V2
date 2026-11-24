@@ -12,7 +12,7 @@
 #    - Interpreter: move_route startet, wait blockiert bis zum Ende,
 #      repeat+wait blockiert NICHT (Warnung), ohne wait läuft er weiter
 #    - MapCheck: target/steps-Pflicht, unbekannter Schritt, speed,
-#      SCHRITTE-Sync mit Mover und die 26 Befehlstypen
+#      SCHRITTE-Sync mit Mover und die Befehlstypen
 # ============================================================================
 
 # --- Minimal-Attrappe der Engine-Schnittstelle -----------------------------
@@ -538,7 +538,7 @@ check('play_se ohne Namen -> Warnung statt Absturz') do
 end
 Game.npcs = []
 
-check('CMD_TYPES zählen 26') { MapCheck::CMD_TYPES.size == 26 }
+check('CMD_TYPES zählen 34') { MapCheck::CMD_TYPES.size == 34 }
 
 puts '== Mover: Block-Zonen (19k.3) =='
 # Zone x = 1..3 (Mitte 2, Breite 2): der erste move_right-Schritt (1 m) endet

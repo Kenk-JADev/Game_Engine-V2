@@ -1577,9 +1577,14 @@ void event_form_tests(const std::string& wurzel) {
         R"({"cmd":"gold","amount":9007199254740993})", R"({"cmd":"save_game","slot":2})", R"({"cmd":"load_game","slot":3})",
         R"({"cmd":"self_switch","letter":"A","value":true})", R"({"cmd":"if_self_switch","letter":"B","value":false,"then":[],"else":[]})",
         R"({"cmd":"fade","direction":"ein","seconds":0.123456789})", R"({"cmd":"move_route","target":"x","steps":["up"],"speed":2.123456789,"repeat":false,"wait":true,"code":"a"})",
-        R"({"cmd":"input_number","name":"a","digits":3,"initial":99,"cancel":false})", R"({"cmd":"battle","name":"a","can_escape":false,"can_lose":true})"
+        R"({"cmd":"input_number","name":"a","digits":3,"initial":99,"cancel":false})", R"({"cmd":"battle","name":"a","can_escape":false,"can_lose":true})",
+        R"({"cmd":"loop","commands":[{"cmd":"break"}]})", R"({"cmd":"break"})",
+        R"({"cmd":"label","name":"marke"})", R"({"cmd":"jump","name":"marke"})",
+        R"({"cmd":"exit_event"})", R"({"cmd":"erase_event"})",
+        R"({"cmd":"button_input","name":"taste","keys":["e","escape"]})",
+        R"({"cmd":"text_options","position":"oben","frame":false,"transparent":true})"
     };
-    check("Beispiel für jeden der 26 Befehlstypen vorhanden", samples.size() == ET_COUNT);
+    check("Beispiel für jeden der 34 Befehlstypen vorhanden", samples.size() == ET_COUNT);
     for (size_t i = 0; i < samples.size(); ++i) {
         JsonValue c = json_parse(samples[i]); c.set("extra_meta", json_parse(R"({"n":9007199254740993})"));
         const EventCommandForm f = event_command_form_read(c);
@@ -1590,6 +1595,17 @@ void event_form_tests(const std::string& wurzel) {
         const std::string create_label = "Befehl aus gültigem Formular neu erzeugen: " + std::string(EV_TYPES[i]);
         check(create_label.c_str(), created.ok && created.changed && created.value.find("cmd") &&
               created.value.find("cmd")->str == EV_TYPES[i]);
+        // Etappe 20c: loop/break/exit_event/erase_event tragen keine Felder -
+        // "Übernehmen" muss sie unverändert lassen statt etwas zu erfinden.
+        bool hat_felder = false;
+        for (size_t k = 0; k < 5; ++k) hat_felder = hat_felder || event_command_uses_field(static_cast<int>(i), k);
+        if (!hat_felder) {
+            const EventEdit unveraendert = event_command_prepare(&c, f, f);
+            const std::string leer_label = "Befehl ohne Felder bleibt unverändert: " + std::string(EV_TYPES[i]);
+            check(leer_label.c_str(), unveraendert.ok && !unveraendert.changed &&
+                  json_write(unveraendert.value) == json_write(c));
+            continue;
+        }
         EventCommandForm changed = f;
         switch (i) {
             case ET_TEXT: case ET_CHOICES: case ET_LOG: changed.text = "neuer Text"; break;
@@ -1597,6 +1613,7 @@ void event_form_tests(const std::string& wurzel) {
             case ET_SAVE_GAME: case ET_LOAD_GAME: changed.val1 = "1"; break;
             case ET_SELF_SWITCH: case ET_IF_SELF_SWITCH: changed.name = "C"; break;
             case ET_FADE: changed.name = "aus"; break;
+            case ET_TEXT_OPTIONS: changed.name = "mitte"; break;
             default: changed.name = "neuer_name"; break;
         }
         const EventEdit patched = event_command_prepare(&c, f, changed);

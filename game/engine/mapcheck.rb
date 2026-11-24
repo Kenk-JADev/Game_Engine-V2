@@ -71,6 +71,8 @@ module MapCheck
     save_game load_game
     self_switch if_self_switch fade
     move_route input_number battle
+    loop break label jump exit_event erase_event
+    button_input text_options
   ].freeze
 
   TRIGGER   = %w[action touch auto parallel].freeze
@@ -80,6 +82,12 @@ module MapCheck
   BEDINGUNGEN = %w[switch variable self_switch].freeze
   SELF_SWITCH_BUCHSTABEN = %w[A B C D].freeze     # Etappe 19d (XP: A-D)
   FADE_RICHTUNGEN = %w[ein aus].freeze            # Etappe 19d
+  # Etappe 20c: Fensterpositionen von "Fenster-Optionen" (XP 104) und die
+  # Tastennamen der Tasteneingabe (XP 105). Die Tastennamen sind dieselben,
+  # die Rune::Input kennt (src/ruby/vm.cpp: Buchstaben + Sondertasten).
+  FENSTER_POSITIONEN = %w[oben mitte unten].freeze
+  TASTEN = (%w[e space enter escape up down left right shift ctrl alt tab
+               backspace] + ('a'..'z').to_a + (1..12).map { |n| "f#{n}" }).freeze
   # Etappe 19g, XP-Vokabular seit 19h.2: muss zu Mover::SCHRITTE passen
   # (move_route_test prüft das - mapcheck.rb wird früher geladen als
   # mover.rb, deshalb keine Referenz). Deutsche Kurznamen (up/down/...) und
@@ -707,7 +715,7 @@ module MapCheck
     end
 
     # Befehlsliste rekursiv (inkl. Dann-/Sonst-/Choices-Zweige) — wie im Editor.
-    def pruefe_befehle(liste, wo)
+    def pruefe_befehle(liste, wo, schleife: 0)
       unless liste.is_a?(Array)
         melde(FEHLER, wo, "'commands' ist keine Liste")
         return
@@ -728,11 +736,20 @@ module MapCheck
           melde(FEHLER, w, "unbekannter Befehlstyp '#{typ}'")
           next
         end
-        pruefe_befehl(typ.to_s, c, w)
+        pruefe_befehl(typ.to_s, c, w, schleife: schleife)
+        # Etappe 20c: Sprungziele müssen in DIESER Liste als Marke stehen
+        # (XP 118/119 sucht ebenfalls nur im aktuellen Block).
+        if typ.to_s == 'jump'
+          ziel = c['name'].to_s
+          marken = liste.select { |x| x.is_a?(Hash) && x['cmd'] == 'label' }
+          unless marken.any? { |x| x['name'].to_s == ziel }
+            melde(WARNUNG, w, "keine Marke '#{ziel}' in diesem Block")
+          end
+        end
       end
     end
 
-    def pruefe_befehl(typ, c, w)
+    def pruefe_befehl(typ, c, w, schleife: 0)
       case typ
       when 'text'
         if !c['lines'].is_a?(Array) || c['lines'].empty?
@@ -911,6 +928,70 @@ module MapCheck
       when 'battle'
         # Etappe 19i: Kampf gegen eine Truppe aus database.json.
         melde(FEHLER, w, "'name' fehlt oder ist leer") unless text?(c['name'])
+      when 'loop'
+        # Etappe 20c: Schleife (XP 112 + 413) - der Körper ist 'commands'.
+        koerper = c['commands']
+        if !koerper.is_a?(Array)
+          melde(FEHLER, w, "'commands' fehlt/keine Liste")
+        else
+          pruefe_befehle(koerper, "#{w} (Schleife)", schleife: schleife + 1)
+          unless enthaelt_ausgang?(koerper)
+            melde(WARNUNG, w,
+                  'Schleife ohne break/jump/exit_event läuft endlos ' \
+                  '(nur ein Seitenwechsel oder Event-Ende hält sie an)')
+          end
+        end
+      when 'break'
+        if schleife.zero?
+          melde(WARNUNG, w, "'break' außerhalb einer Schleife hat keine Wirkung")
+        end
+      when 'label', 'jump'
+        unless text?(c['name']) && !c['name'].to_s.strip.empty?
+          melde(FEHLER, w, "'name' (Marke) fehlt oder ist leer")
+        end
+      when 'exit_event', 'erase_event'
+        # Keine Felder: Beenden bzw. Löschen dieses Events (XP 115/116).
+        nil
+      when 'button_input'
+        melde(FEHLER, w, "'name' fehlt oder ist leer") unless text?(c['name'])
+        tasten = c['keys']
+        if !tasten.is_a?(Array) || tasten.empty?
+          melde(FEHLER, w, "'keys' fehlt/leer")
+        else
+          tasten.each_with_index do |t, ti|
+            next if TASTEN.include?(t.to_s)
+            melde(WARNUNG, "#{w} Taste ##{ti + 1}",
+                  "unbekannte Taste '#{t}' (z. B. e, space, escape, up, f1)")
+          end
+        end
+      when 'text_options'
+        # Etappe 20c: Fenster-Optionen (XP 104).
+        if c.key?('position') && !FENSTER_POSITIONEN.include?(c['position'].to_s)
+          melde(WARNUNG, w,
+                "'position' muss oben/mitte/unten sein (nicht '#{c['position']}')")
+        end
+        %w[frame transparent].each do |k|
+          next unless c.key?(k)
+          melde(WARNUNG, w, "'#{k}' muss true oder false sein") unless [true, false].include?(c[k])
+        end
+      end
+    end
+
+    # Etappe 20c: Verlässt irgendein Befehl die Schleife? Sprünge und
+    # Event-Enden zählen mit; ein break in einer INNEREN Schleife nicht.
+    def enthaelt_ausgang?(liste)
+      return false unless liste.is_a?(Array)
+
+      liste.any? do |c|
+        next false unless c.is_a?(Hash)
+
+        case c['cmd']
+        when 'break', 'jump', 'exit_event' then true
+        when 'loop' then false
+        else
+          %w[then else cancel_branch].any? { |k| enthaelt_ausgang?(c[k]) } ||
+            (c['branches'].is_a?(Array) && c['branches'].any? { |z| enthaelt_ausgang?(z) })
+        end
       end
     end
 

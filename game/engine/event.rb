@@ -35,6 +35,9 @@ EventPage = Struct.new(:conditions, :trigger, :commands)
 class Event
   attr_reader :id, :name, :radius, :pages
   attr_accessor :fired, :x, :z
+  # Etappe 20c: true, sobald die Darstellung eines gelöschten Events
+  # ausgeblendet wurde (damit das nicht jeden Frame erneut passiert).
+  attr_accessor :visual_hidden
 
   def initialize(h)
     @id       = h['id'] || 0
@@ -49,6 +52,18 @@ class Event
     @pages    = Event.build_pages(h)
     @fired    = false
     @page_idx = 0
+    @erased   = false
+  end
+
+  # Etappe 20c: "Event löschen" (XP 116). Das Event verschwindet bis zum
+  # nächsten Kartenwechsel: keine Auslöser, kein Picking, keine Darstellung.
+  def erase!
+    @erased = true
+    @fired = true
+  end
+
+  def erased?
+    @erased
   end
 
   # Seitenliste aus den Kartendaten bauen (altes Format bleibt kompatibel).
@@ -101,10 +116,14 @@ class Event
   end
 
   # Aktive Seite neu bestimmen (höchster Index mit erfüllten Bedingungen).
+  # Ein gelöschtes Event bleibt gelöscht - auch wenn Seitenbedingungen
+  # weiterhin zutreffen.
   # Seitenwechsel setzt 'fired' zurück, damit touch/auto erneut feuern.
   # F2 (XP-Gleichheit): erfüllt KEINE Seite ihre Bedingungen, ist das Event
   # inaktiv (page_index nil) - es löst nichts aus und hat keine Kommandos.
   def refresh_page!
+    return if @erased
+
     idx = @pages.rindex { |p| Event.conditions_met?(p.conditions, self) }
     return if idx == @page_idx
 
@@ -116,9 +135,10 @@ class Event
     @page_idx
   end
 
-  # true, solange mindestens eine Seite ihre Bedingungen erfüllt.
+  # true, solange mindestens eine Seite ihre Bedingungen erfüllt und das
+  # Event nicht gelöscht ist (Etappe 20c: erase_event).
   def active?
-    !@page_idx.nil?
+    !@page_idx.nil? && !@erased
   end
 
   # Aktive Seite oder nil (Event inaktiv).
@@ -131,6 +151,8 @@ class Event
   end
 
   def commands
+    return [] if @erased
+
     active_page&.commands || []
   end
 
@@ -178,7 +200,8 @@ class Event
   # Startet die Kommandos der aktiven Seite im (freien) Interpreter.
   def manual_fire(interp)
     # F2: ein inaktives Event (keine erfüllte Seite) startet nichts.
-    return false unless active?
+    # 20c: ein gelöschtes Event startet ebenfalls nichts mehr.
+    return false unless active? && !@erased
 
     interp.start(commands, self)
   end

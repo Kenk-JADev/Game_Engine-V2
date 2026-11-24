@@ -157,15 +157,27 @@ module UI
   # Optionen stehen unter dem Text, das Fenster wächst nach oben, die
   # Unterkante bleibt stehen. choices = {options:, sel:, cancel:} oder nil.
   # wartet: Text wartet auf Bestätigung -> blinkender ▾-Zeiger.
-  def self.message(lines, choices = nil, x: 40, y: 496, w: 1200, wartet: true)
+  # Etappe 20c (XP 104 "Change Text Options"): position = oben/mitte/unten,
+  # frame = Fensterrahmen zeichnen, transparent = durchscheinender Hintergrund.
+  # Die Defaults entsprechen dem bisherigen Bild (unten, Rahmen, deckend).
+  def self.message(lines, choices = nil, x: 40, y: 496, w: 1200, wartet: true,
+                   position: 'unten', frame: true, transparent: false)
     line_h = 26
     text_h = 30 + lines.size * line_h
     optionen = choices ? choices[:options] : []
     option_h = optionen.empty? ? 0 : 14 + optionen.size * 24 + 10
     h = text_h + option_h
-    top = y + text_h - h                    # Unterkante bleibt bei y + text_h
-    panel(x, top, w, h, PANEL, 0.80)
-    panel(x, top, w, 2, ACCENT, 0.85)       # Zierlinie oben
+    # unten: Unterkante bleibt stehen, das Fenster wächst nach oben (XP).
+    # oben/mitte: das Fenster wächst nach unten bzw. wird mittig gesetzt.
+    top = case position.to_s
+          when 'oben'  then 30
+          when 'mitte' then [(Rune::Window.height - h) / 2, 0].max
+          else y + text_h - h
+          end
+    if frame
+      panel(x, top, w, h, PANEL, transparent ? 0.35 : 0.80)
+      panel(x, top, w, 2, ACCENT, transparent ? 0.5 : 0.85)   # Zierlinie oben
+    end
     lines.each_with_index do |l, i|
       text(x + 22, top + 18 + i * line_h, l, TEXT, 18)
     end

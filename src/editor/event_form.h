@@ -24,6 +24,10 @@
 namespace rune::editor {
 
 // Befehlstypen des F6-Formulars. Register (Z8): docs/befehle.json;
+// Etappe 20c hängt die Ablauf-Steuerung (XP 112/113/115/116/118/119/105/104)
+// hinten an, damit Diff und Register-Reihenfolge Zeile für Zeile lesbar
+// bleiben. Kommentare gehören NICHT in den Enum-Block: tools/befehle_test.rb
+// liest die Namen dort als Liste.
 // tools/befehle_test.rb vergleicht EvType/EV_TYPES mit CMD_TYPES
 // (mapcheck.rb), ISSUE_CMD_TYPES (editor_main.cpp) und interpreter.rb.
 enum EvType {
@@ -35,13 +39,17 @@ enum EvType {
     ET_ITEM, ET_GOLD,
     ET_SAVE_GAME, ET_LOAD_GAME,
     ET_SELF_SWITCH, ET_IF_SELF_SWITCH, ET_FADE,
-    ET_MOVE_ROUTE, ET_INPUT_NUMBER, ET_BATTLE, ET_COUNT
+    ET_MOVE_ROUTE, ET_INPUT_NUMBER, ET_BATTLE,
+    ET_LOOP, ET_BREAK, ET_LABEL, ET_JUMP, ET_EXIT_EVENT, ET_ERASE_EVENT,
+    ET_BUTTON_INPUT, ET_TEXT_OPTIONS, ET_COUNT
 };
 inline constexpr const char* const EV_TYPES[ET_COUNT] = {
     "text", "choices", "log", "wait", "switch", "toggle_switch", "variable",
     "if_switch", "if_variable", "script", "teleport", "move_player", "heal",
     "weather", "effect", "sound", "item", "gold", "save_game", "load_game",
-    "self_switch", "if_self_switch", "fade", "move_route", "input_number", "battle"
+    "self_switch", "if_self_switch", "fade", "move_route", "input_number", "battle",
+    "loop", "break", "label", "jump", "exit_event", "erase_event",
+    "button_input", "text_options"
 };
 inline constexpr const char* const EVENT_TRIGGERS[] = {"action", "touch", "auto", "parallel"};
 inline constexpr const char* const EVENT_OPS[] = {"==", "!=", "<", "<=", ">", ">="};
@@ -55,7 +63,8 @@ inline bool event_command_uses_field(int type, size_t field) {
             type == ET_IF_SWITCH || type == ET_IF_VARIABLE || type == ET_SCRIPT || type == ET_SOUND ||
             type == ET_EFFECT || type == ET_ITEM || type == ET_WEATHER || type == ET_SELF_SWITCH ||
             type == ET_IF_SELF_SWITCH || type == ET_FADE || type == ET_MOVE_ROUTE ||
-            type == ET_INPUT_NUMBER || type == ET_BATTLE;
+            type == ET_INPUT_NUMBER || type == ET_BATTLE || type == ET_LABEL ||
+            type == ET_JUMP || type == ET_BUTTON_INPUT || type == ET_TEXT_OPTIONS;
         case 1: return type == ET_WAIT || type == ET_VARIABLE || type == ET_IF_VARIABLE ||
             type == ET_TELEPORT || type == ET_MOVE_PLAYER || type == ET_SOUND || type == ET_EFFECT ||
             type == ET_GOLD || type == ET_HEAL || type == ET_WEATHER || type == ET_SAVE_GAME ||
@@ -63,9 +72,10 @@ inline bool event_command_uses_field(int type, size_t field) {
             type == ET_CHOICES;
         case 2: return type == ET_VARIABLE || type == ET_TELEPORT || type == ET_MOVE_PLAYER ||
             type == ET_EFFECT || type == ET_ITEM || type == ET_MOVE_ROUTE || type == ET_INPUT_NUMBER ||
-            type == ET_BATTLE;
+            type == ET_BATTLE || type == ET_TEXT_OPTIONS;
         case 3: return type == ET_TELEPORT || type == ET_MOVE_ROUTE;
-        case 4: return type == ET_TEXT || type == ET_LOG || type == ET_CHOICES || type == ET_MOVE_ROUTE;
+        case 4: return type == ET_TEXT || type == ET_LOG || type == ET_CHOICES || type == ET_MOVE_ROUTE ||
+            type == ET_BUTTON_INPUT;
         default: return false;
     }
 }
@@ -540,6 +550,13 @@ inline JsonValue* event_command_list_mutable(JsonValue& e, size_t page, const Ev
                 error = "Dieser Wahlzweig ist keine Liste; Altdaten bleiben erhalten."; return nullptr;
             }
             list = &branches->arr[step.choice];
+        } else if (step.key == "commands") {
+            // Etappe 20c: Körper einer Schleife (XP 112/413).
+            if (type != "loop") { error = "Der Schleifenkörper gehört nicht zu diesem Befehl."; return nullptr; }
+            JsonValue* body = command.find("commands");
+            if (!body && create) body = &command.set("commands", JsonValue::make_arr());
+            if (!body || !body->is_arr()) { error = "commands ist keine Liste; Altdaten bleiben erhalten."; return nullptr; }
+            list = body;
         } else if (step.key == "cancel_branch") {
             // Z5: eigener Abbruch-Zweig (XP 403) - Pfad wie branches, nur
             // ohne Optionsindex; create erzeugt die fehlende Liste.
@@ -640,6 +657,17 @@ inline EventCommandForm event_command_form_read(const JsonValue& c) {
         case ET_HEAL: f.val1 = num("amount"); break;
         case ET_WEATHER: f.val1 = num("intensity", "1"); break;
         case ET_SAVE_GAME: case ET_LOAD_GAME: f.val1 = num("slot", "1"); break;
+        case ET_BUTTON_INPUT: f.text = lines("keys"); break;
+        case ET_TEXT_OPTIONS:
+            f.name = text("position", "unten");
+            f.flag = flag("frame", 0);
+            // val2 1/0/leer wie bei battle.can_lose: leer = Schlüssel fehlt
+            // (XP-Default: nicht transparent).
+            f.val2 = c.find("transparent")
+                         ? (flag("transparent", 1) == 0 ? "1"
+                            : flag("transparent", 1) == 1 ? "0" : "[ungültig/mehrfach]")
+                         : "";
+            break;
         default: break;
     }
     return f;
@@ -673,6 +701,11 @@ inline std::vector<const char*> event_command_keys(int type) {
         case ET_MOVE_ROUTE: return {"target", "steps", "speed", "wait", "code", "repeat"};
         case ET_INPUT_NUMBER: return {"name", "digits", "initial", "cancel"};
         case ET_BATTLE: return {"name", "can_escape", "can_lose"};
+        case ET_LOOP: return {"commands"};
+        case ET_BREAK: case ET_EXIT_EVENT: case ET_ERASE_EVENT: return {};
+        case ET_LABEL: case ET_JUMP: return {"name"};
+        case ET_BUTTON_INPUT: return {"name", "keys"};
+        case ET_TEXT_OPTIONS: return {"position", "frame", "transparent"};
         default: return {};
     }
 }
@@ -979,6 +1012,30 @@ inline EventEdit event_command_prepare(const JsonValue* existing, const EventCom
             ok = name() && bool_text("can_lose", "cmd_val2", before.val2, after.val2) &&
                  boolean("can_escape", "cmd_flag", before.flag, after.flag);
             break;
+        // Etappe 20c: Ablauf-Steuerung. loop/break/exit_event/erase_event
+        // tragen keine Felder (der Schleifenkörper ist ein eigener Zweig),
+        // marke/ziel der Sprünge sind Namen, Tasteneingabe eine Tastenliste.
+        case ET_LOOP: case ET_BREAK: case ET_EXIT_EVENT: case ET_ERASE_EVENT:
+            break;
+        case ET_LABEL: case ET_JUMP:
+            ok = name();
+            break;
+        case ET_BUTTON_INPUT:
+            ok = name() && list("keys", "cmd_text", before.text, after.text, true);
+            break;
+        case ET_TEXT_OPTIONS: {
+            if (fresh || before.name != after.name) {
+                std::string position = after.name.empty() && fresh ? "unten" : after.name;
+                std::transform(position.begin(), position.end(), position.begin(),
+                               [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                if (position != "oben" && position != "mitte" && position != "unten")
+                    ok = fail("cmd_name", "Position muss 'oben', 'mitte' oder 'unten' sein.");
+                else ok = text("position", "cmd_name", before.name, position, false, false, true);
+            }
+            if (ok) ok = boolean("frame", "cmd_flag", before.flag, after.flag);
+            if (ok) ok = bool_text("transparent", "cmd_val2", before.val2, after.val2);
+            break;
+        }
         default: return event_failure(original, "cmd_type", "Unbekannter Befehlstyp.");
     }
     if (!ok) return r;
@@ -986,6 +1043,9 @@ inline EventEdit event_command_prepare(const JsonValue* existing, const EventCom
         r.value.set("then", JsonValue::make_arr());
         r.value.set("else", JsonValue::make_arr());
     }
+    // Etappe 20c: eine neue Schleife bekommt sofort einen (leeren) Körper,
+    // damit der Baum einen Einfügepunkt hat.
+    if (fresh && after.type == ET_LOOP) r.value.set("commands", JsonValue::make_arr());
     r.changed = !existing || json_write(r.value) != json_write(original);
     return r;
 }

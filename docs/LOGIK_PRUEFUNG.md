@@ -32,6 +32,13 @@ Teardown-Audit — Menü parst pro Frame bis zu 12 Save-JSONs (Cache
 fehlt), Encounter-Kadenz seit Runde 26 pro Kachel statt pro Schritt-Sound,
 Slip-Damage fehlt (Zustände seit 20a nur im Kampf), Teardown/F5
 **sauber ohne Leak** ✓.
+**Prüfrunde 8 (Teil AC, Ablauf-Befehle 20c):** `loop`/`break`,
+`label`/`jump`, `exit_event`, `erase_event`, `button_input` und
+`text_options` sind umgesetzt (34 Befehlstypen, Runde 27); sechs bewusste
+Abweichungen/Grenzen sind in **AC** dokumentiert (Marke nur im selben
+Block, Tastenposition statt XP-Tastencode, Schleife ohne Ausgang,
+Lebensdauer von `erase_event`, Fenster-Optionen als Modul, `break`
+außerhalb einer Schleife). Common Events (117) bleiben offen.
 **Prüfrunde 7 (Teil Y, Datenpipeline End-to-End):** Editor↔Laufzeit
 feldweise konsistent (26 Typen, Seiten/Bedingungen, NPC-Roundtrip,
 Legacy-Migration, Brücke getestet) — neue Befunde **Y1 Demo-Daten-Drift**
@@ -850,6 +857,33 @@ Ist-Zustand; Y3 (Starter-Helden) bleibt für „New Game" relevant; Y4
 verschiebt sich vollständig in den Editor; „Projektliste/Neu/Löschen im
 Spiel" entfällt (Doku: `XP_VERGLEICH`-Zeile165 korrigieren,
 `HANDOFF`-Abschnitt ergänzen).
+
+---
+
+## AC. Ablauf-Befehle (Etappe 20c Welle 1, Runde 27)
+
+Geprüft: `game/engine/interpreter.rb`, `game/engine/event.rb`,
+`game/engine/message_window.rb`, `game/engine/mapcheck.rb`,
+`src/editor/event_form.h`, `src/editor/editor_main.cpp` gegen
+`XP-Defaultscript/` (u. a. `013 - Interpreter 1..3`) sowie
+`tools/ablauf_test.rb` (30 Checks), `tools/json_test.cpp`,
+`tools/befehle_test.rb`, `tools/sync_test.rb`.
+
+| # | Thema | XP | Rune3D | Bewertung |
+|---|---|---|---|---|
+| AC.1 | **Schleife** | 112 Loop + 413 „Repeat Above“ als Sprungmarken-Paar in EINER Liste | `loop` mit eigenem `commands`-Zweig (`event_command_list_mutable`, Baumkopf „Schleife:“); `break` verlässt die innerste Schleife über einen `loop`-Rahmen im Interpreter-Stack | Gleichwertig, im Baum lesbarer als XP (kein Paar aus zwei Zeilen). Verschachtelung, `break` aus Wenn-Zweigen und Wiederaufsetzen nach dem Schleifenende geprüft. |
+| AC.2 | **Tastaturabfrage** | 105 wartet auf A/B/C/X/Y/Z/L/R und schreibt `Input`-Konstante in die Variable, `digits` steuert die Anzeige | `button_input` wartet auf eine Liste freier Tastennamen (`e`, `space`, `escape`, `up`, `f1`, Buchstaben) und schreibt die **1-basierte Position** in der Liste | Bewusst (LOGIK-Muster D6): Positionen sind in Bedingungen lesbar (`== 2` = zweite Taste), XP-Codes sind für Autoren kryptisch. `digits` entfällt, weil kein Ziffernfenster nötig ist. MapCheck kennt das Tastenvokabular (`TASTEN`) und warnt bei Tippfehlern. |
+| AC.3 | **Sprünge** | 118/119: Marke und Sprung müssen im selben Block (gleiche Einrückung) stehen | `jump` sucht die Marke nur im **aktuellen** Befehls-Array (Top-Level bzw. derselbe Wenn-/Schleifenzweig); fehlt sie, wird gewarnt, `Issues.report` schreibt ins Backlog und die Ausführung läuft weiter | XP-treu. Der Unterschied zu XP ist nur, dass ein Fehlziel das Event nicht aufhängt. MapCheck warnt „keine Marke 'x' in diesem Block“. |
+| AC.4 | **Schleife ohne Ausgang** | 112 ohne 113 endet nie (bekannte XP-Falle) | Laufzeit verhält sich genauso (Stack bleibt gefüllt, Event blockiert); MapCheck warnt statisch, wenn weder `break`, `jump` noch `exit_event` im Körper (oder in dessen Zweigen) steht; eine leere Schleife wird beendet statt zu drehen | Bewusst: XP-Autoren rechnen mit Endlosschleifen bis zum Seitenwechsel; die Warnung ersetzt keine Laufzeitbremse. |
+| AC.5 | **`erase_event`** | 116 löscht das Event bis zum Kartenwechsel (Karte lädt Events neu) | `Event#erase!` setzt `@erased`; `active?`/`commands`/`manual_fire`/Picking/Auslöser-Schleife überspringen das Event, die Schild-Nodes werden einmalig ausgeblendet; `enter_map` baut die Events neu | XP-treu. Nur das **auslösende** Event ist löschbar (kein Ziel-Feld), ohne Besitzer wird gewarnt statt zu stürzen. |
+| AC.6 | **Gemeinsame Events (117)** | `$data_common_events`, Aufruf über `$game_temp.common_event_id`, Trigger (none/autorun/parallel) + Schalterbedingung | noch nicht vorhanden | Offen — nächster Schritt von 20c: Datenhaltung, Befehl, Editor-Auswahl. Solange sie fehlen, bleibt 117 in `XP_VERGLEICH` ❌. |
+| AC.7 | **Fenster-Optionen (104)** | `$game_system.message_position/frame/transparent` | Modul `MessageWindow` (`game/engine/message_window.rb`) mit `set`/`reset!`; `UI.message` zeichnet oben/mitte/unten, ohne Rahmen oder mit 35 % Deckkraft | Bewusst außerhalb des Interpreters: Die Einstellung überlebt Kartenwechsel wie in XP, wird aber bei Neustart/F5 (`MessageWindow.reset!`) auf die XP-Defaults gesetzt. Unbekannte Positionen werden ignoriert (Warnung) statt das Fenster zu verschieben. |
+| AC.8 | **`break`/`exit_event`/`erase_event` ohne Feld** | 113/115/116 haben keine Parameter | Formular zeigt nur einen Hinweistext; „Übernehmen“ ändert nichts (transaktional geprüft in `json_test`: „Befehl ohne Felder bleibt unverändert“) | Bewusst: Ein Feld ohne Bedeutung würde nur falsche Erwartungen wecken. |
+
+**Offene Kleinigkeit (Backlog):** `erase_event` blendet nur die Schild-Nodes
+(Event-Darstellung) aus; ein Event ohne Visual hat ohnehin nichts zu verstecken.
+Ein eigener DB-Reiter für Common Events (F9/F6-Erweiterung) ist Teil des
+nächsten Schritts.
 
 ---
 

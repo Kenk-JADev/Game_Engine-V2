@@ -1211,7 +1211,9 @@ const char* const ISSUE_CMD_TYPES[] = {
     "item", "gold",
     "save_game", "load_game",
     "self_switch", "if_self_switch", "fade",
-    "move_route", "input_number", "battle"
+    "move_route", "input_number", "battle",
+    "loop", "break", "label", "jump", "exit_event", "erase_event",
+    "button_input", "text_options"
 };
 const int ISSUE_CMD_TYPE_COUNT =
     static_cast<int>(sizeof(ISSUE_CMD_TYPES) / sizeof(ISSUE_CMD_TYPES[0]));
@@ -1239,6 +1241,12 @@ static void issues_scan_commands(const JsonValue& list, const std::string& where
             if (!el || !el->is_arr()) issue_report(1, w, "'else' fehlt/kein Array");
             if (th && th->is_arr()) issues_scan_commands(*th, w + " (Dann)");
             if (el && el->is_arr()) issues_scan_commands(*el, w + " (Sonst)");
+        }
+        // Etappe 20c: Schleifenkörper (XP 112/413) rekursiv mitprüfen.
+        if (cmd->str == "loop") {
+            const JsonValue* body = c.find("commands");
+            if (!body || !body->is_arr()) issue_report(1, w, "'commands' fehlt/kein Array");
+            else issues_scan_commands(*body, w + " (Schleife)");
         }
         // Self-Switch-Buchstabe A-D (gleiche Regel wie MapCheck#pruefe_befehl);
         // ohne gültigen Buchstaben setzt die Laufzeit den Schalter nicht.
@@ -7173,7 +7181,13 @@ const wchar_t* const EV_TYPE_LABELS[ET_COUNT] = {
     L"[Welt] Bild aus-/einblenden",
     L"[Bewegung] Bewegungsroute",
     L"[Steuerung] Zahleneingabe",
-    L"[Kampf] Kampf starten"
+    L"[Kampf] Kampf starten",
+    // Etappe 20c: Ablauf-Steuerung (XP 112/113/115/116/118/119/105/104).
+    L"[Ablauf] Schleife", L"[Ablauf] Schleife verlassen",
+    L"[Ablauf] Marke", L"[Ablauf] Sprung zu Marke",
+    L"[Ablauf] Event beenden", L"[Ablauf] Event löschen",
+    L"[Steuerung] Tasteneingabe",
+    L"[Nachricht] Fenster-Optionen"
 };
 const wchar_t* const EV_TRIGGERS[4] = { L"action", L"touch", L"auto", L"parallel" };
 const wchar_t* const EV_OPS[6] = { L"==", L"!=", L"<", L"<=", L">", L">=" };
@@ -7357,6 +7371,32 @@ std::string ev_cmd_label(const JsonValue& c) {
         return "Wetter \"" + ev_str_of(c, "name", "kein") + "\" (Stärke " +
                ev_num_str(ev_num_of(c, "intensity", 1.0), 2) + ")";
     }
+    if (type == "loop") {
+        const JsonValue* body = c.find("commands");
+        const int n = (body && body->is_arr()) ? static_cast<int>(body->arr.size()) : 0;
+        return "Schleife (" + std::to_string(n) + (n == 1 ? " Befehl)" : " Befehle)");
+    }
+    if (type == "break") return "Schleife verlassen";
+    if (type == "label") return "Marke \"" + ev_str_of(c, "name") + "\"";
+    if (type == "jump") return "Sprung zu Marke \"" + ev_str_of(c, "name") + "\"";
+    if (type == "exit_event") return "Event beenden";
+    if (type == "erase_event") return "Event löschen";
+    if (type == "button_input") {
+        const JsonValue* keys = c.find("keys");
+        std::string s2 = "Tasteneingabe -> " + ev_str_of(c, "name") + " (";
+        if (keys && keys->is_arr()) {
+            for (size_t k = 0; k < keys->arr.size(); ++k) {
+                if (k) s2 += ", ";
+                s2 += keys->arr[k].str;
+            }
+        }
+        return s2 + ")";
+    }
+    if (type == "text_options") {
+        return "Fenster: " + ev_str_of(c, "position", "unten") +
+               (ev_bool_of(c, "frame", true) ? ", Rahmen" : ", ohne Rahmen") +
+               (ev_bool_of(c, "transparent", false) ? ", transparent" : "");
+    }
     if (type == "save_game") return "Spiel speichern (Slot " + ev_num_str(ev_num_of(c, "slot", 1.0), 0) + ")";
     if (type == "load_game") return "Spiel laden (Slot " + ev_num_str(ev_num_of(c, "slot", 1.0), 0) + ")";
     return type;
@@ -7417,6 +7457,21 @@ void ev_flatten(const JsonValue& list, int depth, const EventCommandPath& path) 
                 g_ev.refs.push_back(std::move(h));
                 if (cb && cb->is_arr() && cb_unique) ev_flatten(*cb, depth + 2, child_path);
             }
+            continue;
+        }
+        // Etappe 20c: Schleifenkörper als eigener Einfügepunkt (XP 112/413).
+        if (type == "loop") {
+            const bool unique = event_unique(c, "commands");
+            const JsonValue* body = unique ? c.find("commands") : nullptr;
+            EventCmdRef h; h.path = path; h.path.push_back({i, "commands", 0});
+            h.depth = depth + 1; h.header = true;
+            h.insertable = unique && (!body || body->is_arr());
+            h.label = "Schleife:";
+            if (!h.insertable) h.label += " [ungültig/mehrfach]";
+            else if (!body) h.label += " [fehlt]";
+            const EventCommandPath child_path = h.path;
+            g_ev.refs.push_back(std::move(h));
+            if (body && body->is_arr() && unique) ev_flatten(*body, depth + 2, child_path);
             continue;
         }
         if (type != "if_switch" && type != "if_variable" && type != "if_self_switch") continue;
@@ -7592,7 +7647,8 @@ void ev_cmd_visibility() {
     const bool has_op = (t == ET_IF_VARIABLE);
     const bool has_bool = (t == ET_SWITCH || t == ET_IF_SWITCH ||
                           t == ET_SELF_SWITCH || t == ET_IF_SELF_SWITCH ||
-                          t == ET_MOVE_ROUTE || t == ET_INPUT_NUMBER || t == ET_BATTLE);
+                          t == ET_MOVE_ROUTE || t == ET_INPUT_NUMBER || t == ET_BATTLE ||
+                          t == ET_TEXT_OPTIONS);
 
     show(g_ev.lbl_name, has_name);
     show(g_ev.ed_ce_name, has_name);
@@ -7607,7 +7663,9 @@ void ev_cmd_visibility() {
     const bool has_hint = t == ET_INPUT_NUMBER || t == ET_BATTLE || t == ET_FADE ||
                           t == ET_EFFECT || t == ET_WEATHER || t == ET_ITEM ||
                           t == ET_HEAL || t == ET_MOVE_PLAYER || t == ET_VARIABLE ||
-                          t == ET_SELF_SWITCH || t == ET_IF_SELF_SWITCH;
+                          t == ET_SELF_SWITCH || t == ET_IF_SELF_SWITCH ||
+                          t == ET_LOOP || t == ET_BREAK || t == ET_EXIT_EVENT ||
+                          t == ET_ERASE_EVENT || t == ET_TEXT_OPTIONS;
     show(g_ev.lbl_text, is_text || has_hint);
     show(g_ev.ed_ce_text, is_text);
 
@@ -7684,6 +7742,20 @@ void ev_cmd_visibility() {
         SetWindowTextW(g_ev.lbl_val1, L"Slot (1-3)");
     if (t == ET_WAIT) SetWindowTextW(g_ev.lbl_val1, L"Sekunden");
     if (t == ET_LOG) SetWindowTextW(g_ev.lbl_text, L"Log-Text");
+    if (t == ET_LABEL || t == ET_JUMP) SetWindowTextW(g_ev.lbl_name, L"Marke");
+    if (t == ET_BUTTON_INPUT) {
+        SetWindowTextW(g_ev.lbl_name, L"Variable");
+        SetWindowTextW(g_ev.lbl_text, L"Tasten (eine pro Zeile, z. B. e, escape, up)");
+    }
+    if (t == ET_TEXT_OPTIONS) {
+        SetWindowTextW(g_ev.lbl_name, L"Position (oben/mitte/unten)");
+        SetWindowTextW(g_ev.lbl_val2, L"Transparent (1/0)");
+        SetWindowTextW(g_ev.lbl_text, L"an/aus = Fensterrahmen; transparent 1 zeigt den Hintergrund.");
+    }
+    if (t == ET_LOOP) SetWindowTextW(g_ev.lbl_text, L"Schleife: Befehle im Zweig \"Schleife:\" werden wiederholt (break beendet sie).");
+    if (t == ET_BREAK) SetWindowTextW(g_ev.lbl_text, L"Verlässt die innerste Schleife.");
+    if (t == ET_EXIT_EVENT) SetWindowTextW(g_ev.lbl_text, L"Beendet dieses Event sofort (Rest der Liste läuft nicht).");
+    if (t == ET_ERASE_EVENT) SetWindowTextW(g_ev.lbl_text, L"Löscht dieses Event bis zum nächsten Kartenwechsel.");
     if (t == ET_CHOICES) SetWindowTextW(g_ev.lbl_text, L"Optionen (eine pro Zeile)");
 }
 

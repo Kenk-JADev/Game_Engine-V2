@@ -41,6 +41,15 @@
 #    {"cmd":"battle","name":"waldweg","can_escape":true,"can_lose":false}
 #                                                       (Kampf, 19i)
 #    {"cmd":"save_game","slot":1} / {"cmd":"load_game","slot":1}           (18f)
+#    {"cmd":"loop","commands":[...]}                    (Schleife, 20c; XP 112/413)
+#    {"cmd":"break"}                                    (Schleife verlassen, 20c)
+#    {"cmd":"label","name":"marke"}                     (Sprungmarke, 20c)
+#    {"cmd":"jump","name":"marke"}                      (Sprung, 20c; nur im Block)
+#    {"cmd":"exit_event"}                               (Event beenden, 20c)
+#    {"cmd":"erase_event"}                              (Event löschen, 20c; bis Kartenwechsel)
+#    {"cmd":"button_input","name":"taste","keys":["e"]} (Tasteneingabe, 20c)
+#    {"cmd":"text_options","position":"oben","frame":false,"transparent":true}
+#                                                       (Fenster-Optionen, 20c)
 #    {"cmd":"script","name":"projekt_script"}  |  {"cmd":"script","code":"..."}
 # ============================================================================
 
@@ -61,11 +70,12 @@ class Interpreter
     @route_wait = nil  # Etappe 19g: move_route mit wait blockiert hier
     @num_input = nil   # Etappe 19i: Zahleneingabe blockiert hier
     @battle_wait = false   # Etappe 19i: battle blockiert bis Kampfende
+    @button_input = nil    # Etappe 20c: Tasteneingabe blockiert hier
   end
 
   def running?
     !@stack.empty? || !@message.nil? || !@choices.nil? || @wait_left > 0.0 ||
-      !@route_wait.nil? || !@num_input.nil? || @battle_wait
+      !@route_wait.nil? || !@num_input.nil? || @battle_wait || !@button_input.nil?
   end
 
   # Zahleneingabe (19i): UI-Status für Game.draw / UI.nummer_eingabe.
@@ -140,6 +150,18 @@ class Interpreter
     # Etappe 19i: Zahleneingabe blockiert; Eingabe läuft über UI.nummer_eingabe.
     return if @num_input
 
+    # Etappe 20c: Tasteneingabe (XP 105) blockiert, bis eine der Tasten kommt.
+    # Gespeichert wird die 1-basierte Position in der Tastenliste (XP legt
+    # seinen Tastencode ab; die Position ist im Event lesbarer - LOGIK D6).
+    if @button_input
+      taste = @button_input[:keys].index { |k| Rune::Input.pressed?(k.to_sym) }
+      return if taste.nil?
+      GameState.set_variable(@button_input[:variable], taste + 1)
+      Rune::Log.info("Tasteneingabe: '#{@button_input[:keys][taste]}' -> " \
+                     "#{@button_input[:variable]} = #{taste + 1}")
+      @button_input = nil
+    end
+
     # Etappe 19i: battle blockiert, bis Battle.active? endet.
     if @battle_wait
       return if defined?(Battle) && Battle.active?
@@ -151,8 +173,13 @@ class Interpreter
       frame = @stack.last
       break unless frame
       if frame[:index] >= frame[:list].size
-        @stack.pop
-        break
+        if frame[:loop] && !frame[:list].empty?
+          frame[:index] = 0        # Schleife: von vorn (XP 413)
+        else
+          Rune::Log.warn('Interpreter: leere Schleife beendet') if frame[:loop]
+          @stack.pop
+          break
+        end
       end
 
       cmd = frame[:list][frame[:index]]
@@ -277,6 +304,34 @@ class Interpreter
         else
           Rune::Log.warn('Interpreter: battle ohne Battle-Modul übersprungen')
         end
+      when 'loop'   # Schleife (Etappe 20c, XP 112/413)
+        @stack.push(list: Array(cmd['commands']), index: 0, loop: true)
+      when 'break'  # Schleife verlassen (Etappe 20c, XP 113)
+        schleife_verlassen
+      when 'label'  # Sprungmarke (Etappe 20c, XP 118) - zur Laufzeit nur Ziel
+        nil
+      when 'jump'   # Sprung zu Marke (Etappe 20c, XP 119)
+        marken_sprung(cmd['name'])
+      when 'exit_event'   # Event beenden (Etappe 20c, XP 115)
+        @stack.clear
+        return
+      when 'erase_event'  # Event löschen (Etappe 20c, XP 116)
+        erase_owner
+        @stack.clear
+        return
+      when 'button_input' # Tasteneingabe (Etappe 20c, XP 105)
+        tasten = Array(cmd['keys']).map(&:to_s).reject(&:empty?)
+        if tasten.empty?
+          Rune::Log.warn('Interpreter: button_input ohne Tasten übersprungen')
+          Issues.report('Interpreter', 'button_input ohne Tasten')
+        else
+          @button_input = { variable: cmd['name'].to_s, keys: tasten }
+          return
+        end
+      when 'text_options' # Fenster-Optionen (Etappe 20c, XP 104)
+        MessageWindow.set(position: cmd['position'],
+                          frame: cmd.key?('frame') ? !!cmd['frame'] : nil,
+                          transparent: cmd.key?('transparent') ? !!cmd['transparent'] : nil)
       when 'move_route'   # Bewegungsroute (Etappe 19g, RPG Maker XP)
         route = Mover.start(cmd['target'], cmd['steps'], repeat: cmd['repeat'],
                             speed: cmd['speed'], code: cmd['code'])
@@ -330,6 +385,54 @@ class Interpreter
       return false
     end
     GameState.self_switch(key, cmd['letter']) == !!cmd['value']
+  end
+
+  # Etappe 20c: innerste Schleife verlassen (XP 113). Ohne Schleife warnen -
+  # der Befehl hat dann keine Wirkung, soll aber nichts kaputt machen.
+  def schleife_verlassen
+    tiefe = @stack.rindex { |rahmen| rahmen[:loop] }
+    unless tiefe
+      Rune::Log.warn('Interpreter: break ohne Schleife ignoriert')
+      Issues.report('Interpreter', 'break ohne Schleife')
+      return false
+    end
+    # Die Schleife selbst und alles, was in ihr noch offen ist, verlassen.
+    @stack.slice!(tiefe..)
+    true
+  end
+
+  # Etappe 20c: Sprung zur Marke im AKTUELLEN Block (XP 119 sucht ebenfalls
+  # nur dort). Hinter der Marke geht es weiter; fehlt sie, bleibt der
+  # Laufzeiger stehen und der Fund landet im Issue-Backlog.
+  def marken_sprung(name)
+    rahmen = @stack.last
+    ziel = name.to_s
+    return false unless rahmen
+
+    treffer = rahmen[:list].index do |x|
+      x.is_a?(Hash) && x['cmd'] == 'label' && x['name'].to_s == ziel
+    end
+    if treffer
+      rahmen[:index] = treffer + 1
+      true
+    else
+      Rune::Log.warn("Interpreter: Marke '#{ziel}' nicht gefunden")
+      Issues.report('Interpreter', "Marke '#{ziel}' nicht gefunden")
+      false
+    end
+  end
+
+  # Etappe 20c: Event löschen (XP 116) - nur das auslösende Event, und nur
+  # bis zum nächsten Kartenwechsel (wie XP: die Karte lädt die Events neu).
+  def erase_owner
+    unless @owner.respond_to?(:erase!)
+      Rune::Log.warn('Interpreter: erase_event ohne Event-Besitzer ignoriert')
+      Issues.report('Interpreter', 'erase_event ohne Besitzer')
+      return false
+    end
+    @owner.erase!
+    Rune::Log.info("Event '#{@owner.respond_to?(:name) ? @owner.name : '?'}' gelöscht")
+    true
   end
 
   def compare_variable(cmd)

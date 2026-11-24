@@ -17,7 +17,7 @@ Rune3D (Stand nach 19y) steht — mit Blick darauf, was sich sinngemäß in 3D
 ## 1. Event-Befehle — 92 XP-Befehle, 26 in Rune3D
 
 XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
-**26 Befehlstypen**. Bilanz: **21 ✅ · 13 ⚠️ · 58 ❌**.
+**34 Befehlstypen**. Bilanz: **29 ✅ · 13 ⚠️ · 50 ❌**.
 
 ### A. Nachricht & Ablaufsteuerung (101–119)
 
@@ -26,17 +26,17 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 | Text anzeigen | 101 | `text` | ✅ |
 | Wahlmöglichkeiten | 102 (+403) | `choices` mit `cancel`/`cancel_branch` (R16) | ✅ |
 | Zahleneingabe | 103 | `input_number` | ✅ |
-| Textoptionen (Schrift/Bild/Position) | 104 | — | ❌ |
-| Tastaturabfrage (Button Input) | 105 | — | ❌ |
+| Textoptionen (Position/Rahmen/Transparenz) | 104 | `text_options` (R27) | ✅ (Schriftart/Windowskin fehlen weiter: 131) |
+| Tastaturabfrage (Button Input) | 105 | `button_input` (R27) | ✅ (speichert die 1-basierte Position in der Tastenliste — LOGIK AC.2) |
 | Warte | 106 | `wait` | ✅ |
 | Verzweigung (13 Bedingungsarten) | 111 | `if_switch` / `if_variable` / `if_self_switch` | ⚠️ nur 3 von 13 Arten (Schalter, Variable, Self-Switch; XP hat zusätzlich Timer, Actor, Enemy, Character, Gold, Item, Weapon, Armor, Button, Script) |
-| Schleife | 112 | — | ❌ |
-| Schleife verlassen | 113 | — | ❌ |
-| Event-Ausführung beenden | 115 | — | ❌ |
-| Event löschen | 116 | — | ❌ |
-| Gemeinsames Event aufrufen | 117 | — | ❌ (keine Common Events) |
-| Sprungmarke | 118 | — | ❌ |
-| Zu Marke springen | 119 | — | ❌ |
+| Schleife | 112 (+413) | `loop` mit `commands`-Zweig (R27) | ✅ |
+| Schleife verlassen | 113 | `break` (R27) | ✅ (auch aus Wenn-Zweigen innerhalb der Schleife) |
+| Event-Ausführung beenden | 115 | `exit_event` (R27) | ✅ |
+| Event löschen | 116 | `erase_event` (R27) | ✅ (nur das auslösende Event, bis zum Kartenwechsel) |
+| Gemeinsames Event aufrufen | 117 | — | ❌ (Common Events: nächster Schritt, LOGIK AC.6) |
+| Sprungmarke | 118 | `label` (R27) | ✅ |
+| Zu Marke springen | 119 | `jump` (R27) | ✅ (Marke im selben Befehlsblock — LOGIK AC.3) |
 
 ### B. Schalter, Variablen, Party (121–136)
 
@@ -258,7 +258,7 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 |---|---|---|
 | **20a Kampf: Skills & Zustände** | ~~DB `skills`+`states`~~ ✅, ~~`battle.rb`: Skill-Befehl mit MP~~ ✅, ~~Zustände pro Runde (Vergiftung usw.)~~ ✅, ~~**Level-Up bei EXP (D4)**~~ ✅ — offen: F9-Reiter für `skills`/`states`, Gegner-Fertigkeiten und -Aktionen mit Bedingungen | Größte Spiel-Lücke, Kern seit Runde 23 geschlossen |
 | **20b Menü wie XP** | ~~Item (außerhalb Kampf)~~ ✅, ~~Skill~~ ✅, ~~Status-Detail~~ ✅, ~~Parteigesichter~~ ✅ (prozedural) — offen: Equip (keine Ausrüstung), Fortschritts-/Quest-Anzeige, Gesichter in Spielstand-Slots | Kern seit Runde 24 umgesetzt |
-| **20c Event-Befehle Welle 1 (Ablauf)** | `loop`/`break`/`label`/`jump`/`exit_event`/`erase_event`/`button_input`/`text_options` + **Common Events** (Datenhaltung + F6 + 117) | Struktur, die fast jedes XP-Projekt braucht |
+| **20c Event-Befehle Welle 1 (Ablauf)** | ~~`loop`/`break`/`label`/`jump`/`exit_event`/`erase_event`/`button_input`/`text_options`~~ ✅ (Runde 27, 34 Befehlstypen) — offen: **Common Events** (Datenhaltung + Befehl 117 + Editor-Auswahl) | Struktur, die fast jedes XP-Projekt braucht |
 | **20d Event-Befehle Welle 2 (Daten)** | Variable-Operationen/Quellen, Timer (+Anzeige), erweiterte Bedingungen (Gold/Item/Actor/Button/Script), `party_member`, HP/SP/EXP/Level-Befehle, 134/135/136 als Befehle, **`$game_temp`-Calling-Flags auswerten** (`battle_calling`/`menu_calling`/`save_calling`/`player_transferring`, heute stumme Felder — LOGIK E.3) | Verdoppelt die Aussagekraft von Variablen/Schaltern; XP-Scripts, die Szenen über `$game_temp` starten, funktionieren dann |
 | **20e Shop & Name** | Befehl 302 + Shop-Fenster (kaufen/verkaufen/preis), 303 Namenseingabe | XP-typisch, eigenständig nutzbar |
 | **20f Bildschirm-Ebenen** | Pictures 231–235 als Overlay, Flash/Shake/Tone als PostFX, Ergebniszweige 601–603, Befehl 351 (Menü) | Macht die „Bildschirm“-Gruppe echt |
