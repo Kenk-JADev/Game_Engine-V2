@@ -884,22 +884,28 @@ end
     px, py, pz = Rune::Player.position
     Weather.update(dt, px, py, pz)   # Etappe 17h: Regen/Schnee um den Spieler
 
+    # D3 (XP-Gleichheit): Die Karte lebt weiter, während ein Textfenster
+    # offen ist. Seitenbedingungen, NPC-Bewegung und NPC-Kollision laufen
+    # deshalb VOR der Interpreter-Abfrage; nur die Auslöser (auto/touch/E)
+    # brauchen einen freien Interpreter. Menü und Kampf kehren oben schon
+    # zurück (XP: eigene Szenen) - dort steht die Karte weiterhin still.
+    #
+    # Auch NPCs besitzen ein Event. Dieselbe Trigger-Verarbeitung erlaubt
+    # insbesondere Gespräche per E, nicht nur per Maus-Picking.
+    event_liste = @events + @npcs.map(&:event)
+    event_liste.each(&:refresh_page!)
+
+    # NPCs bewegen (Position des zugehörigen Events folgt).
+    @npcs.each { |n| n.update(dt) }
+
+    # NPC-Kollision (Etappe 15): Spieler aus NPCs herausdrücken.
+    @npcs.each do |n|
+      nx, nz = n.position
+      Rune::Player.push_out(nx, nz, n.block_radius)
+    end
+
     unless @interpreter.running?
       px, py, pz = Rune::Player.position
-
-      # Auch NPCs besitzen ein Event. Dieselbe Trigger-Verarbeitung erlaubt
-      # insbesondere Gespräche per E, nicht nur per Maus-Picking.
-      event_liste = @events + @npcs.map(&:event)
-      event_liste.each(&:refresh_page!)
-
-      # NPCs bewegen (Position des zugehörigen Events folgt).
-      @npcs.each { |n| n.update(dt) }
-
-      # NPC-Kollision (Etappe 15): Spieler aus NPCs herausdrücken.
-      @npcs.each do |n|
-        nx, nz = n.position
-        Rune::Player.push_out(nx, nz, n.block_radius)
-      end
 
       # Auto-/Touch-Events (Etappe Z6, Designentscheidungen D1/D2):
       # Der ganze Block läuft nur, wenn der Interpreter frei ist.
@@ -965,10 +971,10 @@ end
       end
     end
 
-    # F5 (XP): offene Text/Wahl/Zahleneingabe friert die Simulation ein -
-    # die Welt steht still, bis die Eingabe abgeschlossen ist. 'wait' in
-    # einer Bewegungsroute pausiert dagegen NICHT (wie XP darf der Spieler
-    # weiterlaufen).
+    # F5 (XP): offene Text/Wahl/Zahleneingabe friert den SPIELER ein - er
+    # kann sich nicht bewegen, bis die Eingabe abgeschlossen ist. D3: NPCs
+    # und Seitenbedingungen laufen dabei weiter (wie in XP). 'wait' in einer
+    # Bewegungsroute pausiert dagegen NICHT.
     Rune::Simulation.paused = @menu ||
                               @interpreter.busy_text? ||
                               @interpreter.busy_choices? ||

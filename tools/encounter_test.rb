@@ -1026,5 +1026,56 @@ ensure
   $project_name = original_name
 end
 
+puts '== D3: Die Karte lebt weiter, während ein Textfenster offen ist =='
+
+check('NPCs laufen während eines offenen Textfensters weiter') do
+  prepare
+  # Abseits des Spielers (0,0), damit die Kollision den Lauf nicht anhält.
+  npc = Npc.new({ 'name' => 'Wanderer', 'x' => 10.0, 'z' => 0.0, 'speed' => 2.0,
+                  'path' => [[16.0, 0.0]] }, nil)
+  Game.npcs << npc
+  Game.interpreter.say(['Einen Moment bitte.'])
+  text_offen = Game.interpreter.busy_text?
+  start = npc.position
+  game_frame(0.5)
+  text_offen && Game.interpreter.busy_text? && npc.position[0] > start[0] + 0.5 &&
+    npc.event.x == npc.position[0]
+end
+
+check('Seitenbedingungen wechseln schon während des Textes') do
+  prepare
+  ev = Event.new('name' => 'Wache', 'x' => 40.0, 'z' => 40.0,
+                 'pages' => [
+                   { 'conditions' => {}, 'trigger' => 'action', 'commands' => [] },
+                   { 'conditions' => { 'switch' => { 'name' => 'd3_wache', 'value' => true } },
+                     'trigger' => 'action', 'commands' => [{ 'cmd' => 'log', 'text' => 'B' }] }
+                 ])
+  Game.events << ev
+  Game.interpreter.say(['Halt!'])
+  vorher = ev.page_index
+  GameState.set_switch('d3_wache', true)
+  game_frame(0.016)
+  gewechselt = Game.interpreter.busy_text? && vorher == 0 && ev.page_index == 1
+  GameState.set_switch('d3_wache', false)
+  gewechselt
+end
+
+check('auto-Events warten, bis das Textfenster geschlossen ist') do
+  prepare
+  Game.events << Event.new('name' => 'Automatik', 'x' => 80.0, 'z' => 80.0,
+                           'trigger' => 'auto',
+                           'commands' => [{ 'cmd' => 'log', 'text' => 'auto' }])
+  Game.interpreter.say(['Zuerst der Text.'])
+  game_frame(0.016)
+  Game.interpreter.busy_text? && Game.interpreter.message == ['Zuerst der Text.']
+end
+
+check('der Spieler bleibt während des Textes eingefroren (F5)') do
+  prepare
+  Game.interpreter.say(['Bitte stehen bleiben.'])
+  game_frame(0.016)
+  Rune::Simulation.paused && Game.interpreter.busy_text?
+end
+
 puts($fail.zero? ? 'ENCOUNTER-TEST OK (0 Fehler)' : "ENCOUNTER-TEST FEHLGESCHLAGEN (#{$fail} Fehler)")
 exit($fail.zero? ? 0 : 1)

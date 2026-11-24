@@ -622,6 +622,19 @@ nicht mehr (Z6/D1: XP-Autorun), es merkt nur das erste Log je Seite.
 Kommandos. `main.rb` ruft `refresh_page!` für alle Events auf, bevor die
 Trigger-Schleifen laufen.
 
+**Update-Reihenfolge im Spiel (Z8/D3, Runde 20):** `Game.update` dreht
+zuerst Seitenbedingungen, NPC-Bewegung und NPC-Kollision — **auch dann,
+wenn ein Textfenster offen ist** (XP aktualisiert die Karte während einer
+Nachricht weiter). Erst danach folgen die Auslöser `auto`/`touch`/`parallel`
+und das E-Angebot, und die brauchen einen **freien** Interpreter. Der
+Spieler selbst bleibt während Text/Wahl/Zahleneingabe eingefroren
+(`Rune::Simulation.paused`, F5); Menü und Kampf kehren vorher aus
+`Game.update` zurück (in XP eigene Szenen), dort steht die Karte still.
+Grenze: parallele Events können nicht *während* eines Textes laufen, weil
+es nur einen Interpreter gibt (Backlog). Geprüft von
+`tools/encounter_test.rb` (NPC läuft weiter, Seitenwechsel im Text,
+`auto` wartet, Spieler bleibt eingefroren).
+
 **Editor (Event-Dialog, F6):** Linke Spalte hat unter der Event-Liste jetzt
 eine **Seiten-Liste** (mit Bedingungs-Hinweis wie `[Schalter 'auftrag' = an]`)
 plus *Neue Seite* / *Seite löschen* (die letzte Seite bleibt). Rechts ist

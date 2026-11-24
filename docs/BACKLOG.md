@@ -242,11 +242,19 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
   `game/engine/event.rb`, `game/main.rb`.
 - Gefunden in: Etappe 19n.
 
-### [Engine] Parallele Events blockieren NPC-Logik — offen
+### [Engine] Parallele Events blockieren NPC-Logik — teilweise erledigt (Runde 20)
 - Symptom: Ein laufendes `parallel`-Event hält die NPC-Bewegung an, solange der Interpreter damit beschäftigt ist.
 - Vermutung/Analyse: Single-Interpreter-Engine (Design seit 17d); kein Hintergrund-Thread vorgesehen.
 - Betroffene Stellen: `game/main.rb` (Event-Schleifen), `game/engine/interpreter.rb`.
 - Gefunden in: Etappe 18f (dokumentierte Einschränkung).
+- **Erledigt (Runde 20, Z8/D3):** Seitenbedingungen, NPC-Bewegung und
+  NPC-Kollision laufen jetzt auch bei laufendem Interpreter (Text/Wahl/Zahl/
+  `wait`) — XP-Verhalten. Geprüft von `tools/encounter_test.rb`.
+- **Offen bleibt:** parallele Events können nicht *während* eines Textes
+  laufen (ein Interpreter, `Interpreter#start` verweigert). XP gäbe jedem
+  `parallel`-Event einen eigenen Interpreter; das braucht pro Event einen
+  eigenen Zustand samt Fenster-/Effekt-Zuordnung (Neubau von
+  `interpreter.rb` + `main.rb`, nicht nur eine Schleifen-Umstellung).
 
 ### [Engine] Splat-Böden ohne Weich-Übergang — offen
 - Symptom: Jedes Terrain-Quad zeigt genau eine Textur; harter Rand zwischen Splats.
