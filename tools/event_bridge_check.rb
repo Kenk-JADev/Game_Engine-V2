@@ -145,6 +145,22 @@ def pruefe(path)
   Rune::Input.keys = []
   interpreter.update(0.016)
   check('Erste Option führt weiterhin Zweig mit Index 0 aus') { Rune::Log.messages.include?('[Event] eins') }
+  # Z5: cancel/cancel_branch müssen das Umordnen unbeschadet überstehen
+  # und in der Ruby-Laufzeit den Abbruch-Zweig ausführen.
+  check('cancel und cancel_branch überleben das Optionenumordnen') do
+    reordered['cancel'] == 'verzweigung' &&
+      reordered['cancel_branch'] == data['choice_old']['cancel_branch']
+  end
+  abortier = Interpreter.new
+  abortier.start([reordered])
+  abortier.update(0.016)
+  Rune::Input.keys = [:escape]
+  abortier.update(0.016)
+  Rune::Input.keys = []
+  abortier.update(0.016)
+  check('Wahl-Abbruch über die Brücke führt cancel_branch aus') do
+    Rune::Log.messages.include?('[Event] abgebrochen')
+  end
 end
 
 if ARGV[0] == '--fixture'

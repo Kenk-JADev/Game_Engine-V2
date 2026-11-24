@@ -9,7 +9,9 @@
 #
 #  Unterstützte Kommandos (game/data/maps/*.json):
 #    {"cmd":"text","lines":["...", "..."]}
-#    {"cmd":"choices","options":["Ja","Nein"],"branches":[[...],[...]]}   (18f)
+#    {"cmd":"choices","options":["Ja","Nein"],"branches":[[...],[...]],
+#     "cancel":"aus"|"verzweigung"|n,"cancel_branch":[...]}
+#                               (18f; cancel/Abbruch-Zweig Z5, n = Optionsnummer 0-basiert)
 #    {"cmd":"switch","name":"a","value":true|false}
 #    {"cmd":"toggle_switch","name":"a"}                                    (18f)
 #    {"cmd":"variable","name":"a","value":n}        | {"add":n}
@@ -135,10 +137,14 @@ class Interpreter
       when 'text'      then @message = Array(cmd['lines']); return
       when 'choices'
         # Wahlmöglichkeiten (RPG-Maker-Show-Choices): blockiert, bis der
-        # Spieler wählt; dann läuft der passende Zweig weiter.
+        # Spieler wählt; dann läuft der passende Zweig weiter. cancel
+        # (XP "When Cancel", Z5): aus (Default) = Esc ignoriert,
+        # "verzweigung" = eigener Abbruch-Zweig, Zahl N = Esc wie Option N.
         opts = Array(cmd['options']).map(&:to_s)
         next if opts.empty?
-        @choices = { options: opts, branches: Array(cmd['branches']), sel: 0 }
+        @choices = { options: opts, branches: Array(cmd['branches']), sel: 0,
+                     cancel: cancel_modus(cmd['cancel'], opts.size),
+                     cancel_branch: Array(cmd['cancel_branch']) }
         return
       when 'wait'      then @wait_left = (cmd['seconds'] || 0.0).to_f; return
       when 'switch'    then GameState.set_switch(cmd['name'], !!cmd['value'])
@@ -314,21 +320,70 @@ class Interpreter
 
   # Wahl treffen: Pfeiltasten (oder Mausklick), E/Enter bestätigt.
   # Der gewählte Zweig wird auf den Stack gelegt und läuft weiter.
+  # Abbruch (Z5, XP "When Cancel"): Esc nur bei erlaubtem cancel -
+  # "verzweigung" führt den eigenen Zweig, eine Zahl bestätigt wie
+  # diese Option; "aus" (XP-Default) ignoriert Esc komplett.
   def advance_choices
     c = @choices
     n = c[:options].size
-    if Rune::Input.pressed?(:up)
-      c[:sel] = (c[:sel] - 1 + n) % n
-      Rune::Sound.play('klick', 0.5)
-    elsif Rune::Input.pressed?(:down)
-      c[:sel] = (c[:sel] + 1) % n
-      Rune::Sound.play('klick', 0.5)
+    abbruch = false
+    if c[:cancel] != :aus && Rune::Input.pressed?(:escape)
+      if c[:cancel] == :verzweigung
+        zweige = c[:cancel_branch]
+        @choices = nil
+        Rune::Sound.play('ablehnen', 0.7)
+        @stack.push(list: zweige, index: 0)
+        return
+      end
+      # cancel ist eine Optionsnummer (0-basiert, in cancel_modus geprüft).
+      c[:sel] = c[:cancel]
+      abbruch = true
     end
-    return unless Rune::Input.pressed?(:e) || Rune::Input.pressed?(:space) ||
-                  Rune::Input.pressed?(:enter)
+    unless abbruch
+      if Rune::Input.pressed?(:up)
+        c[:sel] = (c[:sel] - 1 + n) % n
+        Rune::Sound.play('klick', 0.5)
+      elsif Rune::Input.pressed?(:down)
+        c[:sel] = (c[:sel] + 1) % n
+        Rune::Sound.play('klick', 0.5)
+      end
+      return unless Rune::Input.pressed?(:e) || Rune::Input.pressed?(:space) ||
+                    Rune::Input.pressed?(:enter)
+    end
     branch = c[:branches][c[:sel]] || []
     @choices = nil
     Rune::Sound.play('klick', 0.7)
     @stack.push(list: branch, index: 0)
+  end
+
+  # XP-konformer Abbruch-Modus eines Wahlbefehls (Z5): abwesend/false/
+  # "aus" = nicht erlaubt (XP-Default), "verzweigung" = eigener Abbruch-
+  # Zweig (XP 403), Zahl N (0-basiert, auch als Ziffernstring) = Esc
+  # verhält sich wie Option N. Unbekannte Werte und Zahlen ausserhalb
+  # der Optionen fallen auf "nicht erlaubt" zurück und werden geloggt
+  # (MapCheck meldet beides zusätzlich statisch).
+  def cancel_modus(roh, anzahl)
+    case roh
+    when nil, false, 'aus' then :aus
+    when 'verzweigung' then :verzweigung
+    when Integer
+      if roh >= 0 && roh < anzahl
+        roh
+      else
+        Rune::Log.warn("Interpreter: choices cancel=#{roh} ausserhalb 0...#{anzahl - 1}, behandelt wie aus")
+        :aus
+      end
+    when String
+      n = Integer(roh, 10, exception: false)
+      if n && n >= 0 && n < anzahl
+        n
+      else
+        Rune::Log.warn("Interpreter: choices cancel='#{roh}' unbekannt, behandelt wie aus")
+        :aus
+      end
+    else
+      Rune::Log.warn("Interpreter: choices cancel=#{roh.inspect} unbekannt, behandelt wie aus")
+      :aus
+    end
   end
 end

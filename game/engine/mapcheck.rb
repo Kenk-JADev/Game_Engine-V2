@@ -747,6 +747,45 @@ module MapCheck
         elsif opts.is_a?(Array) && branches.size < opts.size
           melde(WARNUNG, w, 'weniger Zweige als Optionen')
         end
+        # Z5: Zweige rekursiv prüfen (der Kommentar oben behauptete das
+        # schon lange für choices - jetzt stimmt es auch) und dabei
+        # Nicht-Listen melden (die Engine stürzt z. B. auf einem
+        # Wahrheitswert-Zweig beim .size ab).
+        if branches.is_a?(Array)
+          branches.each_with_index do |z, zi|
+            if z.is_a?(Array)
+              pruefe_befehle(z, "#{w} (Wahl ##{zi + 1})")
+            else
+              melde(FEHLER, w, "Wahlzweig ##{zi + 1} ist keine Liste")
+            end
+          end
+        end
+        # Z5: cancel (XP "When Cancel") - dieselben Regeln wie im Editor
+        # (Issue-Scan) und in Interpreter#cancel_modus.
+        cancel = c['cancel']
+        cancel_ok =
+          if cancel.nil? || cancel == false || cancel == 'aus' ||
+             cancel == 'verzweigung' || cancel == true
+            true
+          elsif cancel.is_a?(Integer)
+            opts.is_a?(Array) && cancel >= 0 && cancel < opts.size
+          elsif cancel.is_a?(String) && cancel.match?(/\A\d+\z/)
+            opts.is_a?(Array) && cancel.to_i < opts.size
+          else
+            false
+          end
+        unless cancel_ok
+          melde(WARNUNG, w,
+                "unbekannter cancel-Wert #{cancel.inspect} (aus/verzweigung/Optionsnummer)")
+        end
+        cb = c['cancel_branch']
+        if !cb.nil? && !cb.is_a?(Array)
+          melde(FEHLER, w, "'cancel_branch' ist keine Liste")
+        elsif cb.is_a?(Array)
+          pruefe_befehle(cb, "#{w} (Abbruch)")
+        elsif cancel == 'verzweigung' || cancel == true
+          melde(WARNUNG, w, "'cancel_branch' fehlt/keine Liste")
+        end
       when 'if_switch', 'if_variable'
         %w[then else].each do |k|
           melde(WARNUNG, w, "'#{k}' fehlt/keine Liste") unless c[k].is_a?(Array)

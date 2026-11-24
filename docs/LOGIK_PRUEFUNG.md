@@ -154,7 +154,7 @@ ergänzt; die Einträge unten sind jeweils als behoben markiert.
 | D2 | **`touch`-Trigger** | feuert bei **jeder** Ankunft des Spielers auf dem Event-Feld erneut (`Game_Player`, `check_event_trigger_here([1,2])` bei `last_moving`); Event-Touch feuert dauernd, solange Event auf Spielerfeld | **einmal pro Seite** (RADIUS + `fired`), nie wieder vor Seitenwechsel | XP-treu: bei Wiederbetreten erneut feuern (Self-Switch macht es einmalig — wie XP-Autoren es gewöhnt sind). |
 | D3 | **NPCs/Events während Text** | Karten-Update dreht Events **permanent** weiter (eigene Parallel-Interpreter je Event, autonome Bewegung auch bei offenem Textfenster) | **Ein** Interpreter; während er läuft: keine Seiten-Refreshs, NPCs stehen, Trigger aus (Backlog: parallele Events) | Bekannte Backlog-Grenze. Kleinster wirksamer Schritt: `@npcs.update` + `refresh_page!` auch bei laufendem Interpreter ausführen (Zwischenstand zu XP). |
 | D4 | **Kampf-Details** | Reihenfolge: alle Kämpfer gemischt nach `agi + rand(10+agi/4)`; Formel mit Treffer/Miss, `str`-Skalierung, Elementen, Kritik `4*dex/agi` (×2), Wache (÷2), Varianz; Flucht `50*actors_agi/enemies_agi`; EXP für alle lebenden + `cant_get_exp?`-Freigabe; **Level-Up in `exp=`** | Reihenfolge: erst Held-Block (nach agi), dann Gegner; vereinfachte Formel (kein Miss/Wache/Element, Kritik agi-basiert ×3/×1.25); Flucht fest 50 %; EXP nur für lebende Held; **kein Level-Up (EXP wirkt nie)** | Für 20a (Kampf-Skills/Zustände) mitziehen: Level-Up zuerst (tote Zahl), dann Formel/Reihenfolge schrittweise angleichen. |
-| D5 | **Wahl-Abbruch** | Show Choices mit optionalem Abbruch-Zweig (403) | kein Esc/Cancel in `advance_choices` (`interpreter.rb:317`) | Entweder Cancel-Zweig als Feld ergänzen (XP-Default ist „nicht erlaubt“ — aktuell also *gleich wie XP-Default*). Niedrige Priorität. |
+| D5 | **Wahl-Abbruch** | Show Choices mit optionalem Abbruch-Zweig (403) | cancel-Feld + Abbruch-Zweig vorhanden; Esc gehört während Eingaben der Eingabe, nicht dem Menü | → **umgesetzt (Runde 16):** `cancel`/`cancel_branch` in Engine+Editor+MapCheck+Tests; XP-Default „nicht erlaubt“ bleibt Standard. |
 | D6 | **Einheiten** | `wait` in Frames (40/60 s), Variablen-Command mit 6 Operationen/8 Quellen | Sekunden; `variable` nur `value`/`add` | Bewusst; Operationen/Quellen sind Teil von 20d. |
 | D7 | **Action-Trigger** | Taste C: Event auf eigenem Feld **oder direkt davor** (Blickrichtung, 1 Kachel) | Reichweiten-Kugel (Default 2 m) + E + Mausklick-Picking | 3D-Adaption, sinnvoll — Radius ist der „davor“. So belassen. |
 | D8 | **Route an der Wand** | `skippable=false` (**XP-Default**): Route **stockt** am Hindernis (Index nicht erhoben, versucht dauerhaft) — `019:241` | Blockierter Schritt gilt als erledigt, Route macht weiter (19k.3: NPCs sollen Wegpunkte überspringen) | Bewusste Verbesserung gegenüber XP (vermeidet hängende NPCs). Optional `skippable` als Routenfeld ergänzen, Default bleibt Rune3D-Verhalten — sonst brechen 19k.3-Patrouillen. |
@@ -401,8 +401,8 @@ Bestätigung bei `L`, falls gewünscht.
 |---|---|---|
 | 101 Show Text + 401-Textzeilen (Fenster max. 4 Zeilen) | `text` mit `lines` (unbegrenzt, Fenster wächst mit) | ⚠️ keine 4-Zeilen-Begrenzung (XP-Editor begrenzt; Rune3D überläuft nicht, sondern wächst) |
 | 101-Parameter: **Gesicht** (face_name/index), **Position** (oben/mitte/unten), **Hintergrund** (abdunkeln/Fenster/transparent), Fenster-Fade-in/out | — | ❌ keine Gesichter, feste Position unten, ein Stil, kein Fade |
-| **Text + Auswahl/Zahl im selben Fenster**: 102/103 hängen an 101 (`choice_start = line_count`, Eingabefeld im Textfenster) | `text` und `choices` strikt nacheinander — das Textfenster schliesst, dann öffnet sich ein zweites Fenster („Bitte wählen:") | ❌ strukturelle Abweichung; XP zeigt „Text … / Option A / Option B" kombiniert |
-| 102 + **cancel_type** + 403 Else (Abbruch-Zweig) | nur Options-Zweige; **Esc bei Wahlen wird ignoriert** (editorseitig kein cancel-Feld) | ❌ Abbruch-/Else-Zweig fehlt komplett (Engine + Editor) |
+| **Text + Auswahl/Zahl im selben Fenster**: 102/103 hängen an 101 (`choice_start = line_count`, Eingabefeld im Textfenster) | `text` und `choices` strikt nacheinander — das Textfenster schliesst, dann öffnet sich ein zweites Fenster („Bitte wählen:") | ❌ strukturelle Abweichung; XP zeigt „Text … / Option A / Option B" kombiniert; in Z5 bewusst offen |
+| 102 + **cancel_type** + 403 Else (Abbruch-Zweig) | cancel-Feld `aus`/`verzweigung`/Optionsnummer + eigener Abbruch-Zweig (`cancel_branch`), Esc-Routing Menü↔Eingabe gesperrt | ✅ seit Runde 16 (Kombi-Fenster Text+Wahl s. Zeile darüber bleibt ❌) |
 | 103 Input Number **im Textfenster**, ohne Abbruch-Taste | eigenes Ziffernfenster, **Esc=Abbruch(0)** als Default (editor `cancel`) | ⚠️ Rune3D erweiternd (XP kennt kein Esc hier); Position/Fade abweichend, Kernlogik ✓ |
 | 104 Change Text Options (Position/Hintergrund mitten in der Meldung) | — | ❌ fehlt (Nische) |
 | Pause-Zeiger ▾, wenn auf Bestätigung gewartet wird | blinkender `▾` unten rechts im Textfenster (`UI.message`, 2-Hz-Blinkleuchten) | ✅ seit Runde 14 |
@@ -873,8 +873,12 @@ Spiel" entfällt (Doku: `XP_VERGLEICH`-Zeile165 korrigieren,
    `Scene_File`, ▾-Blinkzeiger, `@menu_items`-Cache, Playtime/Steps im
    Party-Panel, `'system'`-Snapshot ins Savegame inkl. `save_count`;
    Encounter-Kadenz (W) bewusst offen).
-5. **Dialoge/XP-Parity klein:** Wahl-Abbruch (cancel/Else-Zweig) in
-   Engine+Editor, optional Text+Wahl im selben Fenster (M).
+5. ~~**Dialoge/XP-Parity klein:** Wahl-Abbruch (cancel/Else-Zweig) in
+   Engine+Editor, optional Text+Wahl im selben Fenster (M).~~
+   **→ umgesetzt in Runde 16** (`cancel`/`cancel_branch` in Engine+
+   Editor mit „Wenn Abbruch:"-Kopfzeile, MapCheck+Issue-Scan,
+   Esc-Routing Menü↔Eingabe, Tests event18f/mapcheck/runtime_boot/
+   json; optional: Kombi-Fenster Text+Wahl (M) bleibt bewusst offen).
 6. **Designentscheidung mit dir:** D1 (`auto` = XP-Autorun) und D2
    (`touch` = Wiedereintritt) — Demo hat keine betroffenen Events.
 7. **Roadmap `docs/XP_VERGLEICH.md`:** 20a Kampf (zieht D4/Level-Up),

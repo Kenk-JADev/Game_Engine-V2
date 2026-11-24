@@ -56,7 +56,8 @@ inline bool event_command_uses_field(int type, size_t field) {
         case 1: return type == ET_WAIT || type == ET_VARIABLE || type == ET_IF_VARIABLE ||
             type == ET_TELEPORT || type == ET_MOVE_PLAYER || type == ET_SOUND || type == ET_EFFECT ||
             type == ET_GOLD || type == ET_HEAL || type == ET_WEATHER || type == ET_SAVE_GAME ||
-            type == ET_LOAD_GAME || type == ET_FADE || type == ET_MOVE_ROUTE || type == ET_INPUT_NUMBER;
+            type == ET_LOAD_GAME || type == ET_FADE || type == ET_MOVE_ROUTE || type == ET_INPUT_NUMBER ||
+            type == ET_CHOICES;
         case 2: return type == ET_VARIABLE || type == ET_TELEPORT || type == ET_MOVE_PLAYER ||
             type == ET_EFFECT || type == ET_ITEM || type == ET_MOVE_ROUTE || type == ET_INPUT_NUMBER ||
             type == ET_BATTLE;
@@ -536,6 +537,20 @@ inline JsonValue* event_command_list_mutable(JsonValue& e, size_t page, const Ev
                 error = "Dieser Wahlzweig ist keine Liste; Altdaten bleiben erhalten."; return nullptr;
             }
             list = &branches->arr[step.choice];
+        } else if (step.key == "cancel_branch") {
+            // Z5: eigener Abbruch-Zweig (XP 403) - Pfad wie branches, nur
+            // ohne Optionsindex; create erzeugt die fehlende Liste.
+            if (type != "choices" || !event_unique(command, "cancel_branch")) {
+                error = "Der Abbruch-Zweig ist nicht eindeutig.";
+                return nullptr;
+            }
+            JsonValue* cb = command.find("cancel_branch");
+            if (!cb && create) cb = &command.set("cancel_branch", JsonValue::make_arr());
+            if (!cb || !cb->is_arr()) {
+                error = "cancel_branch ist keine Liste; Altdaten bleiben erhalten.";
+                return nullptr;
+            }
+            list = cb;
         } else { error = "Unbekannter Befehlszweig."; return nullptr; }
     }
     return list;
@@ -566,7 +581,23 @@ inline EventCommandForm event_command_form_read(const JsonValue& c) {
     f.name = text("name");
     switch (f.type) {
         case ET_TEXT: f.text = lines("lines"); break;
-        case ET_CHOICES: f.text = lines("options"); break;
+        case ET_CHOICES: {
+            f.text = lines("options");
+            // Z5: cancel (XP "When Cancel"): "" = nicht erlaubt (XP-
+            // Default), "aus" explizit gesperrt, "verzweigung" = eigener
+            // Abbruch-Zweig, Zahl = Esc wie diese Option (0-basiert).
+            if (!event_unique(c, "cancel")) f.val1 = "[mehrfach vorhanden]";
+            else {
+                const JsonValue* cx = c.find("cancel");
+                if (!cx || cx->is_null() ||
+                    (cx->type == JsonValue::Type::Bool && !cx->b)) f.val1 = "";
+                else if (cx->type == JsonValue::Type::Bool) f.val1 = "verzweigung";
+                else if (cx->is_str()) f.val1 = cx->str;
+                else if (cx->is_num()) f.val1 = event_number_view(cx, "");
+                else f.val1 = "[ungültig]";
+            }
+            break;
+        }
         case ET_LOG: f.text = event_unique(c, "text") ? event_string_view(c.find("text"), "", true) : "[mehrfach vorhanden]"; break;
         case ET_WAIT: f.val1 = num("seconds", "0"); break;
         case ET_SWITCH: case ET_IF_SWITCH: f.flag = flag("value", 1); break;
@@ -616,7 +647,7 @@ inline EventCommandForm event_command_form_read(const JsonValue& c) {
 inline std::vector<const char*> event_command_keys(int type) {
     switch (type) {
         case ET_TEXT: return {"lines"};
-        case ET_CHOICES: return {"options", "branches"};
+        case ET_CHOICES: return {"options", "branches", "cancel", "cancel_branch"};
         case ET_LOG: return {"text"};
         case ET_WAIT: return {"seconds"};
         case ET_SWITCH: return {"name", "value"};
@@ -742,6 +773,38 @@ inline EventEdit event_command_prepare(const JsonValue* existing, const EventCom
     auto name = [&](const char* key = "name", bool required = true) {
         return text(key, "cmd_name", before.name, after.name, false, false, required);
     };
+    // Z5: cancel von choices (XP "When Cancel"). Leer löscht den Schlüssel
+    // (XP-Default: nicht erlaubt), "aus" sperrt explizit, "verzweigung"
+    // aktiviert den Abbruch-Zweig, eine Zahl ist die Optionsnummer
+    // (0-basiert, gegen die (ggf. gerade geänderte) Optionsliste geprüft).
+    auto cancel_feld = [&]() {
+        // Unverändertes Feld nie anfassen: beim Typwechsel (fresh) steht
+        // dort noch der alte Typ-Wert - der wird nicht still zu cancel.
+        if (before.val1 == after.val1) return true;
+        if (!unique("cancel", "cmd_val1")) return false;
+        const std::string v = database_trim(after.val1);
+        if (v.empty()) { event_erase(r.value, "cancel"); return true; }
+        if (v == "aus" || v == "verzweigung") {
+            const JsonValue* alt = r.value.find("cancel");
+            if (alt && !alt->is_null() && !alt->is_str() && !alt->is_num() &&
+                alt->type != JsonValue::Type::Bool) r.replaces_invalid = true;
+            r.value.set("cancel", JsonValue::make_str(v));
+            return true;
+        }
+        JsonValue num;
+        const JsonValue* opts = r.value.find("options");
+        const long long grenze = (opts && opts->is_arr())
+            ? static_cast<long long>(opts->arr.size()) : 0;
+        if (!event_number_parse(v, true, true, num) || num.number() < 0 ||
+            num.number() >= static_cast<double>(grenze)) {
+            return fail("cmd_val1",
+                        grenze > 0
+                            ? "Bitte 'aus', 'verzweigung' oder eine Optionsnummer von 0 bis N-1 eingeben (N = Anzahl Optionen)."
+                            : "Bitte 'aus', 'verzweigung' oder eine Optionsnummer eingeben; es gibt noch keine Optionen.");
+        }
+        r.value.set("cancel", std::move(num));
+        return true;
+    };
     auto v1 = [&](const char* key, bool optional = false, const char* fallback = "0", bool integer = false,
                   bool finite = true, double min = -std::numeric_limits<double>::infinity(),
                   double max = std::numeric_limits<double>::infinity(), bool strict_min = false) {
@@ -764,6 +827,7 @@ inline EventEdit event_command_prepare(const JsonValue* existing, const EventCom
                     branches.arr.push_back(JsonValue::make_arr());
                 r.value.set("branches", std::move(branches));
             }
+            if (ok) ok = cancel_feld();
             break;
         case ET_LOG: ok = text("text", "cmd_text", before.text, after.text, false, true, false); break;
         case ET_WAIT: ok = v1("seconds", false, "1", false, true, 0, unlimited); break;

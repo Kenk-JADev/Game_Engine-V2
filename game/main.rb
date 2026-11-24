@@ -487,6 +487,14 @@ end
     items
   end
 
+  # Z5: Eine offene Eingabe (Text/Wahl/Zahl) hat Vorrang - Esc gehört
+  # dann der Eingabe (Abbruch), nicht dem Menü. Gleiche Bedingung wie
+  # die F5-Pause in Game.update und wie close_menu.
+  def self.eingabe_offen?
+    !!@interpreter && (@interpreter.busy_text? || @interpreter.busy_choices? ||
+                       @interpreter.busy_number?)
+  end
+
   def self.open_menu
     @menu_sel = 0
     # V: beim Öffnen cachen - vorher las update+draw pro Frame bis zu
@@ -781,12 +789,15 @@ end
     return if process_temp_scene_change
 
     # Menü (Esc): friert Spiellogik, Interpreter und Events ein.
+    # Z5: Während einer offenen Eingabe (Text/Wahl/Zahl) gehört Esc der
+    # Eingabe, nicht dem Menü (XP öffnet kein Scene_Menu über einer
+    # aktiven Nachricht) - sonst frisst das Menü den Wahl-/Zahlen-Abbruch.
     if Rune::Input.pressed?(:escape)
       # Etappe 19e: $game_system.menu_disabled (RGSS) unterdrückt das Öffnen;
       # ein bereits offenes Menü schliesst Esc immer.
       if @menu
         close_menu
-      elsif !$game_system || !$game_system.menu_disabled
+      elsif !eingabe_offen? && (!$game_system || !$game_system.menu_disabled)
         open_menu
       end
     end
@@ -1136,7 +1147,7 @@ end
     UI.message(@interpreter.message) if @interpreter.busy_text?
     if @interpreter.busy_choices?
       c = @interpreter.choices
-      UI.choices(c[:options], c[:sel])
+      UI.choices(c[:options], c[:sel], cancel: c[:cancel] != :aus)
     end
     UI.nummer_eingabe(@interpreter.num_input) if @interpreter.busy_number?
     Battle.draw if defined?(Battle) && (Battle.active? || @interpreter.busy_battle?)

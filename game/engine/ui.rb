@@ -131,7 +131,8 @@ module UI
 
   # Wahlmöglichkeiten (Etappe 18f, RPG-Maker-Show-Choices): Fenster mit
   # Optionen, der gewählte Eintrag ist markiert (Pfeil + Hinterlegung).
-  def self.choices(options, sel, x: 40, y: 496, w: 420)
+  # cancel (Z5): zeigt den Esc-Hinweis, wenn der Befehl Abbruch erlaubt.
+  def self.choices(options, sel, x: 40, y: 496, w: 420, cancel: false)
     line_h = 28
     h = 34 + options.size * line_h
     panel(x, y, w, h, PANEL, 0.86)
@@ -146,7 +147,8 @@ module UI
         text(x + 22, oy + 3, "   #{opt}", TEXT, 18)
       end
     end
-    text(x + w - 150, y + h - 18, '↑↓ + E', TEXT_DIM, 12)
+    hint = cancel ? '↑↓ + E   Esc = Abbruch' : '↑↓ + E'
+    text(x + w - (cancel ? 180 : 150), y + h - 18, hint, TEXT_DIM, 12)
   end
 
   # Zahleneingabe (Etappe 19i, RPG Maker XP "Input Number"): Ziffernfeld,

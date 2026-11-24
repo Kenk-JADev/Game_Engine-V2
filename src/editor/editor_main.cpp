@@ -1228,6 +1228,45 @@ static void issues_scan_commands(const JsonValue& list, const std::string& where
             } else if (opts && opts->is_arr() && br->arr.size() < opts->arr.size()) {
                 issue_report(1, w, "weniger Zweige als Optionen");
             }
+            // Z5: cancel-Werte (XP "When Cancel") - dieselben Regeln wie
+            // MapCheck#pruefe_befehl (choices-Zweig): aus/verzweigung,
+            // Zahl 0-basiert gegen die Optionsliste, auch als Ziffernstring.
+            const JsonValue* cx = c.find("cancel");
+            if (cx && !cx->is_null() && !cx->is_bool()) {
+                bool ok_cancel = false;
+                if (cx->is_str() && (cx->str == "aus" || cx->str == "verzweigung")) {
+                    ok_cancel = true;
+                } else {
+                    long long nr = 0;
+                    bool zahl = false;
+                    if (cx->is_num()) {
+                        // Nur echte JSON-Ganzzahlen (wie Ruby: 1.0 ist kein Integer).
+                        const double d = cx->number();
+                        zahl = cx->is_int && d == static_cast<double>(static_cast<long long>(d));
+                        nr = static_cast<long long>(d);
+                    } else if (cx->is_str() && !cx->str.empty() &&
+                               cx->str.find_first_not_of("0123456789") == std::string::npos) {
+                        // Nur Ziffern - gegen Überlauf begrenzen (stoll wirft sonst).
+                        if (cx->str.size() <= 18) { zahl = true; nr = std::stoll(cx->str); }
+                    }
+                    ok_cancel = zahl && opts && opts->is_arr() && nr >= 0 &&
+                                nr < static_cast<long long>(opts->arr.size());
+                }
+                if (!ok_cancel)
+                    issue_report(1, w, "unbekannter cancel-Wert (aus/verzweigung/Optionsnummer)");
+            }
+            const JsonValue* cb = c.find("cancel_branch");
+            if (cx && ((cx->is_str() && cx->str == "verzweigung") ||
+                       (cx->type == JsonValue::Type::Bool && cx->b))) {
+                if (!cb || !cb->is_arr()) issue_report(1, w, "'cancel_branch' fehlt/kein Array");
+            }
+            if (cb && !cb->is_arr()) issue_report(2, w, "'cancel_branch' ist kein Array");
+            // Zweige rekursiv prüfen (fehlte bisher auch in MapCheck - Z5).
+            if (br && br->is_arr())
+                for (size_t bi = 0; bi < br->arr.size(); ++bi)
+                    if (br->arr[bi].is_arr())
+                        issues_scan_commands(br->arr[bi], w + " (Zweig #" + std::to_string(bi + 1) + ")");
+            if (cb && cb->is_arr()) issues_scan_commands(*cb, w + " (Abbruch)");
         }
         if (cmd->str == "text") {
             const JsonValue* lines = c.find("lines");
@@ -7118,6 +7157,25 @@ void ev_flatten(const JsonValue& list, int depth, const EventCommandPath& path) 
                 g_ev.refs.push_back(std::move(h));
                 if (br && br->is_arr() && unique) ev_flatten(*br, depth + 2, child_path);
             }
+            // Z5: "Wenn Abbruch:"-Kopfzeile (XP 403), sobald cancel auf
+            // "verzweigung" steht - sonst ist der Zweig inaktiv und wird
+            // auch nicht angezeigt (Daten bleiben erhalten).
+            const JsonValue* cx = event_unique(c, "cancel") ? c.find("cancel") : nullptr;
+            const bool cancel_verz = cx && ((cx->is_str() && cx->str == "verzweigung") ||
+                                            (cx->type == JsonValue::Type::Bool && cx->b));
+            if (cancel_verz) {
+                const bool cb_unique = event_unique(c, "cancel_branch");
+                const JsonValue* cb = cb_unique ? c.find("cancel_branch") : nullptr;
+                EventCmdRef h; h.path = path; h.path.push_back({i, "cancel_branch", 0});
+                h.depth = depth + 1; h.header = true;
+                h.insertable = cb_unique && (!cb || cb->is_arr());
+                h.label = "Wenn Abbruch:";
+                if (!h.insertable) h.label += " [ungültig/mehrfach]";
+                else if (!cb) h.label += " [fehlt]";
+                const EventCommandPath child_path = h.path;
+                g_ev.refs.push_back(std::move(h));
+                if (cb && cb->is_arr() && cb_unique) ev_flatten(*cb, depth + 2, child_path);
+            }
             continue;
         }
         if (type != "if_switch" && type != "if_variable" && type != "if_self_switch") continue;
@@ -7342,6 +7400,12 @@ void ev_cmd_visibility() {
         SetWindowTextW(g_ev.lbl_val1, L"Ziffern (1-6)");
         SetWindowTextW(g_ev.lbl_val2, L"Startwert");
         SetWindowTextW(g_ev.lbl_text, L"Zahleneingabe: an/aus = Abbrechen erlaubt (Esc -> 0)");
+    }
+    if (t == ET_CHOICES) {
+        // Z5: cancel (XP "When Cancel"): aus = Esc ignoriert (Default),
+        // verzweigung = eigener Abbruch-Zweig, Nr = Esc wie diese Option.
+        // (lbl_text "Optionen..." setzt weiter unten der Bestandsblock.)
+        SetWindowTextW(g_ev.lbl_val1, L"Abbruch (aus/verzw./Nr)");
     }
     if (t == ET_BATTLE) {
         SetWindowTextW(g_ev.lbl_name, L"Truppen-ID");

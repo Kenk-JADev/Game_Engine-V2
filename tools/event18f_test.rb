@@ -190,6 +190,84 @@ keys!(:e)
 drain
 check('choices+text: fertig') { !$interp.running? }
 
+# --- choices: Abbruch (cancel, Z5) -------------------------------------------
+# XP-Default: kein cancel → Esc wird ignoriert, Fenster bleibt offen.
+$interp = Interpreter.new
+$interp.start([{ 'cmd' => 'choices', 'options' => ['Ja', 'Nein'],
+                 'branches' => [[{ 'cmd' => 'switch', 'name' => 'c_a', 'value' => true }],
+                                [{ 'cmd' => 'switch', 'name' => 'c_b', 'value' => true }]] }])
+drain
+keys!(:escape)
+check('cancel abwesend (XP-Default): Esc hält Fenster offen') { $interp.busy_choices? }
+keys!(:e)
+drain
+check('cancel abwesend: Bestätigung läuft normal') { GameState.switch('c_a') }
+
+# cancel="aus": explizit gesperrt → Esc ignoriert (gleich wie XP-Default).
+$interp = Interpreter.new
+$interp.start([{ 'cmd' => 'choices', 'options' => ['Ja'],
+                 'branches' => [[{ 'cmd' => 'switch', 'name' => 'c_aus', 'value' => true }]],
+                 'cancel' => 'aus' }])
+drain
+keys!(:escape)
+check('cancel="aus": Esc hält Fenster offen') { $interp.busy_choices? }
+keys!(:e)
+drain
+check('cancel="aus": Optionenzweig läuft normal') { GameState.switch('c_aus') }
+
+# cancel="verzweigung": Esc führt den eigenen Abbruch-Zweig aus (XP 403).
+Rune::Sound::PLAYED.clear
+$interp = Interpreter.new
+$interp.start([{ 'cmd' => 'choices', 'options' => ['Ja', 'Nein'],
+                 'branches' => [[{ 'cmd' => 'switch', 'name' => 'v_a', 'value' => true }],
+                                [{ 'cmd' => 'switch', 'name' => 'v_b', 'value' => true }]],
+                 'cancel' => 'verzweigung',
+                 'cancel_branch' => [{ 'cmd' => 'switch', 'name' => 'v_abbruch', 'value' => true }] }])
+drain
+check('cancel=verzweigung: Fenster offen') { $interp.busy_choices? }
+keys!(:escape)
+check('cancel=verzweigung: Fenster zu nach Esc') { $interp.choices.nil? }
+check('cancel=verzweigung: ablehnen-Sound') { Rune::Sound::PLAYED.include?('ablehnen') }
+drain
+check('cancel=verzweigung: Abbruch-Zweig gelaufen, Optionen nicht') do
+  GameState.switch('v_abbruch') && !GameState.switch('v_a') && !GameState.switch('v_b')
+end
+check('cancel=verzweigung: fertig') { !$interp.running? }
+
+# cancel="verzweigung" ohne cancel_branch: Esc schliesst nur (leerer Zweig).
+$interp = Interpreter.new
+$interp.start([{ 'cmd' => 'choices', 'options' => ['Ja'],
+                 'branches' => [[{ 'cmd' => 'switch', 'name' => 'nb_a', 'value' => true }]],
+                 'cancel' => 'verzweigung' }])
+drain
+keys!(:escape)
+drain
+check('cancel=verzweigung ohne Zweig: Esc schliesst, nichts gelaufen, fertig') do
+  $interp.choices.nil? && !GameState.switch('nb_a') && !$interp.running?
+end
+
+# cancel=N (Zahl, 0-basiert): Esc verhält sich wie Option N.
+$interp = Interpreter.new
+$interp.start([{ 'cmd' => 'choices', 'options' => ['Ja', 'Nein'],
+                 'branches' => [[{ 'cmd' => 'switch', 'name' => 'n_a', 'value' => true }],
+                                [{ 'cmd' => 'switch', 'name' => 'n_b', 'value' => true }]],
+                 'cancel' => 1 }])
+drain
+keys!(:escape)
+drain
+check('cancel=1: Esc wählt Option 1 (Nein)') { GameState.switch('n_b') && !GameState.switch('n_a') }
+check('cancel=1: fertig') { !$interp.running? }
+
+# cancel außerhalb der Optionen → Rückfall auf "aus" (Esc ignoriert).
+$interp = Interpreter.new
+$interp.start([{ 'cmd' => 'choices', 'options' => ['Ja'],
+                 'branches' => [[]], 'cancel' => 9 }])
+drain
+keys!(:escape)
+check('cancel=9 außerhalb: Esc hält Fenster offen (Rückfall auf aus)') { $interp.busy_choices? }
+keys!(:e)
+drain
+
 # --- Parallel-Trigger: Event-Datenmodell ------------------------------------
 ev = Event.new({ 'id' => 99, 'name' => 'ParaTest', 'trigger' => 'parallel',
                  'x' => 0, 'z' => 0, 'commands' => [] })

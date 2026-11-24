@@ -483,6 +483,38 @@ if ARGV[0] == '--playtest-child'
           runtime_frame
           offen && !Game.interpreter.running? && !Rune::Simulation.paused
         end
+        # Z5: Esc während einer offenen Wahl gehört der Eingabe, nicht dem
+        # Menü (XP öffnet kein Scene_Menu über einer aktiven Eingabe) - der
+        # cancel=verzweigung-Zweig läuft, das Menü bleibt zu.
+        check('Z5: Esc während Wahlfenster bricht ab statt Menü zu öffnen') do
+          Game.instance_variable_set(:@intro, nil)
+          Game.interpreter.start([{ 'cmd' => 'choices', 'options' => %w[Ja Nein],
+                                    'branches' => [[], []],
+                                    'cancel' => 'verzweigung',
+                                    'cancel_branch' => [
+                                      { 'cmd' => 'switch', 'name' => 'z5_abbruch', 'value' => true }
+                                    ] }])
+          frame.call(nil)          # Fenster offen
+          offen = Game.interpreter.busy_choices? && !Game.instance_variable_get(:@menu)
+          frame.call(:escape)      # Esc = Abbruch, kein Menü
+          abbruch = !Game.instance_variable_get(:@menu) && !Game.interpreter.busy_choices?
+          frame.call(nil)          # Abbruch-Zweig läuft
+          offen && abbruch && GameState.switch('z5_abbruch') &&
+            !GameState.switch('z5_a') && !Rune::Simulation.paused
+        end
+        # Z5-Nebenwirkung: gleiche Sperre macht 19i-Zahleneingabe-Esc über
+        # Game.update wirksam (vorher fraß das Menü den Abbruch).
+        check('Z5: Esc während Zahleneingabe setzt 0 statt Menü zu öffnen') do
+          Game.interpreter.start([{ 'cmd' => 'input_number', 'name' => 'z5_zahl',
+                                    'digits' => 2, 'initial' => 7, 'cancel' => true }])
+          frame.call(nil)          # Eingabefeld offen
+          offen = Game.interpreter.busy_number? && !Game.instance_variable_get(:@menu)
+          GameState.set_variable('z5_zahl', 42)   # Beweiswert: Abbruch muss auf 0
+          frame.call(:escape)      # Esc = Abbruch → 0
+          wert = GameState.variable('z5_zahl')
+          offen && wert.zero? && !Game.instance_variable_get(:@menu) &&
+            !Game.interpreter.busy_number?
+        end
         # Hinweis: der F4-Test meldet absichtlich einen Fehler - die
         # Log-Prüfung stand bereits VOR den F4/F5-Checks.
       ensure

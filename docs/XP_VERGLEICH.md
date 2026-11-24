@@ -24,7 +24,7 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 | XP | Code | Rune3D | Status |
 |---|---|---|---|
 | Text anzeigen | 101 | `text` | ✅ |
-| Wahlmöglichkeiten | 102 | `choices` | ✅ |
+| Wahlmöglichkeiten | 102 (+403) | `choices` mit `cancel`/`cancel_branch` (R16) | ✅ |
 | Zahleneingabe | 103 | `input_number` | ✅ |
 | Textoptionen (Schrift/Bild/Position) | 104 | — | ❌ |
 | Tastaturabfrage (Button Input) | 105 | — | ❌ |

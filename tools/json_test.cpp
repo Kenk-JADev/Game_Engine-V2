@@ -1415,7 +1415,7 @@ int event_bridge_modus(int argc, char** argv) {
     EventPageForm trigger_before = event_page_form_read(old, 0), trigger_after = trigger_before;
     trigger_after.trigger = 3;
     const EventEdit trigger = event_page_prepare(old, 0, trigger_before, trigger_after);
-    const JsonValue choice = json_parse(R"({"cmd":"choices","options":["Ja","Nein"],"branches":[[{"cmd":"log","text":"eins"}],[{"cmd":"log","text":"zwei"}],[{"extra":123}]],"meta":{"keep":true}})");
+    const JsonValue choice = json_parse(R"({"cmd":"choices","options":["Ja","Nein"],"branches":[[{"cmd":"log","text":"eins"}],[{"cmd":"log","text":"zwei"}],[{"extra":123}]],"meta":{"keep":true},"cancel":"verzweigung","cancel_branch":[{"cmd":"log","text":"abgebrochen"}]})");
     EventCommandForm cb = event_command_form_read(choice), ca = cb; ca.text = "Nein\r\nJa";
     const EventEdit reordered = event_command_prepare(&choice, cb, ca);
     if (!migrated.ok || !migrated.renames_event || !added.ok || !copied.ok || !unique_copy.ok || !number.ok ||
@@ -1651,6 +1651,39 @@ void event_form_tests(const std::string& wurzel) {
     check("weniger Optionen verwerfen keinen zusätzlichen Zweig", edit.ok && edit.reassigns_choices && edit.value.find("branches")->arr.size() == 3);
     cmd_after.text = "a\r\n\r\nb";
     check("leere Optionen werden nicht still entfernt", !event_command_prepare(&choices, cmd_before, cmd_after).ok);
+    // Z5: cancel (XP "When Cancel") - lesen, setzen, prüfen, erhalten.
+    const JsonValue cancel_json = json_parse(
+        R"({"cmd":"choices","options":["Ja","Nein"],"branches":[[],[]],"cancel":"verzweigung","cancel_branch":[{"cmd":"log","text":"abgebrochen"}]})");
+    cmd_before = event_command_form_read(cancel_json);
+    check("cancel=verzweigung wird im Formular als val1 angezeigt", cmd_before.val1 == "verzweigung");
+    cmd_after = cmd_before; cmd_after.val1 = "1";
+    edit = event_command_prepare(&cancel_json, cmd_before, cmd_after);
+    check("cancel auf Optionsnummer umstellen schreibt Zahl und erhält cancel_branch",
+          edit.ok && edit.value.find("cancel") && edit.value.find("cancel")->is_num() &&
+          edit.value.find("cancel")->number() == 1.0 &&
+          edit.value.find("cancel_branch") && edit.value.find("branches"));
+    cmd_after = cmd_before; cmd_after.val1 = "";
+    edit = event_command_prepare(&cancel_json, cmd_before, cmd_after);
+    check("cancel leeren entfernt nur den cancel-Schlüssel",
+          edit.ok && !edit.value.find("cancel") &&
+          edit.value.find("cancel_branch") && edit.value.find("options"));
+    cmd_after = cmd_before; cmd_after.val1 = "7";
+    check("cancel-Index außerhalb der Optionen wird abgelehnt",
+          !event_command_prepare(&cancel_json, cmd_before, cmd_after).ok);
+    cmd_after = cmd_before; cmd_after.val1 = "vielleicht";
+    check("unbekannter cancel-Wert wird abgelehnt",
+          !event_command_prepare(&cancel_json, cmd_before, cmd_after).ok);
+    cmd_after = cmd_before; cmd_after.text = "Nein\r\nJa";
+    edit = event_command_prepare(&cancel_json, cmd_before, cmd_after);
+    check("unverändertes cancel-Feld bleibt beim Optionenumordnen unberührt",
+          edit.ok && edit.reassigns_choices &&
+          edit.value.find("cancel") && edit.value.find("cancel")->is_str() &&
+          edit.value.find("cancel")->str == "verzweigung" &&
+          edit.value.find("cancel_branch"));
+    const JsonValue cancel_aktiv = json_parse(
+        R"({"cmd":"choices","options":["Ja"],"branches":[[]],"cancel":true})");
+    check("cancel=true zeigt das Formular als verzweigung an",
+          event_command_form_read(cancel_aktiv).val1 == "verzweigung");
     JsonValue item = json_parse(samples[ET_ITEM]);
     cmd_before = event_command_form_read(item);
     check("große Item-Entnahme wird exakt mit negativem Vorzeichen angezeigt", cmd_before.val2 == "-9007199254740993");

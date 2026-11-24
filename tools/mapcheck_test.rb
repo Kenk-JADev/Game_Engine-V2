@@ -282,6 +282,62 @@ check('choices mit zu wenigen Zweigen -> Warnung') do
                                 'branches' => [[]] }), **OPTS)
   hat?(f, 'weniger Zweige als Optionen', MapCheck::WARNUNG)
 end
+# --- Z5: cancel (XP "When Cancel") -------------------------------------------
+check('choices cancel=aus ist gültig (keine cancel-Warnung)') do
+  f = MapCheck.scan(karte_mit({ 'cmd' => 'choices', 'options' => %w[a b],
+                                'branches' => [[], []], 'cancel' => 'aus' }), **OPTS)
+  f.none? { |finding| finding.message.include?('cancel') }
+end
+check('choices cancel=verzweigung ohne Zweig -> Warnung') do
+  f = MapCheck.scan(karte_mit({ 'cmd' => 'choices', 'options' => %w[a b],
+                                'branches' => [[], []],
+                                'cancel' => 'verzweigung' }), **OPTS)
+  hat?(f, "'cancel_branch' fehlt/keine Liste", MapCheck::WARNUNG)
+end
+check('choices cancel=verzweigung mit Zweig ist sauber und wird rekursiv geprüft') do
+  f = MapCheck.scan(karte_mit({ 'cmd' => 'choices', 'options' => %w[a b],
+                                'branches' => [[], []], 'cancel' => 'verzweigung',
+                                'cancel_branch' => [{ 'cmd' => 'log', 'text' => 'ok' }] }), **OPTS)
+  f.empty?
+end
+check('unbekannter cancel-Wert -> Warnung') do
+  f = MapCheck.scan(karte_mit({ 'cmd' => 'choices', 'options' => %w[a b],
+                                'branches' => [[], []], 'cancel' => 'vielleicht' }), **OPTS)
+  hat?(f, 'unbekannter cancel-Wert', MapCheck::WARNUNG)
+end
+check('cancel-Index außerhalb der Optionen -> Warnung') do
+  f = MapCheck.scan(karte_mit({ 'cmd' => 'choices', 'options' => %w[a b],
+                                'branches' => [[], []], 'cancel' => 5 }), **OPTS)
+  hat?(f, 'unbekannter cancel-Wert', MapCheck::WARNUNG)
+end
+check('cancel_branch ohne cancel=verzweigung bleibt erlaubt (Daten erhalten)') do
+  f = MapCheck.scan(karte_mit({ 'cmd' => 'choices', 'options' => %w[a],
+                                'branches' => [[]],
+                                'cancel_branch' => [{ 'cmd' => 'log', 'text' => 'x' }] }), **OPTS)
+  f.empty?
+end
+check('cancel_branch ist keine Liste -> Fehler') do
+  f = MapCheck.scan(karte_mit({ 'cmd' => 'choices', 'options' => %w[a],
+                                'branches' => [[]], 'cancel' => 'verzweigung',
+                                'cancel_branch' => 'kaputt' }), **OPTS)
+  hat?(f, "'cancel_branch' ist keine Liste", MapCheck::FEHLER)
+end
+check('Fehler im cancel_branch wird gefunden (Rekursion)') do
+  f = MapCheck.scan(karte_mit({ 'cmd' => 'choices', 'options' => %w[a],
+                                'branches' => [[]], 'cancel' => 'verzweigung',
+                                'cancel_branch' => [{ 'cmd' => 'gibtsnicht' }] }), **OPTS)
+  hat?(f, 'unbekannter Befehlstyp', MapCheck::FEHLER)
+end
+check('Fehler in einem Wahlzweig wird gefunden (Rekursion, Z5)') do
+  f = MapCheck.scan(karte_mit({ 'cmd' => 'choices', 'options' => %w[a],
+                                'branches' => [[{ 'cmd' => 'gibtsnicht' }]] }), **OPTS)
+  hat?(f, 'unbekannter Befehlstyp', MapCheck::FEHLER)
+end
+check('Wahlzweig ohne Liste -> Fehler (Z5)') do
+  f = MapCheck.scan(karte_mit({ 'cmd' => 'choices', 'options' => %w[a],
+                                'branches' => ['kaputt'] }), **OPTS)
+  hat?(f, 'Wahlzweig #1 ist keine Liste', MapCheck::FEHLER)
+end
 check('if_switch ohne else -> Warnung') do
   f = MapCheck.scan(karte_mit({ 'cmd' => 'if_switch', 'name' => 's', 'value' => true,
                                 'then' => [] }), **OPTS)

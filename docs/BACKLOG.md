@@ -21,16 +21,15 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 ---
 
 ## Offen
-### [Engine] Esc-Menü kann über offenem Textfenster aufgehen — offen (F5-Nebenbefund)
-- Symptom: Während ein Event-Text offen ist, öffnet Esc das Pause-Menü über
-  dem Text; nach Schliessen des Menüs liegt das Textfenster wieder darunter.
-  (Die Physik-Pause von F5 greift in beiden Fällen korrekt.)
-- Vermutung/Analyse: `Game.update` prüft Esc/`@menu` VOR
-  `@interpreter.update(dt)` - es fehlt eine `busy_text?/busy_choices?`-Sperre
-  fürs Öffnen. XP lässt `Scene_Menu` bei `message_window_showing` nicht zu.
-- Betroffene Stellen: `game/main.rb` (Menü-Esc-Block vor interpreter.update),
-  `game/engine/interpreter.rb`.
-- Gefunden in: Runde 11 (Fix-Batch F5, 2026-11-23).
+### [Editor] Issue-Scan prüft `if_self_switch`-Zweige nicht — offen
+- Symptom: Fehler in `then`/`else` von `if_self_switch` erscheinen im
+  Editor-Issues-Dialog (F10) nicht, obwohl MapCheck sie findet.
+- Vermutung/Analyse: `issues_scan_commands` in `editor_main.cpp`
+  rekurtiert nur bei `if_switch`/`if_variable` (MapCheck tut es bei
+  allen drei Typen); `ev_flatten` zeigt die Zweige dagegen korrekt an.
+- Betroffene Stellen: `src/editor/editor_main.cpp`
+  (`issues_scan_commands`, ~Zeile 1215).
+- Gefunden in: Runde 16 (Z5, Recherche Issue-Scan).
 
 ### [Tests/Editor] RGSS-Editor, Kartenmarker und Windows-Anzeige interaktiv prüfen — offen (Live)
 - Die neuen F11-Zeilen-/Scroll-/DPI-Funktionen, NPC-/Event-Doppelklicks,
@@ -394,6 +393,19 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Runde 12 (Y4-Nachgang).
 
 ## Erledigt
+### [Engine] Esc-Menü kann über offenem Textfenster aufgehen — erledigt (Runde 16, Z5)
+- Symptom: Während ein Event-Text offen ist, öffnet Esc das Pause-Menü über
+  dem Text; nach Schliessen des Menüs liegt das Textfenster wieder darunter.
+  (Die Physik-Pause von F5 greift in beiden Fällen korrekt.)
+- Ursache: `Game.update` prüfte Esc/`@menu` VOR `@interpreter.update(dt)`
+  ohne `busy_text?/busy_choices?`-Sperre. XP lässt `Scene_Menu` bei
+  `message_window_showing` nicht zu.
+- Fix: `Game.eingabe_offen?` (Text/Wahl/Zahl) sperrt das Menü-Esc-Öffnen
+  in `game/main.rb`; zugleich gehört Esc damit der Wahl-/Zahlen-Eingabe
+  (cancel-Abbruch wirkt, Z5). Abdeckung: runtime_boot-Checks „Z5: Esc
+  während Wahlfenster/Zahleneingabe".
+- Betroffene Stellen: `game/main.rb` (Menü-Esc-Block, `eingabe_offen?`).
+
 ### [Ruby/Editor/Engine] Fehlende JSON-Standardbibliothek — implementiert (19x)
 - Symptom: `game/editor/boot.rb` → `textures.rb` meldete `LoadError: json`.
 - Ursache: DLLs wurden kopiert, die Ruby-Standardbibliothek nicht; feste

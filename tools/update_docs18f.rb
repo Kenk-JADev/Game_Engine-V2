@@ -22,14 +22,18 @@ section = <<~MD
 
   **Neue Befehle (Interpreter + Editor):**
   - choices: Wahlmöglichkeiten (RPG-Maker-Show-Choices). JSON:
-    {"cmd":"choices","options":[...],"branches":[[...],[...]]}.
+    {"cmd":"choices","options":[...],"branches":[[...],[...]],
+     "cancel":"aus"|"verzweigung"|n,"cancel_branch":[...]}.
     Der Interpreter blockiert (@choices), der Spieler wählt mit
     Pfeiltasten (wrap-around) + E/Enter; der gewählte Zweig kommt
-    auf den Stack. UI.choices zeichnet das Wahlfenster (Marker,
-    Hinterlegung, "↑↓ + E"-Hinweis). Editor: Optionen als Zeilen im
-    Textfeld, Zweige erscheinen als "Wenn [x]:"-Kopfzeilen im Baum
-    (ev_flatten wie Dann/Sonst); Zweige bleiben beim Bearbeiten
-    erhalten (ev_build_command übernimmt alte branches).
+    auf den Stack. cancel (Z5, XP "When Cancel"): abwesend/aus =
+    Esc ignoriert (Default), "verzweigung" = eigener Abbruch-Zweig
+    (XP 403, Sound ablehnen), Zahl N = Esc wie Option N;
+    UI.choices zeigt bei erlaubtem Abbruch "Esc = Abbruch".
+    Editor: Optionen als Zeilen im Textfeld, Zweige erscheinen als
+    "Wenn [x]:"-Kopfzeilen im Baum (ev_flatten wie Dann/Sonst,
+    "Wenn Abbruch:" wenn cancel=verzweigung); Zweige bleiben beim
+    Bearbeiten erhalten (ev_build_command übernimmt alte branches).
   - toggle_switch: Schalter umschalten (GameState.toggle_switch).
   - move_player: Spieler bewegen, absolut oder relativ (Rune::Player
     .teleport + Game.gy).
@@ -49,8 +53,9 @@ section = <<~MD
   (260 statt 248 px), breitere Typ-ComboBox (250 px für Kategorie-
   Präfixe), "Ziel:"-Anzeige versteht jetzt auch "Wenn [x]:"-Zweige.
 
-  **Geprüft:** tools/event18f_test.rb (23 Checks: toggle, move,
-  weather, save/load, choices mit Wrap/Verschachtelung, parallel im
+  **Geprüft:** tools/event18f_test.rb (38 Checks: toggle, move,
+  weather, save/load, choices mit Wrap/Verschachtelung und cancel/Z5,
+    parallel im
   Datenmodell, unbekannter Befehl), log/live18f.ps1 (Editor: 20 Typen,
   Kategorie-Präfixe, choices einfügen mit Liste+JSON, parallel-
   Trigger, Speichern — Achtung: Event-Dialog blockiert Strg+S, deshalb
