@@ -62,16 +62,21 @@ puts '== Aufstieg =='
 check('keine Erfahrung, keine Stufe') do
   Party.gain_exp(arik, 0).zero? && arik.level == 1
 end
-check('genug Erfahrung hebt eine Stufe und füllt HP auf') do
+check('genug Erfahrung hebt eine Stufe und erhöht das HP-Maximum') do
   hp_vorher = arik.max_hp
   stufen = Party.gain_exp(arik, 1)
-  stufen == 1 && arik.level == 2 && arik.max_hp > hp_vorher && arik.hp == arik.max_hp
+  stufen == 1 && arik.level == 2 && arik.max_hp > hp_vorher
+end
+check('Aufstieg heilt nicht (HP/MP bleiben stehen, wie XP)') do
+  vorher = [arik.hp, arik.mp]
+  Party.gain_exp(arik, Party.exp_for_level(arik.level + 1) - arik.exp)
+  [arik.hp, arik.mp] == vorher
 end
 check('Angriffswerte wachsen beim Aufstieg mit') do
   vorher = [arik.atk, arik.def, arik.spi, arik.agi]
-  Party.gain_exp(arik, Party.exp_for_level(3) - arik.exp)
+  Party.gain_exp(arik, Party.exp_for_level(arik.level + 1) - arik.exp)
   nachher = [arik.atk, arik.def, arik.spi, arik.agi]
-  arik.level == 3 && nachher.zip(vorher).all? { |n, v| n > v }
+  nachher.zip(vorher).all? { |n, v| n > v }
 end
 check('Überschuss hebt mehrere Stufen auf einmal') do
   vorher = arik.level
@@ -110,6 +115,28 @@ end
 check('Snapshot enthält Stufe und Gesamt-Erfahrung') do
   eintrag = Party.snapshot['actors'].first
   eintrag['level'] == 5 && eintrag['exp'] == 1000
+end
+
+Party.setup(DB)
+hoch = Party.find('arik')
+Party.gain_exp(hoch, Party.exp_for_level(4))
+check('Snapshot enthält die gewachsenen Werte (max_hp/Angriff)') do
+  eintrag = Party.snapshot['actors'].first
+  hoch.level >= 4 && eintrag['max_hp'] == hoch.max_hp && eintrag['atk'] == hoch.atk &&
+    eintrag['max_hp'] > 120 && eintrag['atk'] > 14
+end
+check('Rundlauf: aufgestiegener Held behält seine Werte') do
+  vorher = Party.snapshot
+  Party.setup(DB)                # wie Game.load_game: erst Datenbank
+  Party.restore!(vorher)         # dann Spielstand
+  Party.snapshot == vorher
+end
+check('alter Spielstand ohne gewachsene Werte bleibt ladbar') do
+  Party.setup(DB)
+  Party.restore!({ 'actors' => [{ 'id' => 'arik', 'level' => 3, 'hp' => 40,
+                                  'mp' => 2, 'exp' => 7 }] })
+  a = Party.find('arik')
+  a.level == 3 && a.max_hp == 120 && a.atk == 14 && a.hp == 40
 end
 
 puts($fail.zero? ? '== LEVEL-UP-TEST: ALLES GRÜN ==' : "== #{$fail} FEHLER ==")

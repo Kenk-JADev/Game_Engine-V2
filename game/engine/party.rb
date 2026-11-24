@@ -90,15 +90,14 @@ class Party
   end
 
   # Stufe um eins erhöhen. Ohne Klassentabellen (XP: RPG::Class-Parameter)
-  # wächst jeder Wert prozentual; HP/MP werden um den Zuwachs aufgefüllt.
+  # wächst jeder Wert prozentual. HP/MP bleiben wie in XP stehen (nur das
+  # Maximum steigt) - geheilt wird beim Aufstieg nicht.
   def self.level_up!(actor)
     hp_plus = [(actor.max_hp.to_i * 0.08).round, 1].max
     mp_plus = actor.max_mp.to_i.positive? ? [(actor.max_mp.to_i * 0.08).round, 1].max : 0
     actor.level = actor.level.to_i + 1
     actor.max_hp = actor.max_hp.to_i + hp_plus
-    actor.hp = [actor.hp.to_i + hp_plus, actor.max_hp].min
     actor.max_mp = actor.max_mp.to_i + mp_plus
-    actor.mp = [actor.mp.to_i + mp_plus, actor.max_mp].min
     %i[atk def spi agi].each do |wert|
       actor[wert] = actor[wert].to_i + [((actor[wert].to_i) * 0.05).round, 1].max
     end
@@ -289,8 +288,13 @@ class Party
       'gold' => @gold,
       'steps' => steps,
       'items' => @items.dup,
+      # Seit dem Level-Up (D4) wachsen auch max_hp/max_mp und die
+      # Angriffswerte - sie gehören damit in den Spielstand, sonst steht ein
+      # geladener Held wieder auf den Datenbank-Startwerten.
       'actors' => @actors.map do |a|
-        { 'id' => a.id, 'level' => a.level, 'hp' => a.hp, 'mp' => a.mp, 'exp' => a.exp }
+        { 'id' => a.id, 'level' => a.level, 'hp' => a.hp, 'mp' => a.mp, 'exp' => a.exp,
+          'max_hp' => a.max_hp, 'max_mp' => a.max_mp,
+          'atk' => a.atk, 'def' => a.def, 'spi' => a.spi, 'agi' => a.agi }
       end
     }
   end
@@ -307,6 +311,13 @@ class Party
       # Bewusst am Setter vorbei: ein alter Spielstand darf beim Laden keine
       # Stufen aufholen (die Werte sind dort schon eingerechnet).
       a[:exp] = (h['exp'] || a.exp).to_i
+      # Gewachsene Werte aus dem Spielstand übernehmen; alte Saves ohne diese
+      # Felder behalten die Datenbankwerte.
+      a.max_hp = [[(h['max_hp'] || a.max_hp).to_i, 1].max, 9_999_999].min
+      a.max_mp = [[(h['max_mp'] || a.max_mp).to_i, 0].max, 9_999_999].min
+      %i[atk def spi agi].each do |wert|
+        a[wert] = (h[wert.to_s] || a[wert]).to_i
+      end
       a.hp = [[(h['hp'] || a.hp).to_i, a.max_hp].min, 0].max
       a.mp = [[(h['mp'] || a.mp).to_i, a.max_mp].min, 0].max
     end

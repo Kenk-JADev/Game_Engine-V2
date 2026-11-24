@@ -1595,9 +1595,9 @@ Sieg-/Niederlage-Prüfung. Schaden = `atk - def/2`, ±15 % Streuung, min 1,
 Kritikchance `agi/64` (x3 Helden, +25 % Gegner). Sieg: Exp auf lebende
 Helden über `Party.gain_exp` (Stufenaufstieg wie XP, D4/Runde 22: Kurve
 `exp(n) = exp(n-1) + ((n-1) ** 2.7 + 0.5).to_i`, Gesamt-Exp, Höchststufe 99,
-Wachstum 8 % HP/MP und 5 % je Angriffswert, HP/MP werden um den Zuwachs
-aufgefüllt; Heldenwerte im Kampf lesen live aus dem Party-Actor, ein
-Aufstieg wirkt sofort), Gold an die Party, Drop-Würfe; Niederlage: `$game_temp.gameover`
+Wachstum 8 % HP/MP und 5 % je Angriffswert, **HP/MP bleiben stehen** (XP
+heilt beim Aufstieg nicht, nur das Maximum steigt); Heldenwerte im Kampf
+lesen live aus dem Party-Actor, ein Aufstieg wirkt sofort), Gold an die Party, Drop-Würfe; Niederlage: `$game_temp.gameover`
 (-> `Game.to_title!` aus Game.update, 19h.2), außer `can_lose`. Flucht:
 50 %, ohne `can_escape` nicht möglich.
 

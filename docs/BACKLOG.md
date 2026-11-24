@@ -24,6 +24,7 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 ### [Engine] Level-Up ohne Klassentabellen — bewusste Grenze (Runde 22)
 - Symptom: Stufenaufstieg wächst prozentual (8 % HP/MP, 5 % je
   Angriffswert), XP rechnet dagegen aus `RPG::Class`-Kurven je Stufe.
+  HP/MP werden dabei wie in XP nicht geheilt (nur das Maximum steigt).
 - Vermutung/Analyse: Unsere `database.json` kennt nur Startwerte
   (`hp/mp/atk/def/spi/agi`), keine Klassen-/Parameterkurven; eine
   Kurventabelle wäre ein neues Datenformat (Editor-F9-Reiter).
