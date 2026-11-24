@@ -113,24 +113,50 @@ module UI
 
   # --- Bestehende Bausteine --------------------------------------------------
 
-  # Mehrzeiliges Nachrichtenfenster am unteren Rand (RPG-Maker-Stil).
-  def self.message(lines, x: 40, y: 496, w: 1200)
+  # Mehrzeiliges Nachrichtenfenster am unteren Rand (RPG-Maker-Stil) mit
+  # optionaler Wahl im SELBEN Fenster (Kombi-Fenster, Z8 wie XP): Die
+  # Optionen stehen unter dem Text, das Fenster wächst nach oben, die
+  # Unterkante bleibt stehen. choices = {options:, sel:, cancel:} oder nil.
+  # wartet: Text wartet auf Bestätigung -> blinkender ▾-Zeiger.
+  def self.message(lines, choices = nil, x: 40, y: 496, w: 1200, wartet: true)
     line_h = 26
-    h = 30 + lines.size * line_h
-    panel(x, y, w, h, PANEL, 0.80)
-    panel(x, y, w, 2, ACCENT, 0.85)          # Zierlinie oben
+    text_h = 30 + lines.size * line_h
+    optionen = choices ? choices[:options] : []
+    option_h = optionen.empty? ? 0 : 14 + optionen.size * 24 + 10
+    h = text_h + option_h
+    top = y + text_h - h                    # Unterkante bleibt bei y + text_h
+    panel(x, top, w, h, PANEL, 0.80)
+    panel(x, top, w, 2, ACCENT, 0.85)       # Zierlinie oben
     lines.each_with_index do |l, i|
-      text(x + 22, y + 18 + i * line_h, l, TEXT, 18)
+      text(x + 22, top + 18 + i * line_h, l, TEXT, 18)
+    end
+    unless optionen.empty?
+      basis = top + text_h - 6
+      optionen.each_with_index do |opt, i|
+        oy = basis + i * 24
+        if i == choices[:sel]
+          panel(x + 26, oy - 3, w - 52, 22, ACCENT, 0.18)
+          text(x + 36, oy, '▶', ACCENT, 15)
+          text(x + 60, oy, opt, ACCENT, 17)
+        else
+          text(x + 60, oy, opt, TEXT, 17)
+        end
+      end
+      hint = choices[:cancel] && choices[:cancel] != :aus ? '↑↓ + E   Esc = Abbruch' : '↑↓ + E'
+      text(x + w - (choices[:cancel] && choices[:cancel] != :aus ? 190 : 90),
+           top + h - 20, hint, TEXT_DIM, 12)
     end
     # Pause-Zeiger ▾ (M/XP Window_Message): blinkt unten rechts, solange
     # auf die Bestätigung gewartet wird - sonst ahnt man E/Space nicht.
-    if ((Time.now.to_f * 2.0).to_i % 2).zero?
-      text(x + w - 28, y + h - 24, '▾', ACCENT, 16)
+    if wartet && ((Time.now.to_f * 2.0).to_i % 2).zero?
+      text(x + w - 28, top + h - 24, '▾', ACCENT, 16)
     end
   end
 
-  # Wahlmöglichkeiten (Etappe 18f, RPG-Maker-Show-Choices): Fenster mit
-  # Optionen, der gewählte Eintrag ist markiert (Pfeil + Hinterlegung).
+  # Wahlmöglichkeiten in einem eigenen Fenster. Seit dem Kombi-Fenster (Z8)
+  # zeichnet die Spiel-Logik die Wahl IM Textfenster (`message` mit
+  # choices-Argument); dieser Baustein bleibt für Sonderfälle (z. B. Skripte)
+  # und für Tests erhalten.
   # cancel (Z5): zeigt den Esc-Hinweis, wenn der Befehl Abbruch erlaubt.
   def self.choices(options, sel, x: 40, y: 496, w: 420, cancel: false)
     line_h = 28

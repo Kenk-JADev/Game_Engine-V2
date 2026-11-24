@@ -157,8 +157,10 @@ Weder diese Tests noch WARP ersetzen den noch offenen interaktiven
 - Die Textur ist bildschirmgross; alle Texte einer Frame landen in **einer**
   Textur (ein Draw-Call pro Frame statt einem pro Zeile).
 - `game/engine/ui.rb` — Ruby-Hülle: `UI.panel`, `UI.frame`, `UI.text`,
-  `UI.message(lines)` (RPG-Maker-Nachrichtenfenster unten) und `UI.hud`
-  (Position + FPS oben links).
+  `UI.message(lines, choices = nil, wartet:)` (RPG-Maker-Nachrichtenfenster
+  unten, **Kombi-Fenster** seit Runde 21: optionale Wahl im selben Fenster
+  unter dem Text, Fenster wächst nach oben) und `UI.hud` (Position + FPS
+  oben links).
 - `Renderer::save_screenshot()` schreibt den Backbuffer als BMP (`F12`).
 
 ## Schatten (Etappe 9a)
@@ -2509,6 +2511,16 @@ ausgelöst.
 | Kommando | Wirkung |
 |---|---|
 | `{"cmd":"text","lines":[…]}` | Nachrichtenfenster, blockiert bis `E` |
+
+**Kombi-Fenster (Runde 21, wie XP):** `text`, `choices` und `input_number`
+teilen sich **ein** Fenster. `Interpreter#visible_lines` hält die sichtbaren
+Zeilen; `text_waiting?` sagt, ob der Text auf Bestätigung wartet (dann blinkt
+▾). Nach der letzten Zeile bleibt der Text stehen: folgt eine Wahl, erscheint
+sie darunter im selben Fenster; folgt ein anderes Kommando, schließt das
+Fenster (XP-Regel „der Nachrichtenblock endet beim ersten anderen Befehl").
+`busy_text?` heißt jetzt „Fenster offen", `message` bleibt der Zugang zu den
+*wartenden* Zeilen (Tests/Skripte). Geprüft von `tools/event18f_test.rb`
+(7 Kombi-Checks).
 | `{"cmd":"switch","name":…,"value":true}` | Schalter setzen |
 | `{"cmd":"variable","name":…,"value":n}` / `,"add":n` | Variable setzen/erhöhen |
 | `{"cmd":"if_switch","name":…,"value":true,"then":[…],"else":[…]}` | Verzweigung |

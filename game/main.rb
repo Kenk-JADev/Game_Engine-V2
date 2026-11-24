@@ -1174,10 +1174,11 @@ end
 
     # 2D-Overlay zuletzt
     UI.hud
-    UI.message(@interpreter.message) if @interpreter.busy_text?
-    if @interpreter.busy_choices?
-      c = @interpreter.choices
-      UI.choices(c[:options], c[:sel], cancel: c[:cancel] != :aus)
+    # Z8: Text und Wahl in EINEM Fenster (XP-Kombi-Fenster). Die Optionen
+    # stehen unter dem Text; fehlt einer der beiden Teile, bleibt er leer.
+    wahl = @interpreter.busy_choices? ? @interpreter.choices : nil
+    if @interpreter.busy_text? || wahl
+      UI.message(@interpreter.visible_lines, wahl, wartet: @interpreter.text_waiting?)
     end
     UI.nummer_eingabe(@interpreter.num_input) if @interpreter.busy_number?
     Battle.draw if defined?(Battle) && (Battle.active? || @interpreter.busy_battle?)

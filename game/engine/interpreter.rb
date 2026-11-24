@@ -2,6 +2,12 @@
 # ============================================================================
 #  Event-Interpreter (angelehnt an RPG-Maker, aber schlank).
 #
+#  Kombi-Fenster (Z8, RPG-Maker-XP): Text, Wahl und Zahleneingabe teilen sich
+#  EIN Fenster. Ein text-Kommando setzt die sichtbaren Zeilen; die Wahl
+#  erscheint darunter im selben Fenster (früher: zweites Fenster). Das Fenster
+#  bleibt offen, solange der Nachrichtenblock läuft (text/choices/
+#  input_number) und schließt beim ersten anderen Kommando - wie in XP.
+#
 #  Führt eine Kommandoliste aus. Einige Kommandos sind "blockierend":
 #  text (wartet auf Bestätigung) und warte (wartet auf Zeit). Solange der
 #  Interpreter läuft, zeigt die Engine das Textfenster und sperrt das
@@ -39,11 +45,17 @@
 # ============================================================================
 
 class Interpreter
+  # @message = Zeilen, die auf Bestätigung warten (Kompatibilitäts-Zugang für
+  # Tests/Skripte); das Fenster zeichnet `visible_lines`.
   attr_reader :message, :choices
+
+  # Kommandos, die das Nachrichtenfenster offen halten (XP-Nachrichtenblock).
+  NACHRICHTEN_BEFEHLE = %w[text choices input_number].freeze
 
   def initialize
     @stack = []      # Rahmen {list:, index:}
-    @message = nil   # offene Textzeilen, wenn blockierend
+    @message = nil   # Zeilen, die auf die Bestätigung warten (nil = frei)
+    @lines = []      # sichtbare Zeilen im Nachrichtenfenster (Kombi-Fenster)
     @choices = nil   # Wahlmöglichkeiten {options:, branches:, sel:}
     @wait_left = 0.0
     @route_wait = nil  # Etappe 19g: move_route mit wait blockiert hier
@@ -67,7 +79,19 @@ class Interpreter
     @battle_wait
   end
 
+  # Sichtbare Zeilen im Nachrichtenfenster - bleibt während einer Wahl
+  # darunter stehen (Kombi-Fenster, Z8).
+  def visible_lines
+    @lines
+  end
+
+  # Fenster offen? (Zeilen sichtbar, auch wenn gerade die Wahl läuft)
   def busy_text?
+    !@lines.empty?
+  end
+
+  # Wartet der Text auf Bestätigung? (nur dann blinkt der ▾-Zeiger)
+  def text_waiting?
     !@message.nil?
   end
 
@@ -77,7 +101,8 @@ class Interpreter
 
   # Aus einem Projekt-Script: Textfenster öffnen (blockiert wie 'text').
   def say(lines)
-    @message = Array(lines)
+    @lines = Array(lines)
+    @message = @lines
   end
 
   # Startet eine Kommandoliste. Wird bereits gesprochen, wird ignoriert.
@@ -133,8 +158,16 @@ class Interpreter
       cmd = frame[:list][frame[:index]]
       frame[:index] += 1
 
+      # Kombi-Fenster (Z8): Text/Wahl/Zahl halten das Fenster offen; jeder
+      # andere Befehl schließt es wie in XP (der Block ist zu Ende).
+      typ = cmd.is_a?(Hash) ? cmd['cmd'].to_s : ''
+      @lines = [] unless NACHRICHTEN_BEFEHLE.include?(typ)
+
       case cmd['cmd']
-      when 'text'      then @message = Array(cmd['lines']); return
+      when 'text'
+        @lines = Array(cmd['lines'])
+        @message = @lines
+        return
       when 'choices'
         # Wahlmöglichkeiten (RPG-Maker-Show-Choices): blockiert, bis der
         # Spieler wählt; dann läuft der passende Zweig weiter. cancel
@@ -261,6 +294,9 @@ class Interpreter
         Issues.report('Interpreter', "unbekanntes Kommando '#{cmd['cmd']}'")
       end
     end
+
+    # Nichts mehr auf dem Stapel und keine Eingabe offen: Fenster zu.
+    @lines = [] if @stack.empty? && @message.nil?
   end
 
   private
@@ -310,11 +346,18 @@ class Interpreter
     end
   end
 
-  # Nächste Zeile zeigen; die letzte schliesst das Fenster.
+  # Nächste Zeile zeigen. Nach der letzten Zeile bleibt der Text sichtbar
+  # (Kombi-Fenster): erst der nächste Befehl entscheidet, ob das Fenster
+  # zugeht, weil eine Wahl darunter folgt oder der Block endet.
   def advance_text
     if Rune::Input.pressed?(:e) || Rune::Input.pressed?(:space) ||
        Rune::Input.pressed?(:enter)
-      @message = @message.size > 1 ? @message[1..] : nil
+      if @message.size > 1
+        @message = @message[1..]
+        @lines = @message
+      else
+        @message = nil
+      end
     end
   end
 

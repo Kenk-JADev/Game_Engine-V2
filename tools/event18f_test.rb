@@ -292,5 +292,62 @@ $interp.start([{ 'cmd' => 'unbekannt_xyz' }, { 'cmd' => 'switch', 'name' => 'nac
 drain
 check('unbekannter Befehl wird übersprungen') { GameState.switch('nach') }
 
+# --- Kombi-Fenster (Z8): Text, Wahl und Zahl teilen sich EIN Fenster --------
+$interp = Interpreter.new
+$interp.start([{ 'cmd' => 'text', 'lines' => ['Frage?'] },
+               { 'cmd' => 'choices', 'options' => ['Ja', 'Nein'],
+                 'branches' => [[{ 'cmd' => 'text', 'lines' => ['Ja gewählt'] }], []] }])
+drain
+check('Kombi: Text wartet auf Bestätigung') do
+  $interp.message == ['Frage?'] && $interp.visible_lines == ['Frage?'] && $interp.text_waiting?
+end
+keys!(:e)
+drain
+check('Kombi: Wahl steht im selben Fenster unter dem Text') do
+  $interp.busy_choices? && $interp.visible_lines == ['Frage?'] &&
+    $interp.busy_text? && !$interp.text_waiting?
+end
+keys!(:e)
+drain
+check('Kombi: der Zweigtext ersetzt die Zeilen') do
+  $interp.message == ['Ja gewählt'] && $interp.visible_lines == ['Ja gewählt']
+end
+keys!(:e)
+drain
+check('Kombi: Blockende schliesst das Fenster') do
+  !$interp.running? && $interp.visible_lines.empty? && !$interp.busy_text?
+end
+
+# Ein anderes Kommando beendet den Nachrichtenblock (wie XP): der Text
+# verschwindet, das wait läuft weiter.
+$interp = Interpreter.new
+$interp.start([{ 'cmd' => 'text', 'lines' => ['Nur Text'] },
+               { 'cmd' => 'wait', 'seconds' => 0.1 }])
+drain
+keys!(:e)
+drain
+check('Kombi: ein anderes Kommando schliesst das Fenster (wait)') do
+  $interp.visible_lines.empty? && !$interp.busy_text? && !$interp.running?
+end
+
+# Zahleneingabe gehört ebenfalls zum Nachrichtenblock.
+$interp = Interpreter.new
+$interp.start([{ 'cmd' => 'text', 'lines' => ['Wie viele?'] },
+               { 'cmd' => 'input_number', 'name' => 'kombi_zahl', 'digits' => 2 }])
+drain
+keys!(:e)
+drain
+check('Kombi: Zahleneingabe lässt den Text stehen') do
+  $interp.busy_number? && $interp.visible_lines == ['Wie viele?']
+end
+
+# Wahl ohne vorherigen Text: das Fenster zeigt nur die Optionen.
+$interp = Interpreter.new
+$interp.start([{ 'cmd' => 'choices', 'options' => ['A'], 'branches' => [[]] }])
+drain
+check('Kombi: Wahl ohne Text bleibt im Fenster') do
+  $interp.busy_choices? && $interp.visible_lines.empty? && !$interp.busy_text?
+end
+
 puts($fail.zero? ? '== EVENT18F-TEST: ALLES GRÜN ==' : "== #{$fail} FEHLER ==")
 exit($fail.zero? ? 0 : 1)

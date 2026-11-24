@@ -215,6 +215,7 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 | Event-Trigger | `auto` = Autorun (bis Seitenwechsel), `touch` = Wiederbetreten | ✅ (Z6/D1+D2, LOGIK Runde 17) |
 | Kartenbaum | Baum mit Gruppen/Elternkarten | ✅ (Z8: Einrücktiefe in `system.json` → `map_tree`) |
 | Karte während einer Nachricht | Karte läuft weiter (Events/Parallel), Spieler steht | ✅ (Z8/D3, Runde 20) |
+| Nachrichtenfenster | Text + Wahl + Zahleneingabe in EINEM Fenster (Window_Message/Choice) | ✅ (Runde 21: Kombi-Fenster) |
 | Editor-Undo | XP hat keins | ✅ (Z8: ganze Karte, 50 Schritte) |
 | Bewegungsroute | ✅ | ✅ (XP-Schrittnamen + Codes 0–45, F1 geprüft) |
 | Spieler-Start/Teleport | ✅ | ✅ |
