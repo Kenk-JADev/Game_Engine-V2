@@ -54,7 +54,7 @@ def sammler
   {
     battle: ->(troop, esc, lose) { @log << [:battle, troop, esc, lose] },
     menu: ->(speichern) { @log << [:menu, speichern] },
-    transfer: ->(karte) { @log << [:transfer, karte] },
+    transfer: ->(karte, x, z, yaw) { @log << [:transfer, karte, x, z, yaw] },
     title: -> { @log << [:title] }
   }
 end
@@ -103,14 +103,15 @@ $game_temp.player_transferring = true
 $game_temp.player_new_map_id = 'haus'
 check('Name der Karte wechselt direkt') do
   sammler
-  TempActions.tick(sammler) && log == [[:transfer, 'haus']] && !$game_temp.player_transferring
+  TempActions.tick(sammler) && log == [[:transfer, 'haus', nil, nil, nil]] &&
+    !$game_temp.player_transferring
 end
 frisch
 $game_temp.player_transferring = true
 $game_temp.player_new_map_id = 3
 check('XP-Nummer 3 wählt die dritte Karte (welt)') do
   sammler
-  TempActions.tick(sammler) && log == [[:transfer, 'welt']]
+  TempActions.tick(sammler) && log == [[:transfer, 'welt', nil, nil, nil]]
 end
 check('Unbekannte Nummer: Warnung, kein Wechsel') do
   frisch
@@ -118,6 +119,27 @@ check('Unbekannte Nummer: Warnung, kein Wechsel') do
   $game_temp.player_new_map_id = 9
   sammler
   TempActions.tick(sammler) && log.empty? && !$game_temp.player_transferring
+end
+check('Startposition und Richtung kommen mit') do
+  frisch
+  $game_temp.player_transferring = true
+  $game_temp.player_new_map_id = 'dorf'
+  $game_temp.player_new_x = 12
+  $game_temp.player_new_y = 34
+  $game_temp.player_new_direction = 6
+  sammler
+  TempActions.tick(sammler) && log == [[:transfer, 'dorf', 12.0, 34.0, Math::PI / 2]]
+end
+check('XP-Richtungen 2/4/6/8 auf Yaw abgebildet') do
+  TempActions.yaw_fuer(8) == Math::PI && TempActions.yaw_fuer(2).zero? &&
+    TempActions.yaw_fuer(6) == Math::PI / 2 && TempActions.yaw_fuer(4) == -Math::PI / 2 &&
+    TempActions.yaw_fuer(0).nil? && TempActions.yaw_fuer(nil).nil?
+end
+check('Position 0/0 bedeutet: bisherige Stelle behalten') do
+  frisch
+  $game_temp.player_new_x = 0
+  $game_temp.player_new_y = 0
+  TempActions.startposition($game_temp) == [nil, nil]
 end
 check('karte_fuer: Name vor Nummer, 0 ungueltig') do
   TempActions.karte_fuer('dorf') == 'dorf' && TempActions.karte_fuer(1) == 'dorf' &&

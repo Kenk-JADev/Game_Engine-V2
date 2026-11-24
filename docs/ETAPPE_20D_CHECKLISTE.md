@@ -6,7 +6,7 @@ was fehlt, und woran erkennt man „fertig". Stand: **Runde 28**.
 
 Legende: `[x]` erledigt und committet · `[~]` erledigt, CI offen · `[ ]` offen
 
-**Kurzfassung Stand:** 13 von 17 Punkten aus Abschnitt 3 sind erledigt
+**Kurzfassung Stand:** 14 von 17 Punkten aus Abschnitt 3 sind erledigt
 (6 Bedingungen/Sperren, Timer, `$game_temp`, 4 Wert-Befehle gezählt als
 Pakete). Es fehlen noch **Variable-Operationen (122)**, **Actor/Button-
 Bedingungen**, **`party_member` (129)**, **Transfer-Startposition** und der
@@ -89,12 +89,13 @@ Ein Befehl gilt erst als fertig, wenn **alle** Punkte stimmen:
       + Spielstand + Menü/Battle prüfen, sonst inkonsistente Spielstände
 - [ ] **Werte-Befehle erweitern:** Operand „Variable" (XP erlaubt statt
       Konstante `variable[x]`) und Ziel „ganze Party" bei `actor_exp` prüfen
-- [ ] **`player_transferring`:** Startposition `player_new_x/y/direction`
-      anwenden (Rune3D-Weltkoordinaten ≠ XP-Kacheln → Umrechnung festlegen,
-      LOGIK AC.10)
+- [x] **`player_transferring`:** Startposition `player_new_x/y` (Weltkoordinaten,
+      `0/0` = bisherige Stelle) und `player_new_direction` (2/4/6/8 → Yaw-Tabelle
+      `RICHTUNG_YAW`) werden angewendet; Test in `temp_flags_test.rb`
 - [ ] MapCheck-Regeln für alle neuen Typen, Register/Doku/Zählungen wie in 0.
-- [ ] Abschluss: `docs/XP_VERGLEICH.md`-Bilanz neu, `HANDOFF` mit Runden-Nr.,
-      CI grün, Etappe 20d als erledigt markiert
+- [x] Abschlussrunde: Bilanz neu (48 Typen, 37 ✅ · 6 ⚠️ · 49 ❌), `HANDOFF`
+      mit Runden-Nr., CI grün. **20d bleibt offen** wegen der drei Punkte oben
+      (Variable-Quellen, `party_member`, Reste aus Abschnitt 3).
 
 ## 4. Bekannte Eigenheiten (nicht nochmal darüber stolpern)
 

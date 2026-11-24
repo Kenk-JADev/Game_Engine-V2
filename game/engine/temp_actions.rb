@@ -19,7 +19,7 @@ module TempActions
   # Handler-Schlüssel:
   #   :battle   -> (troop_id, can_escape, can_lose)
   #   :menu     -> (speichern_gewuenscht)
-  #   :transfer -> (map_id)
+  #   :transfer -> (map_id, x, z, yaw) - x/z/yaw sind nil, wenn XP sie nicht setzt
   #   :title    -> ()
   # Rückgabe: true, wenn etwas ausgeführt wurde (der Frame endet dann).
   def self.tick(handler = {})
@@ -51,8 +51,11 @@ module TempActions
         Rune::Log.warn("$game_temp: Zielkarte '#{t.player_new_map_id}' unbekannt")
         Issues.report('TempActions', "$game_temp.player_new_map_id '#{t.player_new_map_id}' unbekannt")
       else
-        Rune::Log.info("$game_temp: Kartenwechsel nach '#{karte}'")
-        ruf(handler[:transfer], karte)
+        x, z = startposition(t)
+        yaw = yaw_fuer(t.player_new_direction)
+        Rune::Log.info("$game_temp: Kartenwechsel nach '#{karte}'" \
+                       "#{x && z ? " bei (#{x}, #{z})" : ''}#{yaw ? " yaw #{yaw.round(3)}" : ''}")
+        ruf(handler[:transfer], karte, x, z, yaw)
       end
       return true
     end
@@ -80,6 +83,27 @@ module TempActions
     return nil if index < 1 || index > ids.size
 
     ids[index - 1]
+  end
+
+  # XP-Startposition: `player_new_x`/`player_new_y` sind Kacheln, Rune3D rechnet
+  # in Weltkoordinaten. Beide Werte zusammen ungleich 0 gelten als Position;
+  # (0, 0) bedeutet "bisherige Stelle behalten", weil XP-Events die Felder
+  # nicht immer setzen und 0 dort auch eine gültige Kachel wäre.
+  def self.startposition(t)
+    x = t.player_new_x.to_f
+    z = t.player_new_y.to_f
+    return [nil, nil] if x.zero? && z.zero?
+
+    [x, z]
+  end
+
+  # XP-Richtungen 2/4/6/8 (unten/links/rechts/oben) auf die Kamera-Yaw legen.
+  # Konvention: 8 (oben) = π = Engine-Standard aus dem Teleport-Befehl, 2 = 0,
+  # 6 = +π/2 (rechts drehen), 4 = −π/2. 0/andere = Ausrichtung behalten.
+  RICHTUNG_YAW = { 2 => 0.0, 6 => Math::PI / 2, 4 => -Math::PI / 2, 8 => Math::PI }.freeze
+
+  def self.yaw_fuer(richtung)
+    RICHTUNG_YAW[richtung.to_i]
   end
 
   def self.karten_ids

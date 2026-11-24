@@ -487,7 +487,14 @@ end
           @menu_sel = i if i
         end
       end,
-      transfer: ->(karte) { change_map(karte) },
+      transfer: lambda do |karte, x, z, yaw|
+        change_map(karte)
+        next unless x && z
+        # Etappe 20d: Startposition/-richtung aus $game_temp (XP reserve_transfer).
+        Rune::Player.teleport(x, gy(x, z) + 0.2, z)
+        Rune::Camera.yaw = yaw if yaw
+        reset_step_tracking if respond_to?(:reset_step_tracking)
+      end,
       title: -> { to_title! }
     }
   end

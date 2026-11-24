@@ -265,8 +265,12 @@ ergänzt; die Einträge unten sind jeweils als behoben markiert.
   - `player_transferring` → `Game.change_map`; `player_new_map_id` darf der
     Kartenname sein oder die 1-basierte Position in `Database.map_ids`
     (XP-Karten sind numerisch). Unbekannt → Warnung + Issue, kein Wechsel.
-    **`player_new_x/y/direction` werden noch nicht gesetzt** (Rune3D-Welt-
-    koordinaten ≠ XP-Kacheln; LOGIK AC.10).
+    `player_new_x/y` gelten als Weltkoordinaten (`0/0` = bisherige Stelle
+    behalten, weil XP-Events die Felder nicht immer setzen),
+    `player_new_direction` 2/4/6/8 → Kamera-Yaw über `TempActions::RICHTUNG_YAW`
+    (8 = π = Engine-Standard, 2 = 0, 6 = +π/2, 4 = −π/2). Bewusste Abweichung:
+    XP rechnet in Kacheln, Rune3D in Weltkoordinaten — Projekte geben also
+    Weltkoordinaten an.
 - `$game_switches[1]=true` aus einem Script bewirkt bei XP **nicht**
   automatisch einen Seiten-Refresh (XP braucht `$game_map.need_refresh`);
   Rune3D aktualisiert Seiten jeden Frame — hier sind wir *nicht* XP-gleich,
