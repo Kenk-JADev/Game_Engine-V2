@@ -1868,6 +1868,16 @@ nicht als Absturz behandelt. `player_new_x/y/direction` bleiben offen
 
 **Tests:** `tools/temp_flags_test.rb` (14 Checks).
 
+### Weitere Bedingungsquellen: Actor und Taste (XP 111)
+
+`{"cmd":"if_actor","name":"arik","then":[],"else":[]}` zweigt je nach
+Team-Mitgliedschaft (`Party.find`), `{"cmd":"if_button","name":"e",...}`
+im Frame des Tastendrucks (`Rune::Input.pressed?`, wie XP `Input.trigger?`;
+ohne Eingabeschicht — kopfloser Test — falsch). Beide haben `then`/`else`
+wie die übrigen Wenn-Befehle und werden im F6-Baum rekursiv geprüft; MapCheck
+prüft den Namen (Actor gegen `database.json`, Taste auf Existenz).
+Register: **48 Typen**. **Tests:** `tools/bedingungen_test.rb` (34 Checks).
+
 ### Variable-Operationen (XP 122)
 
 `variable` kann jetzt rechnen: `{"cmd":"variable","name":"kristalle","op":"mul","value":2}`.

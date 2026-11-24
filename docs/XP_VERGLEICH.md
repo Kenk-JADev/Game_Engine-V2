@@ -17,7 +17,7 @@ Rune3D (Stand nach 19y) steht — mit Blick darauf, was sich sinngemäß in 3D
 ## 1. Event-Befehle — 92 XP-Befehle, 26 in Rune3D
 
 XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
-**46 Befehlstypen**. Bilanz: **37 ✅ · 6 ⚠️ · 49 ❌** (kein neuer Typ für 122).
+**48 Befehlstypen**. Bilanz: **37 ✅ · 6 ⚠️ · 49 ❌**.
 
 ### A. Nachricht & Ablaufsteuerung (101–119)
 
@@ -29,7 +29,7 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 | Textoptionen (Position/Rahmen/Transparenz) | 104 | `text_options` (R27) | ✅ (Schriftart/Windowskin fehlen weiter: 131) |
 | Tastaturabfrage (Button Input) | 105 | `button_input` (R27) | ✅ (speichert die 1-basierte Position in der Tastenliste — LOGIK AC.2) |
 | Warte | 106 | `wait` | ✅ |
-| Verzweigung (13 Bedingungsarten) | 111 | `if_switch` / `if_variable` / `if_self_switch` / **`if_gold` / `if_item` / `if_script` (R28)** | ⚠️ 6 von 13 Arten; es fehlen Timer, Actor, Enemy, Character, Weapon, Armor, Button |
+| Verzweigung (13 Bedingungsarten) | 111 | `if_switch` / `if_variable` / `if_self_switch` / **`if_gold` / `if_item` / `if_script` / `if_actor` / `if_button` (R28)** | ⚠️ 8 von 13 Arten; es fehlen Timer, Enemy, Character, Weapon, Armor |
 | Schleife | 112 (+413) | `loop` mit `commands`-Zweig (R27) | ✅ |
 | Schleife verlassen | 113 | `break` (R27) | ✅ (auch aus Wenn-Zweigen innerhalb der Schleife) |
 | Event-Ausführung beenden | 115 | `exit_event` (R27) | ✅ |
@@ -259,7 +259,7 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 | **20a Kampf: Skills & Zustände** | ~~DB `skills`+`states`~~ ✅, ~~`battle.rb`: Skill-Befehl mit MP~~ ✅, ~~Zustände pro Runde (Vergiftung usw.)~~ ✅, ~~**Level-Up bei EXP (D4)**~~ ✅ — offen: F9-Reiter für `skills`/`states`, Gegner-Fertigkeiten und -Aktionen mit Bedingungen | Größte Spiel-Lücke, Kern seit Runde 23 geschlossen |
 | **20b Menü wie XP** | ~~Item (außerhalb Kampf)~~ ✅, ~~Skill~~ ✅, ~~Status-Detail~~ ✅, ~~Parteigesichter~~ ✅ (prozedural) — offen: Equip (keine Ausrüstung), Fortschritts-/Quest-Anzeige, Gesichter in Spielstand-Slots | Kern seit Runde 24 umgesetzt |
 | **20c Event-Befehle Welle 1 (Ablauf)** | ~~`loop`/`break`/`label`/`jump`/`exit_event`/`erase_event`/`button_input`/`text_options`~~ ✅, ~~**Common Events**~~ ✅ (Runde 27, 35 Befehlstypen: Datenhaltung, Aufruf 117, Trigger, MapCheck, RGSS) — offen: eigener Editor-Reiter für Common Events (F9/F6) | Struktur, die fast jedes XP-Projekt braucht |
-| **20d Event-Befehle Welle 2 (Daten)** | ~~erweiterte Bedingungen `if_gold`/`if_item`/`if_script`~~ ✅, ~~134/135/136 als Befehle (`save_access`/`menu_access`/`encounter_access`)~~ ✅ (R28, 46 Befehlstypen; Timer samt Anzeige, HP/SP/EXP/Stufe erledigt) — offen: Variable-*Quellen* (Zufall/Item/Actor/…), Actor/Button-Bedingungen, `party_member`, ~~`$game_temp`-Calling-Flags auswerten~~ ✅ (R28, LOGIK E.3) | Verdoppelt die Aussagekraft von Variablen/Schaltern; XP-Scripts, die Szenen über `$game_temp` starten, funktionieren dann |
+| **20d Event-Befehle Welle 2 (Daten)** | ~~erweiterte Bedingungen `if_gold`/`if_item`/`if_script`~~ ✅, ~~134/135/136 als Befehle (`save_access`/`menu_access`/`encounter_access`)~~ ✅ (R28, 46 Befehlstypen; Timer samt Anzeige, HP/SP/EXP/Stufe erledigt) — offen: Variable-*Quellen* (Zufall/Item/Actor/…), `party_member`, ~~`$game_temp`-Calling-Flags auswerten~~ ✅ (R28, LOGIK E.3) | Verdoppelt die Aussagekraft von Variablen/Schaltern; XP-Scripts, die Szenen über `$game_temp` starten, funktionieren dann |
 | **20e Shop & Name** | Befehl 302 + Shop-Fenster (kaufen/verkaufen/preis), 303 Namenseingabe | XP-typisch, eigenständig nutzbar |
 | **20f Bildschirm-Ebenen** | Pictures 231–235 als Overlay, Flash/Shake/Tone als PostFX, Ergebniszweige 601–603, Befehl 351 (Menü) | Macht die „Bildschirm“-Gruppe echt |
 | **20g Darstellung** | Figuren-Billboards, Ballons, Kampf-/Event-Animationen (207/337) | Sichtbarster XP-Optik-Unterschied |

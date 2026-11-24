@@ -57,6 +57,8 @@
 #    {"cmd":"save_access","allowed":false} / menu_access / encounter_access
 #                                                       (20d; XP 134/135/136)
 #    {"cmd":"timer","mode":"start","seconds":120}       (Timer, 20d; XP 124)
+#    {"cmd":"if_actor","name":"arik","then":[],"else":[]}   (Wenn Actor, 20d)
+#    {"cmd":"if_button","name":"e","then":[],"else":[]}     (Wenn Taste, 20d)
 #    {"cmd":"actor_hp","target":"alle","amount":-20}    (Werte ändern, 20d)
 #    {"cmd":"actor_sp"/"actor_exp"/"actor_level",...}   (XP 311/312/315/316)
 #    {"cmd":"script","name":"projekt_script"}  |  {"cmd":"script","code":"..."}
@@ -237,6 +239,12 @@ class Interpreter
         @stack.push(list: branch ? (cmd['then'] || []) : (cmd['else'] || []), index: 0)
       when 'if_item'   # Etappe 20d: Wenn Item (XP 111, Quelle Item)
         branch = compare_zahl(Party.item_count(cmd['name']), cmd['op'], (cmd['value'] || 0).to_f)
+        @stack.push(list: branch ? (cmd['then'] || []) : (cmd['else'] || []), index: 0)
+      when 'if_actor'   # Etappe 20d: Wenn Actor im Team (XP 111, Quelle Actor)
+        branch = actor_im_team?(cmd['name'])
+        @stack.push(list: branch ? (cmd['then'] || []) : (cmd['else'] || []), index: 0)
+      when 'if_button'  # Etappe 20d: Wenn Taste gedrückt (XP 111, Quelle Button)
+        branch = taste_gedrueckt?(cmd['name'])
         @stack.push(list: branch ? (cmd['then'] || []) : (cmd['else'] || []), index: 0)
       when 'if_script' # Etappe 20d: Wenn Script (XP 111, Quelle Script)
         @stack.push(list: script_zutreffend?(cmd) ? (cmd['then'] || []) : (cmd['else'] || []),
@@ -603,6 +611,28 @@ class Interpreter
       Rune::Log.info('Timer gestoppt') if modus == 'stop'
     end
     true
+  end
+
+  # Etappe 20d: "Wenn Actor" - XP fragt $game_party.actors, Rune3D hat alle
+  # Datenbank-Helden im Team (Party.setup), darum genügt die Existenz.
+  def actor_im_team?(name)
+    id = name.to_s.strip
+    return false if id.empty?
+    return false unless defined?(Party) && Party.respond_to?(:find)
+    !Party.find(id).nil?
+  end
+
+  # Etappe 20d: "Wenn Taste" (XP 111, Quelle Button) - wie XP Input.trigger?
+  # gilt nur der Frame, in dem die Taste gedrückt wurde. Ohne Eingabeschicht
+  # (kopfloser Test) ist die Bedingung falsch.
+  def taste_gedrueckt?(name)
+    taste = name.to_s.strip
+    return false if taste.empty?
+    return false unless defined?(Rune::Input)
+    eingabe = Rune::Input
+    return eingabe.pressed?(taste.to_sym) if eingabe.respond_to?(:pressed?)
+    return eingabe.down?(taste.to_sym) if eingabe.respond_to?(:down?)
+    false
   end
 
   # Etappe 20d: "Wenn Script" - der Ausdruck liefert selbst den Wahrheitswert

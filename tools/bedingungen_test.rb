@@ -115,6 +115,37 @@ check('leerer Ausdruck -> Sonst-Zweig') do
   zweig({ 'cmd' => 'if_script', 'code' => '  ', 'then' => DANN, 'else' => SONST })[:sonst] == 1.0
 end
 
+puts '== Interpreter: Wenn Actor / Wenn Taste (XP 111) =='
+# Party-Attrappe um Actors erweitern (find liefert nur bekannte IDs).
+module Party
+  class << self
+    def find(id) = [{ id: 'arik' }].find { |a| a[:id] == id.to_s }
+  end
+end
+check('Actor im Team -> Dann-Zweig') do
+  zweig({ 'cmd' => 'if_actor', 'name' => 'arik', 'then' => DANN, 'else' => SONST })[:dann] == 1.0
+end
+check('Actor nicht im Team -> Sonst-Zweig') do
+  zweig({ 'cmd' => 'if_actor', 'name' => 'mira', 'then' => DANN, 'else' => SONST })[:sonst] == 1.0
+end
+check('leerer Actor-Name -> Sonst-Zweig') do
+  zweig({ 'cmd' => 'if_actor', 'name' => '  ', 'then' => DANN, 'else' => SONST })[:sonst] == 1.0
+end
+
+# Eingabe-Attrappe: nur die Taste "e" gilt als gedrueckt.
+module Rune
+  module Input
+    def self.gedrueckt = %i[e]
+    def self.pressed?(taste) = gedrueckt.include?(taste)
+  end
+end
+check('gedrueckte Taste -> Dann-Zweig') do
+  zweig({ 'cmd' => 'if_button', 'name' => 'e', 'then' => DANN, 'else' => SONST })[:dann] == 1.0
+end
+check('nicht gedrueckte Taste -> Sonst-Zweig') do
+  zweig({ 'cmd' => 'if_button', 'name' => 'q', 'then' => DANN, 'else' => SONST })[:sonst] == 1.0
+end
+
 puts '== Interpreter: Sperr-Befehle (XP 134/135/136) =='
 module RGSS
   class GameSystem
@@ -211,7 +242,22 @@ check('allowed als Text -> Warnung') do
   hat?(MapCheck.scan(karte_mit([{ 'cmd' => 'save_access', 'allowed' => 'nein' }]), **OPTS),
        "'allowed' muss true oder false sein", MapCheck::WARNUNG)
 end
-check('alle 46 Befehlstypen im Register der Prüfung') { MapCheck::CMD_TYPES.size == 46 }
+check('if_actor/if_button: keine Funde bei gueltigen Daten') do
+  MapCheck.scan(karte_mit([
+                            { 'cmd' => 'if_actor', 'name' => 'arik', 'then' => [], 'else' => [] },
+                            { 'cmd' => 'if_button', 'name' => 'e', 'then' => [], 'else' => [] }
+                          ]), **OPTS).empty?
+end
+check('if_actor mit unbekanntem Actor -> Warnung') do
+  hat?(MapCheck.scan(karte_mit([{ 'cmd' => 'if_actor', 'name' => 'niemand',
+                                  'then' => [], 'else' => [] }]), **OPTS),
+       "Actor 'niemand' nicht in database.json", MapCheck::WARNUNG)
+end
+check('if_button ohne Taste -> Fehler') do
+  hat?(MapCheck.scan(karte_mit([{ 'cmd' => 'if_button', 'then' => [], 'else' => [] }]), **OPTS),
+       "'name' fehlt oder ist leer", MapCheck::FEHLER)
+end
+check('alle 48 Befehlstypen im Register der Prüfung') { MapCheck::CMD_TYPES.size == 48 }
 
 puts($fail.zero? ? 'ALLE CHECKS GRUEN' : "#{$fail} CHECK(S) FEHLGESCHLAGEN")
 exit($fail.zero? ? 0 : 1)

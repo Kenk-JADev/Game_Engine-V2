@@ -73,7 +73,7 @@ module MapCheck
     move_route input_number battle
     loop break label jump exit_event erase_event
     button_input text_options common_event
-    if_gold if_item if_script
+    if_gold if_item if_script if_actor if_button
     save_access menu_access encounter_access
     timer
     actor_hp actor_sp actor_exp actor_level
@@ -1055,6 +1055,23 @@ module MapCheck
             melde(WARNUNG, "#{w} Taste ##{ti + 1}",
                   "unbekannte Taste '#{t}' (z. B. e, space, escape, up, f1)")
           end
+        end
+      when 'if_actor', 'if_button'
+        # Etappe 20d: Bedingungsquellen Actor (XP 111) und Taste.
+        %w[then else].each do |k|
+          melde(WARNUNG, w, "'#{k}' fehlt/keine Liste") unless c[k].is_a?(Array)
+        end
+        pruefe_befehle(c['then'], "#{w} (Dann)")   if c['then'].is_a?(Array)
+        pruefe_befehle(c['else'], "#{w} (Sonst)")  if c['else'].is_a?(Array)
+        if !text?(c['name'])
+          melde(FEHLER, w, "'name' fehlt oder ist leer")
+        elsif typ == 'if_actor'
+          namen = (Database.database['actors'] || []).filter_map do |h|
+            h.is_a?(Hash) ? [h['id'].to_s, (h['name'] || h['id']).to_s] : nil
+          end
+          ziel = c['name'].to_s.strip
+          bekannt = namen.any? { |id, name| ziel.casecmp?(id) || ziel.casecmp?(name) }
+          melde(WARNUNG, w, "Actor '#{ziel}' nicht in database.json") unless bekannt
         end
       when 'if_gold', 'if_item', 'if_script'
         # Etappe 20d: weitere Bedingungsquellen (XP 111). Zweige wie bei den

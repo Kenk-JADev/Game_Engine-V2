@@ -1214,7 +1214,7 @@ const char* const ISSUE_CMD_TYPES[] = {
     "move_route", "input_number", "battle",
     "loop", "break", "label", "jump", "exit_event", "erase_event",
     "button_input", "text_options", "common_event",
-    "if_gold", "if_item", "if_script",
+    "if_gold", "if_item", "if_script", "if_actor", "if_button",
     "save_access", "menu_access", "encounter_access", "timer",
     "actor_hp", "actor_sp", "actor_exp", "actor_level"
 };
@@ -7194,6 +7194,7 @@ const wchar_t* const EV_TYPE_LABELS[ET_COUNT] = {
     L"[Ablauf] Gemeinsames Event",
     L"[Verzweigung] Wenn Gold", L"[Verzweigung] Wenn Item",
     L"[Verzweigung] Wenn Script",
+    L"[Verzweigung] Wenn Actor", L"[Verzweigung] Wenn Taste",
     L"[System] Speichern erlauben", L"[System] Menü erlauben",
     L"[System] Zufallskämpfe erlauben",
     L"[System] Timer",
@@ -7418,6 +7419,8 @@ std::string ev_cmd_label(const JsonValue& c) {
                ev_num_str(ev_num_of(c, "value", 1.0), 0);
     }
     if (type == "if_script") return "Wenn Script: " + ev_str_of(c, "code");
+    if (type == "if_actor") return "Wenn Actor: " + ev_str_of(c, "name");
+    if (type == "if_button") return "Wenn Taste: " + ev_str_of(c, "name");
     if (type == "actor_hp" || type == "actor_sp" || type == "actor_exp" ||
         type == "actor_level") {
         const std::string ziel = ev_str_of(c, "target", "alle");
@@ -7732,6 +7735,7 @@ void ev_cmd_visibility() {
                           t == ET_LOOP || t == ET_BREAK || t == ET_EXIT_EVENT ||
                           t == ET_ERASE_EVENT || t == ET_TEXT_OPTIONS ||
                           t == ET_COMMON_EVENT || t == ET_IF_SCRIPT || t == ET_TIMER ||
+                          t == ET_IF_ACTOR || t == ET_IF_BUTTON ||
                           t == ET_VARIABLE ||
                           t == ET_ACTOR_HP || t == ET_ACTOR_SP || t == ET_ACTOR_EXP ||
                           t == ET_ACTOR_LEVEL ||
@@ -7846,6 +7850,16 @@ void ev_cmd_visibility() {
         SetWindowTextW(g_ev.lbl_text,
                        L"Positiv heilt bzw. erhöht, negativ senkt. EXP kann eine Stufe auslösen "
                        L"(XP 311/312/315/316).");
+    }
+    if (t == ET_IF_ACTOR) {
+        SetWindowTextW(g_ev.lbl_name, L"Actor (ID oder Name)");
+        SetWindowTextW(g_ev.lbl_text,
+                       L"Zweigt je nach Team-Mitgliedschaft; Rune3D führt alle Datenbank-Helden im Team (XP 111).");
+    }
+    if (t == ET_IF_BUTTON) {
+        SetWindowTextW(g_ev.lbl_name, L"Taste (z. B. e, space, f1)");
+        SetWindowTextW(g_ev.lbl_text,
+                       L"Zweigt im Frame des Tastendrucks; Name wie bei der Tasteneingabe (XP 111).");
     }
     if (t == ET_TIMER) { SetWindowTextW(g_ev.lbl_name, L"Modus (start/stop)");
                          SetWindowTextW(g_ev.lbl_val1, L"Sekunden");

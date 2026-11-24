@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "stand": "Etappe 20d (Runde 28): 46 Befehle",
+  "stand": "Etappe 20d (Runde 28): 48 Befehle",
   "zweck": "Quellen-Register der Event-Befehlstypen. Vier Stellen im Baum müssen zu dieser Liste passen: CMD_TYPES (game/engine/mapcheck.rb), die Ausführung (game/engine/interpreter.rb), ISSUE_CMD_TYPES (src/editor/editor_main.cpp) und EvType/EV_TYPES (src/editor/event_form.h). Ein neuer Befehl ist erst fertig, wenn er hier UND in allen vier Stellen steht; tools/befehle_test.rb meldet die Lücke vor dem Commit.",
   "reihenfolge": "Die Reihenfolge ist die des Registers; die vier Stellen halten dieselbe Reihenfolge ein, damit Diffs lesbar bleiben.",
   "bereiche": [
@@ -419,6 +419,30 @@
         "else"
       ],
       "beschreibung": "Wertet einen Ruby-Ausdruck aus; alles ausser false/nil gilt als wahr (XP 111, Quelle Script)."
+    },
+    {
+      "typ": "if_actor",
+      "bereich": "Verzweigung",
+      "pflicht": [
+        "name"
+      ],
+      "optional": [
+        "then",
+        "else"
+      ],
+      "beschreibung": "Verzweigt je nach Team-Mitgliedschaft (XP 111, Quelle Actor); Rune3D fuehrt alle Datenbank-Helden im Team."
+    },
+    {
+      "typ": "if_button",
+      "bereich": "Verzweigung",
+      "pflicht": [
+        "name"
+      ],
+      "optional": [
+        "then",
+        "else"
+      ],
+      "beschreibung": "Verzweigt im Frame des Tastendrucks (XP 111, Quelle Button); Tastenname wie bei der Tasteneingabe."
     },
     {
       "typ": "save_access",

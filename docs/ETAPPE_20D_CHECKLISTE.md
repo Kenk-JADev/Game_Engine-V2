@@ -6,7 +6,7 @@ was fehlt, und woran erkennt man „fertig". Stand: **Runde 28**.
 
 Legende: `[x]` erledigt und committet · `[~]` erledigt, CI offen · `[ ]` offen
 
-**Kurzfassung Stand:** 12 von 17 Punkten aus Abschnitt 3 sind erledigt
+**Kurzfassung Stand:** 13 von 17 Punkten aus Abschnitt 3 sind erledigt
 (6 Bedingungen/Sperren, Timer, `$game_temp`, 4 Wert-Befehle gezählt als
 Pakete). Es fehlen noch **Variable-Operationen (122)**, **Actor/Button-
 Bedingungen**, **`party_member` (129)**, **Transfer-Startposition** und der
@@ -37,7 +37,7 @@ Ein Befehl gilt erst als fertig, wenn **alle** Punkte stimmen:
 
 ## 1. Registerstand
 
-- [x] **46 Befehlstypen** statt 35 (35 + sechs Bedingungen/Sperren + Timer
+- [x] **48 Befehlstypen** statt 35 (35 + acht Bedingungen/Sperren + Timer
       + vier Wert-Befehle)
 - [ ] Ziel am Ende von 20d: alle geplanten Typen eingetragen (siehe 3.)
 
@@ -67,7 +67,8 @@ Ein Befehl gilt erst als fertig, wenn **alle** Punkte stimmen:
       Editor-Issue-Scan rekursiv geprüft (`event_cmd_has_branches`)
 - [x] Tests: `bedingungen_test.rb` (26), `timer_test.rb` (20),
       `temp_flags_test.rb` (14), `actor_wert_test.rb` (24),
-      `variable_ops_test.rb` (22), `json_test` 757, `sync_test` grün,
+      `variable_ops_test.rb` (22), `bedingungen_test.rb` 34, `json_test` 763,
+      `sync_test` grün,
       `mapcheck_test` 105 `ok`
 - [x] Doku nachgezogen (42 Typen, Bilanz 34 ✅ · 9 ⚠️ · 49 ❌)
 
@@ -79,10 +80,13 @@ Ein Befehl gilt erst als fertig, wenn **alle** Punkte stimmen:
 - [ ] **`variable`-Quellen (XP 122):** Zufall / Item / Actor / Gegner /
       Charakter / „selbst" und Operand „Variable" — je ein zusätzliches
       Formularfeld nötig (Datenformat: `source` + `src`)
-- [ ] **Bedingungsquellen Actor/Button** (XP 111): `if_actor` (Party-Mitglied
-      vorhanden?) und `if_button` (Taste gedrückt) — Timer/Enemy/Character/
-      Weapon/Armor bleiben bewusst offen (keine Daten in Rune3D)
-- [ ] **`party_member`** (XP 129) — Mitglied hinzufügen/entfernen
+- [x] **Bedingungsquellen Actor/Button** (XP 111): `if_actor` (Team-Mitglied)
+      und `if_button` (Taste im Druckframe); Timer/Enemy/Character/Weapon/
+      Armor bleiben bewusst offen (keine Daten bzw. kein Zeitgeber als Seite)
+- [ ] **`party_member`** (XP 129) — Mitglied hinzufügen/entfernen. **Achtung:**
+      dafür fehlt das Modell (Party.setup nimmt alle Datenbank-Helden ins Team,
+      `snapshot`/`restore!` kennen keine Mitgliederliste) — erst Mitgliederliste
+      + Spielstand + Menü/Battle prüfen, sonst inkonsistente Spielstände
 - [ ] **Werte-Befehle erweitern:** Operand „Variable" (XP erlaubt statt
       Konstante `variable[x]`) und Ziel „ganze Party" bei `actor_exp` prüfen
 - [ ] **`player_transferring`:** Startposition `player_new_x/y/direction`
