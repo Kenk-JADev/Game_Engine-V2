@@ -218,13 +218,49 @@ enthalten: aktuelle Karte, Spielerposition + Blick + Kameramodus, alle
 Schalter und Variablen (`GameState.snapshot`), die Namen der bereits
 ausgelösten Touch-/Auto-Events sowie die Spielzeit.
 
-Im Spiel öffnet **Esc** ein Menü (Spiellogik friert ein): Zurück,
-Speichern/Laden auf 3 Slots (belegte Slots zeigen den Zeitpunkt, leere
-Lade-Slots sind abgedunkelt) und Rückkehr zum Titelbildschirm. Im
+Im Spiel öffnet **Esc** ein Menü (Spiellogik friert ein): **Gegenstand**,
+**Fertigkeit**, **Status** (seit Etappe 20b, siehe unten), Speichern/Laden
+auf 3 Slots (belegte Slots zeigen den Zeitpunkt, leere Lade-Slots sind
+abgedunkelt), Zurück und Rückkehr zum Titelbildschirm. Im
 Titelbildschirm zeigt jeder Projekteintrag die Anzahl der Spielstände;
 **L** lädt den zuletzt gesicherten Slot des gewählten Projekts
 ("Fortsetzen"). Beim Laden wird die Karte neu aufgebaut, der Zustand
 wiederhergestellt und das Intro unterdrückt.
+
+## Spielmenü wie XP (Etappe 20b)
+
+Die Esc-Befehlsliste folgt XP (`Scene_Menu`): **Gegenstand**, **Fertigkeit**,
+**Status**, dann Speichern/Laden je drei Slots, **Zurück zum Spiel** und
+**Zum Titelbildschirm**. Die Ziffern `1..8` springen weiterhin direkt in die
+ersten acht Einträge; Esc schließt das Hauptmenü.
+
+Jeder der drei oberen Punkte öffnet ein eigenes Unterfenster (XP:
+`Scene_Item`/`Scene_Skill`/`Scene_Status`), das rechts neben der
+Befehlsliste erscheint und eine Ebene je Esc zurückgeht:
+
+- **Gegenstand** (`@menu_screen = :item`): nur benutzbare Items in
+  Datenbank-Reihenfolge mit Bestand; Enter öffnet die Zielwahl auf die
+  Helden (`:item_target`), Enter wendet `Party.use_item` an. Ohne Wirkung
+  (voller HP-/MP-Stand) bleibt das Item erhalten und eine Meldung nennt den
+  Grund; nach dem Anwenden geht es zurück in die Liste.
+- **Fertigkeit** (`:skill` → `:skill_list`): Heldenliste, dann die gelernten
+  Fertigkeiten mit MP-Kosten und Beschreibung. Wie in XP werden
+  Fertigkeiten im Menü nur angesehen, nicht angewendet.
+- **Status** (`:status` → `:status_detail`): alle Werte eines Helden (HP/MP,
+  Angriff/Verteidigung/Weisheit/Beweglichkeit, EXP und nächste Stufe,
+  Anzahl Fertigkeiten, Gold).
+
+Der Zustand liegt in `@menu_screen`, `@menu_sub`, `@menu_hero`,
+`@menu_item` und `@menu_msg`; `menu_reset!` räumt alles beim Öffnen,
+Schließen, Titelwechsel und Game Over auf. `menu_back` geht eine Ebene
+zurück. Im Unterfenster behandelt die Unterfenster-Logik Esc selbst - nur
+im Hauptmenü schließt `Game.update` das Menü (sonst ginge Esc zwei Ebenen
+weit). Das Party-Panel links bleibt wie bisher, Spielzeit und Schritte
+stehen weiterhin darin.
+
+**Tests:** `tools/menu_test.rb` (33 Checks: Befehlsliste, Itemliste und
+Zielwahl, wirkungslose Items, Esc-Ebenen, Fertigkeiten-/Statusseiten,
+Zeichnen aller Unterfenster, Zahlenkürzel).
 
 ## NPCs (Etappe 13)
 
@@ -970,7 +1006,9 @@ veränderlichen Zustand: `add_item/take_item/use_item` (heal/mana wirken auf
 den ersten verletzten Helden, quest/money sind nicht benutzbar),
 `add_gold`, `heal_all`, `snapshot/restore!`. Spielstände nehmen den
 Party-Snapshot mit (`'party'` in `save_game`/`load_game`). Im Esc-Menü
-zeigt ein Panel daneben Helden, Gold und Inventar (`Party.status_lines`).
+zeigt ein Panel daneben Helden, Gold und Inventar (`Party.status_lines`);
+seit 20b lassen sich Heil- und Manatränke dort auch auf einen gewählten
+Helden anwenden.
 
 **Interpreter-Befehle** (zusätzlich):
 `{"cmd":"item","name":"heiltrank","count":2}` bzw. `"take":1`,
@@ -2539,7 +2577,7 @@ seit 19t keinen Editor-Modus mehr.
 `WASD` laufen · `Shift` rennen · `Leertaste` springen · `E` reden/benutzen ·
 `F1` First-Person · `F3` Third-Person · `F2` Debug-Position ins Log ·
 `F5` Ruby neu laden · `F12` Screenshot nach `log/screenshot_N.bmp` ·
-`Esc` Menü (Speichern/Laden/Titel) bzw. Maus freigeben · `Mitte` Fang umschalten · Klick = Event/Picking ·
+`Esc` Menü (Gegenstand/Fertigkeit/Status/Speichern/Laden/Titel) bzw. Maus freigeben · `Mitte` Fang umschalten · Klick = Event/Picking ·
 Titelbildschirm: `1..9`/`Hoch`/`Runter`/Maus Projekt wählen, `Enter`/Klick
 spielen, `L` Fortsetzen, `N` neues Projekt, `D` löschen (J = ja), `Esc` beenden
 

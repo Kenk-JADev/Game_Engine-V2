@@ -164,9 +164,9 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 |---|---|---|
 | Scene_Title (New Game/Continue/Shutdown, per Script überschreibbar) | `Scene_Title` + `Scene_File` (Continue → Slot-Wähler), Launcher entfernt, Override via Projekt-autoload vor dem Szenenaufbau (LOGIK_PRUEFUNG AB, Runde 12) | ✅ |
 | Scene_Map | Game (3D-Karte) | ✅ |
-| Scene_Menu (Item/Skill/Equip/Status/Save/End + PlayTime/Steps/Gold) | Esc-Menü: Speichern/Laden/Titel + Party-Panel | ⚠️ stark reduziert |
+| Scene_Menu (Item/Skill/Equip/Status/Save/End + PlayTime/Steps/Gold) | Esc-Menü: Gegenstand/Fertigkeit/Status, Speichern/Laden, Titel + Party-Panel (20b) | ⚠️ Equip fehlt (keine Waffen/Rüstungen) |
 | Scene_Item (Items außerhalb des Kampfs) | — | ❌ |
-| Scene_Skill | — | ❌ |
+| Scene_Skill | Menüpunkt „Fertigkeit": Held → Fertigkeiten mit MP-Kosten und Beschreibung (nur Ansehen wie XP) | ⚠️ kein Anwenden außerhalb des Kampfes |
 | Scene_Equip | — | ❌ |
 | Scene_Status | Party-Zeilen (HP/MP/Level) | ⚠️ ohne Detailwerte (ATK/DEF/EVA, EXP-Balken) |
 | Scene_File / Save / Load | Slots im Menü | ✅ sinngemäß |
@@ -257,7 +257,7 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 | Etappe | Inhalt | Warum jetzt |
 |---|---|---|
 | **20a Kampf: Skills & Zustände** | ~~DB `skills`+`states`~~ ✅, ~~`battle.rb`: Skill-Befehl mit MP~~ ✅, ~~Zustände pro Runde (Vergiftung usw.)~~ ✅, ~~**Level-Up bei EXP (D4)**~~ ✅ — offen: F9-Reiter für `skills`/`states`, Gegner-Fertigkeiten und -Aktionen mit Bedingungen | Größte Spiel-Lücke, Kern seit Runde 23 geschlossen |
-| **20b Menü wie XP** | Item (außerhalb Kampf), Skill, Status-Detail, Gold/Fortschritt — Scene_Menu als echtes XP-Menü | Braucht 20a fürs Skill-Fenster |
+| **20b Menü wie XP** | ~~Item (außerhalb Kampf)~~ ✅, ~~Skill~~ ✅, ~~Status-Detail~~ ✅ — offen: Equip (keine Ausrüstung), Parteigesichter, Fortschritts-/Quest-Anzeige | Kern seit Runde 24 umgesetzt |
 | **20c Event-Befehle Welle 1 (Ablauf)** | `loop`/`break`/`label`/`jump`/`exit_event`/`erase_event`/`button_input`/`text_options` + **Common Events** (Datenhaltung + F6 + 117) | Struktur, die fast jedes XP-Projekt braucht |
 | **20d Event-Befehle Welle 2 (Daten)** | Variable-Operationen/Quellen, Timer (+Anzeige), erweiterte Bedingungen (Gold/Item/Actor/Button/Script), `party_member`, HP/SP/EXP/Level-Befehle, 134/135/136 als Befehle, **`$game_temp`-Calling-Flags auswerten** (`battle_calling`/`menu_calling`/`save_calling`/`player_transferring`, heute stumme Felder — LOGIK E.3) | Verdoppelt die Aussagekraft von Variablen/Schaltern; XP-Scripts, die Szenen über `$game_temp` starten, funktionieren dann |
 | **20e Shop & Name** | Befehl 302 + Shop-Fenster (kaufen/verkaufen/preis), 303 Namenseingabe | XP-typisch, eigenständig nutzbar |

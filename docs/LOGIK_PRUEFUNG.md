@@ -572,10 +572,11 @@ Roadmap-Baustein (20x analog zu 20f Bilder).
 
 | XP `Scene_Menu` (072) | Rune3D Esc-Menü | Status |
 |---|---|---|
-| 6 Befehle: Item, Skill, Equip, Status, Save, Game End | Zurück, Speichern×3, Laden×3, Zum Titel | ⚠️ Item/Skill/Equip/Status/Beenden fehlen — Roadmap **20b** (braucht 20a fürs Skill-Fenster); Slots direkt statt Unterliste = sinnvolle Erweiterung |
+| 6 Befehle: Item, Skill, Equip, Status, Save, Game End | Gegenstand, Fertigkeit, Status, Speichern×3, Laden×3, Zurück, Titel (**Runde 24, 20b**) | ⚠️ Equip fehlt (keine Ausrüstung); Slots direkt statt Unterliste = sinnvolle Erweiterung |
 | Save wird bei `$game_system.save_disabled` **grau** gezeigt | Aktion wird in `save_game` geblockt (Warnung + `ablehnen`-Ton), nicht optisch deaktiviert | ✅ funktional gleich, optisch anders |
 | Nebenfenster: **PlayTime, Steps, Gold, MenuStatus** (Gesichter+HP) | Party-Panel: HP-Zeilen, Gold, Inventar (`Party.status_lines`) **+ Spielzeit (`@time`) + Schritte (`$game_party.steps`)** seit Runde 14; Gesichter fehlen | ✅ Playtime/Steps (Gesichter mit 20b) |
 | `@@menu_index` bleibt zwischen Öffnungen erhalten | `@menu_sel = 0` bei jedem Öffnen | ⚠️ Kleinigkeit |
+| Item/Skill/Status als eigene Szenen mit Ziel-/Heldenfenster | Unterfenster in `Game`: `@menu_screen` (`:item` → `:item_target`, `:skill` → `:skill_list`, `:status` → `:status_detail`), eine Ebene je Esc | ✅ **umgesetzt (Runde 24)** — `tools/menu_test.rb` (33 Checks) |
 | Befehl **351 „Menü öffnen"** aus Events | nur Esc (roadmap 20f, `XP_VERGLEICH` ❌) | ❌ bekannt |
 | Scene_Update friert die Karte (eigene Szene) | `update_menu; return` friert Interpreter/NPCs ✓ (Physik nicht — s. O/F5) | ✅ bis auf F5 |
 | **Performance:** XP liest Spielstände einmal beim Szenenaufbau (`Scene_File#snapshots`) | ~~`menu_items` rief pro Frame bis zu 12× `save_info` (update+draw)~~ → **seit Runde 14 beim Öffnen in `@menu_items` gecacht** (Schließen/Szenenwechsel invalidieren, Speichern/Laden schliesst das Menü) | ✅ seit Runde 14 |

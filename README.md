@@ -343,7 +343,9 @@ geprüft werden: [Anleitung](docs/WINDOWS_MAIN_LIVE_TEST.md).
 | F1 Hilfe · F2 Karten-Eigenschaften · F3 Materialbase · F4 Playtest · F5 Platzier-Editor · F6 Event-Editor · F7 Tileset · F8 Sound-Test · F9 Datenbank · F10 Probleme · F11 Script-Editor · F12 Screenshot | |
 
 **Spiel**: WASD laufen, Shift rennen, Leertaste springen, E benutzen/reden,
-Maussteuerung Blick, Esc Menü, F2 Debug-Ausgabe, F5 Scripte neu laden.
+Maussteuerung Blick, Esc Menü (Gegenstand/Fertigkeit/Status, Speichern/
+Laden, Titel; Esc geht eine Fensterebene zurück), F2 Debug-Ausgabe,
+F5 Scripte neu laden.
 F4 startet nur im RuneEditor einen separaten Spielprozess mit der gewählten
 Karte. Dort setzt F5 den Spielzustand zurück und liest Karte und Projektstart erneut;
 nach Rückkehr zum Titel und manueller Projektwahl gilt wieder die normale

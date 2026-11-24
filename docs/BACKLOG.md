@@ -115,6 +115,18 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Betroffene Stellen: `game/engine/{battle,party}.rb`, `game/main.rb`,
   `tools/{battle_state,encounter,runtime_boot}_test.rb`.
 
+### [Engine] Menü deckt noch nicht alle XP-Szenen ab — offen (Feature-Fehlend)
+- Stand 20b (Runde 24): Gegenstand (mit Zielwahl), Fertigkeit (Ansehen),
+  Status, Speichern/Laden, Titel.
+- Es fehlen: **Equip** (es gibt keine Waffen/Rüstungen in der Datenbank),
+  Parteigesichter (XP zeigt Gesichter im Menü und in den Spielstand-Slots),
+  Quest-/Fortschrittsanzeige, Anwenden von Fertigkeiten außerhalb des
+  Kampfes (XP erlaubt das ebenfalls nicht), `@@menu_index`-Gedächtnis
+  (Rune3D startet immer bei 0).
+- Betroffene Stellen: `game/main.rb` (`menu_items`, `update_menu_screen`,
+  `draw_menu_screen`), `tools/menu_test.rb`.
+- Gefunden in: Etappe 20b (Roadmap aus `docs/XP_VERGLEICH.md` §8).
+
 ### [Engine] Mausblick nach Esc im Kampf — offen (Bedienung)
 - Esc bricht im Kampf eine Auswahl ab oder versucht Flucht. Die native
   Hauptschleife gibt dabei zusätzlich immer den Mausfang frei; nach dem Kampf

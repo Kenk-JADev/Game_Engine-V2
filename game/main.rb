@@ -372,8 +372,7 @@ end
   # danach die Projekt-Skripte, die Scene_Title überschreiben oder $scene
   # selbst setzen dürfen.
   def self.enter_title!
-    @menu = nil
-    @menu_items = nil
+    menu_reset!
     @mode = :title
     @menu_sel = 0
     @intro = nil
@@ -448,8 +447,7 @@ end
   # Projekt und Playtest-Vorgabe bleiben gebunden, bis der Spieler die
   # Taste drückt (XP zeigt zuerst den Screen, danach den Titel).
   def self.show_gameover!
-    @menu = nil
-    @menu_items = nil
+    menu_reset!
     @mode = :title
     Rune::Input.capture = false
     $scene = Scene_Gameover.new
@@ -467,8 +465,13 @@ end
     h.positive? ? format('%d:%02d:%02d', h, m, sec) : format('%d:%02d', m, sec)
   end
 
+  # 20b: Befehlsliste wie XP (Scene_Menu): Item/Skill/Status zuerst, danach
+  # Speichern/Laden und die Rückwege. Esc im Unterfenster geht eine Ebene
+  # zurück, erst im Hauptmenü schließt es.
   def self.menu_items
-    items = [{ 'label' => 'Zurück zum Spiel', 'act' => [:resume] }]
+    items = [{ 'label' => 'Gegenstand', 'act' => [:item] },
+             { 'label' => 'Fertigkeit', 'act' => [:skill] },
+             { 'label' => 'Status', 'act' => [:status] }]
     1.upto(3) do |s|
       info = Project.save_info($project_name, s)
       label = if info
@@ -489,6 +492,7 @@ end
               end
       items << { 'label' => label, 'act' => [:load, s], 'off' => info.nil? }
     end
+    items << { 'label' => 'Zurück zum Spiel', 'act' => [:resume] }
     items << { 'label' => 'Zum Titelbildschirm', 'act' => [:title] }
     items
   end
@@ -501,7 +505,19 @@ end
                        @interpreter.busy_number?)
   end
 
+  # Menüzustand komplett zurück (Titel, Game Over, Playtest-Fehler, Schließen).
+  def self.menu_reset!
+    @menu = nil
+    @menu_items = nil
+    @menu_screen = nil
+    @menu_sub = 0
+    @menu_hero = 0
+    @menu_item = nil
+    @menu_msg = nil
+  end
+
   def self.open_menu
+    menu_reset!
     @menu_sel = 0
     # V: beim Öffnen cachen - vorher las update+draw pro Frame bis zu
     # 12 Save-JSONs (save_info je Slot, doppelt). Menü-Labels ändern sich
@@ -515,8 +531,7 @@ end
   end
 
   def self.close_menu
-    @menu = nil
-    @menu_items = nil
+    menu_reset!
     # Steht noch ein Text/Wahl/Zahl offen, hält die Pause (F5) - der
     # nächste Frame rechnet ohnehin neu.
     Rune::Simulation.paused = !!(@interpreter &&
@@ -528,6 +543,8 @@ end
   end
 
   def self.update_menu
+    return update_menu_screen if @menu_screen
+
     items = @menu_items || (@menu_items = menu_items)
     n = items.size
     @menu_sel = (@menu_sel - 1) % n if Rune::Input.pressed?(:up)
@@ -538,9 +555,182 @@ end
     menu_action(items[@menu_sel]) if Rune::Input.pressed?(:enter)
   end
 
+  # ------------------------------------------------- Menü-Unterfenster (20b)
+
+  # Esc im Menü: erst eine Unterfenster-Ebene verlassen, sonst schließen.
+  def self.menu_back
+    if @menu_screen
+      @menu_screen = case @menu_screen
+                     when :item_target then :item
+                     when :skill_list  then :skill
+                     when :status_detail then :status
+                     else nil
+                     end
+      @menu_msg = nil
+      @menu_sub = 0
+      Rune::Sound.play('klick', 0.5)
+    else
+      close_menu
+    end
+  end
+
+  # Verwendbare Gegenstände in Datenbank-Reihenfolge (XP: Scene_Item zeigt
+  # nur benutzbare Items; Quest-/Goldbeutel bleiben außen vor).
+  def self.menu_item_list
+    ids = (Database.database['items'] || []).map { |h| h['id'].to_s }
+    ids.select { |id| Party.item_count(id).positive? && Party.usable_item?(id) }
+  end
+
+  # Fertigkeiten eines Helden als Anzeigezeilen (Fertigkeiten wirken im
+  # Kampf - XP erlaubt im Menü ebenfalls kein Anwenden).
+  def self.menu_skill_lines(index)
+    actor = Party.actors[index]
+    return [] unless actor
+
+    Party.skills(actor).filter_map do |id|
+      defi = Battle.skill_def(id)
+      next unless defi
+
+      "#{defi['name'] || id}   #{Battle.skill_cost(defi)} MP"
+    end
+  end
+
+  def self.menu_skill_desc(index, sub)
+    actor = Party.actors[index]
+    return nil unless actor
+
+    id = Party.skills(actor)[sub]
+    defi = id ? Battle.skill_def(id) : nil
+    defi ? defi['desc'].to_s : nil
+  end
+
+  # Statusseite eines Helden (XP: Scene_Status mit allen Werten).
+  def self.menu_status_lines(index)
+    a = Party.actors[index]
+    return [] unless a
+
+    ["#{a.name}   #{a.klass}   Lv #{a.level}",
+     "HP  #{a.hp} / #{a.max_hp}",
+     "MP  #{a.mp} / #{a.max_mp}",
+     "Angriff       #{a.atk}",
+     "Verteidigung  #{a.def}",
+     "Weisheit      #{a.spi}",
+     "Beweglichkeit #{a.agi}",
+     "EXP  #{a.exp} / #{a.next_exp}",
+     "Fertigkeiten  #{Party.skills(a).size}",
+     "Gold  #{Party.gold}"]
+  end
+
+  def self.update_menu_screen
+    case @menu_screen
+    when :item then update_menu_item
+    when :item_target then update_menu_item_target
+    when :skill then update_menu_actor_list(:skill_list)
+    when :status then update_menu_actor_list(:status_detail)
+    when :skill_list, :status_detail then update_menu_info
+    else menu_back
+    end
+  end
+
+  def self.update_menu_item
+    liste = menu_item_list
+    if liste.empty?
+      @menu_msg ||= 'Keine verwendbaren Gegenstände'
+      menu_back if Rune::Input.pressed?(:escape) || Rune::Input.pressed?(:enter)
+      return
+    end
+    @menu_sub %= liste.size
+    @menu_sub = (@menu_sub - 1) % liste.size if Rune::Input.pressed?(:up)
+    @menu_sub = (@menu_sub + 1) % liste.size if Rune::Input.pressed?(:down)
+    if Rune::Input.pressed?(:enter)
+      @menu_item = liste[@menu_sub]
+      @menu_hero = 0
+      @menu_msg = nil
+      @menu_screen = :item_target
+      Rune::Sound.play('klick', 0.5)
+    elsif Rune::Input.pressed?(:escape)
+      menu_back
+    end
+  end
+
+  def self.update_menu_item_target
+    helden = Party.actors
+    if helden.empty?
+      menu_back
+      return
+    end
+    @menu_hero %= helden.size
+    if Rune::Input.pressed?(:left) || Rune::Input.pressed?(:up)
+      @menu_hero = (@menu_hero - 1) % helden.size
+    elsif Rune::Input.pressed?(:right) || Rune::Input.pressed?(:down)
+      @menu_hero = (@menu_hero + 1) % helden.size
+    elsif Rune::Input.pressed?(:enter)
+      held = helden[@menu_hero]
+      item = @menu_item
+      if item && Party.use_item(item, target: held)
+        @menu_msg = "#{Party.item_name(item)}: #{held.name}  HP #{held.hp}  MP #{held.mp}"
+        Rune::Sound.play('jingle', 0.5)
+        @menu_screen = :item
+        @menu_sub = 0
+      else
+        name = item ? Party.item_name(item) : 'Gegenstand'
+        @menu_msg = "#{name}: keine Wirkung bei #{held.name}"
+        Rune::Sound.play('ablehnen', 0.6)
+      end
+    elsif Rune::Input.pressed?(:escape)
+      @menu_item = nil
+      menu_back
+    end
+  end
+
+  def self.update_menu_actor_list(ziel)
+    helden = Party.actors
+    if helden.empty?
+      menu_back if Rune::Input.pressed?(:escape) || Rune::Input.pressed?(:enter)
+      return
+    end
+    @menu_hero %= helden.size
+    @menu_hero = (@menu_hero - 1) % helden.size if Rune::Input.pressed?(:up)
+    @menu_hero = (@menu_hero + 1) % helden.size if Rune::Input.pressed?(:down)
+    if Rune::Input.pressed?(:enter)
+      @menu_screen = ziel
+      @menu_sub = 0
+      Rune::Sound.play('klick', 0.5)
+    elsif Rune::Input.pressed?(:escape)
+      menu_back
+    end
+  end
+
+  # Fertigkeiten-/Statusseite: nur ansehen, Enter und Esc gehen zurück.
+  def self.update_menu_info
+    zeilen = @menu_screen == :skill_list ? menu_skill_lines(@menu_hero) : menu_status_lines(@menu_hero)
+    if Rune::Input.pressed?(:up) && !zeilen.empty?
+      @menu_sub = (@menu_sub - 1) % zeilen.size
+    elsif Rune::Input.pressed?(:down) && !zeilen.empty?
+      @menu_sub = (@menu_sub + 1) % zeilen.size
+    elsif Rune::Input.pressed?(:enter) || Rune::Input.pressed?(:escape)
+      menu_back
+    end
+  end
+
   def self.menu_action(it)
     Rune::Log.info("Menü: #{it['label']}")
     case it['act'][0]
+    when :item
+      @menu_screen = :item
+      @menu_sub = 0
+      @menu_msg = menu_item_list.empty? ? 'Keine verwendbaren Gegenstände' : nil
+      Rune::Sound.play('klick', 0.5)
+    when :skill
+      @menu_screen = :skill
+      @menu_hero = 0
+      @menu_msg = nil
+      Rune::Sound.play('klick', 0.5)
+    when :status
+      @menu_screen = :status
+      @menu_hero = 0
+      @menu_msg = nil
+      Rune::Sound.play('klick', 0.5)
     when :resume then close_menu
     when :save
       if save_game(it['act'][1])
@@ -572,16 +762,21 @@ end
     UI.panel(mx, my, mw, mh, UI::PANEL, 0.95)
     UI.rahmen(mx, my, mw, mh, UI::ACCENT, 0.6)
     UI.text(mx + 20, my + 16, 'Menü', UI::TEXT, 20)
+    unter = @menu_screen ? UI::TEXT_DIM : UI::TEXT
     items.each_with_index do |it, i|
       y = my + 52 + i * 34
-      sel = (i == @menu_sel)
+      sel = (i == @menu_sel) && @menu_screen.nil?
       UI.panel(mx + 12, y - 3, mw - 24, 30, sel ? 0x2A4A66 : 0x101826, sel ? 0.95 : 0.5)
-      UI.text(mx + 24, y, (sel ? '> ' : '  ') + it['label'],
-              it['off'] ? UI::TEXT_DIM : UI::TEXT, 15)
+      farbe = it['off'] ? UI::TEXT_DIM : unter
+      UI.text(mx + 24, y, (sel ? '> ' : '  ') + it['label'], farbe, 15)
     end
     UI.text(mx + 20, my + mh - 26,
-            '[Hoch/Runter] Wählen   [Enter] OK   [1..8] direkt   [Esc] Zurück',
+            @menu_screen ? '[Hoch/Runter] Wählen   [Enter] OK   [Esc] Zurück' :
+                           '[Hoch/Runter] Wählen   [Enter] OK   [1..8] direkt   [Esc] Zurück',
             UI::TEXT_DIM, 13)
+
+    # 20b: Unterfenster (Gegenstände/Fertigkeiten/Status) rechts neben dem Menü.
+    draw_menu_screen(mx + mw + 24, my) if @menu_screen
 
     # Etappe 17g: Party-Status (Helden, Gold, Inventar) neben dem Menü.
     # V: Playtime/Steps wie XP Scene_Menu ins Panel (Spielzeit = @time,
@@ -608,6 +803,74 @@ end
     end
   end
 
+
+  # Unterfenster zeichnen: links die Liste, oben eine Überschrift, unten die
+  # Rückmeldung bzw. die Bedienhinweise (XP zeigt dieselben Fenster getrennt).
+  def self.draw_menu_screen(x, y)
+    w = Rune::Window.width
+    breite = [w - x - 24, 300].max
+    titel, zeilen, cursor = menu_screen_content
+    hoehe = 60 + [zeilen.size, 1].max * 26 + 34
+    UI.panel(x, y, breite, hoehe, UI::PANEL, 0.95)
+    UI.rahmen(x, y, breite, hoehe, UI::ACCENT, 0.6)
+    UI.text(x + 20, y + 14, titel, UI::TEXT, 18)
+    if zeilen.empty?
+      UI.text(x + 20, y + 46, '—', UI::TEXT_DIM, 14)
+    else
+      zeilen.each_with_index do |zeile, i|
+        zy = y + 46 + i * 26
+        if cursor == i
+          UI.panel(x + 12, zy - 3, breite - 24, 24, 0x2A4A66, 0.9)
+          UI.text(x + 20, zy, "> #{zeile}", UI::ACCENT, 14)
+        else
+          UI.text(x + 20, zy, "  #{zeile}", UI::TEXT, 14)
+        end
+      end
+    end
+    fuss = @menu_msg || menu_screen_hint
+    UI.text(x + 20, y + hoehe - 26, fuss, @menu_msg ? UI::ACCENT : UI::TEXT_DIM, 13)
+  end
+
+  def self.menu_screen_hint
+    case @menu_screen
+    when :item then '[Enter] Verwenden   [Esc] Zurück'
+    when :item_target then '[Links/Rechts] Held wählen   [Enter] Anwenden   [Esc] Zurück'
+    when :skill, :status then '[Hoch/Runter] Held   [Enter] Ansehen   [Esc] Zurück'
+    else 'Enter / Esc = zurück'
+    end
+  end
+
+  # Inhalt des Unterfensters: [Titel, Zeilen, Cursor]
+  def self.menu_screen_content
+    helden = Party.actors
+    case @menu_screen
+    when :item
+      ids = menu_item_list
+      return ['Gegenstände', [], nil] if ids.empty?
+
+      [ 'Gegenstände',
+        ids.map { |id| "#{Party.item_name(id)}  x#{Party.item_count(id)}  " \
+                       "(#{(Party.item_def(id) || {})['kind'] == 'mana' ? 'MP' : 'HP'})" },
+        @menu_sub ]
+    when :item_target
+      name = @menu_item ? Party.item_name(@menu_item) : 'Gegenstand'
+      ["#{name} — Ziel wählen", helden.map(&:hp_line), @menu_hero]
+    when :skill
+      ['Fertigkeit — Held wählen', helden.map { |a| "#{a.name}  Lv #{a.level}  #{a.mp}/#{a.max_mp} MP" },
+       @menu_hero]
+    when :status
+      ['Status — Held wählen', helden.map(&:hp_line), @menu_hero]
+    when :skill_list
+      held = helden[@menu_hero]
+      ["Fertigkeiten: #{held ? held.name : '—'}", menu_skill_lines(@menu_hero), @menu_sub]
+    when :status_detail
+      held = helden[@menu_hero]
+      ["Status: #{held ? held.name : '—'}", menu_status_lines(@menu_hero), nil]
+    else
+      ['', [], nil]
+    end
+  end
+
   # ---------------------------------------------------------------- Ablauf
 
   # Die F4-Vorgabe gilt nur im gestarteten Projekt. Beim Titelbildschirm oder
@@ -621,7 +884,7 @@ end
     Battle.abort! if defined?(Battle)
     @mode = :playtest_error
     @playtest_error = message
-    @menu = nil
+    menu_reset!
     Rune::Input.capture = false
     Rune::Simulation.paused = true
     Rune::Log.warn("Playtest abgebrochen: #{message}")
@@ -802,7 +1065,9 @@ end
       # Etappe 19e: $game_system.menu_disabled (RGSS) unterdrückt das Öffnen;
       # ein bereits offenes Menü schliesst Esc immer.
       if @menu
-        close_menu
+        # 20b: Ein Unterfenster behandelt Esc selbst (eine Ebene zurück) -
+        # hier nur das Hauptmenü schließen, sonst ginge Esc zwei Ebenen weit.
+        close_menu if @menu_screen.nil?
       elsif !eingabe_offen? && (!$game_system || !$game_system.menu_disabled)
         open_menu
       end
