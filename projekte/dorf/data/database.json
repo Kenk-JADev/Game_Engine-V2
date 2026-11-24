@@ -65,5 +65,99 @@
       "start": 0,
       "desc": "Bringt 50 Gold beim Öffnen."
     }
+  ],
+  "enemies": [
+    {
+      "id": "goblin",
+      "name": "Goblin",
+      "hp": 35,
+      "mp": 0,
+      "atk": 9,
+      "def": 4,
+      "spi": 3,
+      "agi": 7,
+      "exp": 12,
+      "gold": 8,
+      "drop": "heiltrank",
+      "drop_rate": 0.3,
+      "color": 13209632,
+      "desc": "Kleiner grüner Plünderer vom Waldweg."
+    },
+    {
+      "id": "wolf",
+      "name": "Wolf",
+      "hp": 45,
+      "mp": 0,
+      "atk": 12,
+      "def": 5,
+      "spi": 3,
+      "agi": 11,
+      "exp": 18,
+      "gold": 0,
+      "drop": "goldbeutel",
+      "drop_rate": 0.15,
+      "color": 8421504,
+      "desc": "Grauer Jäger mit schnellen Pfoten."
+    },
+    {
+      "id": "bandit",
+      "name": "Bandit",
+      "hp": 60,
+      "mp": 0,
+      "atk": 14,
+      "def": 8,
+      "spi": 4,
+      "agi": 9,
+      "exp": 30,
+      "gold": 25,
+      "drop": "manatrank",
+      "drop_rate": 0.2,
+      "color": 12632256,
+      "desc": "Wegelagerer mit rostigem Schwert."
+    },
+    {
+      "id": "kristallwache",
+      "name": "Kristallwache",
+      "hp": 120,
+      "mp": 30,
+      "atk": 18,
+      "def": 14,
+      "spi": 12,
+      "agi": 6,
+      "exp": 80,
+      "gold": 60,
+      "drop": "kristall",
+      "drop_rate": 0.5,
+      "color": 5734399,
+      "desc": "Wächter des Brunnens - Körper aus blauem Kristall."
+    }
+  ],
+  "troops": [
+    {
+      "id": "waldweg",
+      "name": "Waldweg",
+      "enemies": [
+        "goblin",
+        "wolf"
+      ],
+      "desc": "Goblin und Wolf - die erste Begegnung am Waldrand."
+    },
+    {
+      "id": "banditen",
+      "name": "Banditen",
+      "enemies": [
+        "bandit",
+        "goblin"
+      ],
+      "desc": "Ein Bandit mit Handlanger."
+    },
+    {
+      "id": "brunnen",
+      "name": "Brunnenwache",
+      "enemies": [
+        "kristallwache"
+      ],
+      "desc": "Die Kristallwache allein - schwer, aber reich an Beute."
+    }
   ]
 }

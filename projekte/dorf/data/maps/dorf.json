@@ -529,6 +529,10 @@
           "trigger": "action",
           "commands": [
             {
+              "cmd": "script",
+              "name": "dorf_begruessung"
+            },
+            {
               "cmd": "if_switch",
               "name": "kristall_aktiv",
               "value": true,
@@ -701,6 +705,10 @@
       "trigger": "action",
       "commands": [
         {
+          "cmd": "script",
+          "name": "kristalle_zaehlen"
+        },
+        {
           "cmd": "if_switch",
           "name": "kristall_2_genommen",
           "value": true,
@@ -829,5 +837,12 @@
   "weather": {
     "type": "kein",
     "intensity": 1.0
+  },
+  "encounters": {
+    "troops": [
+      "waldweg",
+      "banditen"
+    ],
+    "steps": 30
   }
 }

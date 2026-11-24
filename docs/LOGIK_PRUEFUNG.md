@@ -35,7 +35,8 @@ Slip-Damage fehlt (20a), Teardown/F5 **sauber ohne Leak** ✓.
 feldweise konsistent (26 Typen, Seiten/Bedingungen, NPC-Roundtrip,
 Legacy-Migration, Brücke getestet) — neue Befunde **Y1 Demo-Daten-Drift**
 (`projekte/dorf` ohne Kämpfe: encounters+Truppen fehlen, `ensure_demo`
-aktualisiert nie) und **Y2 tote Demo-Skripte**.
+aktualisiert nie) und **Y2 tote Demo-Skripte** — beides in Runde 13
+erledigt (`tools/sync_demo.rb`, Script-Befehle in beiden Bäumen).
 **Prüfrunde 8 (Teil AA, Neues-Projekt-Flow):** Name→leere Karte existiert
 in Launcher und Editor ✓ — aber **Y3** neue Projekte starten mit 0 Helden
 (Editor-Kommentar verspricht „Start-Held", Code schreibt leer) und **Y4**
@@ -662,11 +663,24 @@ Roadmap-Baustein (20x analog zu 20f Bilder).
   das `game/data` → `projekte/dorf` spiegelt (Vorlage = Quelle, wie in
   der Doku dokumentiert), plus Truppen/encounters im Demo-Projekt
   nachziehen.
+  **→ erledigt in Runde 13:** `tools/sync_demo.rb` übernimmt
+  database/scripts von der Vorlage (Vorlage = Quelle), ergänzt in
+  system.json/Karten nur fehlende Top-Level-Schlüssel (Demo-Werte wie
+  `last_played`, `heights`, `pages` bleiben) und ist inhaltlich
+  idempotent; `tools/sync_demo_test.rb` prüft das mit `dry:`-Prüflauf
+  auch für die mitgelieferten Bäume. Truppen+encounters sind im Demo
+  nachgezogen. **Bewusst verbleibende Unterschiede** (Demo-Veredelungen,
+  kein Sync-Ziel): 39 vs. 49 Objekte, fog/panorama/weather/heights,
+  migrierte `pages`-Events.
 - **Y2 — Tote Demo-Skripte:** `dorf_begruessung` behauptet im Kommentar,
   ein Event rufe ihn per `{"cmd":"script","name":…}` auf — **kein Event
   in beiden Bäumen enthält ein `script`-Kommando**; `kristalle_zaehlen`
   ebenso unbenutzt. Entweder das Demo-Event ergänzen oder die Kommentare
   bereinigen (Verweis `update_docs17e` hält den Zustand otherwise fest).
+  **→ erledigt in Runde 13:** beide Events rufen ihre Scripts als ersten
+  Befehl (`tools/add_demo_script_events.rb`, beide Datenbäume; Wächter
+  Mara → `dorf_begruessung`, Kristall (Mitte) → `kristalle_zaehlen`);
+  `event_test` spielt das Script-Fenster vor Maras Dialog mit.
 
 ---
 
@@ -841,10 +855,12 @@ Spiel" entfällt (Doku: `XP_VERGLEICH`-Zeile165 korrigieren,
    **→ umgesetzt in Runde 12** (F4 bleibt bewusst Direktstart;
    `title_bgm` optional aus `system.json`, 2D-Titelgrafik + Editor-
    Rundlauf der Zusatzschlüssel im BACKLOG).
-3. **Datenpflege Demo (Y):** `tools/sync_demo.rb` (Vorlage `game/data`
+3. ~~**Datenpflege Demo (Y):** `tools/sync_demo.rb` (Vorlage `game/data`
    → `projekte/dorf`), Truppen+encounters nachziehen, tote
    Skript-Kommentare bereinigen oder Demo-Event mit `script`-Befehl
-   ergänzen.
+   ergänzen.~~ **→ umgesetzt in Runde 13** (sync_demo additiv mit
+   `dry:`-Prüflauf + `sync_demo_test`, Troops/encounters im Demo
+   nachgezogen, `add_demo_script_events` in beiden Bäumen).
 4. **Kleine Sichtbarkeits-Etappe:** Game-Over-Bildschirm (K),
    Slot-Vorschau mit Spielzeit/Karte (J), `$game_system`-Zustand
    (Timer/Sperr-Flags) ins Savegame übernehmen, Fortsetzungs-Zeiger ▾

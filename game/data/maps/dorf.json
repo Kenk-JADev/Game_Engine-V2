@@ -1,7 +1,10 @@
 {
   "name": "Dorf",
   "encounters": {
-    "troops": ["waldweg", "banditen"],
+    "troops": [
+      "waldweg",
+      "banditen"
+    ],
     "steps": 30
   },
   "terrain": {
@@ -256,6 +259,10 @@
       "trigger": "action",
       "commands": [
         {
+          "cmd": "script",
+          "name": "dorf_begruessung"
+        },
+        {
           "cmd": "if_switch",
           "name": "kristall_aktiv",
           "value": true,
@@ -425,6 +432,10 @@
       "radius": 2.4,
       "trigger": "action",
       "commands": [
+        {
+          "cmd": "script",
+          "name": "kristalle_zaehlen"
+        },
         {
           "cmd": "if_switch",
           "name": "kristall_2_genommen",

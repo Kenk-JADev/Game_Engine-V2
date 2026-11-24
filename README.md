@@ -562,9 +562,10 @@ Liste führen unbekannte IDs oder eine nicht lesbare Datenbank zu einer
 Rückfrage vor dem Übernehmen. Ein Kampf braucht außerdem eine Truppe mit gültigen Gegnern
 und eine spielbare Party. **OK** übernimmt die Änderungen zunächst in die
 Karte, **Strg+S** speichert sie auf Platte; Abbrechen verwirft den Dialog.
-Die Vorlage `game/data` enthält Beispieltruppen. Bestehende Projekte, auch
-`projekte/dorf`, werden nicht automatisch umgestellt und benötigen bei
-Bedarf eigene Gegner und Truppen in ihrer Datenbank.
+Die Vorlage `game/data` enthält Beispieltruppen. Bestehende Projekte
+werden nicht automatisch umgestellt; für die Demo zieht
+`ruby tools/sync_demo.rb` Truppen, Gegner und `encounters` nach
+(Vorlage = Quelle, ohne Demo-Werte zu überschreiben).
 
 ### Datenbank (F9)
 

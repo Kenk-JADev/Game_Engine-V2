@@ -52,6 +52,8 @@ require 'issues'
 require 'event'
 require 'interpreter'
 require 'effects'   # dorf.json enthält seit Etappe 14c 'effect'-Befehle
+require 'scripts'   # Runde 13/Y2: Demo-Events rufen Projekt-Scripts auf
+                    # (scripts.rb zieht battle als Context-Helfer mit)
 
 module Rune
   module Gfx
@@ -85,6 +87,12 @@ end
 check('system.json gelesen') { Database.system['name'].to_s.include?('Rune3D') }
 map = Database.map('dorf')
 check('dorf.json gelesen') { map['events'].is_a?(Array) }
+check('Projekt-Scripts geladen (dorf_begruessung, kristalle_zaehlen)') do
+  Scripts.load_project &&
+    %w[dorf_begruessung kristalle_zaehlen].all? do |n|
+      Scripts.instance_variable_get(:@defs).key?(n)
+    end
+end
 
 GameState.reset!(Database.system)
 check('Schalter-Startwerte') { GameState.switch('kristall_aktiv') == false }
@@ -99,8 +107,22 @@ check('Mara in Reichweite bei (0,5.0)') { mara.near?(0.0, 5.0) }
 check('Mara ausser Reichweite bei (0,12.0)') { !mara.near?(0.0, 12.0) }
 
 # --- Erstes Gespräch: noch keine Kristalle --------------------------------
+# Y2: Wächter Mara ruft zuerst das Projekt-Script dorf_begruessung auf
+# (log + add_variable + say), danach kommt der Quest-Dialog wie bisher.
 $interp = Interpreter.new
 $interp.start(mara.commands)
+drain
+check('Projekt-Script dorf_begruessung läuft vor dem Dialog') do
+  $interp.message == ['Das ist ein Projekt-Script.',
+                      'Bearbeitet wird es im Script-Editor des Editors.'] &&
+    GameState.variable('script_aufrufe') == 1.0
+end
+press!
+check('Script-Zeile 2 sichtbar') do
+  $interp.message == ['Bearbeitet wird es im Script-Editor des Editors.']
+end
+press!
+check('Script-Fenster zu') { $interp.message.nil? }
 drain
 check('Mara begrüsst (2 Zeilen)') { $interp.message ==
   ['Mara: Drei Kristalle trägt der Weg nach Norden.', 'Hol sie dir, dann öffnen sich die Tore.'] }
@@ -137,6 +159,9 @@ GameState.set_variable('kristalle', 3)
 $interp = Interpreter.new
 $interp.start(mara.commands)
 drain
+press! # Script-Fenster (dorf_begruessung) schliessen
+press!
+drain  # jetzt das erste Quest-Fenster
 press!
 press!
 drain
@@ -150,6 +175,9 @@ check('Interpreter fertig') { !$interp.running? }
 # --- Danksagung nach Abschluss --------------------------------------------
 $interp = Interpreter.new
 $interp.start(mara.commands)
+drain
+press! # Script-Fenster (dorf_begruessung) schliessen
+press!
 drain
 check('Dankeszweig aktiv') { $interp.message == ['Mara: Die Kristalle singen wieder.', 'Du hast das Dorf gerettet.'] }
 

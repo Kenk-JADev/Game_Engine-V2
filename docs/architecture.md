@@ -944,7 +944,8 @@ Menge = nehmen), *Gold +/-*, *Heilen* (leer = voll).
 **Demo:** `game/data/database.json` (Vorlage, wandert per
 `Project.ensure_demo` in neue Projekte) und `projekte/dorf/data/database.json`
 mit Arik/Mira und Heiltrank/Manatrank/Wasserkristall/Goldbeutel, angelegt
-per `ruby tools/add_database17g.rb`.
+per `ruby tools/add_database17g.rb`; Gegner+Truppen stehen seit Runde 13
+auch in der Demo (nachgezogen per `ruby tools/sync_demo.rb`).
 
 **Geprüft:** `ruby -I game/engine tools/party_test.rb` (Setup, Inventar,
 Benutzen, Gold, Heilung, Snapshot/Restore, Interpreter-Befehle,
@@ -2514,7 +2515,9 @@ Ein **Projekt** ist ein Ordner `projekte/<slug>/data/` — dieselbe Struktur wie
 `game/data` (`system.json`, `maps/*.json`). `Database.root` zeigt je nach
 `$project_root` auf `game/data` oder auf das Projekt; alle Lade-/Speicherpfade
 (Karten, Editor, Events) laufen darüber. `Project.ensure_demo` kopiert beim
-ersten Start `game/data` nach `projekte/dorf`, damit es immer ein Beispiel gibt.
+ersten Start `game/data` nach `projekte/dorf`, damit es immer ein Beispiel gibt;
+nachgezogen wird der Demo-Stand mit `ruby tools/sync_demo.rb` (Vorlage =
+Quelle, nur additiv).
 Ein neues Projekt bekommt nur eine leere Karte `welt01` (nur Terrain,
 Startpunkt 0/0) — keine Objekte, keine Events.
 
@@ -2652,11 +2655,13 @@ Events referenzieren nur Positionen. Etappe 4 (Editor) schreibt beides in JSON.
     `Rune::`), dann rief er `Sounds.register_all` nie auf und wundernte sich
     über leere Registrierung. Erst minimal reproduzieren (Stand-alone-
     Skript), dann den Test fixen.
-30. **Der Launcher lädt das PROJEKT, nicht `game/data`.** Änderungen an
+30. **Das Spiel lädt das PROJEKT, nicht `game/data`.** (Seit Runde 12 ohne
+    Launcher über `Scene_Title`/`start_project`.) Änderungen an
     `game/data/maps/dorf.json` wirken im Spiel erst nach dem Neuanlegen des
     Demo-Projekts — `projekte/dorf/data/maps/dorf.json` ist eine Kopie.
     Live-Tests mit Event-Änderungen müssen die Projektdatei editieren
-    (oder das Projekt löschen, `ensure_demo` kopiert neu).
+    (oder `ruby tools/sync_demo.rb` bzw. das Projekt löschen,
+    `ensure_demo` kopiert neu).
 31. **Action-Events nehmen das ERSTE in Reichweite, nicht das nächste.**
     Die Schleife über `@events` bricht beim ersten `near?`-Treffer ab —
     Reihenfolge in der JSON-Datei entscheidet, nicht die Distanz.
@@ -2691,7 +2696,11 @@ Events referenzieren nur Positionen. Etappe 4 (Editor) schreibt beides in JSON.
     `"npcs"`-Block aus Etappe 13) fehlen in älteren Projektkopien
     weiterhin — das Spiel läuft ohne NPCs und niemand meldet einen
     Fehler. Nach Engine-Erweiterungen am Kartenformat die Projektkopien
-    prüfen oder das Projekt neu anlegen.
+    prüfen oder das Projekt neu anlegen. Seit Runde 13 hilft
+    `ruby tools/sync_demo.rb`: es ergänzt fehlende Top-Level-Schlüssel
+    additiv (z. B. `encounters`) und setzt database/scripts auf den
+    Vorlagenstand, ohne Demo-Werte (`last_played`, Höhen, Seiten) zu
+    überschreiben.
 
 38. **Einfrieren in der Luft.** Wird die Simulation pausiert
     (`Simulation.paused`), während der Spieler springt oder nach einem
