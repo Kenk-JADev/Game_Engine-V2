@@ -224,6 +224,7 @@ load File.join(Rune::ROOT, 'game', 'main.rb')
 require 'scene_base'
 require 'scene_title'
 require 'scene_file'
+require 'scene_gameover' # Z4-K: process_temp_scene_change stellt die Szene
 
 $fail = 0
 def check(name)

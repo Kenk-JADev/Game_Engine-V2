@@ -277,6 +277,11 @@ if ARGV[0] == '--playtest-child'
         ok
       end
       check('Scene_Gameover: Enter führt zum echten Titelbildschirm') do
+        # Der Slot-Check vorher endet mit keys=[] ohne end_frame -
+        # previous_keys hält noch [:enter]. Erst eine leere Frame-Kante,
+        # dann frischer Enter-Druck (pressed? braucht die Kante).
+        Rune::Input.keys = []
+        runtime_frame(0.016)
         Rune::Input.keys = [:enter]
         runtime_frame(0.016)
         Rune::Input.keys = []
