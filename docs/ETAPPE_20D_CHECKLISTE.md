@@ -6,11 +6,16 @@ was fehlt, und woran erkennt man „fertig". Stand: **Runde 28**.
 
 Legende: `[x]` erledigt und committet · `[~]` erledigt, CI offen · `[ ]` offen
 
-**Kurzfassung Stand:** 14 von 17 Punkten aus Abschnitt 3 sind erledigt
-(6 Bedingungen/Sperren, Timer, `$game_temp`, 4 Wert-Befehle gezählt als
-Pakete). Es fehlen noch **Variable-Operationen (122)**, **Actor/Button-
-Bedingungen**, **`party_member` (129)**, **Transfer-Startposition** und der
-Abschluss (Bilanz/HANDOFF/CI).
+**Kurzfassung Stand (Runde 28, alle Commits CI-grün):** Die Pakete
+Bedingungen/Sperren (111 Gold/Item/Script/Actor/Taste + 134/135/136), Timer
+(124) mit Anzeige, `$game_temp`-Calling-Flags, Wert-Befehle (311/312/315/316)
+und Variable-Operationen (122) sind **fertig**. Registerstand **48 Typen**.
+
+**Es fehlen noch zwei Pakete**, beide aus gutem Grund aufgeschoben:
+`variable`-Quellen (Zufall/Item/Actor/…) brauchen ein zusätzliches
+Formularfeld (neues Win32-Combo), `party_member` (129) braucht zuerst ein
+Mitglieder-Modell (`Party.setup` nimmt heute alle Datenbank-Helden ins Team,
+`snapshot`/`restore!` kennen keine Mitgliederliste). Details in Abschnitt 3.
 
 ## 0. Definition of Done für JEDEN neuen Befehlstyp
 
