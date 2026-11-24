@@ -56,6 +56,7 @@
 #include "editor/encounter_form.h"
 #include "editor/event_form.h"
 #include "editor/event_view_win.h"
+#include "editor/event_rules.h"
 #include "editor/listbox_win.h"
 #include "editor/map_tree.h"
 #include "editor/main_layout.h"
@@ -1229,13 +1230,23 @@ static void issues_scan_commands(const JsonValue& list, const std::string& where
             if (cmd->str == ISSUE_CMD_TYPES[t]) known = true;
         }
         if (!known) issue_report(2, w, "unbekannter Befehlstyp '" + cmd->str + "'");
-        if (cmd->str == "if_switch" || cmd->str == "if_variable") {
+        // Z8: auch if_self_switch hat Zweige (MapCheck prüft sie längst,
+        // der Editor-Issue-Scan ließ sie bisher aus).
+        if (event_cmd_has_branches(cmd->str)) {
             const JsonValue* th = c.find("then");
             const JsonValue* el = c.find("else");
             if (!th || !th->is_arr()) issue_report(1, w, "'then' fehlt/kein Array");
             if (!el || !el->is_arr()) issue_report(1, w, "'else' fehlt/kein Array");
             if (th && th->is_arr()) issues_scan_commands(*th, w + " (Dann)");
             if (el && el->is_arr()) issues_scan_commands(*el, w + " (Sonst)");
+        }
+        // Self-Switch-Buchstabe A-D (gleiche Regel wie MapCheck#pruefe_befehl);
+        // ohne gültigen Buchstaben setzt die Laufzeit den Schalter nicht.
+        if (event_cmd_uses_self_switch_letter(cmd->str)) {
+            const JsonValue* l = c.find("letter");
+            const std::string buchstabe = (l && l->is_str()) ? l->str : std::string();
+            if (!event_self_switch_letter_ok(buchstabe))
+                issue_report(2, w, "'letter' muss A, B, C oder D sein");
         }
         if (cmd->str == "choices") {
             const JsonValue* opts = c.find("options");

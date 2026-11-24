@@ -21,7 +21,7 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 ---
 
 ## Offen
-### [Editor] Issue-Scan prüft `if_self_switch`-Zweige nicht — offen
+### [Editor] Issue-Scan prüft `if_self_switch`-Zweige nicht — erledigt (Runde 20)
 - Symptom: Fehler in `then`/`else` von `if_self_switch` erscheinen im
   Editor-Issues-Dialog (F10) nicht, obwohl MapCheck sie findet.
 - Vermutung/Analyse: `issues_scan_commands` in `editor_main.cpp`
@@ -30,6 +30,12 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Betroffene Stellen: `src/editor/editor_main.cpp`
   (`issues_scan_commands`, ~Zeile 1215).
 - Gefunden in: Runde 16 (Z5, Recherche Issue-Scan).
+- Fix: gemeinsame Regeln in `src/editor/event_rules.h`
+  (`event_cmd_has_branches`, `event_cmd_uses_self_switch_letter`,
+  `event_self_switch_letter_ok`); der Scan prüft jetzt beide Zweige von
+  `if_self_switch` rekursiv und meldet ungültige Buchstaben (nicht A–D)
+  bei `self_switch`/`if_self_switch`. Geprüft von
+  `tools/editor_workflow_test.cpp` (4 Checks).
 
 ### [Tests/Editor] RGSS-Editor, Kartenmarker und Windows-Anzeige interaktiv prüfen — offen (Live)
 - Die neuen F11-Zeilen-/Scroll-/DPI-Funktionen, NPC-/Event-Doppelklicks,

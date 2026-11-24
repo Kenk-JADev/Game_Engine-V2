@@ -1124,6 +1124,14 @@ eines Befehls also IMMER beide ändern (und `EV_TYPES` + `EvType` im
 Event-Editor). `tools/mapcheck_test.rb` prüft zusätzlich die mitgelieferten
 Karten, wodurch eine Regeländerung, die vorhandene Daten bricht, sofort rot wird.
 
+**Gemeinsame Zweig-Regel (Z8, Runde 20):** Welche Kommandos `then`/`else`
+haben und welche einen Self-Switch-Buchstaben tragen, steht portabel in
+`src/editor/event_rules.h` (`event_cmd_has_branches`,
+`event_cmd_uses_self_switch_letter`, `event_self_switch_letter_ok`). Der
+Editor-Scan prüft damit auch die Zweige von `if_self_switch` (vorher nur
+`if_switch`/`if_variable`, wie im Backlog vermerkt) und meldet Buchstaben
+außerhalb A–D; `tools/editor_workflow_test.cpp` hält die Liste fest.
+
 ### JSON-Brücke und der %.12g-Fehler
 
 `tools/json_test.cpp` testet Parser und Schreiber der Editor-JSON-Schicht

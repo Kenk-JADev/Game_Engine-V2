@@ -1,5 +1,6 @@
 // Portabel: Kartenmarker, Projektstart, Kartenbaum-Tiefen und verlustfreie
 // RGSS-Scriptdokumente.
+#include "editor/event_rules.h"
 #include "editor/map_interaction.h"
 #include "editor/map_tree.h"
 #include "editor/script_document.h"
@@ -147,6 +148,24 @@ int main() {
         map_tree_normalize(unveraendert);
         check("gültige Tiefen bleiben beim Normalisieren unverändert",
               unveraendert[0] == 0 && unveraendert[1] == 1 && unveraendert[2] == 0);
+    }
+
+    // Z8: gemeinsame Regeln für Editor-Issue-Scan und MapCheck.
+    {
+        check("if_self_switch wird wie if_switch/if_variable rekursiv geprüft",
+              event_cmd_has_branches("if_switch") && event_cmd_has_branches("if_variable") &&
+              event_cmd_has_branches("if_self_switch"));
+        check("Kommandos ohne Zweige werden nicht rekursiv geprüft",
+              !event_cmd_has_branches("text") && !event_cmd_has_branches("choices") &&
+              !event_cmd_has_branches(""));
+        check("nur self_switch-Kommandos tragen einen Buchstaben",
+              event_cmd_uses_self_switch_letter("self_switch") &&
+              event_cmd_uses_self_switch_letter("if_self_switch") &&
+              !event_cmd_uses_self_switch_letter("if_switch"));
+        check("Self-Switch-Buchstaben sind A-D (wie GameState)",
+              event_self_switch_letter_ok("A") && event_self_switch_letter_ok("D") &&
+              !event_self_switch_letter_ok("E") && !event_self_switch_letter_ok("") &&
+              !event_self_switch_letter_ok("a"));
     }
 
     std::printf("EDITOR-ARBEITSABLAUF: %d Prüfungen, %d Fehler\n", checks, failures);
