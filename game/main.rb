@@ -250,7 +250,13 @@ end
       'time'      => @time,
       'saved'     => Time.now.strftime('%Y-%m-%d %H:%M'),
     }
-    Project.save($project_name, slot, data)
+    # Z8: Project.save schreibt atomar und meldet Fehler, statt einen halben
+    # Spielstand zu hinterlassen - ein fehlgeschlagener Schreibvorgang ist
+    # KEIN gespeicherter Spielstand.
+    unless Project.save($project_name, slot, data)
+      Rune::Log.error("Speichern fehlgeschlagen: Slot #{slot} nicht schreibbar")
+      return false
+    end
     Rune::Log.info("Gespeichert: Slot #{slot} (Karte '#{@map['name']}', " \
                    "#{data['fired'].size} Events ausgelöst)")
     true

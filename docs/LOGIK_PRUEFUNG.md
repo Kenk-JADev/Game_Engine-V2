@@ -886,7 +886,7 @@ Spiel" entfällt (Doku: `XP_VERGLEICH`-Zeile165 korrigieren,
    beim Verlassen der Nähe; Tests D1/D2 in `encounter_test`, Auto-
    Save/Load-Check angepasst; Demo hat weiterhin keine betroffenen
    Events — nur der Wegweiser ist `touch`).
-7. **Roadmap `docs/XP_VERGLEICH.md`:** 20a Kampf (zieht D4/Level-Up),
+7. ~~**Roadmap `docs/XP_VERGLEICH.md`:** 20a Kampf (zieht D4/Level-Up),
    dann 20d (Variable-Operationen/Bedingungen) — dort auch die
    `$game_temp`-Calling-Flags sinnvoll anbinden; **neu aufgenommen:
    „20x Ton"** (Datei-Lader in `sound.cpp`, Karten-BGM, Event-Befehle
@@ -894,8 +894,18 @@ Spiel" entfällt (Doku: `XP_VERGLEICH`-Zeile165 korrigieren,
    (O), **Mover `through` + Routen-`jump`** (Q, echte Durchlässigkeit
    bzw. Verlagerung statt Partikel) und **Performance-Grenzwerte**
    (S: dirty-Flag für Seiten-Refresh ab ~hunderten Events, Draw-Batching
-   messen).
+   messen).~~ **→ umgesetzt in Runde 18** (XP_VERGLEICH §8: 20a mit
+   D4/Level-Up, 20d mit `$game_temp`-Calling-Flags, neue Etappen
+   **20i Ton** (Audit „20x"), **20j Panorama-Scroll + Wetter-Dauer**,
+   **20k `through`/Routen-`jump`**, **20l Grenzwerte/Messpunkte**;
+   Abhängigkeiten + Reihenfolge-Empfehlung ergänzt).
 8. **Editor:** XP-Dialogdesign (mit deinen Screenshots), Kartenbaum-Hierarchie
    wie XP, **Undo-Ausbau auf Events/Karteneigenschaften** (T),
    ein Quellen-Register für Befehle (`befehle.json`),
    atomares `Project.save` (Temp+Rename wie bei Karten).
+   **Stand Runde 18:** Register `docs/befehle.json` + `tools/befehle_test.rb`
+   (prüft Register ↔ `CMD_TYPES` ↔ `ISSUE_CMD_TYPES` ↔ `EV_TYPES` ↔
+   `interpreter.rb`) **fertig**, atomares Schreiben **fertig**
+   (`Project.write_json` für create/create_map/save, Editor-`write_file`
+   → `editor_write_file_atomic`). **Offen:** Undo-Ausbau (T),
+   Kartenbaum-Hierarchie, XP-Dialogdesign (braucht deine Screenshots).

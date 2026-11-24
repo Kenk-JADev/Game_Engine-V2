@@ -48,6 +48,7 @@
 #include "core/sound.h"
 #include "core/win_path.h"
 #include "core/win_project_cli.h"
+#include "editor/atomic_file_win.h"
 #include "editor/json.h"
 #include "editor/database_form.h"
 #include "editor/document_store_win.h"
@@ -683,8 +684,13 @@ void document_result_notice(HWND owner, const wchar_t* title, assets::Result res
                 MB_OK | (result == assets::Result::Ok ? MB_ICONWARNING : MB_ICONERROR));
 }
 
+// Z8: Projektdateien (create_project) und Merker atomar schreiben - Temp-Datei
+// neben dem Ziel, fsync, dann MoveFileEx. Ein Fehler beim Schreiben lässt die
+// alte Datei unverkürzt stehen; dieselbe Regel wie beim Karten-DocumentStore.
 bool write_file(const std::string& path, const std::string& data) {
-    return core::win_path::write_file(path, data);
+    std::wstring wide;
+    if (!file_path_to_wide(path, wide)) return false;
+    return editor_write_file_atomic(wide, data);
 }
 
 // Editor bevorzugt die Installation neben bzw. über seiner EXE.
@@ -1182,6 +1188,8 @@ static bool issue_known_trigger(const std::string& t) {
 
 // Bekannte Befehlstypen (eigene Liste, damit der Scan VOR der Event-Editor-
 // Sektion stehen kann — EV_TYPES wird erst dort definiert).
+// Register (Z8): docs/befehle.json; tools/befehle_test.rb vergleicht diese
+// Liste mit CMD_TYPES, EvType/EV_TYPES und interpreter.rb.
 const char* const ISSUE_CMD_TYPES[] = {
     "text", "choices", "log",
     "wait", "switch", "toggle_switch", "variable",

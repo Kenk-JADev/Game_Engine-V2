@@ -1,0 +1,306 @@
+{
+  "version": 1,
+  "stand": "Etappe Z8 (Runde 18)",
+  "zweck": "Quellen-Register der Event-Befehlstypen. Vier Stellen im Baum müssen zu dieser Liste passen: CMD_TYPES (game/engine/mapcheck.rb), die Ausführung (game/engine/interpreter.rb), ISSUE_CMD_TYPES (src/editor/editor_main.cpp) und EvType/EV_TYPES (src/editor/event_form.h). Ein neuer Befehl ist erst fertig, wenn er hier UND in allen vier Stellen steht; tools/befehle_test.rb meldet die Lücke vor dem Commit.",
+  "reihenfolge": "Die Reihenfolge ist die des Registers; die vier Stellen halten dieselbe Reihenfolge ein, damit Diffs lesbar bleiben.",
+  "bereiche": [
+    "Text",
+    "Ablauf",
+    "Zustand",
+    "Verzweigung",
+    "Bewegung",
+    "Welt",
+    "Ton",
+    "Bild",
+    "Inventar",
+    "System"
+  ],
+  "befehle": [
+    {
+      "typ": "text",
+      "bereich": "Text",
+      "pflicht": [
+        "lines"
+      ],
+      "optional": [],
+      "beschreibung": "Nachrichtenfenster mit einer Zeile je Eintrag; blockiert bis E, danach läuft die Liste weiter."
+    },
+    {
+      "typ": "choices",
+      "bereich": "Text",
+      "pflicht": [
+        "options",
+        "branches"
+      ],
+      "optional": [
+        "cancel",
+        "cancel_branch"
+      ],
+      "beschreibung": "Auswahlfenster; je Option ein Zweig. Esc laut cancel: aus (Default), verzweigung (eigener Abbruch-Zweig) oder Optionsnummer (Z5)."
+    },
+    {
+      "typ": "log",
+      "bereich": "Ablauf",
+      "pflicht": [
+        "text"
+      ],
+      "optional": [],
+      "beschreibung": "Schreibt eine Zeile ins Spiel-Log, ohne den Spieler zu unterbrechen."
+    },
+    {
+      "typ": "wait",
+      "bereich": "Ablauf",
+      "pflicht": [
+        "seconds"
+      ],
+      "optional": [],
+      "beschreibung": "Hält den Interpreter für die angegebene Zeit an; die Karte läuft weiter."
+    },
+    {
+      "typ": "switch",
+      "bereich": "Zustand",
+      "pflicht": [
+        "name",
+        "value"
+      ],
+      "optional": [],
+      "beschreibung": "Setzt einen globalen Schalter auf wahr oder falsch."
+    },
+    {
+      "typ": "toggle_switch",
+      "bereich": "Zustand",
+      "pflicht": [
+        "name"
+      ],
+      "optional": [],
+      "beschreibung": "Kehrt einen globalen Schalter um — typisch für Türen und Autorun-Schleifen mit Self-Switch-Abbruch."
+    },
+    {
+      "typ": "variable",
+      "bereich": "Zustand",
+      "pflicht": [
+        "name"
+      ],
+      "optional": [
+        "value",
+        "add"
+      ],
+      "beschreibung": "Setzt eine Variable (value) oder erhöht sie (add); beide Felder dürfen gemeinsam auftreten."
+    },
+    {
+      "typ": "if_switch",
+      "bereich": "Verzweigung",
+      "pflicht": [
+        "name",
+        "value",
+        "then"
+      ],
+      "optional": [
+        "else"
+      ],
+      "beschreibung": "Zweig nach Schalterzustand: then bei Gleichheit, sonst else (fehlendes else = nichts)."
+    },
+    {
+      "typ": "if_variable",
+      "bereich": "Verzweigung",
+      "pflicht": [
+        "name",
+        "op",
+        "value",
+        "then"
+      ],
+      "optional": [
+        "else"
+      ],
+      "beschreibung": "Zweig nach Variablenvergleich; op ist einer von ==, !=, <, <=, >, >= (MapCheck::VERGLEICH)."
+    },
+    {
+      "typ": "script",
+      "bereich": "Ablauf",
+      "pflicht": [
+        "code"
+      ],
+      "optional": [
+        "name"
+      ],
+      "beschreibung": "Führt Ruby im Interpreter-Kontext aus (code) oder ruft ein Script aus scripts.json per name auf."
+    },
+    {
+      "typ": "teleport",
+      "bereich": "Bewegung",
+      "pflicht": [
+        "x",
+        "z"
+      ],
+      "optional": [
+        "yaw"
+      ],
+      "beschreibung": "Setzt den Spieler absolut auf die Karte; yaw dreht die Kamera (Default PI). Der Zufallskampf-Zähler wird neu gewürfelt."
+    },
+    {
+      "typ": "move_player",
+      "bereich": "Bewegung",
+      "pflicht": [
+        "x",
+        "z"
+      ],
+      "optional": [
+        "relative"
+      ],
+      "beschreibung": "Bewegt den Spieler absolut oder mit relative=true um x/z versetzt; die Höhe folgt dem Terrain."
+    },
+    {
+      "typ": "heal",
+      "bereich": "Inventar",
+      "pflicht": [],
+      "optional": [
+        "amount"
+      ],
+      "beschreibung": "Heilt die Party vollständig; mit amount nur um diesen Betrag."
+    },
+    {
+      "typ": "weather",
+      "bereich": "Welt",
+      "pflicht": [],
+      "optional": [
+        "name",
+        "intensity"
+      ],
+      "beschreibung": "Schaltet das Wetter (kein, regen, schnee …) mit Stärke; ohne name bleibt es trocken."
+    },
+    {
+      "typ": "effect",
+      "bereich": "Welt",
+      "pflicht": [],
+      "optional": [
+        "name",
+        "color",
+        "height"
+      ],
+      "beschreibung": "Partikeleffekt am Event (sparkle, dust, sonst Burst) mit Farbe und Höhe über dem Boden."
+    },
+    {
+      "typ": "sound",
+      "bereich": "Ton",
+      "pflicht": [
+        "name"
+      ],
+      "optional": [
+        "volume"
+      ],
+      "beschreibung": "Spielt einen Prozedur-Sound einmal ab; volume 0..1."
+    },
+    {
+      "typ": "item",
+      "bereich": "Inventar",
+      "pflicht": [
+        "name"
+      ],
+      "optional": [
+        "count",
+        "take"
+      ],
+      "beschreibung": "Gibt count Items (Default 1) oder nimmt mit take wieder weg."
+    },
+    {
+      "typ": "gold",
+      "bereich": "Inventar",
+      "pflicht": [
+        "amount"
+      ],
+      "optional": [],
+      "beschreibung": "Ändert das Gold der Party; negative Beträge ziehen ab."
+    },
+    {
+      "typ": "save_game",
+      "bereich": "System",
+      "pflicht": [],
+      "optional": [
+        "slot"
+      ],
+      "beschreibung": "Speichert in den Slot 1..3 (Default 1), atomar über Project.save."
+    },
+    {
+      "typ": "load_game",
+      "bereich": "System",
+      "pflicht": [],
+      "optional": [
+        "slot"
+      ],
+      "beschreibung": "Lädt einen Slot und baut die Karte neu auf; der laufende Interpreter endet damit — Befehle danach laufen nicht mehr."
+    },
+    {
+      "typ": "self_switch",
+      "bereich": "Zustand",
+      "pflicht": [
+        "letter",
+        "value"
+      ],
+      "optional": [],
+      "beschreibung": "Setzt Self-Switch A–D des auslösenden Events; ohne Event-Besitzer wird gewarnt und übersprungen."
+    },
+    {
+      "typ": "if_self_switch",
+      "bereich": "Verzweigung",
+      "pflicht": [
+        "letter",
+        "value",
+        "then"
+      ],
+      "optional": [
+        "else"
+      ],
+      "beschreibung": "Zweig nach Self-Switch A–D; ohne Event-Besitzer immer der else-Zweig."
+    },
+    {
+      "typ": "fade",
+      "bereich": "Bild",
+      "pflicht": [],
+      "optional": [
+        "direction",
+        "seconds"
+      ],
+      "beschreibung": "Bildschirm aus- oder einblenden (direction aus/ein) in der angegebenen Dauer."
+    },
+    {
+      "typ": "move_route",
+      "bereich": "Bewegung",
+      "pflicht": [
+        "target",
+        "steps"
+      ],
+      "optional": [
+        "repeat",
+        "speed",
+        "code",
+        "wait"
+      ],
+      "beschreibung": "Bewegungsroute für Event, NPC oder Spieler; wait blockiert bis zum Ende (nicht mit repeat)."
+    },
+    {
+      "typ": "input_number",
+      "bereich": "System",
+      "pflicht": [
+        "name"
+      ],
+      "optional": [
+        "digits",
+        "initial",
+        "cancel"
+      ],
+      "beschreibung": "Zahleneingabe in eine Variable; 1..6 Stellen, Startwert und Esc-Erlaubnis (cancel=false sperrt)."
+    },
+    {
+      "typ": "battle",
+      "bereich": "System",
+      "pflicht": [
+        "name"
+      ],
+      "optional": [
+        "can_escape",
+        "can_lose"
+      ],
+      "beschreibung": "Startet den Kampf gegen eine Truppe aus der Datenbank und wartet auf das Ergebnis."
+    }
+  ]
+}

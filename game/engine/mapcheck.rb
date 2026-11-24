@@ -59,6 +59,8 @@ module MapCheck
 
   # Befehlstypen des Interpreters. Muss zu game/engine/interpreter.rb und zu
   # EV_TYPES / ISSUE_CMD_TYPES in src/editor/editor_main.cpp passen.
+  # Register (Z8): docs/befehle.json - tools/befehle_test.rb vergleicht alle
+  # fünf Stellen samt Reihenfolge.
   CMD_TYPES = %w[
     text choices log
     wait switch toggle_switch variable

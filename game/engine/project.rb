@@ -119,15 +119,43 @@ module Project
     FileUtils.rm_rf(path(name))
   end
 
+  # ------------------------------------------------- Schreiben (atomar, Z8)
+
+  # JSON erst vollständig NEBEN dem Ziel schreiben, dann austauschen - dieselbe
+  # Regel wie beim Editor (document_store_win.h) und den Karten. Bricht ein
+  # Schreibvorgang ab (Platte voll, Absturz, Stromausfall), bleibt die alte
+  # Datei unverkürzt stehen; Leser sehen entweder den alten oder den neuen
+  # Stand, nie eine halbe Datei. Ruby File.rename ersetzt unter Windows ein
+  # vorhandenes Ziel (MoveFileEx mit MOVEFILE_REPLACE_EXISTING).
+  def write_json(path, data)
+    tmp = "#{path}.rune-#{Process.pid}-#{rand(1_000_000)}.tmp"
+    File.open(tmp, 'wb') do |file|
+      file.write(JSON.pretty_generate(data) + "\n")
+      file.flush
+      file.fsync
+    end
+    File.rename(tmp, path)
+    true
+  rescue SystemCallError, IOError, JSON::JSONError => e
+    Rune::Log.warn("Projekt: #{File.basename(path)} nicht geschrieben: #{e.message}")
+    begin
+      File.delete(tmp) if tmp && File.exist?(tmp)
+    rescue SystemCallError
+      nil
+    end
+    false
+  end
+
   # ---------------------------------------------------- Spielstände (Etappe 10)
 
   def saves_dir(name) = File.join(path(name), 'saves')
 
   # Spielstand ablegen: JSON unter projekte/<name>/saves/slot<N>.json.
+  # Atomar (write_json): ein abgebrochener Speichervorgang darf den alten
+  # Spielstand nicht zerstören. false, wenn nicht geschrieben werden konnte.
   def save(name, slot, data)
     FileUtils.mkdir_p(saves_dir(name))
-    File.write(File.join(saves_dir(name), "slot#{slot}.json"),
-               JSON.pretty_generate(data) + "\n", encoding: 'UTF-8')
+    write_json(File.join(saves_dir(name), "slot#{slot}.json"), data)
   end
 
   # Spielstand lesen; nil, wenn der Slot leer/kaputt ist.
@@ -189,7 +217,9 @@ module Project
   end
 
   # Neues Projekt anlegen: leere Welt (nur Gras), Startpunkt in der Mitte,
-  # Mini-Datenbank mit Start-Held (Y3). Rückgabe: der Projektordnername.
+  # Mini-Datenbank mit Start-Held (Y3). Rückgabe: der Projektordnername,
+  # "" wenn eine Datei nicht geschrieben werden konnte (der angelegte Ordner
+  # bleibt dann als Hinweis stehen - wie create_project im Editor).
   def create(title)
     name = unique_slug(title)
     Dir.mkdir(BASE) unless Dir.exist?(BASE)
@@ -203,12 +233,10 @@ module Project
       'switches'  => {},
       'variables' => {},
     }
-    File.write(File.join(data_path(name), 'system.json'),
-               JSON.pretty_generate(system) + "\n", encoding: 'UTF-8')
-
     # Y3: Start-Held + Start-Item wie im Editor-Pfad (nie leere Arrays).
-    File.write(File.join(data_path(name), 'database.json'),
-               JSON.pretty_generate(starter_database) + "\n", encoding: 'UTF-8')
+    angelegt = write_json(File.join(data_path(name), 'system.json'), system) &&
+               write_json(File.join(data_path(name), 'database.json'), starter_database)
+    return '' unless angelegt
 
     map = {
       'name'     => 'Neue Welt',
@@ -222,8 +250,7 @@ module Project
       'panorama' => { 'color' => 0x3D6FB5 },
       'note'     => '',
     }
-    File.write(File.join(data_path(name), 'maps', 'welt01.json'),
-               JSON.pretty_generate(map) + "\n", encoding: 'UTF-8')
+    return '' unless write_json(File.join(data_path(name), 'maps', 'welt01.json'), map)
     name
   end
 
@@ -262,8 +289,9 @@ module Project
       'panorama' => { 'color' => 0x3D6FB5 },
       'note'     => '',
     }
-    File.write(File.join(dir, "#{id}.json"),
-               JSON.pretty_generate(map) + "\n", encoding: 'UTF-8')
+    # Atomar wie alle Projektdateien: eine halb geschriebene Karte würde beim
+    # nächsten Öffnen als kaputtes JSON liegen bleiben.
+    return nil unless write_json(File.join(dir, "#{id}.json"), map)
     id
   end
 end

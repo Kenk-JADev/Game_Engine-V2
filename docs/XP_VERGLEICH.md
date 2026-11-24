@@ -252,17 +252,30 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 
 | Etappe | Inhalt | Warum jetzt |
 |---|---|---|
-| **20a Kampf: Skills & Zustände** | DB `skills`+`states` (F9-Reiter), `battle.rb`: Skill-Befehl mit MP, Zustände pro Runde (Vergiftung usw.), Gegner-Aktionen mit Bedingungen, **Level-Up bei EXP** | Größte Spiel-Lücke; ohne Skills bleibt MP tot, EXP eine tote Zahl |
+| **20a Kampf: Skills & Zustände** | DB `skills`+`states` (F9-Reiter), `battle.rb`: Skill-Befehl mit MP, Zustände pro Runde (Vergiftung usw.), Gegner-Aktionen mit Bedingungen, **Level-Up bei EXP (D4)** — danach Formel/Reihenfolge/Flucht schrittweise an XP annähern | Größte Spiel-Lücke; ohne Skills bleibt MP tot, EXP eine tote Zahl (D4) |
 | **20b Menü wie XP** | Item (außerhalb Kampf), Skill, Status-Detail, Gold/Fortschritt — Scene_Menu als echtes XP-Menü | Braucht 20a fürs Skill-Fenster |
 | **20c Event-Befehle Welle 1 (Ablauf)** | `loop`/`break`/`label`/`jump`/`exit_event`/`erase_event`/`button_input`/`text_options` + **Common Events** (Datenhaltung + F6 + 117) | Struktur, die fast jedes XP-Projekt braucht |
-| **20d Event-Befehle Welle 2 (Daten)** | Variable-Operationen/Quellen, Timer (+Anzeige), erweiterte Bedingungen (Gold/Item/Actor/Button/Script), `party_member`, HP/SP/EXP/Level-Befehle, 134/135/136 als Befehle | Verdoppelt die Aussagekraft von Variablen/Schaltern |
+| **20d Event-Befehle Welle 2 (Daten)** | Variable-Operationen/Quellen, Timer (+Anzeige), erweiterte Bedingungen (Gold/Item/Actor/Button/Script), `party_member`, HP/SP/EXP/Level-Befehle, 134/135/136 als Befehle, **`$game_temp`-Calling-Flags auswerten** (`battle_calling`/`menu_calling`/`save_calling`/`player_transferring`, heute stumme Felder — LOGIK E.3) | Verdoppelt die Aussagekraft von Variablen/Schaltern; XP-Scripts, die Szenen über `$game_temp` starten, funktionieren dann |
 | **20e Shop & Name** | Befehl 302 + Shop-Fenster (kaufen/verkaufen/preis), 303 Namenseingabe | XP-typisch, eigenständig nutzbar |
 | **20f Bildschirm-Ebenen** | Pictures 231–235 als Overlay, Flash/Shake/Tone als PostFX, Ergebniszweige 601–603, Befehl 351 (Menü) | Macht die „Bildschirm“-Gruppe echt |
 | **20g Darstellung** | Figuren-Billboards, Ballons, Kampf-/Event-Animationen (207/337) | Sichtbarster XP-Optik-Unterschied |
 | **20h Editor & DX** | Dialoge F6/F9 XP-orientiert (Screenshots), Undo/Redo über Splats/NPCs/Events | Bedienung wie im Vorbild |
+| **20i Ton (Audit „20x“)** | Datei-Lader (WAV/OGG) in `src/core/sound.cpp`, Karten-BGM aus der Karten-JSON, Event-Befehle 241/242/245/246, Pitch pro Aufruf, `bgm_fade` über Zeit (N) | RGSS-`Audio.*` ist vorhanden, aber ohne Datei-Lader substanzlos; XP-Skripte spielen sonst wortlos nichts |
+| **20j Panorama-Scroll + Wetter-Dauer** | Panorama als scrollende Bildebene (Bild, Loop, Speed, Hue) statt nur `panorama.color`; `weather.duration` in der Karten-JSON (O) | Zwei kleine, sichtbare Datenlücken in derselben Kartenstruktur |
+| **20k Durchlässigkeit & Sprung** | Mover `through` (Wände ignorieren, wie XP `$game_player.through = true`) und Routen-`jump` als echte Verlagerung statt No-Op (Q) | Zwei als No-Op dokumentierte RGSS-/Routen-Bausteine, die XP-Scripts erwarten |
+| **20l Grenzwerte & Messpunkte** | Seiten-Refresh per Dirty-Flag ab ~hunderten Events, Draw-Batching messen, Menü-/Listen-Rendering unter Last (S) | Kein Hotspot heute — Messpunkte festlegen, bevor die Karten groß werden |
 
 **Abhängigkeiten:** 20b braucht 20a · 20d-Teile (Zustands-Befehle) brauchen
-20a · 20e unabhängig · 20f/20g/20h unabhängig.
+20a · 20e unabhängig · 20f/20g/20h unabhängig · 20i/20j/20k/20l unabhängig
+und klein (jederzeit einschiebbar; 20i zuerst, weil es drei Schichten
+berührt: `sound.cpp`, Karten-JSON, Befehlslisten).
+
+**Reihenfolge-Empfehlung (Z7):** 20a vor 20d (Level-Up macht EXP/Level-Befehle
+sinnvoll) · 20d vor 20c-Teilen mit Bedingungen · 20i unabhängig vorziehen,
+wenn Ton gebraucht wird. Das Quellen-Register `docs/befehle.json` (Z8) macht
+jede dieser Etappen billiger: neue Befehle landen zuerst dort, dann in
+`CMD_TYPES`/`ISSUE_CMD_TYPES`/`EV_TYPES`/`interpreter.rb` — `tools/befehle_test.rb`
+meldet jede vergessene Stelle.
 
 ---
 

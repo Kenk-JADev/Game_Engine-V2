@@ -133,6 +133,27 @@ end
 check('touch überspringt ein konkurrierend gesperrtes system.json') {
   acquired && skipped && File.binread(system_path) == before_lock
 }
+# --- Atomares Schreiben (Z8) ---------------------------------------------
+# write_json schreibt neben das Ziel und benennt um: Inhalt vollständig, keine
+# halbe Datei, kein Temp-Rest. Der Merker bleibt außerhalb von data/.
+probe = File.join(Project.path(name), 'probe.json')
+check('Z8: write_json schreibt JSON mit Umlauten') do
+  Project.write_json(probe, { 'probe' => 'Wäldchen', 'zahl' => 7 }) &&
+    JSON.parse(File.read(probe, encoding: 'UTF-8')) == { 'probe' => 'Wäldchen', 'zahl' => 7 }
+end
+check('Z8: write_json ersetzt vorhandenen Inhalt vollständig') do
+  Project.write_json(probe, { 'kurz' => 1 }) &&
+    JSON.parse(File.read(probe, encoding: 'UTF-8')) == { 'kurz' => 1 }
+end
+check('Z8: keine Temp-Datei bleibt liegen') do
+  Dir.glob(File.join(Project.path(name), '*.tmp')).empty?
+end
+check('Z8: Datei endet mit genau einem Zeilenumbruch') do
+  bin = File.binread(probe)
+  bin.end_with?("\n") && !bin.end_with?("\n\n")
+end
+File.delete(probe) if File.exist?(probe)
+
 Project.delete(name)
 check('delete entfernt das Projekt') { !Project.valid?(name) }
 

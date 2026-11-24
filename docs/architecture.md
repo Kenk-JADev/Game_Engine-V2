@@ -1286,8 +1286,12 @@ neben der Schalter-Bedingung zwei Combos: „Self-Switch" (keins/A-D) und
 an/aus — Index 0 („keins") entfernt die Bedingung wieder.
 
 **Sync-Pflicht bleibt:** `MapCheck::CMD_TYPES` (Ruby) = `ISSUE_CMD_TYPES` =
-`EV_TYPES` (C++) — jetzt 23 Befehlstypen; `mapcheck_test.rb` zählt mit,
-damit Auseinanderlaufen auffällt. MapCheck prüft `letter` A-D (Fehler),
+`EV_TYPES` (C++) — jetzt 26 Befehlstypen. Seit Z8 ist `docs/befehle.json` das
+**Quellen-Register** (Typ, Bereich, Pflicht-/optionalfelder, Beschreibung) und
+`tools/befehle_test.rb` vergleicht Register, `CMD_TYPES`, `EV_TYPES`/`EvType`,
+`ISSUE_CMD_TYPES` und die Ausführung in `interpreter.rb` — samt gemeinsamer
+Reihenfolge. `mapcheck_test.rb` zählt zusätzlich mit, damit Auseinanderlaufen
+auffällt. MapCheck prüft `letter` A-D (Fehler),
 fehlendes `value` (Warnung), Dann-/Sonst-Listen rekursiv und beim `fade`
 Richtung/Dauer.
 
@@ -1939,6 +1943,33 @@ Bytes, Neuanlage, Backupkollision und blockierter Rücksetzung. Windows-CI
 `6a3b8e1`, Lauf 45175342986: 58/0, alle vier Jobs grün. Kein interaktiver
 GUI-/DPI-/Hardwaretest; Testvorschlag im Windows-Live-Dokument.
 
+## Atomares Schreiben der Projektdateien (Etappe Z8)
+
+Karten und F9 laufen über den `DocumentStore` (Identität, Konfliktprüfung,
+Backupname). Für die **übrigen** Projektdateien gilt seit Z8 eine einfachere,
+aber lückenlose Regel: erst vollständig daneben schreiben, flushen, dann
+umbenennen. Ein abgebrochener Schreibvorgang lässt die alte Datei dadurch
+unverkürzt stehen; Leser sehen entweder den alten oder den neuen Stand, nie
+eine halbe Datei.
+
+- **Ruby (`Project.write_json`):** `.rune-<pid>-<n>.tmp` neben dem Ziel,
+  `flush` + `fsync`, dann `File.rename` (unter Windows `MoveFileEx` mit
+  `MOVEFILE_REPLACE_EXISTING`, ersetzt also ein vorhandenes Ziel). Genutzt von
+  `Project.create` (system.json, database.json, welt01.json), `Project.create_map`
+  und `Project.save` (Spielstände). `create`/`create_map` geben bei einem
+  Schreibfehler `""` bzw. `nil` zurück, statt ein halbes Projekt zu melden;
+  `Game.save_game` liefert dann `false` statt „gespeichert“.
+- **`Project.touch` bleibt bewusst in-place:** Es schreibt den Zeitstempel am
+  bereits geöffneten Handle unter `flock`, damit Editor-`DocumentStore` und
+  Spiel sich gegenseitig ausschließen (siehe Kommentar in `project.rb`).
+- **Editor (`write_file` → `editor_write_file_atomic`):** Temp-Datei im
+  Zielverzeichnis, `FlushFileBuffers`, `MoveFileExW(REPLACE_EXISTING |
+  WRITE_THROUGH)`, Temp-Datei bei Fehler löschen. Genutzt von `create_project`
+  (Gerüst eines neuen Projekts) und den Merkern unter `log/`.
+- **Grenze:** Nach einem Prozess-/Systemabsturz mitten im Schreiben kann eine
+  `.rune-<pid>-<n>.tmp` liegen bleiben. Sie ist harmlos (nie das Ziel) und
+  darf gelöscht werden; das Ziel selbst ist immer vollständig.
+
 ## Windows-Projekt- und Kartenpfade (Etappe 19r)
 
 Der ursprünglich im Backlog vorgeschlagene reine UTF-16-Durchstich wurde
@@ -2433,6 +2464,10 @@ ausgelöst.
 | `{"cmd":"wait","seconds":n}` | blockiert für n Sekunden |
 | `{"cmd":"teleport","x":…,"z":…,"yaw":…}` | Spieler versetzen |
 | `{"cmd":"log","text":…}` | Zeile ins Log |
+
+Die Tabelle zeigt die häufigsten Befehle; die **vollständige Liste aller 26
+Typen** mit Bereich, Pflicht-/optionalfeldern und Beschreibung steht im
+Register `docs/befehle.json` (Z8, geprüft von `tools/befehle_test.rb`).
 
 Test ohne Engine: `ruby -I game/engine tools/event_test.rb` (23 Prüfungen,
 Exit-Code 0 = grün).

@@ -23,6 +23,9 @@
 
 namespace rune::editor {
 
+// Befehlstypen des F6-Formulars. Register (Z8): docs/befehle.json;
+// tools/befehle_test.rb vergleicht EvType/EV_TYPES mit CMD_TYPES
+// (mapcheck.rb), ISSUE_CMD_TYPES (editor_main.cpp) und interpreter.rb.
 enum EvType {
     ET_TEXT = 0, ET_CHOICES, ET_LOG,
     ET_WAIT, ET_SWITCH, ET_TOGGLE_SWITCH, ET_VARIABLE,
