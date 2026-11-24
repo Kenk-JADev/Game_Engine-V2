@@ -105,12 +105,12 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 | Namenseingabe | 303 | — | ❌ |
 | HP ändern | 311 | `heal` | ⚠️ nur Heilen, ganze Party; XP pro Ziel + Schaden möglich |
 | SP ändern | 312 | — | ❌ |
-| Zustand ändern | 313 | — | ❌ (keine Zustände) |
+| Zustand ändern | 313 | — | ⚠️ Kampf kennt Zustände (20a), der Event-Befehl fehlt (20d) |
 | Alles wiederherstellen | 314 | `heal` ohne Betrag | ✅ |
 | EXP ändern | 315 | — | ❌ |
 | Level ändern | 316 | — | ❌ |
 | Parameter ändern | 317 | — | ❌ |
-| Skills ändern | 318 | — | ❌ |
+| Skills ändern | 318 | — | ⚠️ `learn_skill`/`skills` per Script (20a), Event-Befehl fehlt (20d) |
 | Ausrüstung ändern | 319 | — | ❌ |
 | Name ändern | 320 | — | ❌ |
 | Klasse ändern | 321 | — | ❌ |
@@ -144,7 +144,7 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 |---|---|---|
 | Actors | Helden (9 Felder) | ✅ |
 | Classes | — (Klasse nur als Textfeld) | ❌ |
-| Skills | — | ❌ |
+| Skills | — | ⚠️ Datenbank `skills`/`states` (20a), F9-Reiter fehlt |
 | Items | Items (7 Felder) | ✅ |
 | Weapons | — | ❌ |
 | Armors | — | ❌ |
@@ -183,13 +183,13 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 
 | Merkmal | RPG Maker XP | Rune3D |
 |---|---|---|
-| Befehle je Held | Angreifen, **Skill**, Item, **Wache**, Flucht | Angreifen, Item, Flucht |
-| Skills/Magie | `$data_skills`: MP-Kosten, Elemente, Erfolgsrate, Status-Plus/Minus, Zieltyp | ❌ (MP existiert, wird nie verbraucht) |
-| Zustände | `$data_states`: Vergiftung, Schlaf, Stille, Paralyse … mit Rang, Auto-Heilung, Slip-Damage, Sperr-Regeln (`restriction`) | ❌ |
+| Befehle je Held | Angreifen, **Skill**, Item, **Wache**, Flucht | Angreifen, **Fertigkeit**, Item, Flucht (20a; Wache fehlt) |
+| Skills/Magie | `$data_skills`: MP-Kosten, Elemente, Erfolgsrate, Status-Plus/Minus, Zieltyp | **seit 20a**: `skills` mit `mp`, `power`, `kind` (damage/heal/buff), `scope` (enemy/ally/self), Zustandschance; Elemente und Erfolgsrate fehlen |
+| Zustände | `$data_states`: Vergiftung, Schlaf, Stille, Paralyse … mit Rang, Auto-Heilung, Slip-Damage, Sperr-Regeln (`restriction`) | **seit 20a**: `states` mit `kind` (poison/regen/atk_up/def_up), Schaden/Heilung pro Runde, Dauer, Werte-Boni; kein Schlaf/Stille/Paralyse, keine Sperr-Regeln |
 | Parameter-Logik | Str/Dex/Agi/Int → Atk/Def/Hit/Eva; Ausrüstung wirkt auf alle Werte | Basiswerte direkt, keine Ausrüstung |
 | Gegner-KI | Aktionstabelle mit Bedingungen (HP-%, Runde, Zustand, Ziele) | greift zufälligen lebenden Helden an |
 | Rundenlogik | Runde, Initiative nach AGI | Runde, Eingabereihenfolge |
-| EXP/Level | `exp=` löst **Level-Up** mit Wachstum und Klassen-Skills aus | EXP gutgeschrieben; **seit Runde 22 Level-Up** (Kurve 2.7, Gesamt-Exp, prozentuales Wachstum, `actor.exp = n`), Klassen-Skills fehlen (20a) |
+| EXP/Level | `exp=` löst **Level-Up** mit Wachstum und Klassen-Skills aus | EXP gutgeschrieben; **seit Runde 22 Level-Up** (Kurve 2.7, Gesamt-Exp, prozentuales Wachstum, `actor.exp = n`); Fertigkeiten hängen seit 20a am Helden, nicht an einer Klasse |
 | Beute | Gold + Drop mit Chance | ✅ gleich |
 | Wache (Guard) | ✅ | ❌ |
 | Animationen je Aktion | Animation1/Animation2 pro Battler | ❌ |
@@ -256,7 +256,7 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 
 | Etappe | Inhalt | Warum jetzt |
 |---|---|---|
-| **20a Kampf: Skills & Zustände** | DB `skills`+`states` (F9-Reiter), `battle.rb`: Skill-Befehl mit MP, Zustände pro Runde (Vergiftung usw.), Gegner-Aktionen mit Bedingungen, **Level-Up bei EXP (D4)** — danach Formel/Reihenfolge/Flucht schrittweise an XP annähern | Größte Spiel-Lücke; ohne Skills bleibt MP tot (**Level-Up seit Runde 22 erledigt**, D4) |
+| **20a Kampf: Skills & Zustände** | ~~DB `skills`+`states`~~ ✅, ~~`battle.rb`: Skill-Befehl mit MP~~ ✅, ~~Zustände pro Runde (Vergiftung usw.)~~ ✅, ~~**Level-Up bei EXP (D4)**~~ ✅ — offen: F9-Reiter für `skills`/`states`, Gegner-Fertigkeiten und -Aktionen mit Bedingungen | Größte Spiel-Lücke, Kern seit Runde 23 geschlossen |
 | **20b Menü wie XP** | Item (außerhalb Kampf), Skill, Status-Detail, Gold/Fortschritt — Scene_Menu als echtes XP-Menü | Braucht 20a fürs Skill-Fenster |
 | **20c Event-Befehle Welle 1 (Ablauf)** | `loop`/`break`/`label`/`jump`/`exit_event`/`erase_event`/`button_input`/`text_options` + **Common Events** (Datenhaltung + F6 + 117) | Struktur, die fast jedes XP-Projekt braucht |
 | **20d Event-Befehle Welle 2 (Daten)** | Variable-Operationen/Quellen, Timer (+Anzeige), erweiterte Bedingungen (Gold/Item/Actor/Button/Script), `party_member`, HP/SP/EXP/Level-Befehle, 134/135/136 als Befehle, **`$game_temp`-Calling-Flags auswerten** (`battle_calling`/`menu_calling`/`save_calling`/`player_transferring`, heute stumme Felder — LOGIK E.3) | Verdoppelt die Aussagekraft von Variablen/Schaltern; XP-Scripts, die Szenen über `$game_temp` starten, funktionieren dann |

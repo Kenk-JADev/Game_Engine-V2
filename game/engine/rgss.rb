@@ -287,6 +287,10 @@ module RGSS
     def steps = Party.steps
     def item_number(name) = Party.item_count(name.to_s)
 
+    # Fertigkeiten (20a): XP kennt actor.skills / actor.learn_skill.
+    def skills(actor) = Party.skills(actor)
+    def learn_skill(actor, skill_id) = Party.learn_skill(actor, skill_id.to_s)
+
     def items = Party.items
     def item_count(name) = Party.item_count(name.to_s)
     def gain_item(name, count = 1) = Party.add_item(name.to_s, count.to_i)
@@ -622,6 +626,8 @@ module RGSS
     db = ::Database.database
     $data_actors = liste_als_hash(db['actors'])
     $data_items  = liste_als_hash(db['items'])
+    $data_skills = liste_als_hash(db['skills'])   # 20a: Fertigkeiten
+    $data_states = liste_als_hash(db['states'])   # 20a: Zustände
     $data_weapons = {}   # Datenbank kennt noch keine Waffen (Backlog)
     $data_armors = {}    # ... und keine Rüstungen (Backlog)
     $data_system = ::Database.system

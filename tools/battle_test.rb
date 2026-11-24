@@ -167,7 +167,7 @@ check('current_actor = erster lebender Held') { Battle.current_actor.name == 'Ar
 
 puts '== Befehlsphase: Angriff + Zielwahl =='
 druck(:down)
-check('Cursor runter (Item)') { Battle.command_index == 1 }
+check('Cursor runter (Fertigkeit)') { Battle::COMMANDS[Battle.command_index] == 'Fertigkeit' }
 druck(:up)
 check('Cursor wieder auf Angriff') { Battle.command_index.zero? }
 druck(:enter)
@@ -187,8 +187,8 @@ check('Schaden zieht HP ab') { goblin.hp < hp0 && goblin.hp >= 0 }
 puts '== Flucht =='
 Battle.abort!
 Battle.start('waldweg', can_escape: false)
-2.times { druck(:down) }
-check('Cursor auf Flucht') { Battle.command_index == 2 }
+3.times { druck(:down) }
+check('Cursor auf Flucht') { Battle::COMMANDS[Battle.command_index] == 'Flucht' }
 druck(:enter)
 check('Flucht ohne can_escape: kein Abbruch, weiter Befehle') do
   Battle.active? && Battle.phase == :command
@@ -198,7 +198,7 @@ Battle.abort!
 # Battle.attempt_escape ohne Receiver aufgerufen -> Singleton-Stub gewinnt).
 Battle.singleton_class.send(:define_method, :rand) { 0.9 }
 Battle.start('waldweg')
-2.times { druck(:down) }
+3.times { druck(:down) }
 druck(:enter)
 check('Flucht fehlschlagen: Runde beendet (Phase execute)') do
   Battle.active? && Battle.phase == :execute
@@ -210,7 +210,7 @@ end
 Battle.abort!
 Battle.singleton_class.send(:define_method, :rand) { 0.1 }
 Battle.start('waldweg')
-2.times { druck(:down) }
+3.times { druck(:down) }
 druck(:enter)
 check('Flucht gelungen -> Kampf vorbei (Ergebnis flucht)') do
   !Battle.active? && Battle.result == :flucht
@@ -225,8 +225,8 @@ menge0 = Party.item_count('heiltrank') + 1
 Party.add_item('heiltrank', 1)
 Battle.actors[0].damage(20)
 check('usable_items enthält heiltrank') { Battle.usable_items.include?('heiltrank') }
-druck(:down)
-check('Cursor auf Item') { Battle.command_index == 1 }
+2.times { druck(:down) }
+check('Cursor auf Item') { Battle::COMMANDS[Battle.command_index] == 'Item' }
 druck(:enter)
 check('Item-Auswahl offen') { Battle.phase == :item }
 druck(:enter)

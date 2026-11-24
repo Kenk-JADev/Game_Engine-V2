@@ -136,6 +136,19 @@ module Scripts
       Party.gain_exp(actor, amount.to_i)
     end
 
+    # Fertigkeiten (20a): gelernte Skills eines Helden als ID-Liste.
+    def skills(id)
+      actor = Party.find(id.to_s)
+      actor ? Party.skills(actor) : []
+    end
+
+    # Fertigkeit lernen (z. B. nach einem Event). true = neu gelernt.
+    def learn_skill(id, skill_id)
+      actor = Party.find(id.to_s)
+      return false unless actor
+      Party.learn_skill(actor, skill_id.to_s)
+    end
+
     def player_position = Rune::Player.position
 
     def teleport(x, z, yaw: Math::PI)

@@ -114,8 +114,17 @@ ensure
   Rune::Input.pressed_edges = []
 end
 
+# Seit Etappe 20a steht "Fertigkeit" zwischen Angriff und Item - der Cursor
+# läuft deshalb bis zum Eintrag "Item", statt eine feste Zahl zu drücken.
+def item_befehl
+  Battle::COMMANDS.size.times do
+    break if Battle::COMMANDS[Battle.command_index] == 'Item'
+    press(:down)
+  end
+end
+
 def choose_item(index = 0)
-  press(:down)  # Item
+  item_befehl
   press(:enter)
   index.times { press(:down) }
   press(:enter)
@@ -404,7 +413,7 @@ check('KO eines Helden gibt seine vorgemerkte Itemmenge für den nächsten frei'
   press(:enter) # Anna reserviert den einzigen Heiltrank
   reserved = Battle.actions.one? && Battle.current_actor&.id == 'b'
   Party.find('a').hp = 0
-  press(:down)
+  item_befehl
   press(:enter)
   in_items = Battle.phase == :item
   press(:enter)

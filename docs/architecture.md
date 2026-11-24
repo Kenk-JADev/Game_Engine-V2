@@ -1587,11 +1587,14 @@ Game_Battler-Entsprechung für Helden und Gegner. Seit 19v sind HP/MP der
 Helden direkt an den jeweiligen Party::Actor gebunden (siehe oben).
 
 Ablauf (Scene_Battle-Phasen, vereinfacht): `start(troop_id, can_escape:,
-can_lose:)` -> Befehlsphase pro lebendem Helden (Angriff/Item/Flucht,
-Cursor ↑↓ + E wie XP) -> Angriff geht in die Zielwahl (←→ auf lebende
-Gegner) -> Aktionsphase: Heldenaktionen nach Agilität sortiert (Items über
-`Party.use_item`), dann Gegnerzug (zufälliger lebender Held), dann
-Sieg-/Niederlage-Prüfung. Schaden = `atk - def/2`, ±15 % Streuung, min 1,
+can_lose:)` -> Befehlsphase pro lebendem Helden (Angriff/Fertigkeit/Item/
+Flucht, Cursor ↑↓ + E wie XP) -> Angriff geht in die Zielwahl (←→ auf lebende
+Gegner), Fertigkeit öffnet seit 20a das Skill-Fenster mit MP-Kosten und
+danach die Zielwahl (Gegner bzw. Helden) -> Aktionsphase: Heldenaktionen
+nach Agilität sortiert (Items über `Party.use_item`, Fertigkeiten über
+`wende_skill_an`), dann Gegnerzug (zufälliger lebender Held), dann
+`zustaende_ticken` (Gift/Regeneration, Dauer -1, abgelaufene Zustände
+entfernen), dann Sieg-/Niederlage-Prüfung. Schaden = `atk - def/2`, ±15 % Streuung, min 1,
 Kritikchance `agi/64` (x3 Helden, +25 % Gegner). Sieg: Exp auf lebende
 Helden über `Party.gain_exp` (Stufenaufstieg wie XP, D4/Runde 22: Kurve
 `exp(n) = exp(n-1) + ((n-1) ** 2.7 + 0.5).to_i`, Gesamt-Exp, Höchststufe 99,
@@ -1626,16 +1629,61 @@ C++-Issues-Scan prüft `name`-Pflicht beider Typen.
 geführt, Zahleneingabe zusätzlich als RGSS-Zustand (`num_input_*` in
 `$game_temp` vorhanden, der Interpreter nutzt seinen eigenen State).
 
-**Grenzen (Backlog):** keine Skills/Magie (MP nicht für Skills verbraucht), keine Zustände
-(Vergiftung etc.), keine Gegner-KI außer "Angriff auf zufälligen Helden",
-keine Formationen/Positionen, Kampfhintergrund = abgedunkelte Karte.
+**Grenzen (Backlog):** keine Gegner-Fertigkeiten/-KI außer "Angriff auf
+zufälligen Helden", keine Schlaf-/Stille-/Paralyse-Zustände und keine
+Sperr-Regeln, keine Heilung von KO-Helden per Fertigkeit, keine
+Formationen/Positionen, Kampfhintergrund = abgedunkelte Karte. Skills und
+Zustände selbst sind seit Etappe 20a vorhanden (siehe unten).
 Zufallskämpfe kamen später in Etappe 19l hinzu (siehe unten).
 
 **Tests:** `tools/battle_test.rb` (kopflos, ~45 Checks: Datenbank, Start/
 Absagen, Befehls-/Item-/Zielwahl-Cursor, Schaden, Sieg+Belohnung,
 Niederlage+gameover+can_lose, Formel, Interpreter-Blockade battle/
-input_number inkl. Abbruch und clamp) + script_test-Abschnitt 8
-(battle-Helfer) + mapcheck_test (26 Typen, input_number/battle-Regeln).
+input_number inkl. Abbruch und clamp) + `tools/skills_test.rb` (70 Checks,
+20a) + script_test-Abschnitt 8 (battle-Helfer) + mapcheck_test (26 Typen,
+input_number/battle-Regeln).
+
+## Fertigkeiten und Zustände (Etappe 20a)
+
+Die Datenbank hat zwei neue Bereiche: `skills` und `states`.
+
+`skills`-Eintrag: `id`, `name`, `kind` (`damage` | `heal` | `buff`), `scope`
+(`enemy` | `ally` | `self`), `mp`, `power`, optional `state` + `state_rate`
+und `turns`, dazu `desc`. `states`-Eintrag: `id`, `name`, `kind` (`poison`,
+`regen`, `atk_up`, `def_up`, ...), `power` (Schaden/Heilung pro Runde bzw.
+Werte-Bonus), `turns`, `desc`. Helden lernen ihre Start-Fertigkeiten über
+`"skills": ["feuerball", ...]` im Helden-Eintrag; `tools/add_skills23.rb`
+legt beide Bereiche samt Startlisten an (idempotent, eigene Einträge
+bleiben unangetastet).
+
+`Party` führt die gelernten IDs je Held (`Party.skills(actor)`,
+`Party.learn_skill(actor, id)`, `Actor#skills`/`#learn_skill` wie XP) und
+schreibt sie in den Spielstand (`snapshot['skills']`). Alte Spielstände
+ohne dieses Feld behalten die Liste aus der Datenbank; `restore!` ersetzt
+sie, wenn das Feld vorhanden ist.
+
+Im Kampf wählt `Fertigkeit` (zweiter Befehl, XP-Reihenfolge) aus den
+gelernten Skills; das Fenster zeigt Name und MP-Kosten, zu teure Skills
+erscheinen gedimmt und werden mit Log-Zeile verweigert. `self`-Skills
+wirken sofort auf den Anwender, `ally`-Skills zielen auf die Helden,
+`damage`-Skills auf lebende Gegner. `wende_skill_an` bucht die MP erst beim
+Ausführen ab (Schaden = `power + spi/2 - def/2`, ±15 %, min 1; Heilung =
+`power + spi/2`; Buff setzt einen Zustand). `Battler#states` hält bis zu
+acht Zustände mit Restdauer; `state_bonus` addiert `atk/def/spi/agi_up/down`
+auf die Basiswerte, die Statuszeilen zeigen die Zustände in Klammern mit
+Restdauer. `zustaende_ticken` wirkt am Rundenende: `poison` schadet,
+`regen` heilt, danach Dauer -1 und abgelaufene Zustände verschwinden mit
+Log-Zeile. Zustände leben nur im Kampf und enden mit ihm.
+
+RGSS: `$data_skills`, `$data_states` und `$game_party.skills/learn_skill`;
+Scripts haben `skills(id)` und `learn_skill(id, skill_id)`.
+Offen bleiben der F9-Reiter für beide Bereiche, Gegner-Fertigkeiten,
+Elemente/Erfolgsraten und Schlaf-/Sperr-Zustände.
+
+**Tests:** `tools/skills_test.rb` (70 Checks: Datenbank, Party-Lernen,
+Spielstand inkl. altem Save, Befehlsreihenfolge, MP-Kosten, Heilung,
+"nicht genug MP", Schaden + Zustandschance, Selbst-Buff, Gift/Regeneration/
+Ablauf, 8-Zustände-Grenze, Zeichnung in beiden Phasen).
 
 ## Professionalisierung: Sync-Test + README (Etappe 19j)
 
@@ -1883,8 +1931,9 @@ gezielte Anwendung. Ohne Ziel bleibt der historische Auto-Fallback auf den
 ersten verletzten Helden bzw. den Leader erhalten; bei einer vollen Party
 kann ein alter Aufruf also weiterhin ohne Wirkung verbrauchen. Mana nimmt
 entsprechend den ersten Helden mit fehlenden MP oder den Leader. Ein
-Heiltrank kann wie früher bei 0 HP wiederbeleben; Skills, Zustände und eine
-XP-vollständige Item-/Gegnerlogik sind weiterhin nicht implementiert.
+Heiltrank kann wie früher bei 0 HP wiederbeleben. Skills und Zustände kamen
+mit Etappe 20a (siehe unten); eine XP-vollständige Item-/Gegnerlogik fehlt
+weiterhin.
 
 `Game.update` leitet Esc im Kampf an `Battle` statt an das Weltmenü. Ein
 nicht erlaubter Fluchtversuch öffnet kein Menü; ein fehlgeschlagener löscht

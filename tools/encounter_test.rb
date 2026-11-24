@@ -619,6 +619,10 @@ check('gehaltenes Enter bestätigt weder Item noch Ziel mehrfach') do
   Battle.start('waldweg', can_escape: false)
   Rune::Input.keys = [:down]
   game_frame
+  Rune::Input.keys = []
+  game_frame
+  Rune::Input.keys = [:down]
+  game_frame
   Rune::Input.keys = [:enter]
   game_frame
   game_frame # Enter gehalten: Itemliste bleibt offen
@@ -643,7 +647,7 @@ check('Esc führt mit Loslassen von Itemziel über Itemliste zum Befehl zurück'
   prepare
   Party.find('arik').hp = 20
   Battle.start('waldweg', can_escape: false)
-  [:down, :enter, nil, :enter].each do |key|
+  [:down, nil, :down, :enter, nil, :enter].each do |key|
     Rune::Input.keys = key ? [key] : []
     game_frame
   end
@@ -671,7 +675,7 @@ check('Kampf-Item und HP überleben den JSON-Rundlauf mit Project-Attrappe') do
   Party.find('mira').hp = 0
   Battle.start('waldweg')
   Battle.enemies.each { |enemy| enemy.instance_variable_set(:@atk, 0) }
-  [:down, :enter, nil, :enter, :right, :enter].each do |key|
+  [:down, nil, :down, :enter, nil, :enter, :right, :enter].each do |key|
     Rune::Input.keys = key ? [key] : []
     game_frame
   end
@@ -806,7 +810,7 @@ check('misslungene Esc-Flucht verwirft vorgemerkte Items ohne Verbrauch') do
   Battle.singleton_class.send(:define_method, :rand) { 0.9 }
   Party.find('arik').hp = 20
   Battle.start('waldweg')
-  [:down, :enter, nil, :enter, nil, :enter].each do |key|
+  [:down, nil, :down, :enter, nil, :enter, nil, :enter].each do |key|
     Rune::Input.keys = key ? [key] : []
     game_frame
   end

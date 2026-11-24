@@ -225,17 +225,23 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
   `src/core/win_project_cli.h`, `src/main.cpp`, `game/{main.rb,engine/data.rb}`.
 
 ### [Engine] Kampf-Grundgerüst deckt noch nicht alles ab — offen (Feature-Fehlend)
-- Stand 19v: Rundenkampf mit Angriff, gezielten Heil-/Manaitems und Flucht,
-  Sieg/Niederlage/Exp/Gold/Drops, Gegner als 3D-Kästen mit HP-Balken.
-- Es fehlen u. a.: Skills/Magie (MP wird nicht dafür verbraucht), Zustände (Vergiftung,
-  Schlaf ...), Gegner-KI jenseits „Angriff auf zufälligen Helden",
+- Stand 20a (Runde 23): Rundenkampf mit Angriff, Fertigkeiten (Schaden/
+  Heilung/Buff, MP-Kosten), gezielten Heil-/Manaitems, Flucht, Zuständen
+  (Gift/Brand/Regeneration/Wut/Schutz mit Dauer und Werte-Boni),
+  Sieg/Niederlage/Exp-Level-Up/Gold/Drops, Gegner als 3D-Kästen mit
+  HP-Balken.
+- Es fehlen u. a.: Gegner-Fertigkeiten und Gegner-KI jenseits „Angriff auf
+  zufälligen Helden", Schlaf/Stille/Paralyse und Sperr-Regeln, Heilung von
+  KO-Helden per Fertigkeit, Elemente/Erfolgsraten, Skill-Bedingungen
+  (XP: Skill-Guards), F9-Reiter für `skills`/`states` (nur JSON),
   Formationen/Positionen, Kampf-Hintergrundmusik/-Hintergrundbild,
   Kampftagebuch-Fenster zum Wegklicken. Zufallskämpfe beim Laufen sind
   seit 19l erledigt (siehe Erledigt-Eintrag 19l).
 - Betroffene Stellen: `game/engine/battle.rb`, `docs/architecture.md` (19i).
 - Gefunden in: Etappe 19i (Roadmap aus 19e, XP-Defaultscript als Referenz).
 ### [Engine] RGSS-Schicht deckt noch nicht alles ab — offen (Feature-Fehlend)
-- Stand 19h: `$game_*` komplett inkl. `$game_temp`, `$data_actors/items/system`
+- Stand 20a: `$data_skills`/`$data_states` ergänzt; `$game_*` komplett inkl.
+  `$game_temp`, `$data_actors/items/skills/states/system`
   (Hashes mit String-IDs), `Sprite/Window/Viewport/Bitmap` (über die UI-
   Primitive), `$scene` mit `Graphics.scene_update`, `$game_player.passable?`
   echt (Kartengrenzen + Geländestufe) - siehe Erledigt-Eintrag 19h.

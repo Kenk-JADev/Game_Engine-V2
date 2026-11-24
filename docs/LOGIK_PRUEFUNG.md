@@ -30,7 +30,8 @@ objekt-only.
 **Prüfrunde 6 (Teile V–W):** Esc-Menü vs. `Scene_Menu`, Zufallskämpfe,
 Teardown-Audit — Menü parst pro Frame bis zu 12 Save-JSONs (Cache
 fehlt), Encounter-Kadenz ~40 % schneller als XP (0,60 m vs. Kachel),
-Slip-Damage fehlt (20a), Teardown/F5 **sauber ohne Leak** ✓.
+Slip-Damage fehlt (Zustände seit 20a nur im Kampf), Teardown/F5
+**sauber ohne Leak** ✓.
 **Prüfrunde 7 (Teil Y, Datenpipeline End-to-End):** Editor↔Laufzeit
 feldweise konsistent (26 Typen, Seiten/Bedingungen, NPC-Roundtrip,
 Legacy-Migration, Brücke getestet) — neue Befunde **Y1 Demo-Daten-Drift**
@@ -153,7 +154,7 @@ ergänzt; die Einträge unten sind jeweils als behoben markiert.
 | D1 | **`auto`-Trigger** | **Autorun:** startet jeden Frame neu, läuft endlos bis Seitenwechsel/`erase` (klassisch: Self-Switch am Ende, sonst Endlosschleife) — `021:214` + `check_event_trigger_auto` | feuert **einmal pro Seite** (`fired`) | Für XP-Exaktheit: auf Autorun umstellen. Demo hat kein `auto`-Event → unkritisch. Alternative: einmalig lassen und als Abweichung dokumentieren. **→ entschieden (Z6): XP-treu umgesetzt in Runde 17** (Neustart in `main.rb`, `fired` nur noch Log-Marke). |
 | D2 | **`touch`-Trigger** | feuert bei **jeder** Ankunft des Spielers auf dem Event-Feld erneut (`Game_Player`, `check_event_trigger_here([1,2])` bei `last_moving`); Event-Touch feuert dauernd, solange Event auf Spielerfeld | **einmal pro Seite** (RADIUS + `fired`), nie wieder vor Seitenwechsel | XP-treu: bei Wiederbetreten erneut feuern (Self-Switch macht es einmalig — wie XP-Autoren es gewöhnt sind). **→ entschieden (Z6): XP-treu umgesetzt in Runde 17** (Rearm beim Verlassen der Nähe in `main.rb`). |
 | D3 | **NPCs/Events während Text** | Karten-Update dreht Events **permanent** weiter (eigene Parallel-Interpreter je Event, autonome Bewegung auch bei offenem Textfenster) | **Ein** Interpreter; Seiten-Refreshs, NPC-Bewegung und NPC-Kollision laufen seit **Runde 20** auch bei offenem Text (Auslöser auto/touch/E erst danach); parallel-Events können weiterhin nicht *während* eines Textes starten (ein Interpreter) | **→ umgesetzt (Runde 20):** Update-Reihenfolge in `game/main.rb` entkoppelt, geprüft von `tools/encounter_test.rb` (NPC läuft, Seitenwechsel, auto wartet, Spieler bleibt eingefroren). Rest-Grenze (echte Parallel-Interpreter je Event) steht im Backlog. |
-| D4 | **Kampf-Details** | Reihenfolge: alle Kämpfer gemischt nach `agi + rand(10+agi/4)`; Formel mit Treffer/Miss, `str`-Skalierung, Elementen, Kritik `4*dex/agi` (×2), Wache (÷2), Varianz; Flucht `50*actors_agi/enemies_agi`; EXP für alle lebenden + `cant_get_exp?`-Freigabe; **Level-Up in `exp=`** | Reihenfolge: erst Held-Block (nach agi), dann Gegner; vereinfachte Formel (kein Miss/Wache/Element, Kritik agi-basiert ×3/×1.25); Flucht fest 50 %; EXP nur für lebende Held; **Level-Up seit Runde 22** (XP-Kurve 2.7, Gesamt-Exp, prozentuales Wachstum) | **→ Level-Up umgesetzt (Runde 22):** `Party.gain_exp`/`Party.set_exp`/`level_up!`, RGSS-Route `actor.exp = n`, Kampf nutzt `gain_exp`; danach Formel/Reihenfolge/Flucht schrittweise angleichen (20a). |
+| D4 | **Kampf-Details** | Reihenfolge: alle Kämpfer gemischt nach `agi + rand(10+agi/4)`; Formel mit Treffer/Miss, `str`-Skalierung, Elementen, Kritik `4*dex/agi` (×2), Wache (÷2), Varianz; Flucht `50*actors_agi/enemies_agi`; EXP für alle lebenden + `cant_get_exp?`-Freigabe; **Level-Up in `exp=`** | Reihenfolge: erst Held-Block (nach agi), dann Gegner; vereinfachte Formel (kein Miss/Wache/Element, Kritik agi-basiert ×3/×1.25); Flucht fest 50 %; EXP nur für lebende Held; **Level-Up seit Runde 22** (XP-Kurve 2.7, Gesamt-Exp, prozentuales Wachstum) | **→ Level-Up umgesetzt (Runde 22):** `Party.gain_exp`/`Party.set_exp`/`level_up!`, RGSS-Route `actor.exp = n`, Kampf nutzt `gain_exp`. **Fertigkeiten/Zustände seit Runde 23 (20a):** Befehl `Fertigkeit` (XP-Reihenfolge), MP-Kosten, Schaden/Heilung/Buff, Zustände mit Dauer und Werte-Boni, Gift/Regeneration pro Runde. Offen: gemischte Aktionsreihenfolge (`agi + rand`), Wache, Treffer/Elemente, Flucht nach Agi-Verhältnis. |
 | D5 | **Wahl-Abbruch** | Show Choices mit optionalem Abbruch-Zweig (403) | cancel-Feld + Abbruch-Zweig vorhanden; Esc gehört während Eingaben der Eingabe, nicht dem Menü | → **umgesetzt (Runde 16):** `cancel`/`cancel_branch` in Engine+Editor+MapCheck+Tests; XP-Default „nicht erlaubt“ bleibt Standard. |
 | D6 | **Einheiten** | `wait` in Frames (40/60 s), Variablen-Command mit 6 Operationen/8 Quellen | Sekunden; `variable` nur `value`/`add` | Bewusst; Operationen/Quellen sind Teil von 20d. |
 | D7 | **Action-Trigger** | Taste C: Event auf eigenem Feld **oder direkt davor** (Blickrichtung, 1 Kachel) | Reichweiten-Kugel (Default 2 m) + E + Mausklick-Picking | 3D-Adaption, sinnvoll — Radius ist der „davor“. So belassen. |
@@ -593,9 +594,10 @@ Roadmap-Baustein (20x analog zu 20f Bilder).
   als bei XP. Kleine D-Minus-Ergänzung (nicht D-markiert, weil
   Kadenz-Empfindlichkeit projektabhängig).
 - ⚠️ **Slip-Damage fehlt:** XP ruft bei gerader `$game_party.steps`
-  `check_map_slip_damage` (Zustands-Schaden, `014:292`) — hängt an den
-  fehlenden Zuständen → mit **20a** mitziehen (Zustände + Party-Steps
-  aus F3).
+  `check_map_slip_damage` (Zustands-Schaden, `014:292`). Die Zustände
+  selbst gibt es seit **20a** (Runde 23) im Kampf; auf der Karte fehlen
+  sie weiterhin, weil Zustände mit dem Kampf enden und der Schritt-Hook
+  (`$game_party.steps`, F3) noch keinen Karten-Schaden kennt.
 
 **Teardown-Audit — sauber, kein Leak gefunden ✅:**
 - `enter_map`: `Fade/Mover/RGSS.reset!`, `Battle.abort!`,

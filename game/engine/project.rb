@@ -213,7 +213,10 @@ module Project
                     'power' => 40, 'price' => 25, 'start' => 1,
                     'desc' => 'Heilt 40 HP eines Helden.' }],
       'enemies' => [],
-      'troops' => [] }
+      'troops' => [],
+      # 20a: Bereiche vorhanden, aber leer - der Editor-Reiter fehlt noch.
+      'skills' => [],
+      'states' => [] }
   end
 
   # Neues Projekt anlegen: leere Welt (nur Gras), Startpunkt in der Mitte,

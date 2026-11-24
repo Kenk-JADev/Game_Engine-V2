@@ -150,6 +150,23 @@ check('jede Truppe nennt nur bekannte Gegner') do
   DATEN.fetch('troops', []).all? { |t| (t['enemies'] - ids).empty? }
 end
 
+puts '== Fertigkeiten/Zustände seit 20a =='
+check('database.json hat skills und states mit Pflichtfeldern') do
+  skills = DATEN.fetch('skills', [])
+  states = DATEN.fetch('states', [])
+  !skills.empty? && !states.empty? &&
+    skills.all? { |s| %w[id name mp kind].all? { |k| s.key?(k) } } &&
+    states.all? { |s| %w[id name kind turns].all? { |k| s.key?(k) } }
+end
+check('jede Fertigkeit nennt nur bekannte Zustände') do
+  ids = DATEN.fetch('states', []).map { |s| s['id'] }
+  DATEN.fetch('skills', []).all? { |s| s['state'].nil? || ids.include?(s['state']) }
+end
+check('jeder Held lernt nur bekannte Fertigkeiten') do
+  ids = DATEN.fetch('skills', []).map { |s| s['id'] }
+  DATEN.fetch('actors', []).all? { |a| (Array(a['skills']) - ids).empty? }
+end
+
 puts '== Terrain-/Atmosphären-Grenzen =='
 limits_cpp = File.read(File.join(ROOT, 'src', 'world', 'terrain_limits.h'), encoding: 'utf-8')
 %w[TERRAIN_MIN_SIZE TERRAIN_MAX_SIZE TERRAIN_MIN_RES TERRAIN_MAX_RES TERRAIN_MAX_QUADS

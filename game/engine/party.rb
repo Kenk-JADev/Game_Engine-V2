@@ -39,6 +39,15 @@ class Party
       Party.exp_for_level(level.to_i + 1)
     end
 
+    # Gelernte Fertigkeiten (XP: Game_Actor#skills) - IDs aus database.json.
+    def skills
+      Party.skills(self)
+    end
+
+    def learn_skill(skill_id)
+      Party.learn_skill(self, skill_id)
+    end
+
     def hp_line
       "#{name}  Lv #{level}  HP #{hp}/#{max_hp}  MP #{mp}/#{max_mp}"
     end
@@ -128,6 +137,14 @@ class Party
       next if id.empty?
       @items[id] = (h['start'] || 0).to_i if (h['start'] || 0).to_i.positive?
     end
+    # Fertigkeiten je Held (20a): Liste von Skill-IDs aus der Datenbank.
+    @skills = {}
+    (db['actors'] || []).each do |h|
+      next unless h.is_a?(Hash)
+      id = h['id'].to_s
+      next if id.empty?
+      @skills[id] = Array(h['skills']).map(&:to_s).reject(&:empty?).uniq
+    end
     @gold = (db['gold'] || 0).to_i
     @steps = 0   # F3: XP Game_Party#steps - zählt die Schritte des Helden
     Rune::Log.info("Party: #{@actors.size} Helden, #{@items.size} Item-Sorten, " \
@@ -150,6 +167,27 @@ class Party
 
   def self.leader
     @actors.first
+  end
+
+  # Gelernte Fertigkeiten eines Helden (Array von Skill-IDs). Akzeptiert den
+  # Actor oder seine ID; unbekannte Helden haben keine Fertigkeiten.
+  def self.skills(actor)
+    id = actor.is_a?(String) ? actor : (actor.respond_to?(:id) ? actor.id.to_s : nil)
+    return [] if id.nil? || id.empty?
+    @skills ||= {}
+    @skills[id] ||= []
+  end
+
+  # Fertigkeit lernen (XP: Game_Actor#learn_skill). Doppelte/alte Einträge
+  # werden ignoriert; die Gültigkeit prüft der Aufrufer (Battle/MapCheck).
+  def self.learn_skill(actor, skill_id)
+    id = actor.is_a?(String) ? actor.to_s : (actor.respond_to?(:id) ? actor.id.to_s : nil)
+    skill = skill_id.to_s
+    return false if id.nil? || id.empty? || skill.empty?
+    liste = skills(actor)
+    return false if liste.include?(skill)
+    liste << skill
+    true
   end
 
   def self.find(id)
@@ -288,6 +326,7 @@ class Party
       'gold' => @gold,
       'steps' => steps,
       'items' => @items.dup,
+      'skills' => (@skills || {}).transform_values(&:dup),
       # Seit dem Level-Up (D4) wachsen auch max_hp/max_mp und die
       # Angriffswerte - sie gehören damit in den Spielstand, sonst steht ein
       # geladener Held wieder auf den Datenbank-Startwerten.
@@ -304,6 +343,13 @@ class Party
     @gold = (snap['gold'] || 0).to_i
     @steps = (snap['steps'] || 0).to_i   # alte Spielstände ohne 'steps' = 0
     @items = (snap['items'] || {}).map { |k, v| [k.to_s, v.to_i] }.reject { |_, v| v <= 0 }.to_h
+    # Fertigkeiten (20a): alte Spielstände ohne 'skills' behalten die
+    # Datenbank-Liste aus Party.setup.
+    if snap['skills'].is_a?(Hash)
+      @skills = snap['skills'].each_with_object({}) do |(id, liste), hash|
+        hash[id.to_s] = Array(liste).map(&:to_s).reject(&:empty?).uniq
+      end
+    end
     (snap['actors'] || []).each do |h|
       a = find(h['id'])
       next unless a

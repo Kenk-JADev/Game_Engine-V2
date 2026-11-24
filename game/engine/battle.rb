@@ -10,14 +10,24 @@
 #                    "drop":"heiltrank", "drop_rate":0.3,
 #                    "color":13209632 }],
 #      "troops":  [{ "id":"waldweg", "name":"Waldweg",
-#                    "enemies":["goblin","wolf"] }]
+#                    "enemies":["goblin","wolf"] }],
+#      "skills":  [{ "id":"feuerball", "name":"Feuerball",
+#                    "kind":"damage|heal|buff", "scope":"enemy|ally|self",
+#                    "mp":6, "power":16, "state":"brand",
+#                    "state_rate":0.4, "turns":2 }],
+#      "states":  [{ "id":"gift", "name":"Gift",
+#                    "kind":"poison|regen|atk_up|def_up|...",
+#                    "power":6, "turns":3 }]
+#    Helden lernen Fertigkeiten über "skills": ["feuerball", ...] im
+#    Helden-Eintrag (Etappe 20a).
 #
 #  Ablauf (wie XP: Befehlsphase -> Aktionsphase -> Gegnerzug):
 #    1. start(troop_id) stellt Gegner auf, merkt can_escape/can_lose.
-#    2. Befehlsphase: jeder lebende Held bekommt Angriff/Item/Flucht;
-#       Aktionen sammeln sich in @actions.
+#    2. Befehlsphase: jeder lebende Held bekommt Angriff/Fertigkeit/Item/
+#       Flucht (XP-Reihenfolge); Aktionen sammeln sich in @actions.
 #    3. execute: Heldenaktionen wirken (nach Agilität), dann ziehen alle
-#       Gegner (zufälliger lebender Held), dann Sieg-/Niederlage-Prüfung.
+#       Gegner (zufälliger lebender Held), dann Zustände ticken (Gift/
+#       Regeneration, Dauer -1), dann Sieg-/Niederlage-Prüfung.
 #    4. Sieg: Exp/Gold/Drop an die Party, Ende. Niederlage: gameover-Flag
 #       ($game_temp.gameover -> Scene_Gameover, Taste -> Titel), außer can_lose.
 #
@@ -29,12 +39,19 @@
 #  Streuung, mindestens 1. Kritik: agi/64-Chance (XP-Formel), x3-Schaden
 #  beim Angriff (Helden), +25 % beim Gegner-Aggressionswert.
 #
-#  Grenzen (Backlog): keine Skills/Magie (MP wird nicht dafür verbraucht), keine
-#  Zustände (Vergiftung etc.), keine Kampfformationen/Positionen, Gegner
-#  ziehen immer "Angriff auf zufälligen Held", kein Flucht-Textfenster,
-#  Kampfhintergrund = abgedunkelte Karte.
+#  Fertigkeiten (20a): kind damage (Schaden + optionale Zustandschance),
+#  heal (Heilung über Kraft + halbe Weisheit) und buff (Zustand auf das
+#  Ziel). Kosten werden beim Ausführen abgebucht; zu wenig MP verweigert
+#  schon die Auswahl. Zustände geben atk/def/spi/agi-Boni (Wut/Schutz) und
+#  wirken am Rundenende (Gift/Regeneration).
+#
+#  Grenzen (Backlog): keine Gegner-Fertigkeiten, keine Skill-Bedingungen
+#  (XP: Skill-Guards), keine Heilung von KO-Helden per Skill, keine
+#  Kampfformationen/Positionen, Gegner ziehen immer "Angriff auf zufälligen
+#  Held", kein Flucht-Textfenster, Kampfhintergrund = abgedunkelte Karte.
 #
 #  Kopflos testbar: ruby -I game/engine tools/battle_test.rb
+#                  ruby -I game/engine tools/skills_test.rb
 # ============================================================================
 
 module Battle
@@ -58,6 +75,56 @@ module Battle
       @agi = agi.to_i
       @actor = actor
       @defi = defi          # Party::Actor bei Helden, Enemy-Hash bei Gegnern
+      @states = []          # 20a: [{ id:, turns: }] (XP: Game_Battler#states)
+    end
+
+    # ---------------------------------------------------------- Zustände (20a)
+    # XP erlaubt höchstens 8 Zustände pro Kämpfer; jeder hat eine Restdauer
+    # in Runden. Gleicher Zustand erneut = Dauer auffrischen.
+    MAX_STATES = 8
+
+    attr_reader :states
+
+    def add_state(id, turns = nil)
+      defi = Battle.state_def(id)
+      return false unless defi
+
+      dauer = (turns || defi['turns'] || 3).to_i
+      dauer = 1 if dauer < 1
+      vorhanden = @states.find { |s| s[:id] == id.to_s }
+      if vorhanden
+        vorhanden[:turns] = [vorhanden[:turns], dauer].max
+        return true
+      end
+      return false if @states.size >= MAX_STATES
+
+      @states << { id: id.to_s, turns: dauer }
+      true
+    end
+
+    def state?(id) = @states.any? { |s| s[:id] == id.to_s }
+
+    # Anzeige fürs Kampf-UI: "Gift(2) Schutz(3)".
+    def state_names
+      @states.filter_map do |s|
+        defi = Battle.state_def(s[:id])
+        defi ? "#{defi['name'] || s[:id]}(#{s[:turns]})" : nil
+      end
+    end
+
+    # Summe der Zustandsboni auf atk/def/spi/agi (XP: state_effect).
+    def state_bonus(wert)
+      @states.sum do |s|
+        defi = Battle.state_def(s[:id])
+        next 0 unless defi
+
+        art = defi['kind'].to_s
+        kraft = (defi['power'] || 0).to_i
+        if art == "#{wert}_up" then kraft
+        elsif art == "#{wert}_down" then -kraft
+        else 0
+        end
+      end
     end
 
     def actor? = @actor
@@ -78,11 +145,16 @@ module Battle
 
     # D4 (Runde 22): Auch die Angriffswerte der Helden haben eine Quelle -
     # ein Stufenaufstieg mitten im Kampf wirkt damit sofort (wie XP), statt
-    # erst im nächsten Kampf.
-    def atk = party_actor? ? @defi.atk.to_i : @atk
-    def def = party_actor? ? @defi.def.to_i : @def
-    def spi = party_actor? ? @defi.spi.to_i : @spi
-    def agi = party_actor? ? @defi.agi.to_i : @agi
+    # erst im nächsten Kampf. 20a: Zustände (Wut/Schutz ...) kommen obendrauf.
+    def basis_atk = party_actor? ? @defi.atk.to_i : @atk
+    def basis_def = party_actor? ? @defi.def.to_i : @def
+    def basis_spi = party_actor? ? @defi.spi.to_i : @spi
+    def basis_agi = party_actor? ? @defi.agi.to_i : @agi
+
+    def atk = [basis_atk + state_bonus('atk'), 1].max
+    def def = [basis_def + state_bonus('def'), 1].max
+    def spi = [basis_spi + state_bonus('spi'), 0].max
+    def agi = [basis_agi + state_bonus('agi'), 1].max
 
     def hp=(value)
       value = [[value.to_i, 0].max, max_hp].min
@@ -129,6 +201,41 @@ module Battle
     troops_def.find { |h| h.is_a?(Hash) && h['id'].to_s == id.to_s }
   end
 
+  # Fertigkeiten und Zustände (20a) - beide aus database.json.
+  def self.skills_def
+    ::Database.database['skills'] || []
+  end
+
+  def self.states_def
+    ::Database.database['states'] || []
+  end
+
+  def self.skill_def(id)
+    skills_def.find { |h| h.is_a?(Hash) && h['id'].to_s == id.to_s }
+  end
+
+  def self.state_def(id)
+    states_def.find { |h| h.is_a?(Hash) && h['id'].to_s == id.to_s }
+  end
+
+  # Gelernte Fertigkeiten eines Helden als Definitionen. Unbekannte IDs
+  # (z. B. aus einem älteren Spielstand) werden still übergangen.
+  def self.known_skills(battler)
+    return [] unless battler && battler.defi.respond_to?(:skills)
+
+    Party.skills(battler.defi).filter_map { |id| skill_def(id) }
+  end
+
+  def self.skill_cost(skill) = [(skill['mp'] || 0).to_i, 0].max
+
+  # Zielgruppe einer Fertigkeit (XP: scope): enemy (Standard), ally, self.
+  def self.skill_scope(skill)
+    art = (skill['scope'] || 'enemy').to_s
+    %w[ally self].include?(art) ? art : 'enemy'
+  end
+
+  def self.affordable?(battler, skill) = battler.mp >= skill_cost(skill)
+
   # ------------------------------------------------------------- Zustand
 
   @active = false
@@ -141,6 +248,8 @@ module Battle
   @target_index = 0
   @selecting_actor = nil
   @selected_item = nil
+  @skill_index = 0          # 20a: Cursor im Fertigkeitenfenster
+  @selected_skill = nil     # 20a: gewählte Fertigkeit während der Zielwahl
   @actions = []         # gesammelte {actor:, kind:, item:, target:}
   @can_escape = true
   @can_lose = false
@@ -150,11 +259,13 @@ module Battle
 
   class << self
     attr_reader :enemies, :actors, :phase, :actor_index, :command_index,
-                :item_index, :target_index, :actions, :result, :log, :turn
+                :item_index, :target_index, :actions, :result, :log, :turn,
+                :skill_index, :selected_skill
     attr_accessor :can_escape, :can_lose
   end
 
-  COMMANDS = %w[Angriff Item Flucht].freeze
+  # XP-Reihenfolge: Angriff / Fertigkeit / Item / Flucht.
+  COMMANDS = %w[Angriff Fertigkeit Item Flucht].freeze
 
   def self.active? = @active
   def self.in_battle = @active   # RGSS-Lesart ($game_temp.in_battle)
@@ -225,6 +336,8 @@ module Battle
     @target_index = 0
     @selecting_actor = nil
     @selected_item = nil
+    @skill_index = 0
+    @selected_skill = nil
     @phase = @actors.any?(&:alive?) ? :command : :execute
     $game_temp.in_battle = true if $game_temp
     Rune::Log.info("Battle: Kampf gegen Truppe '#{troop['name'] || troop_id}' " \
@@ -245,6 +358,7 @@ module Battle
     @actions = []
     @selecting_actor = nil
     @selected_item = nil
+    @selected_skill = nil
     $game_temp.in_battle = false if $game_temp
     release_simulation
     Rune::Log.info('Battle: Kampf abgebrochen')
@@ -273,11 +387,13 @@ module Battle
     return if cancel_invalid_selection
 
     case @phase
-    when :command     then update_command
-    when :item        then update_item
-    when :target      then update_target
-    when :item_target then update_item_target
-    when :execute     then update_execute(dt)
+    when :command      then update_command
+    when :skill        then update_skill
+    when :skill_target then update_skill_target
+    when :item         then update_item
+    when :target       then update_target
+    when :item_target  then update_item_target
+    when :execute      then update_execute(dt)
     end
   end
 
@@ -291,10 +407,11 @@ module Battle
     end
     @selecting_actor = nil
     @selected_item = nil
+    @selected_skill = nil
   end
 
   def self.cancel_invalid_selection
-    return false unless %i[item target item_target].include?(@phase)
+    return false unless %i[item target item_target skill skill_target].include?(@phase)
     return false if @selecting_actor && @selecting_actor.equal?(current_actor)
 
     cancel_pending_selection
@@ -303,7 +420,7 @@ module Battle
     true
   end
 
-  # Befehlsphase: Angriff/Item/Flucht für den aktuellen Helden.
+  # Befehlsphase: Angriff/Fertigkeit/Item/Flucht für den aktuellen Helden.
   def self.update_command
     actor = current_actor
     return finish_round unless actor   # alle durch
@@ -324,6 +441,16 @@ module Battle
         @target_index = 0
         @phase = :target
         klick
+      when 'Fertigkeit'
+        if known_skills(actor).empty?
+          log('Keine Fertigkeiten gelernt!')
+          Rune::Sound.play('ablehnen', 0.6) if defined?(Rune::Sound)
+        else
+          @skill_index = 0
+          @selecting_actor = actor
+          @phase = :skill
+          klick
+        end
       when 'Item'
         if usable_items.empty?
           log('Keine benutzbaren Items!')
@@ -367,6 +494,98 @@ module Battle
     elsif Rune::Input.pressed?(:escape)
       cancel_pending_selection
       @phase = :command
+      klick
+    end
+  end
+
+  # Fertigkeitenwahl (20a): gelernte Skills des aktuellen Helden mit MP-Kosten.
+  # Zu wenig MP wird verweigert (XP zeigt die Kosten im Fenster).
+  def self.update_skill
+    actor = current_actor
+    return finish_round unless actor
+
+    liste = known_skills(actor)
+    if liste.empty?
+      cancel_pending_selection
+      @phase = :command
+      return
+    end
+    @skill_index = 0 if @skill_index >= liste.size
+
+    if Rune::Input.pressed?(:up)
+      @skill_index = (@skill_index - 1) % liste.size
+      klick
+    elsif Rune::Input.pressed?(:down)
+      @skill_index = (@skill_index + 1) % liste.size
+      klick
+    elsif Rune::Input.pressed?(:enter) || Rune::Input.pressed?(:e) ||
+          Rune::Input.pressed?(:space)
+      skill = liste[@skill_index]
+      art = skill_scope(skill)
+      unless affordable?(actor, skill)
+        log("#{actor.name} hat nicht genug MP für #{skill['name'] || skill['id']}")
+        Rune::Sound.play('ablehnen', 0.6) if defined?(Rune::Sound)
+        return
+      end
+      if art == 'self'
+        @actions << { actor: actor, kind: :skill, skill: skill['id'], target: actor }
+        log("#{actor.name}: #{skill['name'] || skill['id']}")
+        next_actor
+      else
+        @selected_skill = skill['id']
+        @target_index = 0
+        @phase = :skill_target
+        klick
+      end
+    elsif Rune::Input.pressed?(:escape)
+      cancel_pending_selection
+      @phase = :command
+      klick
+    end
+  end
+
+  # Zielwahl einer Fertigkeit: Gegner (Standard) oder Helden (Heilung/Buff).
+  def self.update_skill_target
+    actor = current_actor
+    return finish_round unless actor
+
+    skill = skill_def(@selected_skill)
+    unless skill
+      @selected_skill = nil
+      @phase = :skill
+      return
+    end
+    # Heil-/Buff-Ziele sind lebende Helden (XP erlaubt HP-Skills nicht auf
+    # KO-Ziele; Wiederbeleben bleibt dem Item vorbehalten).
+    ziele = skill_scope(skill) == 'ally' ? living_actors : living_enemies
+    if ziele.empty?
+      cancel_pending_selection
+      @phase = :skill
+      return
+    end
+    @target_index %= ziele.size
+
+    if Rune::Input.pressed?(:left) || Rune::Input.pressed?(:up)
+      @target_index = (@target_index - 1) % ziele.size
+      klick
+    elsif Rune::Input.pressed?(:right) || Rune::Input.pressed?(:down)
+      @target_index = (@target_index + 1) % ziele.size
+      klick
+    elsif Rune::Input.pressed?(:enter) || Rune::Input.pressed?(:e) ||
+          Rune::Input.pressed?(:space)
+      ziel = ziele[@target_index]
+      unless affordable?(actor, skill)
+        log("#{actor.name} hat nicht genug MP für #{skill['name'] || skill['id']}")
+        Rune::Sound.play('ablehnen', 0.6) if defined?(Rune::Sound)
+        return
+      end
+      @actions << { actor: actor, kind: :skill, skill: skill['id'], target: ziel }
+      log("#{actor.name}: #{skill['name'] || skill['id']} -> #{ziel.name}")
+      @selected_skill = nil
+      next_actor
+    elsif Rune::Input.pressed?(:escape)
+      @selected_skill = nil
+      @phase = :skill
       klick
     end
   end
@@ -456,6 +675,14 @@ module Battle
         ziel = living_enemies.first unless ziel && @enemies.any? { |enemy| enemy.equal?(ziel) } && ziel.alive?
         next unless ziel
         angriff(actor, ziel)
+      when :skill
+        skill = skill_def(act[:skill])
+        ziel = act[:target]
+        if skill && ziel
+          wende_skill_an(actor, skill, ziel)
+        else
+          log("#{actor.name}: Fertigkeit konnte nicht benutzt werden")
+        end
       when :item
         item, ziel = act[:item], act[:target]
         if item && ziel && @actors.any? { |candidate| candidate.equal?(ziel) } &&
@@ -477,6 +704,11 @@ module Battle
       break unless ziel
       angriff(g, ziel, gegner: true)
     end
+
+    # 20a: Zustände wirken am Rundenende (Gift/Regeneration) und zählen
+    # ihre Dauer herunter - wie XP am Ende der Runde.
+    zustaende_ticken
+    return if beende_pruefen
 
     @turn += 1
     beende_pruefen || beginn_runde
@@ -509,6 +741,7 @@ module Battle
     @command_index = 0
     @selecting_actor = nil
     @selected_item = nil
+    @selected_skill = nil
     @phase = :command
   end
 
@@ -547,6 +780,89 @@ module Battle
         "#{kritisch ? ' (kritisch!)' : ''}")
     Rune::Sound.play(gegner ? 'landung' : 'schritt', 0.55) if defined?(Rune::Sound)
     log("#{ziel.name} fällt!") if ziel.dead?
+    sync_actors!
+  end
+
+  # Fertigkeit anwenden (20a): MP abbuchen, dann Schaden/Heilung/Zustand.
+  # Rückgabe false, wenn sie nicht (mehr) wirkt - die MP bleiben dann stehen.
+  def self.wende_skill_an(quelle, skill, ziel)
+    kosten = skill_cost(skill)
+    if quelle.mp < kosten
+      log("#{quelle.name} hat nicht genug MP für #{skill['name'] || skill['id']}")
+      return false
+    end
+    quelle.mp = quelle.mp - kosten
+    name = skill['name'] || skill['id']
+    art = (skill['kind'] || 'damage').to_s
+
+    case art
+    when 'heal'
+      heil = [(skill['power'] || 20).to_i + (quelle.spi / 2.0).round, 1].max
+      vorher = ziel.hp
+      ziel.heal(heil)
+      log("#{quelle.name} wirkt #{name} auf #{ziel.name} (+#{ziel.hp - vorher} HP)")
+    when 'buff'
+      zustand = skill['state'].to_s
+      defi = state_def(zustand)
+      chanced = rand < (skill['state_rate'] || 1.0).to_f
+      if defi && chanced && ziel.add_state(zustand, skill['turns'])
+        log("#{quelle.name} wirkt #{name} auf #{ziel.name}: #{defi['name'] || zustand}")
+      else
+        log("#{quelle.name} wirkt #{name}, aber nichts geschieht")
+      end
+    else
+      schaden = ((skill['power'] || 10).to_i + quelle.spi * 0.5 - ziel.def / 2.0) *
+                (rand * 0.3 + 0.85)
+      schaden = [schaden.round, 1].max
+      ziel.damage(schaden)
+      log("#{quelle.name} wirkt #{name} auf #{ziel.name}: #{schaden} Schaden")
+      log("#{ziel.name} fällt!") if ziel.dead?
+      # Zustandschance (XP: state_effectivness / +x %)
+      if (zustand = skill['state'].to_s) != '' && ziel.alive?
+        defi = state_def(zustand)
+        if defi && rand < (skill['state_rate'] || 1.0).to_f && ziel.add_state(zustand, skill['turns'])
+          log("#{ziel.name}: #{defi['name'] || zustand}!")
+        end
+      end
+    end
+    Rune::Sound.play('landung', 0.5) if defined?(Rune::Sound)
+    sync_actors!
+    true
+  end
+
+  # Rundenende: Gift schadet, Regeneration heilt, danach Dauer -1 und
+  # abgelaufene Zustände entfernen (XP: Game_Battler#update_state_turn_effect).
+  def self.zustaende_ticken
+    (@actors + @enemies).each do |b|
+      next if b.dead? && b.states.empty?
+
+      b.states.dup.each do |s|
+        defi = state_def(s[:id])
+        next unless defi
+
+        case defi['kind'].to_s
+        when 'poison'
+          schaden = [(defi['power'] || 1).to_i, 1].max
+          b.damage(schaden)
+          log("#{b.name}: #{defi['name'] || s[:id]} (-#{schaden} HP)")
+          log("#{b.name} fällt!") if b.dead?
+        when 'regen'
+          vorher = b.hp
+          b.heal([(defi['power'] || 1).to_i, 1].max)
+          log("#{b.name}: #{defi['name'] || s[:id]} (+#{b.hp - vorher} HP)") if b.hp > vorher
+        end
+      end
+      next if b.dead?
+
+      b.states.each { |s| s[:turns] -= 1 }
+      b.states.reject! do |s|
+        next false if s[:turns].to_i.positive?
+
+        defi = state_def(s[:id])
+        log("#{b.name}: #{defi ? defi['name'] : s[:id]} klingt ab")
+        true
+      end
+    end
     sync_actors!
   end
 
@@ -704,7 +1020,7 @@ module Battle
     UI.abdunkeln(w)
 
     # Befehlsfenster (links).
-    if %i[command item target item_target].include?(@phase)
+    if %i[command item target item_target skill skill_target].include?(@phase)
       actor = current_actor
       cw = 220
       ch = 40 + COMMANDS.size * 28
@@ -722,6 +1038,36 @@ module Battle
           UI.text(cx + 14, y, "  #{c}", grau ? UI::TEXT_DIM : UI::TEXT, 16)
         end
       end
+    end
+
+    # Fertigkeitenfenster (über den Befehlen, XP: Skill-Fenster rechts).
+    if %i[skill skill_target].include?(@phase)
+      actor = current_actor
+      skills = actor ? known_skills(actor) : []
+      sw = 300
+      sh = 24 + [skills.size, 1].max * 24
+      sx = 40
+      sy = h - 160 - sh - 50
+      UI.panel(sx, sy, sw, sh, UI::PANEL, 0.92)
+      UI.panel(sx, sy, sw, 2, UI::ACCENT, 0.85)
+      if skills.empty?
+        UI.text(sx + 14, sy + 10, 'Keine Fertigkeiten', UI::TEXT_DIM, 14)
+      else
+        skills.each_with_index do |skill, i|
+          y = sy + 10 + i * 24
+          kosten = skill_cost(skill)
+          text = "#{skill['name'] || skill['id']}  #{kosten} MP"
+          genug = actor && actor.mp >= kosten
+          gewaehlt = i == @skill_index && @phase == :skill
+          farbe = if !genug then UI::TEXT_DIM
+                  elsif gewaehlt then UI::ACCENT
+                  else UI::TEXT
+                  end
+          UI.text(sx + 14, y, gewaehlt ? "> #{text}" : "  #{text}", farbe, 14)
+        end
+      end
+      UI.text(sx + 14, sy - 20, actor ? "#{actor.name}: #{actor.mp}/#{actor.max_mp} MP" : '',
+              UI::TEXT_DIM, 13)
     end
 
     # Itemfenster (über den Befehlen).
@@ -750,6 +1096,13 @@ module Battle
     elsif @phase == :item_target && (ziel = @actors[@target_index])
       UI.text(w / 2 - 220, h / 2 - 180,
               "#{Party.item_name(@selected_item)} — Ziel: #{ziel.name}  (←/→, E / Esc)", UI::ACCENT, 15)
+    elsif @phase == :skill_target
+      skill = skill_def(@selected_skill)
+      ziele = skill && skill_scope(skill) == 'ally' ? living_actors : living_enemies
+      if skill && (ziel = ziele[@target_index])
+        UI.text(w / 2 - 220, h / 2 - 180,
+                "#{skill['name'] || skill['id']} — Ziel: #{ziel.name}  (←/→, E / Esc)", UI::ACCENT, 15)
+      end
     end
 
     # Party-Status (unten links neben den Befehlen).
@@ -759,8 +1112,11 @@ module Battle
     py2 = h - ph - 20
     UI.panel(px2, py2, pw, ph, UI::PANEL, 0.88)
     Party.actors.each_with_index do |a, i|
-      selected = @phase == :item_target && @actors[@target_index]&.defi&.equal?(a)
-      text = selected ? "> #{a.hp_line}" : "  #{a.hp_line}"
+      selected = (@phase == :item_target || @phase == :skill_target) &&
+                 @actors[@target_index]&.defi&.equal?(a)
+      zustaende = @actors[i] ? @actors[i].state_names.join(' ') : ''
+      zeile = zustaende.empty? ? a.hp_line : "#{a.hp_line} #{zustaende}"
+      text = selected ? "> #{zeile}" : "  #{zeile}"
       color = selected ? UI::ACCENT : (a.hp.zero? ? UI::DANGER : UI::TEXT)
       UI.text(px2 + 14, py2 + 8 + i * 26, text, color, 14)
     end
@@ -772,7 +1128,9 @@ module Battle
     gy2 = h - gh - 20
     UI.panel(gx, gy2, gw, gh, UI::PANEL, 0.88)
     @enemies.each_with_index do |g, i|
-      UI.text(gx + 14, gy2 + 8 + i * 24, g.hp_line,
+      zustaende = g.state_names.join(' ')
+      zeile = zustaende.empty? ? g.hp_line : "#{g.hp_line} #{zustaende}"
+      UI.text(gx + 14, gy2 + 8 + i * 24, zeile,
               g.alive? ? UI::TEXT : UI::TEXT_DIM, 14)
     end
 
