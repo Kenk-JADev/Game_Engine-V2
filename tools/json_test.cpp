@@ -1583,9 +1583,14 @@ void event_form_tests(const std::string& wurzel) {
         R"({"cmd":"exit_event"})", R"({"cmd":"erase_event"})",
         R"({"cmd":"button_input","name":"taste","keys":["e","escape"]})",
         R"({"cmd":"text_options","position":"oben","frame":false,"transparent":true})",
-        R"({"cmd":"common_event","name":"hinweis_speichern"})"
+        R"({"cmd":"common_event","name":"hinweis_speichern"})",
+        R"({"cmd":"if_gold","op":">=","value":100,"then":[],"else":[]})",
+        R"({"cmd":"if_item","name":"heiltrank","op":">=","value":2,"then":[],"else":[]})",
+        R"({"cmd":"if_script","code":"true","then":[],"else":[]})",
+        R"({"cmd":"save_access","allowed":false})", R"({"cmd":"menu_access","allowed":true})",
+        R"({"cmd":"encounter_access","allowed":false})"
     };
-    check("Beispiel für jeden der 35 Befehlstypen vorhanden", samples.size() == ET_COUNT);
+    check("Beispiel für jeden der 41 Befehlstypen vorhanden", samples.size() == ET_COUNT);
     for (size_t i = 0; i < samples.size(); ++i) {
         JsonValue c = json_parse(samples[i]); c.set("extra_meta", json_parse(R"({"n":9007199254740993})"));
         const EventCommandForm f = event_command_form_read(c);
@@ -1615,6 +1620,8 @@ void event_form_tests(const std::string& wurzel) {
             case ET_SELF_SWITCH: case ET_IF_SELF_SWITCH: changed.name = "C"; break;
             case ET_FADE: changed.name = "aus"; break;
             case ET_TEXT_OPTIONS: changed.name = "mitte"; break;
+            case ET_IF_SCRIPT: changed.text = "false"; break;
+            case ET_IF_GOLD: case ET_IF_ITEM: changed.val1 = "7"; break;
             default: changed.name = "neuer_name"; break;
         }
         const EventEdit patched = event_command_prepare(&c, f, changed);

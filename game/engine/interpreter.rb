@@ -51,6 +51,11 @@
 #    {"cmd":"text_options","position":"oben","frame":false,"transparent":true}
 #                                                       (Fenster-Optionen, 20c)
 #    {"cmd":"common_event","name":"zeit_ansage"}          (Gemeinsames Event, 20c; XP 117)
+#    {"cmd":"if_gold","op":">=","value":100,"then":[...],"else":[...]}   (20d; XP 111)
+#    {"cmd":"if_item","name":"heiltrank","op":">=","value":1,"then":[...],"else":[...]}
+#    {"cmd":"if_script","code":"$game_party.gold > 100","then":[...],"else":[...]}
+#    {"cmd":"save_access","allowed":false} / menu_access / encounter_access
+#                                                       (20d; XP 134/135/136)
 #    {"cmd":"script","name":"projekt_script"}  |  {"cmd":"script","code":"..."}
 # ============================================================================
 
@@ -224,6 +229,21 @@ class Interpreter
       when 'if_variable'
         branch = compare_variable(cmd)
         @stack.push(list: branch ? (cmd['then'] || []) : (cmd['else'] || []), index: 0)
+      when 'if_gold'   # Etappe 20d: Wenn Gold (XP 111, Quelle Gold)
+        branch = compare_zahl(Party.gold, cmd['op'], (cmd['value'] || 0).to_f)
+        @stack.push(list: branch ? (cmd['then'] || []) : (cmd['else'] || []), index: 0)
+      when 'if_item'   # Etappe 20d: Wenn Item (XP 111, Quelle Item)
+        branch = compare_zahl(Party.item_count(cmd['name']), cmd['op'], (cmd['value'] || 0).to_f)
+        @stack.push(list: branch ? (cmd['then'] || []) : (cmd['else'] || []), index: 0)
+      when 'if_script' # Etappe 20d: Wenn Script (XP 111, Quelle Script)
+        @stack.push(list: script_zutreffend?(cmd) ? (cmd['then'] || []) : (cmd['else'] || []),
+                    index: 0)
+      when 'save_access'  # Etappe 20d: Speichern erlauben/sperren (XP 134)
+        zugriff_setzen(cmd, :save_disabled)
+      when 'menu_access'  # Etappe 20d: Menü erlauben/sperren (XP 135)
+        zugriff_setzen(cmd, :menu_disabled)
+      when 'encounter_access'  # Etappe 20d: Zufallskämpfe erlauben/sperren (XP 136)
+        zugriff_setzen(cmd, :encounter_disabled)
       when 'teleport'
         Rune::Player.teleport(cmd['x'].to_f, Game.gy(cmd['x'].to_f, cmd['z'].to_f) + 0.2,
                               cmd['z'].to_f)
@@ -469,6 +489,9 @@ class Interpreter
     true
   end
 
+  # Die when-Zeilen mit 4er-Einzug sind zugleich die Vergleichsoperator-Tabelle
+  # für tools/sync_test.rb (MapCheck::VERGLEICH) - deshalb steht der case hier
+  # und nicht in einem zweiten Helfer.
   def compare_variable(cmd)
     a = GameState.variable(cmd['name'])
     b = (cmd['value'] || 0).to_f
@@ -481,6 +504,53 @@ class Interpreter
     when '<=' then a <= b
     else Rune::Log.warn("Interpreter: unbekannter Vergleich '#{cmd['op']}'"); false
     end
+  end
+
+  # Etappe 20d: ein Vergleich für alle Quellen (Variable, Gold, Item).
+  # Bewusst als Tabelle statt als zweites case: sync_test liest die when-
+  # Zeilen mit 4er-Einzug als Vergleichsoperator-Tabelle (MapCheck::VERGLEICH)
+  # aus, und die darf nur an EINER Stelle stehen (compare_variable).
+  VERGLEICHE = {
+    '==' => ->(a, b) { a == b },
+    '!=' => ->(a, b) { a != b },
+    '>'  => ->(a, b) { a > b },
+    '>=' => ->(a, b) { a >= b },
+    '<'  => ->(a, b) { a < b },
+    '<=' => ->(a, b) { a <= b }
+  }.freeze
+
+  def compare_zahl(a, op, b)
+    vgl = VERGLEICHE[op.to_s]
+    unless vgl
+      Rune::Log.warn("Interpreter: unbekannter Vergleich '#{op}'")
+      return false
+    end
+    vgl.call(a, b)
+  end
+
+  # Etappe 20d: "Wenn Script" - der Ausdruck liefert selbst den Wahrheitswert
+  # (XP 111, Seite "Script"). Fehler gelten als falsch.
+  def script_zutreffend?(cmd)
+    code = cmd['code'].to_s
+    if code.strip.empty?
+      Rune::Log.warn('Interpreter: if_script ohne code -> Sonst-Zweig')
+      return false
+    end
+    !!Scripts.eval_code(cmd['name'] || 'bedingung', code, self, @owner)
+  end
+
+  # Etappe 20d: 134/135/136 - Speichern/Menü/Zufallskämpfe erlauben oder
+  # sperren. Die Sperren liegen in $game_system (RGSS) und landen im Spielstand.
+  def zugriff_setzen(cmd, feld)
+    erlaubt = cmd.key?('allowed') ? !!cmd['allowed'] : true
+    unless defined?($game_system) && $game_system.respond_to?("#{feld}=")
+      Rune::Log.warn("Interpreter: #{cmd['cmd']} ohne $game_system ignoriert")
+      Issues.report('Interpreter', "#{cmd['cmd']} ohne $game_system")
+      return false
+    end
+    $game_system.public_send("#{feld}=", !erlaubt)
+    Rune::Log.info("Zugriff: #{feld} = #{!erlaubt}")
+    true
   end
 
   # Nächste Zeile zeigen. Nach der letzten Zeile bleibt der Text sichtbar

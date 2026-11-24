@@ -890,6 +890,17 @@ nächsten Schritts.
 
 ---
 
+## AD. Erweiterte Bedingungen & Sperren (Etappe 20d Teil 1, Runde 28)
+
+| # | Thema | XP | Rune3D | Bewertung |
+|---|---|---|---|---|
+| AD.1 | **Bedingungsquellen** | 111 kennt 13 Seiten (Schalter, Variable, Self-Switch, Timer, Actor, Enemy, Character, Gold, Item, Weapon, Armor, Button, Script) | Schalter, Variable, Self-Switch (bisher) + **Gold, Item, Script** (neu) = 6 | Sinnvolle Reihenfolge: Die drei neuen Quellen braucht fast jedes Projekt. Offen bleiben Timer (braucht Befehl 124), Actor/Party, Gegner, Charakter, Waffen/Rüstungen (keine Daten) und Button (müsste die Tasteneingabe als Bedingung abbilden). |
+| AD.2 | **Wenn Script** | Ausdruck im Interpreter-Kontext, `false`/`nil` = falsch | `Scripts.eval_code` (derselbe `Scripts::Context` wie der Script-Befehl); Fehler → Log + Issue, Zweig „Sonst" | XP-gleich. Wichtig: kein stiller Absturz, damit ein Tippfehler im Ausdruck das Event nicht aufhängt. |
+| AD.3 | **134/135/136** | eigene Befehle, Flags in `$game_system` | `save_access`/`menu_access`/`encounter_access` mit `allowed` (Default: erlaubt), Flags in `$game_system`, im Spielstand | XP-gleich; die Sperren wirken sofort, weil Menü/Speichern/Zufallskämpfe dieselben Flags lesen. |
+| AD.4 | **Item-Menge** | 126/111 zählen Inventar-Mengen | `Party.item_count(name)`; negative `value` wird von MapCheck als Warnung gemeldet, aber verglichen (XP erlaubt sie ebenfalls) | Bewusst tolerant: Die Datenprüfung warnt, die Laufzeit rechnet. |
+
+---
+
 ## Z. Empfohlene Reihenfolge (aktualisiert)
 
 1. **Etappe „XP-Logik-Fix" (klein, sicher):** ~~F1 (Routen-Codes 1–45) +

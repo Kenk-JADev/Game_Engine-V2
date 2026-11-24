@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "stand": "Etappe 20c (Runde 27): 35 Befehle",
+  "stand": "Etappe 20d (Runde 28): 41 Befehle",
   "zweck": "Quellen-Register der Event-Befehlstypen. Vier Stellen im Baum müssen zu dieser Liste passen: CMD_TYPES (game/engine/mapcheck.rb), die Ausführung (game/engine/interpreter.rb), ISSUE_CMD_TYPES (src/editor/editor_main.cpp) und EvType/EV_TYPES (src/editor/event_form.h). Ein neuer Befehl ist erst fertig, wenn er hier UND in allen vier Stellen steht; tools/befehle_test.rb meldet die Lücke vor dem Commit.",
   "reihenfolge": "Die Reihenfolge ist die des Registers; die vier Stellen halten dieselbe Reihenfolge ein, damit Diffs lesbar bleiben.",
   "bereiche": [
@@ -379,6 +379,72 @@
       ],
       "optional": [],
       "beschreibung": "Ruft ein Gemeinsames Event aus database.json auf und führt dessen Befehle im laufenden Interpreter aus (XP 117)."
+    },
+    {
+      "typ": "if_gold",
+      "bereich": "Verzweigung",
+      "pflicht": [
+        "op",
+        "value"
+      ],
+      "optional": [
+        "then",
+        "else"
+      ],
+      "beschreibung": "Verzweigt je nach Gold der Party; Vergleich wie bei Variablen (XP 111, Quelle Gold)."
+    },
+    {
+      "typ": "if_item",
+      "bereich": "Verzweigung",
+      "pflicht": [
+        "name",
+        "op",
+        "value"
+      ],
+      "optional": [
+        "then",
+        "else"
+      ],
+      "beschreibung": "Verzweigt je nach Menge eines Items im Inventar (XP 111, Quelle Item)."
+    },
+    {
+      "typ": "if_script",
+      "bereich": "Verzweigung",
+      "pflicht": [
+        "code"
+      ],
+      "optional": [
+        "then",
+        "else"
+      ],
+      "beschreibung": "Wertet einen Ruby-Ausdruck aus; alles ausser false/nil gilt als wahr (XP 111, Quelle Script)."
+    },
+    {
+      "typ": "save_access",
+      "bereich": "System",
+      "pflicht": [],
+      "optional": [
+        "allowed"
+      ],
+      "beschreibung": "Erlaubt oder sperrt das Speichern ueber $game_system.save_disabled (XP 134)."
+    },
+    {
+      "typ": "menu_access",
+      "bereich": "System",
+      "pflicht": [],
+      "optional": [
+        "allowed"
+      ],
+      "beschreibung": "Erlaubt oder sperrt das Esc-Menue ueber $game_system.menu_disabled (XP 135)."
+    },
+    {
+      "typ": "encounter_access",
+      "bereich": "System",
+      "pflicht": [],
+      "optional": [
+        "allowed"
+      ],
+      "beschreibung": "Erlaubt oder sperrt Zufallskaempfe ueber $game_system.encounter_disabled (XP 136)."
     }
   ]
 }

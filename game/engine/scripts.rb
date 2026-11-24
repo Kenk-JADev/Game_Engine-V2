@@ -104,6 +104,19 @@ module Scripts
     false
   end
 
+  # Etappe 20d: Ausdruck auswerten und SEINEN Wert liefern (für bedingte
+  # Verzweigungen wie "Wenn Script"). Fehler werden geloggt und als nil
+  # (also falsch) behandelt - eine kaputte Bedingung darf das Event nicht
+  # aufhängen.
+  def eval_code(name, code, interpreter = nil, event = nil)
+    Context.new(interpreter, event).instance_eval(code.to_s, "event:#{name}", 1)
+  rescue StandardError, ScriptError => e
+    Rune::Log.error("Script '#{name}': #{e.class}: #{e.message}")
+    Issues.report('Scripts', "Bedingungs-Script '#{name}': #{e.class}: #{e.message}",
+                  severity: 'error')
+    nil
+  end
+
   # Kontext mit diesen Helfern. Das ist keine Sicherheits-Sandbox:
   # Ruby-Code kann auf Interpreter und Umgebung zugreifen.
   class Context

@@ -1213,7 +1213,9 @@ const char* const ISSUE_CMD_TYPES[] = {
     "self_switch", "if_self_switch", "fade",
     "move_route", "input_number", "battle",
     "loop", "break", "label", "jump", "exit_event", "erase_event",
-    "button_input", "text_options", "common_event"
+    "button_input", "text_options", "common_event",
+    "if_gold", "if_item", "if_script",
+    "save_access", "menu_access", "encounter_access"
 };
 const int ISSUE_CMD_TYPE_COUNT =
     static_cast<int>(sizeof(ISSUE_CMD_TYPES) / sizeof(ISSUE_CMD_TYPES[0]));
@@ -7188,7 +7190,11 @@ const wchar_t* const EV_TYPE_LABELS[ET_COUNT] = {
     L"[Ablauf] Event beenden", L"[Ablauf] Event löschen",
     L"[Steuerung] Tasteneingabe",
     L"[Nachricht] Fenster-Optionen",
-    L"[Ablauf] Gemeinsames Event"
+    L"[Ablauf] Gemeinsames Event",
+    L"[Verzweigung] Wenn Gold", L"[Verzweigung] Wenn Item",
+    L"[Verzweigung] Wenn Script",
+    L"[System] Speichern erlauben", L"[System] Menü erlauben",
+    L"[System] Zufallskämpfe erlauben"
 };
 const wchar_t* const EV_TRIGGERS[4] = { L"action", L"touch", L"auto", L"parallel" };
 const wchar_t* const EV_OPS[6] = { L"==", L"!=", L"<", L"<=", L">", L">=" };
@@ -7379,6 +7385,19 @@ std::string ev_cmd_label(const JsonValue& c) {
     }
     if (type == "break") return "Schleife verlassen";
     if (type == "common_event") return "Gemeinsames Event \"" + ev_str_of(c, "name") + "\"";
+    if (type == "if_gold") {
+        return "Wenn Gold " + ev_str_of(c, "op", "==") + " " + ev_num_str(ev_num_of(c, "value"), 0);
+    }
+    if (type == "if_item") {
+        return "Wenn Item \"" + ev_str_of(c, "name") + "\" " + ev_str_of(c, "op", "==") + " " +
+               ev_num_str(ev_num_of(c, "value", 1.0), 0);
+    }
+    if (type == "if_script") return "Wenn Script: " + ev_str_of(c, "code");
+    if (type == "save_access" || type == "menu_access" || type == "encounter_access") {
+        const char* was = type == "save_access" ? "Speichern"
+                        : type == "menu_access" ? "Menü" : "Zufallskämpfe";
+        return std::string(was) + (ev_bool_of(c, "allowed", true) ? " erlaubt" : " gesperrt");
+    }
     if (type == "label") return "Marke \"" + ev_str_of(c, "name") + "\"";
     if (type == "jump") return "Sprung zu Marke \"" + ev_str_of(c, "name") + "\"";
     if (type == "exit_event") return "Event beenden";
@@ -7476,7 +7495,8 @@ void ev_flatten(const JsonValue& list, int depth, const EventCommandPath& path) 
             if (body && body->is_arr() && unique) ev_flatten(*body, depth + 2, child_path);
             continue;
         }
-        if (type != "if_switch" && type != "if_variable" && type != "if_self_switch") continue;
+        if (type != "if_switch" && type != "if_variable" && type != "if_self_switch" &&
+            type != "if_gold" && type != "if_item" && type != "if_script") continue;
         for (const char* key : {"then", "else"}) {
             const bool unique = event_unique(c, key);
             const JsonValue* branch = unique ? c.find(key) : nullptr;
@@ -7646,11 +7666,12 @@ void ev_cmd_visibility() {
     const bool has_val2 = event_command_uses_field(t, 2);
     const bool has_val3 = event_command_uses_field(t, 3);
     const bool is_text = event_command_uses_field(t, 4);
-    const bool has_op = (t == ET_IF_VARIABLE);
+    const bool has_op = (t == ET_IF_VARIABLE || t == ET_IF_GOLD || t == ET_IF_ITEM);
     const bool has_bool = (t == ET_SWITCH || t == ET_IF_SWITCH ||
                           t == ET_SELF_SWITCH || t == ET_IF_SELF_SWITCH ||
                           t == ET_MOVE_ROUTE || t == ET_INPUT_NUMBER || t == ET_BATTLE ||
-                          t == ET_TEXT_OPTIONS);
+                          t == ET_TEXT_OPTIONS || t == ET_SAVE_ACCESS ||
+                          t == ET_MENU_ACCESS || t == ET_ENCOUNTER_ACCESS);
 
     show(g_ev.lbl_name, has_name);
     show(g_ev.ed_ce_name, has_name);
@@ -7668,7 +7689,9 @@ void ev_cmd_visibility() {
                           t == ET_SELF_SWITCH || t == ET_IF_SELF_SWITCH ||
                           t == ET_LOOP || t == ET_BREAK || t == ET_EXIT_EVENT ||
                           t == ET_ERASE_EVENT || t == ET_TEXT_OPTIONS ||
-                          t == ET_COMMON_EVENT;
+                          t == ET_COMMON_EVENT || t == ET_IF_SCRIPT ||
+                          t == ET_SAVE_ACCESS || t == ET_MENU_ACCESS ||
+                          t == ET_ENCOUNTER_ACCESS;
     show(g_ev.lbl_text, is_text || has_hint);
     show(g_ev.ed_ce_text, is_text);
 
@@ -7759,6 +7782,15 @@ void ev_cmd_visibility() {
         SetWindowTextW(g_ev.lbl_val2, L"Transparent (1/0)");
         SetWindowTextW(g_ev.lbl_text, L"an/aus = Fensterrahmen; transparent 1 zeigt den Hintergrund.");
     }
+    if (t == ET_IF_GOLD) { SetWindowTextW(g_ev.lbl_val1, L"Gold");
+                           SetWindowTextW(g_ev.lbl_text, L"Vergleicht das Gold der Party (XP: Seite \"Gold\")."); }
+    if (t == ET_IF_ITEM) { SetWindowTextW(g_ev.lbl_name, L"Item-ID");
+                           SetWindowTextW(g_ev.lbl_val1, L"Anzahl");
+                           SetWindowTextW(g_ev.lbl_text, L"Vergleicht die Menge dieses Items im Inventar."); }
+    if (t == ET_IF_SCRIPT) SetWindowTextW(g_ev.lbl_text, L"Ruby-Ausdruck; wahr, wenn das Ergebnis nicht nil/false ist.");
+    if (t == ET_SAVE_ACCESS) SetWindowTextW(g_ev.lbl_text, L"an = Speichern erlauben, aus = sperren ($game_system.save_disabled).");
+    if (t == ET_MENU_ACCESS) SetWindowTextW(g_ev.lbl_text, L"an = Menü erlauben, aus = sperren ($game_system.menu_disabled).");
+    if (t == ET_ENCOUNTER_ACCESS) SetWindowTextW(g_ev.lbl_text, L"an = Zufallskämpfe erlauben, aus = sperren.");
     if (t == ET_LOOP) SetWindowTextW(g_ev.lbl_text, L"Schleife: Befehle im Zweig \"Schleife:\" werden wiederholt (break beendet sie).");
     if (t == ET_BREAK) SetWindowTextW(g_ev.lbl_text, L"Verlässt die innerste Schleife.");
     if (t == ET_EXIT_EVENT) SetWindowTextW(g_ev.lbl_text, L"Beendet dieses Event sofort (Rest der Liste läuft nicht).");

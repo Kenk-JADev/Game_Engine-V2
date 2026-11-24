@@ -41,7 +41,9 @@ enum EvType {
     ET_SELF_SWITCH, ET_IF_SELF_SWITCH, ET_FADE,
     ET_MOVE_ROUTE, ET_INPUT_NUMBER, ET_BATTLE,
     ET_LOOP, ET_BREAK, ET_LABEL, ET_JUMP, ET_EXIT_EVENT, ET_ERASE_EVENT,
-    ET_BUTTON_INPUT, ET_TEXT_OPTIONS, ET_COMMON_EVENT, ET_COUNT
+    ET_BUTTON_INPUT, ET_TEXT_OPTIONS, ET_COMMON_EVENT,
+    ET_IF_GOLD, ET_IF_ITEM, ET_IF_SCRIPT,
+    ET_SAVE_ACCESS, ET_MENU_ACCESS, ET_ENCOUNTER_ACCESS, ET_COUNT
 };
 inline constexpr const char* const EV_TYPES[ET_COUNT] = {
     "text", "choices", "log", "wait", "switch", "toggle_switch", "variable",
@@ -49,7 +51,9 @@ inline constexpr const char* const EV_TYPES[ET_COUNT] = {
     "weather", "effect", "sound", "item", "gold", "save_game", "load_game",
     "self_switch", "if_self_switch", "fade", "move_route", "input_number", "battle",
     "loop", "break", "label", "jump", "exit_event", "erase_event",
-    "button_input", "text_options", "common_event"
+    "button_input", "text_options", "common_event",
+    "if_gold", "if_item", "if_script",
+    "save_access", "menu_access", "encounter_access"
 };
 inline constexpr const char* const EVENT_TRIGGERS[] = {"action", "touch", "auto", "parallel"};
 inline constexpr const char* const EVENT_OPS[] = {"==", "!=", "<", "<=", ">", ">="};
@@ -65,18 +69,18 @@ inline bool event_command_uses_field(int type, size_t field) {
             type == ET_IF_SELF_SWITCH || type == ET_FADE || type == ET_MOVE_ROUTE ||
             type == ET_INPUT_NUMBER || type == ET_BATTLE || type == ET_LABEL ||
             type == ET_JUMP || type == ET_BUTTON_INPUT || type == ET_TEXT_OPTIONS ||
-            type == ET_COMMON_EVENT;
+            type == ET_COMMON_EVENT || type == ET_IF_ITEM;
         case 1: return type == ET_WAIT || type == ET_VARIABLE || type == ET_IF_VARIABLE ||
             type == ET_TELEPORT || type == ET_MOVE_PLAYER || type == ET_SOUND || type == ET_EFFECT ||
             type == ET_GOLD || type == ET_HEAL || type == ET_WEATHER || type == ET_SAVE_GAME ||
             type == ET_LOAD_GAME || type == ET_FADE || type == ET_MOVE_ROUTE || type == ET_INPUT_NUMBER ||
-            type == ET_CHOICES;
+            type == ET_CHOICES || type == ET_IF_GOLD || type == ET_IF_ITEM;
         case 2: return type == ET_VARIABLE || type == ET_TELEPORT || type == ET_MOVE_PLAYER ||
             type == ET_EFFECT || type == ET_ITEM || type == ET_MOVE_ROUTE || type == ET_INPUT_NUMBER ||
             type == ET_BATTLE || type == ET_TEXT_OPTIONS;
         case 3: return type == ET_TELEPORT || type == ET_MOVE_ROUTE;
         case 4: return type == ET_TEXT || type == ET_LOG || type == ET_CHOICES || type == ET_MOVE_ROUTE ||
-            type == ET_BUTTON_INPUT;
+            type == ET_BUTTON_INPUT || type == ET_IF_SCRIPT;
         default: return false;
     }
 }
@@ -527,7 +531,8 @@ inline JsonValue* event_command_list_mutable(JsonValue& e, size_t page, const Ev
         const JsonValue* typ = command.find("cmd");
         const std::string type = typ && typ->is_str() ? typ->str : "";
         if (step.key == "then" || step.key == "else") {
-            if (type != "if_switch" && type != "if_variable" && type != "if_self_switch") {
+            if (type != "if_switch" && type != "if_variable" && type != "if_self_switch" &&
+                type != "if_gold" && type != "if_item" && type != "if_script") {
                 error = "Der Wenn-Zweig gehört nicht zu einem Wenn-Befehl."; return nullptr;
             }
             JsonValue* next = command.find(step.key);
@@ -659,6 +664,14 @@ inline EventCommandForm event_command_form_read(const JsonValue& c) {
         case ET_WEATHER: f.val1 = num("intensity", "1"); break;
         case ET_SAVE_GAME: case ET_LOAD_GAME: f.val1 = num("slot", "1"); break;
         case ET_BUTTON_INPUT: f.text = lines("keys"); break;
+        case ET_IF_GOLD: case ET_IF_ITEM:
+            f.op = event_unique(c, "op") ? event_choice_view(c.find("op"), EVENT_OPS, 6, 0) : -1;
+            f.val1 = num("value", "0"); break;
+        case ET_IF_SCRIPT:
+            f.text = event_unique(c, "code") ? event_string_view(c.find("code"), "", true) : "[mehrfach vorhanden]";
+            break;
+        case ET_SAVE_ACCESS: case ET_MENU_ACCESS: case ET_ENCOUNTER_ACCESS:
+            f.flag = flag("allowed", 0); break;
         case ET_TEXT_OPTIONS:
             f.name = text("position", "unten");
             f.flag = flag("frame", 0);
@@ -708,6 +721,10 @@ inline std::vector<const char*> event_command_keys(int type) {
         case ET_BUTTON_INPUT: return {"name", "keys"};
         case ET_TEXT_OPTIONS: return {"position", "frame", "transparent"};
         case ET_COMMON_EVENT: return {"name"};
+        case ET_IF_GOLD: return {"op", "value", "then", "else"};
+        case ET_IF_ITEM: return {"name", "op", "value", "then", "else"};
+        case ET_IF_SCRIPT: return {"code", "name", "then", "else"};
+        case ET_SAVE_ACCESS: case ET_MENU_ACCESS: case ET_ENCOUNTER_ACCESS: return {"allowed"};
         default: return {};
     }
 }
@@ -801,6 +818,17 @@ inline EventEdit event_command_prepare(const JsonValue* existing, const EventCom
         r.value.set(key, std::move(items));
         return true;
     };
+    // Operator der Wenn-Befehle (XP 111): gemeinsam für Variable, Gold, Item.
+    auto op_feld = [&]() {
+        if (!fresh && before.op == after.op) return true;
+        if (!unique("op", "cmd_op")) return false;
+        if (after.op < 0 || after.op >= 6) return fail("cmd_op", "Einen gültigen Operator auswählen.");
+        const JsonValue* old_op = r.value.find("op");
+        if (old_op && !old_op->is_null() && event_choice_view(old_op, EVENT_OPS, 6, -1) < 0)
+            r.replaces_invalid = true;
+        r.value.set("op", JsonValue::make_str(EVENT_OPS[after.op]));
+        return true;
+    };
     const double unlimited = std::numeric_limits<double>::infinity();
     auto num = [&](const char* key, const char* field, const std::string& was, const std::string& now,
                    bool optional = false, const char* fallback = "0", bool integer = false,
@@ -886,17 +914,7 @@ inline EventEdit event_command_prepare(const JsonValue* existing, const EventCom
         case ET_VARIABLE:
             ok = name() && v1("value", true) && v2("add", true); break;
         case ET_IF_VARIABLE:
-            ok = name();
-            if (ok && (fresh || before.op != after.op)) {
-                if (!unique("op", "cmd_op")) ok = false;
-                else if (after.op < 0 || after.op >= 6) ok = fail("cmd_op", "Einen gültigen Operator auswählen.");
-                else {
-                    const JsonValue* old_op = r.value.find("op");
-                    if (old_op && !old_op->is_null() && event_choice_view(old_op, EVENT_OPS, 6, -1) < 0) r.replaces_invalid = true;
-                    r.value.set("op", JsonValue::make_str(EVENT_OPS[after.op]));
-                }
-            }
-            if (ok) ok = v1("value");
+            ok = name() && op_feld() && v1("value");
             break;
         case ET_TELEPORT:
             ok = v1("x", false, "0", false, true, -1000000, 1000000) &&
@@ -1022,6 +1040,20 @@ inline EventEdit event_command_prepare(const JsonValue* existing, const EventCom
         case ET_LABEL: case ET_JUMP: case ET_COMMON_EVENT:
             ok = name();
             break;
+        // Etappe 20d: weitere Bedingungsquellen (XP 111) und die Sperr-
+        // Befehle für Speichern/Menü/Zufallskämpfe (XP 134/135/136).
+        case ET_IF_GOLD:
+            ok = op_feld() && v1("value", true, "0");
+            break;
+        case ET_IF_ITEM:
+            ok = name() && op_feld() && v1("value", true, "1", true, true, 0, unlimited);
+            break;
+        case ET_IF_SCRIPT:
+            ok = text("code", "cmd_text", before.text, after.text, false, true, true);
+            break;
+        case ET_SAVE_ACCESS: case ET_MENU_ACCESS: case ET_ENCOUNTER_ACCESS:
+            ok = boolean("allowed", "cmd_flag", before.flag, after.flag);
+            break;
         case ET_BUTTON_INPUT:
             ok = name() && list("keys", "cmd_text", before.text, after.text, true);
             break;
@@ -1041,7 +1073,9 @@ inline EventEdit event_command_prepare(const JsonValue* existing, const EventCom
         default: return event_failure(original, "cmd_type", "Unbekannter Befehlstyp.");
     }
     if (!ok) return r;
-    if (fresh && (after.type == ET_IF_SWITCH || after.type == ET_IF_VARIABLE || after.type == ET_IF_SELF_SWITCH)) {
+    if (fresh && (after.type == ET_IF_SWITCH || after.type == ET_IF_VARIABLE ||
+                  after.type == ET_IF_SELF_SWITCH || after.type == ET_IF_GOLD ||
+                  after.type == ET_IF_ITEM || after.type == ET_IF_SCRIPT)) {
         r.value.set("then", JsonValue::make_arr());
         r.value.set("else", JsonValue::make_arr());
     }

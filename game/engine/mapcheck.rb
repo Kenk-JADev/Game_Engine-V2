@@ -73,6 +73,8 @@ module MapCheck
     move_route input_number battle
     loop break label jump exit_event erase_event
     button_input text_options common_event
+    if_gold if_item if_script
+    save_access menu_access encounter_access
   ].freeze
 
   TRIGGER   = %w[action touch auto parallel].freeze
@@ -1026,6 +1028,31 @@ module MapCheck
             melde(WARNUNG, "#{w} Taste ##{ti + 1}",
                   "unbekannte Taste '#{t}' (z. B. e, space, escape, up, f1)")
           end
+        end
+      when 'if_gold', 'if_item', 'if_script'
+        # Etappe 20d: weitere Bedingungsquellen (XP 111). Zweige wie bei den
+        # übrigen Wenn-Befehlen prüfen (Pflicht + rekursiv).
+        %w[then else].each do |k|
+          melde(WARNUNG, w, "'#{k}' fehlt/keine Liste") unless c[k].is_a?(Array)
+        end
+        pruefe_befehle(c['then'], "#{w} (Dann)")   if c['then'].is_a?(Array)
+        pruefe_befehle(c['else'], "#{w} (Sonst)")  if c['else'].is_a?(Array)
+        if typ == 'if_script'
+          melde(FEHLER, w, "'code' fehlt oder ist leer") unless text?(c['code'])
+        else
+          melde(WARNUNG, w, "unbekannter Vergleich '#{c['op']}'") unless VERGLEICH.include?(c['op'].to_s)
+          melde(WARNUNG, w, "'value' fehlt oder ist keine Zahl") unless zahl?(c['value'])
+          if typ == 'if_item'
+            melde(FEHLER, w, "'name' fehlt oder ist leer") unless text?(c['name'])
+            if c.key?('value') && zahl?(c['value']) && c['value'].negative?
+              melde(WARNUNG, w, "'value' sollte nicht negativ sein (Item-Menge)")
+            end
+          end
+        end
+      when 'save_access', 'menu_access', 'encounter_access'
+        # Etappe 20d: XP 134/135/136 - Speichern/Menü/Zufallskämpfe sperren.
+        if c.key?('allowed') && ![true, false].include?(c['allowed'])
+          melde(WARNUNG, w, "'allowed' muss true oder false sein")
         end
       when 'common_event'
         # Etappe 20c: Gemeinsames Event aufrufen (XP 117).

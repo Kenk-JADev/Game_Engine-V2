@@ -1802,6 +1802,34 @@ Typen, und `tools/befehle_test.rb` erzwingt, dass `CMD_TYPES`
 Befehlstyp), `tools/befehle_test.rb`, `tools/sync_test.rb`,
 `tools/mapcheck_test.rb`.
 
+## Erweiterte Bedingungen und Sperren (Etappe 20d, Teil 1)
+
+Sechs weitere Befehlstypen (Register jetzt **41**) schließen die häufigsten
+XP-Bedingungslücken und die drei Sperr-Befehle:
+
+- **`if_gold` / `if_item`** (XP 111, Quellen Gold/Item): eigener Zweig
+  `then`/`else` wie `if_variable`; verglichen wird `Party.gold` bzw.
+  `Party.item_count(name)` mit `op` (`EVENT_OPS`) und `value`.
+- **`if_script`** (XP 111, Quelle Script): der Ausdruck aus `code` wird über
+  `Scripts.eval_code` im `Scripts::Context` ausgewertet (gleiche Helfer wie
+  Script-Befehle). Wahr ist alles außer `false`/`nil`; Fehler werden geloggt,
+  ins Issue-Backlog geschrieben und gelten als falsch.
+- **`save_access` / `menu_access` / `encounter_access`** (XP 134/135/136):
+  setzen `$game_system.save_disabled`/`menu_disabled`/`encounter_disabled`.
+  Sie wirken sofort (Speichern, Esc-Menü, Zufallskämpfe lesen dieselben
+  Flags) und landen über den `system`-Snapshot im Spielstand. Ohne
+  `$game_system` (z. B. im kopflosen Test) wird gewarnt statt zu stürzen.
+- **Modell/Editor**: `event_command_has_branches` (portabel, `event_rules.h`)
+  kennt die drei neuen Wenn-Typen, ebenso `event_command_list_mutable` und
+  `ev_flatten` - Dann-/Sonst-Zweige sind also im F6-Baum einfügbar und
+  werden vom Issue-Scan rekursiv geprüft. Der Operator-Combo gilt jetzt für
+  Variable, Gold und Item; die Sperr-Befehle nutzen die an/aus-Combo.
+- **MapCheck**: Zweig-Pflicht, Operator-Vokabular (`VERGLEICH`), Item-Name,
+  nicht-negative Menge, `code`-Pflicht und der Typ von `allowed`.
+
+**Tests:** `tools/bedingungen_test.rb` (26 Checks), `tools/sync_test.rb`
+(when-Zeilen + Operator-Tabelle), `tools/json_test.cpp` (738 Checks).
+
 ## Professionalisierung: Sync-Test + README (Etappe 19j)
 
 Die Sync-Pflicht für neue Befehlstypen (MapCheck::CMD_TYPES in Ruby =
