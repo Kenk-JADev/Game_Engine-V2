@@ -38,6 +38,7 @@ require 'weather'
 require 'fade'        # Etappe 19d: Bildschirm ein-/ausblenden (XP-Feature)
 require 'message_window' # Etappe 20c: Fenster-Optionen (XP 104)
 require 'common_events'  # Etappe 20c: Gemeinsame Events (XP 117)
+require 'temp_actions'   # Etappe 20d: $game_temp-Aufträge (LOGIK E.3)
 require 'interpreter'
 require 'scripts'
 require 'rgss'       # Etappe 19e: RPG-Maker-XP-Schicht ($game_*, Graphics, ...)

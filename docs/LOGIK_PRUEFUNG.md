@@ -251,12 +251,22 @@ ergänzt; die Einträge unten sind jeweils als behoben markiert.
 | `Input.dir8` | RGSS-API (Defaultscripts nutzen es nicht) | fehlt — geringe Priorität |
 
 ### E.3 Bewusste/dokumentierte Abweichungen ⚠️
-- **Calling-Flags werden nie ausgewertet:** `$game_temp.battle_calling`,
-  `menu_calling`, `save_calling`, `player_transferring` sind Felder, die
-  XP-Szenen (`Scene_Map`) abfragen und danach Kampf/Menü/Transfer starten.
-  Rune3D ignoriert sie — Scripts, die dieses XP-Muster nutzen, tun nichts.
-  (Menus öffnen nur über Esc, Kampf über `battle`/Helper, Transfer über
-  `moveto`.) → eigenener Roadmap-Punkt, wenn XP-Scripts diese Muster brauchen.
+- **Calling-Flags (seit Runde 28 ausgewertet ✅):** `$game_temp.battle_calling`,
+  `menu_calling`, `save_calling`, `player_transferring` und `to_title` laufen
+  jetzt über `TempActions.tick` (aufgerufen aus `Game.update` vor der
+  Menü-/Interpreter-Logik). XP-Reihenfolge: Kampf vor Menü/Speichern vor
+  Transfer; pro Frame genau ein Auftrag, das Flag wird vorher gelöscht (kein
+  Dauerfeuer, wenn der Kampf abgelehnt wird). Details:
+  - `battle_calling` → `Battle.start(troop_id, can_escape, can_lose)`.
+  - `menu_calling`/`save_calling` → Menü öffnen (respektiert
+    `$game_system.menu_disabled`); bei `save_calling` steht der Zeiger auf dem
+    ersten Speichern-Eintrag. XP hätte eine eigene Szene — hier reicht der
+    Menüeintrag, weil Speichern/Laden dort liegt.
+  - `player_transferring` → `Game.change_map`; `player_new_map_id` darf der
+    Kartenname sein oder die 1-basierte Position in `Database.map_ids`
+    (XP-Karten sind numerisch). Unbekannt → Warnung + Issue, kein Wechsel.
+    **`player_new_x/y/direction` werden noch nicht gesetzt** (Rune3D-Welt-
+    koordinaten ≠ XP-Kacheln; LOGIK AC.10).
 - `$game_switches[1]=true` aus einem Script bewirkt bei XP **nicht**
   automatisch einen Seiten-Refresh (XP braucht `$game_map.need_refresh`);
   Rune3D aktualisiert Seiten jeden Frame — hier sind wir *nicht* XP-gleich,
@@ -897,6 +907,7 @@ nächsten Schritts.
 | AD.1 | **Bedingungsquellen** | 111 kennt 13 Seiten (Schalter, Variable, Self-Switch, Timer, Actor, Enemy, Character, Gold, Item, Weapon, Armor, Button, Script) | Schalter, Variable, Self-Switch (bisher) + **Gold, Item, Script** (neu) = 6 | Sinnvolle Reihenfolge: Die drei neuen Quellen braucht fast jedes Projekt. Offen bleiben Timer (braucht Befehl 124), Actor/Party, Gegner, Charakter, Waffen/Rüstungen (keine Daten) und Button (müsste die Tasteneingabe als Bedingung abbilden). |
 | AD.2 | **Wenn Script** | Ausdruck im Interpreter-Kontext, `false`/`nil` = falsch | `Scripts.eval_code` (derselbe `Scripts::Context` wie der Script-Befehl); Fehler → Log + Issue, Zweig „Sonst" | XP-gleich. Wichtig: kein stiller Absturz, damit ein Tippfehler im Ausdruck das Event nicht aufhängt. |
 | AD.3 | **134/135/136** | eigene Befehle, Flags in `$game_system` | `save_access`/`menu_access`/`encounter_access` mit `allowed` (Default: erlaubt), Flags in `$game_system`, im Spielstand | XP-gleich; die Sperren wirken sofort, weil Menü/Speichern/Zufallskämpfe dieselben Flags lesen. |
+| AD.6 | **`$game_temp`-Calling-Flags** | `Scene_Map#update` fragt `battle_calling`/`menu_calling`/`save_calling`/`player_transferring`/`to_title` ab und wechselt die Szene | `TempActions.tick(handler)` im Engine-Ordner, von `Game.update` mit Lambdas verdrahtet; Kopf-Test `tools/temp_flags_test.rb` (14 Checks) | XP-Reihenfolge und „ein Auftrag pro Frame" übernommen; Flags werden vor der Aktion gelöscht, damit ein abgelehnter Kampf nicht jedes Frame erneut anfragt. Startposition/-richtung beim Transfer bleibt offen (AC.10). |
 | AD.5 | **Timer** | 124 startet/stoppt, `Window_Timer` zeigt die Restzeit, Timer steht im Spielstand | `timer`-Befehl (start/stop, Sekunden), `GameSystem#update(dt)` zählt in XP-Frames (40/s) herunter, `UI.timer` zeichnet `mm:ss` oben rechts | XP-gleich; `start` mit 0 s wirkt wie `stop`, damit ein leerer Wert kein Dauerfeuer auslöst. Die Anzeige hängt nicht am Befehl, sondern an `timer_working` — wie bei XP kann auch ein Script den Timer starten. |
 | AD.4 | **Item-Menge** | 126/111 zählen Inventar-Mengen | `Party.item_count(name)`; negative `value` wird von MapCheck als Warnung gemeldet, aber verglichen (XP erlaubt sie ebenfalls) | Bewusst tolerant: Die Datenprüfung warnt, die Laufzeit rechnet. |
 

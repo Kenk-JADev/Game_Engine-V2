@@ -1845,6 +1845,29 @@ ein unbekannter Modus landet im Issue-Backlog.
 **Tests:** `tools/timer_test.rb` (20 Checks: Herunterzählen, Befehlsvarianten,
 Zeichnung, MapCheck), `json_test` 741 Checks.
 
+### $game_temp-Aufträge (LOGIK E.3)
+
+XP-Scripts fordern Szenenwechsel über `$game_temp` an; bis Runde 28 waren die
+Felder stumm. Neu im Engine-Ordner: `game/engine/temp_actions.rb` mit
+`TempActions.tick(handler)`. `Game.process_temp_scene_change` ruft es nach
+Gameover/Titel-Prüfung und verdrahtet die Handler (`Game.temp_handler`):
+
+| Flag | Wirkung |
+|---|---|
+| `battle_calling` | `Battle.start(troop_id, can_escape, can_lose)` |
+| `menu_calling` | Menü öffnen (außer bei `menu_disabled`) |
+| `save_calling` | Menü öffnen, Zeiger auf den ersten Speichern-Eintrag |
+| `player_transferring` | `Game.change_map`; `player_new_map_id` = Kartenname oder Nummer |
+| `to_title` | `Game.to_title!` |
+
+Pro Frame wird genau **ein** Auftrag ausgeführt (Reihenfolge wie XP) und das
+Flag davor gelöscht — ein abgelehnter Kampf fragt also nicht jedes Frame neu
+an. Unbekannte Zielkarten und fehlende Handler werden gewarnt (Issue-Backlog),
+nicht als Absturz behandelt. `player_new_x/y/direction` bleiben offen
+(Rune3D-Weltkoordinaten ≠ XP-Kacheln, LOGIK AC.10).
+
+**Tests:** `tools/temp_flags_test.rb` (14 Checks).
+
 ## Professionalisierung: Sync-Test + README (Etappe 19j)
 
 Die Sync-Pflicht für neue Befehlstypen (MapCheck::CMD_TYPES in Ruby =

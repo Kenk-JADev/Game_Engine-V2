@@ -454,10 +454,38 @@ end
     elsif $game_temp.to_title
       $game_temp.to_title = false
       to_title!
+    elsif TempActions.tick(temp_handler)
+      # Etappe 20d: Kampf/Menü/Speichern/Kartenwechsel aus $game_temp -
+      # derselbe Frame endet hier, wie in XP Scene_Map#update.
+      return true
     else
       return false
     end
     true
+  end
+
+  # Etappe 20d: Verdrahtung der $game_temp-Aufträge (Logik in TempActions).
+  def self.temp_handler
+    {
+      battle: lambda do |troop_id, can_escape, can_lose|
+        battle_start(troop_id, can_escape: can_escape, can_lose: can_lose)
+      end,
+      menu: lambda do |speichern|
+        # menu_disabled gilt wie bei Esc auch für Script-Aufträge; ein
+        # Speicherwunsch landet auf dem ersten Speichern-Eintrag.
+        if $game_system && $game_system.menu_disabled
+          Rune::Log.warn('$game_temp: Menü gesperrt ($game_system.menu_disabled)')
+          next
+        end
+        open_menu
+        if speichern && @menu_items
+          i = @menu_items.index { |it| it['act'].is_a?(Array) && it['act'][0] == :save }
+          @menu_sel = i if i
+        end
+      end,
+      transfer: ->(karte) { change_map(karte) },
+      title: -> { to_title! }
+    }
   end
 
   # Game Over (K/XP 080): schwarzer Bildschirm mit „Game Over", eine Taste

@@ -227,7 +227,7 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 | XP | Rune3D | Status |
 |---|---|---|
 | `$game_system/$game_switches/$game_variables/$game_self_switches` | ✅ | ✅ |
-| `$game_party/$game_player/$game_map/$game_screen/$game_temp` | ✅ (Screen-Tone/Flash/Shake/Pictures ohne Wirkung) | ⚠️ |
+| `$game_party/$game_player/$game_map/$game_screen/$game_temp` | ✅ (Screen-Tone/Flash/Shake/Pictures ohne Wirkung; **Calling-Flags von `$game_temp` seit R28 wirksam**: battle/menu/save_calling, player_transferring, to_title) | ⚠️ |
 | `$data_actors/$data_items/$data_system` | ✅ (String-IDs, JSON statt Marshal) | ⚠️ bewusst anders |
 | `$data_classes/$data_skills/$data_weapons/$data_armors/$data_enemies/$data_troops/$data_states/$data_animations/$data_tilesets/$data_common_events` | — | ❌ |
 | `Graphics/Input/Audio`, `Sprite/Window/Viewport/Bitmap` | ✅ | ⚠️ kein Bitmap-Dateiladen, kein freeze/transition, Audio ohne Pitch |
@@ -259,7 +259,7 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 | **20a Kampf: Skills & Zustände** | ~~DB `skills`+`states`~~ ✅, ~~`battle.rb`: Skill-Befehl mit MP~~ ✅, ~~Zustände pro Runde (Vergiftung usw.)~~ ✅, ~~**Level-Up bei EXP (D4)**~~ ✅ — offen: F9-Reiter für `skills`/`states`, Gegner-Fertigkeiten und -Aktionen mit Bedingungen | Größte Spiel-Lücke, Kern seit Runde 23 geschlossen |
 | **20b Menü wie XP** | ~~Item (außerhalb Kampf)~~ ✅, ~~Skill~~ ✅, ~~Status-Detail~~ ✅, ~~Parteigesichter~~ ✅ (prozedural) — offen: Equip (keine Ausrüstung), Fortschritts-/Quest-Anzeige, Gesichter in Spielstand-Slots | Kern seit Runde 24 umgesetzt |
 | **20c Event-Befehle Welle 1 (Ablauf)** | ~~`loop`/`break`/`label`/`jump`/`exit_event`/`erase_event`/`button_input`/`text_options`~~ ✅, ~~**Common Events**~~ ✅ (Runde 27, 35 Befehlstypen: Datenhaltung, Aufruf 117, Trigger, MapCheck, RGSS) — offen: eigener Editor-Reiter für Common Events (F9/F6) | Struktur, die fast jedes XP-Projekt braucht |
-| **20d Event-Befehle Welle 2 (Daten)** | ~~erweiterte Bedingungen `if_gold`/`if_item`/`if_script`~~ ✅, ~~134/135/136 als Befehle (`save_access`/`menu_access`/`encounter_access`)~~ ✅ (R28, 42 Befehlstypen; Timer samt Anzeige erledigt) — offen: Variable-Operationen/Quellen, Actor/Button-Bedingungen, `party_member`, HP/SP/EXP/Level-Befehle, **`$game_temp`-Calling-Flags auswerten** (`battle_calling`/`menu_calling`/`save_calling`/`player_transferring`, heute stumme Felder — LOGIK E.3) | Verdoppelt die Aussagekraft von Variablen/Schaltern; XP-Scripts, die Szenen über `$game_temp` starten, funktionieren dann |
+| **20d Event-Befehle Welle 2 (Daten)** | ~~erweiterte Bedingungen `if_gold`/`if_item`/`if_script`~~ ✅, ~~134/135/136 als Befehle (`save_access`/`menu_access`/`encounter_access`)~~ ✅ (R28, 42 Befehlstypen; Timer samt Anzeige erledigt) — offen: Variable-Operationen/Quellen, Actor/Button-Bedingungen, `party_member`, HP/SP/EXP/Level-Befehle, ~~`$game_temp`-Calling-Flags auswerten~~ ✅ (R28, LOGIK E.3) | Verdoppelt die Aussagekraft von Variablen/Schaltern; XP-Scripts, die Szenen über `$game_temp` starten, funktionieren dann |
 | **20e Shop & Name** | Befehl 302 + Shop-Fenster (kaufen/verkaufen/preis), 303 Namenseingabe | XP-typisch, eigenständig nutzbar |
 | **20f Bildschirm-Ebenen** | Pictures 231–235 als Overlay, Flash/Shake/Tone als PostFX, Ergebniszweige 601–603, Befehl 351 (Menü) | Macht die „Bildschirm“-Gruppe echt |
 | **20g Darstellung** | Figuren-Billboards, Ballons, Kampf-/Event-Animationen (207/337) | Sichtbarster XP-Optik-Unterschied |
