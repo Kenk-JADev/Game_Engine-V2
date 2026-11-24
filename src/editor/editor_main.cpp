@@ -57,6 +57,7 @@
 #include "editor/event_form.h"
 #include "editor/event_view_win.h"
 #include "editor/listbox_win.h"
+#include "editor/map_tree.h"
 #include "editor/main_layout.h"
 #include "editor/main_panel_win.h"
 #include "editor/main_tree_win.h"
@@ -157,6 +158,9 @@ enum {
     IDM_TREE_NEW      = 3111,
     IDM_TREE_RENAME   = 3112,
     IDM_TREE_DELETE   = 3113,
+    // Z8: Kartenbaum-Hierarchie wie XP (Einrücken/Ausrücken)
+    IDM_TREE_INDENT   = 3114,
+    IDM_TREE_OUTDENT  = 3115,
 };
 
 // ------------------------------------------------------------ Prefabs
@@ -323,6 +327,7 @@ struct Editor {
 
     std::vector<std::string> map_files;   // Dateinamen in maps/
     std::vector<std::string> map_names;   // Anzeigenamen
+    std::vector<int> map_depth;           // Z8: Einrücktiefe im Kartenbaum
     int cur_map = -1;
     std::uint64_t map_epoch = 0, project_epoch = 0; // auch A → B → A erkennen
 
@@ -520,6 +525,9 @@ void status_mode(const wchar_t* text);
 // Etappe 18k: Kartenbaum (XP-Kartenliste). Item-LPARAM = Karten-Index.
 void maptree_fill();
 void maptree_select_current();
+void maptree_select_index(int index);
+bool maptree_indent(int delta);
+bool map_tree_save();
 int maptree_selected();
 void maptree_update_buttons();
 
@@ -2800,6 +2808,50 @@ void open_project_dialog() {
     SetFocus(g_prj.list);
 }
 
+// Karten-ID einer Kartendatei (Dateiname ohne ".json").
+static std::string map_file_id(const std::string& file) {
+    return file.size() > 5 ? file.substr(0, file.size() - 5) : file;
+}
+
+// Z8: Karten-Hierarchie speichern - "map_tree": { "<karten-id>": tiefe } in
+// system.json. Die Reihenfolge der Dateiliste bleibt unverändert (Indizes
+// bleiben stabil), nur die Einrücktiefe gehört zum Projekt. Geschrieben wird
+// über dieselbe Dateitransaktion wie der Spielerstart: beobachten, prüfen,
+// schreiben, Konflikt melden - fremde Felder bleiben erhalten.
+bool map_tree_save() {
+    if (g.project_name.empty()) return false;
+    DocumentStore store;
+    DocumentSnapshot snapshot;
+    DocumentRecovery recovery;
+    assets::Result result = store.open(g.root, g.project_name, false, "system.json");
+    if (result == assets::Result::Ok) result = store.observe(snapshot);
+    if (result == assets::Result::Ok && !snapshot.present) result = assets::Result::Missing;
+    if (result != assets::Result::Ok) {
+        document_result_notice(g.main, L"Kartenbaum nicht gespeichert", result, recovery, g.project_dir);
+        return false;
+    }
+    JsonValue system;
+    if (!project_start_parse(snapshot.bytes, system)) {
+        data_prompt(g.main, L"system.json ist nicht als gültiges Projektobjekt lesbar. "
+                            L"Der Kartenbaum bleibt unverändert.",
+                    L"Kartenbaum", MB_OK | MB_ICONERROR);
+        return false;
+    }
+    JsonValue tree = JsonValue::make_obj();
+    for (size_t i = 0; i < g.map_files.size(); ++i) {
+        const int tiefe = i < g.map_depth.size() ? g.map_depth[i] : 0;
+        tree.set(map_file_id(g.map_files[i]), JsonValue::make_num(tiefe, true));
+    }
+    system.set("map_tree", std::move(tree));
+    result = store.save(snapshot, json_write(system), recovery);
+    if (result != assets::Result::Ok) {
+        document_result_notice(g.main, L"Kartenbaum nicht gespeichert", result, recovery, g.project_dir);
+        return false;
+    }
+    core::log_info("Kartenbaum gespeichert (" + std::to_string(g.map_files.size()) + " Karten)");
+    return true;
+}
+
 void scan_maps() {
     g.map_files = map_files_on_disk(g.project_dir);
     g.map_names.clear();
@@ -2818,6 +2870,28 @@ void scan_maps() {
         }
         g.map_names.push_back(name);
     }
+
+    // Z8: Einrücktiefen aus dem Projekt ("map_tree"); unbekannte Karten stehen
+    // auf Stufe 0. Danach normalisieren: die erste Karte bleibt auf 0 und
+    // keine Karte steht tiefer als eine Stufe unter ihrer Vorgängerin -
+    // sonst gäbe es Knoten ohne Elternteil.
+    g.map_depth.assign(g.map_files.size(), 0);
+    std::string system_text;
+    JsonValue system;
+    if (read_file(g.project_dir + "\\system.json", system_text)) {
+        try { system = json_parse(system_text); } catch (...) { system = JsonValue{}; }
+    }
+    const JsonValue* tree = system.find("map_tree");
+    if (tree && tree->is_obj()) {
+        for (size_t i = 0; i < g.map_files.size(); ++i) {
+            const JsonValue* tiefe = tree->find(map_file_id(g.map_files[i]));
+            if (!tiefe) continue;
+            const double wert = tiefe->number();
+            if (!std::isfinite(wert)) continue;
+            g.map_depth[i] = map_tree_depth_from(wert, true);
+        }
+    }
+    map_tree_normalize(g.map_depth);   // keine Karte ohne Elternteil
 }
 
 // Karten-Untermenü neu aufbauen (nach Anlegen/Löschen/Laden).
@@ -2874,15 +2948,28 @@ void maptree_fill() {
     ins.item.pszText = project_label.data();
     ins.item.cChildren = 1;
     const HTREEITEM root = TreeView_InsertItem(g.map_tree, &ins);
+    // Z8: Einrücktiefe -> echte Eltern/Kind-Knoten (XP-Kartenbaum). Die Tiefen
+    // sind normalisiert (hoechstens eine Stufe tiefer als die Vorgängerin),
+    // deshalb existiert für jede Tiefe genau ein Elternteil.
+    std::vector<HTREEITEM> eltern;
+    eltern.push_back(root);
     for (int i = 0; i < static_cast<int>(g.map_names.size()); ++i) {
+        const int tiefe = i < static_cast<int>(g.map_depth.size()) ? g.map_depth[i] : 0;
         TVINSERTSTRUCTW mi{};
-        mi.hParent = root;
+        mi.hParent = tiefe < static_cast<int>(eltern.size()) ? eltern[static_cast<size_t>(tiefe)] : root;
         mi.hInsertAfter = TVI_LAST;
         mi.item.mask = TVIF_TEXT | TVIF_PARAM;
         std::wstring label = utf8_to_wide(g.map_names[i]);
         mi.item.pszText = label.data();
         mi.item.lParam = i;
-        TreeView_InsertItem(g.map_tree, &mi);
+        const HTREEITEM neu = TreeView_InsertItem(g.map_tree, &mi);
+        if (tiefe + 1 < static_cast<int>(eltern.size())) eltern.resize(static_cast<size_t>(tiefe) + 1);
+        eltern.push_back(neu);
+        // Elternkarten aufgeklappt, damit die Kinder wie in XP sichtbar sind.
+        if (tiefe > 0) {
+            HTREEITEM p = eltern[static_cast<size_t>(tiefe)];
+            if (p) SendMessageW(g.map_tree, TVM_EXPAND, TVE_EXPAND, reinterpret_cast<LPARAM>(p));
+        }
     }
     // Wurzel aufklappen und aktuelle Karte markieren.
     SendMessageW(g.map_tree, TVM_EXPAND, TVE_EXPAND,
@@ -2891,26 +2978,65 @@ void maptree_fill() {
     maptree_update_buttons();
 }
 
-// Markiert die aktuelle Karte im Baum (ohne Ladefehler auszulösen).
-void maptree_select_current() {
+// Markiert die Karte mit diesem Index im Baum (ohne Ladefehler auszulösen).
+// Tiefensuche, weil Karten seit Z8 unter anderen Karten hängen können.
+void maptree_select_index(int index) {
     if (!g.map_tree) return;
-    if (g.cur_map < 0) { TreeView_SelectItem(g.map_tree, nullptr); maptree_update_buttons(); return; }
     const HTREEITEM root = TreeView_GetRoot(g.map_tree);
-    if (!root) return;
+    if (!root || index < 0) { TreeView_SelectItem(g.map_tree, nullptr); maptree_update_buttons(); return; }
+    std::vector<HTREEITEM> offen;
     for (HTREEITEM it = TreeView_GetChild(g.map_tree, root); it;
-         it = TreeView_GetNextSibling(g.map_tree, it)) {
+         it = TreeView_GetNextSibling(g.map_tree, it)) offen.push_back(it);
+    while (!offen.empty()) {
+        const HTREEITEM it = offen.back();
+        offen.pop_back();
         TVITEMEXW item{};
         item.mask = TVIF_PARAM;
         item.hItem = it;
-        if (TreeView_GetItem(g.map_tree, &item) &&
-            static_cast<int>(item.lParam) == g.cur_map) {
+        if (TreeView_GetItem(g.map_tree, &item) && static_cast<int>(item.lParam) == index) {
             TreeView_SelectItem(g.map_tree, it);
             maptree_update_buttons();
             return;
         }
+        for (HTREEITEM kind = TreeView_GetChild(g.map_tree, it); kind;
+             kind = TreeView_GetNextSibling(g.map_tree, kind)) offen.push_back(kind);
     }
     TreeView_SelectItem(g.map_tree, nullptr);
     maptree_update_buttons();
+}
+
+// Markiert die aktuelle Karte im Baum.
+void maptree_select_current() {
+    if (g.cur_map < 0) { TreeView_SelectItem(g.map_tree, nullptr); maptree_update_buttons(); return; }
+    maptree_select_index(g.cur_map);
+}
+
+// Z8: Einrücken (+1) oder Ausrücken (-1) im Kartenbaum. Ändert nur die Tiefe
+// im Projekt (system.json "map_tree"), keine Kartendaten. Der Teilbaum wandert
+// mit, damit keine Karte ohne Elternteil entsteht; bei einem Schreibfehler
+// bleibt die alte Tiefe stehen.
+bool maptree_indent(int delta) {
+    const int index = maptree_selected();
+    if (delta == 0 || index < 0 || index >= static_cast<int>(g.map_depth.size())) return false;
+    const std::vector<int> vorher = g.map_depth;
+    const int tiefe = g.map_depth[static_cast<size_t>(index)];
+    if (delta > 0 && (index == 0 || tiefe >= MAP_TREE_MAX_DEPTH)) {
+        status_mode(L"Einrücken nicht möglich: keine Karte darüber oder maximale Tiefe erreicht");
+        return false;
+    }
+    if (delta < 0 && tiefe == 0) {
+        status_mode(L"Die Karte steht bereits auf Stufe 0");
+        return false;
+    }
+    if (!map_tree_shift(g.map_depth, index, delta)) return false;
+    if (!map_tree_save()) {
+        g.map_depth = vorher;
+        return false;
+    }
+    maptree_fill();
+    maptree_select_index(index);
+    status_mode(delta > 0 ? L"Karte eingerückt" : L"Karte ausgerückt");
+    return true;
 }
 
 // Karten-Index des markierten Baum-Eintrags (-1 = Wurzel/nichts markiert).
@@ -5721,6 +5847,14 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                     if (selected >= 0) maptree_queue_action(MapTreeActionKind::Properties, selected);
                     return 0;
                 }
+                case TVN_KEYDOWN: {
+                    // Z8: Tab rückt ein, Shift+Tab aus (XP-Baum-Bedienung).
+                    if (g.props_dlg) return 0;
+                    const NMTVKEYDOWNW* kd = reinterpret_cast<const NMTVKEYDOWNW*>(lp);
+                    if (kd->wVKey != VK_TAB) return 0;
+                    maptree_indent((GetKeyState(VK_SHIFT) & 0x8000) ? -1 : 1);
+                    return 1;
+                }
                 case TVN_BEGINLABELEDIT: {
                     if (g.props_dlg) return TRUE;
                     // Nur Karten (nicht die Wurzel) sind umbenennbar.
@@ -5730,7 +5864,9 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                     it.hItem = di->item.hItem;
                     it.mask = TVIF_CHILDREN | TVIF_PARAM;
                     TreeView_GetItem(g.map_tree, &it);
-                    if (it.cChildren || static_cast<int>(it.lParam) != g.cur_map) return TRUE;
+                    // Z8: Auch Elternkarten (mit Kindern) sind umbenennbar; nur
+                    // Wurzel und fremde Karten nicht (der Name steht in der Karte).
+                    if (static_cast<int>(it.lParam) != g.cur_map) return TRUE;
                     return FALSE;
                 }
                 case TVN_ENDLABELEDIT: {
@@ -5798,6 +5934,15 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                         IDM_TREE_PROPS, L"Eigenschaften...\tF2");
             AppendMenuW(popup, MF_STRING | (idx >= 0 ? MF_ENABLED : MF_GRAYED),
                         IDM_TREE_RENAME, L"Umbenennen");
+            // Z8: Kartenbaum-Hierarchie wie XP (Einrücken unter die Karte darüber)
+            const bool hat_tiefe = idx >= 0 && idx < static_cast<int>(g.map_depth.size());
+            const bool kann_einruecken = hat_tiefe && idx > 0 &&
+                                         g.map_depth[static_cast<size_t>(idx)] < MAP_TREE_MAX_DEPTH;
+            const bool kann_ausruecken = hat_tiefe && g.map_depth[static_cast<size_t>(idx)] > 0;
+            AppendMenuW(popup, MF_STRING | (kann_einruecken ? MF_ENABLED : MF_GRAYED),
+                        IDM_TREE_INDENT, L"Einrücken\tTab");
+            AppendMenuW(popup, MF_STRING | (kann_ausruecken ? MF_ENABLED : MF_GRAYED),
+                        IDM_TREE_OUTDENT, L"Ausrücken\tShift+Tab");
             AppendMenuW(popup, MF_SEPARATOR, 0, nullptr);
             AppendMenuW(popup, MF_STRING, IDM_TREE_NEW, L"Neue Karte...");
             AppendMenuW(popup, MF_STRING | (idx >= 0 ? MF_ENABLED : MF_GRAYED),
@@ -5816,6 +5961,8 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                         if (sel) TreeView_EditLabel(g.map_tree, sel);
                     }
                     break;
+                case IDM_TREE_INDENT:   maptree_indent(1); break;
+                case IDM_TREE_OUTDENT:  maptree_indent(-1); break;
                 case IDM_TREE_NEW:    open_map_new(); break;
                 case IDM_TREE_DELETE: if (idx >= 0) delete_current_map(); break;
                 default: break;

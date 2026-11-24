@@ -312,8 +312,8 @@ ergänzt; die Einträge unten sind jeweils als behoben markiert.
   Formulare (F2/F6/F5-Richtung geprüft, 19o/19p). **Besser als XP**, das
   nur modale Dialoge kennt — aber nur, solange die Guards gewartet werden
   (drei Stellen: Objekt-, Event-, Datengrundlage).
-- **Offen (Backlog):** XP-Screenshot-Design für F6/F9/F11, Kartenbaum-
-  Hierarchie, Spaltenbreiten/Splitter-Persistenz (der Undo-Scope ist seit
+- **Offen (Backlog):** XP-Screenshot-Design für F6/F9/F11, Spaltenbreiten/
+  Splitter-Persistenz (Undo-Scope und Kartenbaum-Hierarchie sind seit
   Runde 19 erledigt). Keine Logikfehler gefunden — die
   Schwachstellen sind Doppelstrukturen (D.1) und Fehlende (D.2).
 
@@ -924,7 +924,9 @@ Spiel" entfällt (Doku: `XP_VERGLEICH`-Zeile165 korrigieren,
    (prüft Register ↔ `CMD_TYPES` ↔ `ISSUE_CMD_TYPES` ↔ `EV_TYPES` ↔
    `interpreter.rb`) **fertig**, atomares Schreiben **fertig**
    (`Project.write_json` für create/create_map/save, Editor-`write_file`
-   → `editor_write_file_atomic`). **Stand Runde 19:** Undo-Ausbau (T)
-   **fertig** (ganze Karte als Schnappschuss, Push-Orte in F6/F5/
-   Eigenschaften/Pinsel/F7/Kartenbaum). **Offen:** Kartenbaum-Hierarchie,
-   XP-Dialogdesign (braucht deine Screenshots).
+   → `editor_write_file_atomic`). **Stand Runde 19:** Undo-Ausbau (T) **fertig** (ganze Karte als
+   Schnappschuss, Push-Orte in F6/F5/Eigenschaften/Pinsel/F7/Kartenbaum),
+   **Kartenbaum-Hierarchie fertig** (`system.json` → `map_tree` mit
+   Einrücktiefe je Karte, `Tab`/`Shift+Tab`, Kontextmenü; portable Regeln in
+   `src/editor/map_tree.h`, geprüft von `tools/editor_workflow_test.cpp`).
+   **Offen:** nur noch XP-Dialogdesign (braucht deine Screenshots).

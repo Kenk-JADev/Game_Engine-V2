@@ -2893,6 +2893,24 @@ ihn nach dem Laden; die aktuelle Karte ist markiert
   aktuell geladene Karte), die Karte wird als geändert markiert -
   Strg+S speichert wie üblich. Leerer Name verwirft das Edit.
 - Die Wurzel (Projekt) ist nicht umbenennbar (BEGINLABELEDIT blockiert).
+- **Seit Z8: Hierarchie wie XP.** Rechtsklick *Einrücken* bzw. `Tab` macht
+  die Karte zum Kind der Karte darüber, *Ausrücken* bzw. `Shift+Tab` holt sie
+  eine Stufe heraus; der Teilbaum wandert mit. Elternkarten lassen sich
+  aufklappen und sind (anders als früher) auch umbenennbar.
+
+**Hierarchie (Z8):** Die Tiefe steht **nicht** in den Kartendaten, sondern im
+Projekt: `system.json` → `"map_tree": { "<karten-id>": tiefe }`. Die Engine
+ignoriert den Schlüssel; `Project.touch` und die Editor-Transaktionen lassen
+ihn unangetastet. Die **Reihenfolge** der Dateiliste bleibt unverändert
+(Indizes bleiben stabil, `cur_map` wird weiterhin über den Dateinamen
+aufgelöst), nur die Einrücktiefe kommt dazu. Beim Laden normalisiert
+`map_tree_normalize()` (in `editor/map_tree.h`, portabel geprüft von
+`tools/editor_workflow_test.cpp`): erste Karte auf Stufe 0, jede weitere
+höchstens eine Stufe tiefer als ihre Vorgängerin, Maximum 8 - so gibt es
+nie einen Knoten ohne Elternteil. Geschrieben wird über dieselbe
+Dateitransaktion wie der Spielerstart (`DocumentStore`: beobachten, prüfen,
+schreiben, Konflikt melden); schlägt das Schreiben fehl, bleibt die alte
+Tiefe stehen und die Statusleiste meldet es.
 
 **Bedienblock:** Die linke Spalte ist jetzt zweigeteilt - oben der
 Kartenbaum (feste 150 px inkl. KARTEN-Label), darunter die Werkzeuge

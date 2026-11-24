@@ -1,5 +1,7 @@
-// Portabel: Kartenmarker, Projektstart und verlustfreie RGSS-Scriptdokumente.
+// Portabel: Kartenmarker, Projektstart, Kartenbaum-Tiefen und verlustfreie
+// RGSS-Scriptdokumente.
 #include "editor/map_interaction.h"
+#include "editor/map_tree.h"
 #include "editor/script_document.h"
 
 #include <cmath>
@@ -100,6 +102,52 @@ int main() {
     const auto noindent = script_indent(L"abc\n", 1, 1, true);
     check("Ausrücken ohne Einzug ändert nichts", !noindent.changed);
     check("leere letzte Zeile ohne Auswahl bleibt beim Ausrücken unverändert", !script_indent(L"a\n", 2, 2, true).changed);
+
+    // Z8: Kartenbaum-Hierarchie (Einrücktiefen je Karte, wie im XP-Baum).
+    {
+        std::vector<int> tiefen{2, 0, 0};
+        map_tree_normalize(tiefen);
+        check("Normalisierung setzt die erste Karte auf Stufe 0", tiefen[0] == 0);
+
+        std::vector<int> sprung{0, 3};
+        map_tree_normalize(sprung);
+        check("keine Karte steht tiefer als eine Stufe unter ihrer Vorgängerin",
+              sprung[0] == 0 && sprung[1] == 1);
+
+        std::vector<int> negativ{-3, -1};
+        map_tree_normalize(negativ);
+        check("negative Tiefen werden zu 0", negativ[0] == 0 && negativ[1] == 0);
+
+        std::vector<int> baum{0, 0, 0};
+        check("Einrücken macht die Karte zum Kind der Karte darüber",
+              map_tree_shift(baum, 1, 1) && baum[0] == 0 && baum[1] == 1 && baum[2] == 0);
+
+        std::vector<int> erste{0, 0};
+        check("die erste Karte kann nicht einrücken (kein Elternteil)",
+              !map_tree_shift(erste, 0, 1) && erste[0] == 0);
+
+        std::vector<int> oben{0, 0};
+        check("Stufe 0 kann nicht weiter ausrücken",
+              !map_tree_shift(oben, 1, -1) && oben[1] == 0);
+
+        std::vector<int> teilbaum{0, 1, 2, 0};
+        check("Ausrücken nimmt den Teilbaum mit",
+              map_tree_shift(teilbaum, 1, -1) && teilbaum[0] == 0 && teilbaum[1] == 0 &&
+              teilbaum[2] == 1 && teilbaum[3] == 0);
+
+        std::vector<int> tief{0, 1, 2, 3, 4, 5, 6, 7, MAP_TREE_MAX_DEPTH};
+        check("Einrücken endet an der maximalen Tiefe",
+              map_tree_shift(tief, 8, 1) == false && tief[8] == MAP_TREE_MAX_DEPTH);
+
+        check("Tiefe aus JSON: ganze Zahl wird übernommen, Grenzen geklemmt",
+              map_tree_depth_from(3.0, true) == 3 && map_tree_depth_from(99.0, true) == MAP_TREE_MAX_DEPTH &&
+              map_tree_depth_from(-2.0, true) == 0 && map_tree_depth_from(2.0, false) == 0);
+
+        std::vector<int> unveraendert{0, 1, 0};
+        map_tree_normalize(unveraendert);
+        check("gültige Tiefen bleiben beim Normalisieren unverändert",
+              unveraendert[0] == 0 && unveraendert[1] == 1 && unveraendert[2] == 0);
+    }
 
     std::printf("EDITOR-ARBEITSABLAUF: %d Prüfungen, %d Fehler\n", checks, failures);
     if (std::getenv("GITHUB_ACTIONS"))
