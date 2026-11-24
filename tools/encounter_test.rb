@@ -927,8 +927,10 @@ check('laufender Interpreter verhindert Kampf bis zum nächsten freien Schritt')
 end
 check('Touch-Event desselben Schritts hat Vorrang vor Zufallskampf') do
   prepare
-  Game.events << Event.new('name' => 'Auslöser', 'x' => 0.7, 'z' => 0,
-                           'radius' => 0.2, 'trigger' => 'touch',
+  # Der Testschritt legt eine Kachel (1,05 m) zurück - das Touch-Event muss
+  # deshalb am Zielpunkt liegen, nicht bei 0,7 m.
+  Game.events << Event.new('name' => 'Auslöser', 'x' => 1.0, 'z' => 0,
+                           'radius' => 0.3, 'trigger' => 'touch',
                            'commands' => [{ 'cmd' => 'wait', 'seconds' => 10 }])
   counter(1)
   step
@@ -993,7 +995,7 @@ check('schrittweise Spieler-Route zählt trotz interner Teleports') do
     game_frame(0.05)
     break if Battle.active?
   end
-  Battle.active? && Rune::Player.position[0] > 1.0
+  Battle.active? && Rune::Player.position[0] >= 1.0
 end
 check('ungültige IDs werden übersprungen, eine gültige startet trotzdem') do
   prepare

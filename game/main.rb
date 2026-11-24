@@ -1150,7 +1150,9 @@ end
           # (grosse Distanzen) zählen nicht als gelaufener Weg.
           if dist < 3.0
             @kachel_dist = (@kachel_dist || 0.0) + dist
-            if @kachel_dist >= KACHEL_METER
+            # Epsilon: zehn Schritte à 0,1 m ergeben in Fließkomma
+            # 0,9999999 m - die Kachel muss trotzdem zählen.
+            if @kachel_dist >= KACHEL_METER - 1e-6
               @kachel_dist -= KACHEL_METER
               @kachel_schritt = true
             end
