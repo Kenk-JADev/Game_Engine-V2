@@ -5850,7 +5850,7 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 case TVN_KEYDOWN: {
                     // Z8: Tab rückt ein, Shift+Tab aus (XP-Baum-Bedienung).
                     if (g.props_dlg) return 0;
-                    const NMTVKEYDOWNW* kd = reinterpret_cast<const NMTVKEYDOWNW*>(lp);
+                    const NMTVKEYDOWN* kd = reinterpret_cast<const NMTVKEYDOWN*>(lp);
                     if (kd->wVKey != VK_TAB) return 0;
                     maptree_indent((GetKeyState(VK_SHIFT) & 0x8000) ? -1 : 1);
                     return 1;
@@ -5862,7 +5862,7 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                         reinterpret_cast<const NMTVDISPINFOW*>(lp);
                     TVITEMEXW it{};
                     it.hItem = di->item.hItem;
-                    it.mask = TVIF_CHILDREN | TVIF_PARAM;
+                    it.mask = TVIF_PARAM;
                     TreeView_GetItem(g.map_tree, &it);
                     // Z8: Auch Elternkarten (mit Kindern) sind umbenennbar; nur
                     // Wurzel und fremde Karten nicht (der Name steht in der Karte).
