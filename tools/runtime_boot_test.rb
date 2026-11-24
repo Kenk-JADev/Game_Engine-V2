@@ -499,8 +499,10 @@ if ARGV[0] == '--playtest-child'
           frame.call(:escape)      # Esc = Abbruch, kein Menü
           abbruch = !Game.instance_variable_get(:@menu) && !Game.interpreter.busy_choices?
           frame.call(nil)          # Abbruch-Zweig läuft
+          frame.call(nil)          # äussere Liste leeren - Interpreter fertig
           offen && abbruch && GameState.switch('z5_abbruch') &&
-            !GameState.switch('z5_a') && !Rune::Simulation.paused
+            !GameState.switch('z5_a') && !Game.interpreter.running? &&
+            !Rune::Simulation.paused
         end
         # Z5-Nebenwirkung: gleiche Sperre macht 19i-Zahleneingabe-Esc über
         # Game.update wirksam (vorher fraß das Menü den Abbruch).

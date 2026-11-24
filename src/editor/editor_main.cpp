@@ -1232,7 +1232,7 @@ static void issues_scan_commands(const JsonValue& list, const std::string& where
             // MapCheck#pruefe_befehl (choices-Zweig): aus/verzweigung,
             // Zahl 0-basiert gegen die Optionsliste, auch als Ziffernstring.
             const JsonValue* cx = c.find("cancel");
-            if (cx && !cx->is_null() && !cx->is_bool()) {
+            if (cx && !cx->is_null() && cx->type != JsonValue::Type::Bool) {
                 bool ok_cancel = false;
                 if (cx->is_str() && (cx->str == "aus" || cx->str == "verzweigung")) {
                     ok_cancel = true;

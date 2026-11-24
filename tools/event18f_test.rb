@@ -258,6 +258,19 @@ drain
 check('cancel=1: Esc wählt Option 1 (Nein)') { GameState.switch('n_b') && !GameState.switch('n_a') }
 check('cancel=1: fertig') { !$interp.running? }
 
+# cancel=true (Synonym für verzweigung, so zeigt es das Formular an).
+$interp = Interpreter.new
+$interp.start([{ 'cmd' => 'choices', 'options' => ['Ja'],
+                 'branches' => [[{ 'cmd' => 'switch', 'name' => 't_a', 'value' => true }]],
+                 'cancel' => true,
+                 'cancel_branch' => [{ 'cmd' => 'switch', 'name' => 't_abbruch', 'value' => true }] }])
+drain
+keys!(:escape)
+drain
+check('cancel=true = verzweigung: Abbruch-Zweig läuft, Option nicht') do
+  GameState.switch('t_abbruch') && !GameState.switch('t_a') && !$interp.running?
+end
+
 # cancel außerhalb der Optionen → Rückfall auf "aus" (Esc ignoriert).
 $interp = Interpreter.new
 $interp.start([{ 'cmd' => 'choices', 'options' => ['Ja'],

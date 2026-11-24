@@ -363,17 +363,22 @@ class Interpreter
   # der Optionen fallen auf "nicht erlaubt" zurück und werden geloggt
   # (MapCheck meldet beides zusätzlich statisch).
   def cancel_modus(roh, anzahl)
-    case roh
-    when nil, false, 'aus' then :aus
-    when 'verzweigung' then :verzweigung
-    when Integer
+    # Bewusst if/elsif statt case: sync_test liest when-Zeilen mit
+    # 4er-Einzug als Operator-Vergleiche (MapCheck::VERGLEICH) aus.
+    if roh.nil? || roh == false || roh == 'aus'
+      :aus
+    elsif roh == true || roh == 'verzweigung'
+      # true ist das Synonym von "verzweigung" (Editor zeigt es so an,
+      # MapCheck und Issue-Scan lassen es zu).
+      :verzweigung
+    elsif roh.is_a?(Integer)
       if roh >= 0 && roh < anzahl
         roh
       else
         Rune::Log.warn("Interpreter: choices cancel=#{roh} ausserhalb 0...#{anzahl - 1}, behandelt wie aus")
         :aus
       end
-    when String
+    elsif roh.is_a?(String)
       n = Integer(roh, 10, exception: false)
       if n && n >= 0 && n < anzahl
         n
