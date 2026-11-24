@@ -6,7 +6,7 @@ was fehlt, und woran erkennt man „fertig". Stand: **Runde 28**.
 
 Legende: `[x]` erledigt und committet · `[~]` erledigt, CI offen · `[ ]` offen
 
-**Kurzfassung Stand:** 11 von 17 Punkten aus Abschnitt 3 sind erledigt
+**Kurzfassung Stand:** 12 von 17 Punkten aus Abschnitt 3 sind erledigt
 (6 Bedingungen/Sperren, Timer, `$game_temp`, 4 Wert-Befehle gezählt als
 Pakete). Es fehlen noch **Variable-Operationen (122)**, **Actor/Button-
 Bedingungen**, **`party_member` (129)**, **Transfer-Startposition** und der
@@ -66,16 +66,19 @@ Ein Befehl gilt erst als fertig, wenn **alle** Punkte stimmen:
 - [x] Zweige der neuen Wenn-Typen im F6-Baum einfügbar/bearbeitbar und im
       Editor-Issue-Scan rekursiv geprüft (`event_cmd_has_branches`)
 - [x] Tests: `bedingungen_test.rb` (26), `timer_test.rb` (20),
-      `temp_flags_test.rb` (14), `actor_wert_test.rb` (24), `json_test` 753,
-      `sync_test` grün, `mapcheck_test` 105 `ok`
+      `temp_flags_test.rb` (14), `actor_wert_test.rb` (24),
+      `variable_ops_test.rb` (22), `json_test` 757, `sync_test` grün,
+      `mapcheck_test` 105 `ok`
 - [x] Doku nachgezogen (42 Typen, Bilanz 34 ✅ · 9 ⚠️ · 49 ❌)
 
 ## 3. Offen in 20d
 
-- [ ] **`variable` erweitern (XP 122):** Operationen `-` `×` `÷` `Rest` und
-      Quellen Zufall / Item / Actor / Gegner / Charakter / „selbst"
-      (heute nur `value`/`add`) — Datenformat rückwärtskompatibel halten
-      (`value`/`add` bleiben gültig), neue Felder für Operation + Quelle
+- [x] **`variable`-Operationen (XP 122):** `set/add/sub/mul/div/mod` über
+      `op` + `value`, Altform `value`/`add` bleibt gültig und wird im Editor
+      umgestellt; ÷0/`mod` 0 = Warnung + Wert bleibt
+- [ ] **`variable`-Quellen (XP 122):** Zufall / Item / Actor / Gegner /
+      Charakter / „selbst" und Operand „Variable" — je ein zusätzliches
+      Formularfeld nötig (Datenformat: `source` + `src`)
 - [ ] **Bedingungsquellen Actor/Button** (XP 111): `if_actor` (Party-Mitglied
       vorhanden?) und `if_button` (Taste gedrückt) — Timer/Enemy/Character/
       Weapon/Armor bleiben bewusst offen (keine Daten in Rune3D)

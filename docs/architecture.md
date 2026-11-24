@@ -1868,6 +1868,26 @@ nicht als Absturz behandelt. `player_new_x/y/direction` bleiben offen
 
 **Tests:** `tools/temp_flags_test.rb` (14 Checks).
 
+### Variable-Operationen (XP 122)
+
+`variable` kann jetzt rechnen: `{"cmd":"variable","name":"kristalle","op":"mul","value":2}`.
+`op` ∈ `set add sub mul div mod` (`EVENT_VAR_OPS` in `event_form.h`,
+`MapCheck::VARIABLE_OPS`, Combo in `editor_main.cpp` — `sync_test` vergleicht
+alle drei Listen). `value` ist der Operand; `div`/`mod` durch 0 wird gewarnt,
+ins Issue-Backlog geschrieben und lässt den Wert stehen.
+
+Rückwärtskompatibel: ohne `op` gilt weiter die Altform (`value` setzt, `add`
+addiert) — Engine und MapCheck lesen sie unverändert. Der Editor stellt sie
+beim nächsten Übernehmen auf `op`/`value` um und entfernt `add` (sonst liefen
+beide Rechnungen). Eine **gemischte** Altform (`value` + `add` in einem Befehl)
+lässt sich nicht eindeutig abbilden: das Formular zeigt keine Operation und
+verlangt eine bewusste Wahl, MapCheck warnt.
+
+`variable` zeigt dafür das Operator-Combo mit dem Rechen-Vokabular
+(`ev_op_combo_mode`, Umschalten nur bei Bedarf); das Zahlenfeld 2 gehört nicht
+mehr dazu. **Tests:** `tools/variable_ops_test.rb` (22 Checks),
+`json_test` prüft Altform-Umstellung und gemischte Daten.
+
 ### Werte ändern: HP, SP, EXP, Stufe (XP 311/312/315/316)
 
 Vier Befehle (Register **46 Typen**, Bereich „Party" in `docs/befehle.json`):

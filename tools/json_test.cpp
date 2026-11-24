@@ -1567,7 +1567,7 @@ void event_form_tests(const std::string& wurzel) {
         R"({"cmd":"text","lines":["a","b"]})", R"({"cmd":"choices","options":["a"],"branches":[[]]})",
         R"({"cmd":"log","text":"a\nb"})", R"({"cmd":"wait","seconds":1.23456789})",
         R"({"cmd":"switch","name":"a","value":true})", R"({"cmd":"toggle_switch","name":"a"})",
-        R"({"cmd":"variable","name":"a","value":9007199254740993,"add":0.123456789})",
+        R"({"cmd":"variable","name":"a","op":"add","value":0.123456789})",
         R"({"cmd":"if_switch","name":"a","value":false,"then":[{"cmd":"log","text":"x"}],"else":[]})",
         R"({"cmd":"if_variable","name":"a","value":1.23456789,"op":">=","then":[],"else":[]})",
         R"({"cmd":"script","name":"a","code":"side_effect"})", R"({"cmd":"teleport","x":1,"z":2,"yaw":3.141592653589793})",
@@ -1650,10 +1650,31 @@ void event_form_tests(const std::string& wurzel) {
     JsonValue var = json_parse(samples[ET_VARIABLE]);
     cmd_before = event_command_form_read(var); cmd_after = cmd_before; cmd_after.name = "b";
     edit = event_command_prepare(&var, cmd_before, cmd_after);
-    check("Variable behält große Ganzzahl und präzises Add", edit.ok &&
-          json_write(*edit.value.find("value")) == json_write(*var.find("value")) &&
-          json_write(*edit.value.find("add")) == json_write(*var.find("add")));
-    cmd_after.val1 = "42"; cmd_after.val2 = "falsch";
+    check("Variable behält präzisen Operanden und die Operation", edit.ok &&
+          edit.value.find("op") && edit.value.find("op")->str == "add" &&
+          json_write(*edit.value.find("value")) == json_write(*var.find("value")));
+    // Etappe 20d: Altform {"add":n} wird beim Übernehmen auf op/value
+    // umgestellt, damit beide Rechnungen nicht doppelt laufen.
+    JsonValue alt = json_parse(R"({"cmd":"variable","name":"kristalle","add":1})");
+    cmd_before = event_command_form_read(alt);
+    check("Altform add wird als Operation add gelesen", cmd_before.op == 1 && cmd_before.val1 == "1");
+    cmd_after = cmd_before; cmd_after.name = "kristalle2";
+    edit = event_command_prepare(&alt, cmd_before, cmd_after);
+    check("Altform add wird auf op umgestellt", edit.ok && !edit.value.find("add") &&
+          edit.value.find("op") && edit.value.find("op")->str == "add" &&
+          edit.value.find("value")->number() == 1);
+    // Gemischte Altform (value + add) bleibt lesbar, verlangt aber eine Wahl.
+    JsonValue gemischt = json_parse(R"({"cmd":"variable","name":"a","value":9007199254740993,"add":0.123456789})");
+    cmd_before = event_command_form_read(gemischt);
+    cmd_after = cmd_before; cmd_after.name = "b";
+    check("gemischte Altform verlangt eine Operation", cmd_before.op == -1 &&
+          !event_command_prepare(&gemischt, cmd_before, cmd_after).ok);
+    cmd_after.op = 0;
+    edit = event_command_prepare(&gemischt, cmd_before, cmd_after);
+    check("nach Wahl der Operation ersetzt sie die Altform", edit.ok &&
+          edit.value.find("op")->str == "set" && !edit.value.find("add") &&
+          json_write(*edit.value.find("value")) == json_write(*gemischt.find("value")));
+    cmd_after = cmd_before; cmd_after.val1 = "42"; cmd_after.val2 = "falsch";
     edit = event_command_prepare(&var, cmd_before, cmd_after);
     check("ungültiger Befehl rollt alle Befehl-Felder zurück", !edit.ok && json_write(edit.value) == json_write(var));
     const JsonValue huge_color = json_parse("{\"cmd\":\"effect\",\"name\":\"burst\",\"color\":" + std::string(400, '9') + "}");

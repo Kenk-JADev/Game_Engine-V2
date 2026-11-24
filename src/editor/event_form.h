@@ -59,6 +59,11 @@ inline constexpr const char* const EV_TYPES[ET_COUNT] = {
 };
 inline constexpr const char* const EVENT_TRIGGERS[] = {"action", "touch", "auto", "parallel"};
 inline constexpr const char* const EVENT_OPS[] = {"==", "!=", "<", "<=", ">", ">="};
+// Etappe 20d: Operationen für `variable` (XP 122) - eigener Combosatz, weil
+// `op` je Typ eine andere Bedeutung hat (Vergleich vs. Rechnung).
+inline constexpr const char* const EVENT_VAR_OPS[] = {"set", "add", "sub", "mul", "div", "mod"};
+inline constexpr size_t EVENT_VAR_OPS_COUNT = sizeof(EVENT_VAR_OPS) / sizeof(EVENT_VAR_OPS[0]);
+inline constexpr size_t EVENT_OPS_COUNT = sizeof(EVENT_OPS) / sizeof(EVENT_OPS[0]);
 
 // Felder des Befehlsformulars: Name, Wert 1/2/3 und Mehrzeiler. Dasselbe
 // Schema steuert die Anzeige und verhindert, dass ein geschütztes Alt-Feld
@@ -80,7 +85,7 @@ inline bool event_command_uses_field(int type, size_t field) {
             type == ET_CHOICES || type == ET_IF_GOLD || type == ET_IF_ITEM ||
             type == ET_TIMER || type == ET_ACTOR_HP || type == ET_ACTOR_SP ||
             type == ET_ACTOR_EXP || type == ET_ACTOR_LEVEL;
-        case 2: return type == ET_VARIABLE || type == ET_TELEPORT || type == ET_MOVE_PLAYER ||
+        case 2: return type == ET_TELEPORT || type == ET_MOVE_PLAYER ||
             type == ET_EFFECT || type == ET_ITEM || type == ET_MOVE_ROUTE || type == ET_INPUT_NUMBER ||
             type == ET_BATTLE || type == ET_TEXT_OPTIONS;
         case 3: return type == ET_TELEPORT || type == ET_MOVE_ROUTE;
@@ -644,7 +649,23 @@ inline EventCommandForm event_command_form_read(const JsonValue& c) {
         case ET_BATTLE:
             f.val2 = c.find("can_lose") ? (flag("can_lose", 1) == 0 ? "1" : flag("can_lose", 1) == 1 ? "0" : "[ungültig/mehrfach]") : "";
             f.flag = flag("can_escape", 0); break;
-        case ET_VARIABLE: f.val1 = num("value"); f.val2 = num("add"); break;
+        case ET_VARIABLE: {
+            // Etappe 20d: Operation aus `op`; die Altform (value/add ohne op)
+            // wird als "add" gelesen und beim nächsten Speichern umgestellt.
+            const JsonValue* opv = event_unique(c, "op") ? c.find("op") : nullptr;
+            const JsonValue* addv = event_unique(c, "add") ? c.find("add") : nullptr;
+            const JsonValue* valv = event_unique(c, "value") ? c.find("value") : nullptr;
+            const bool alt_add = addv && !addv->is_null();
+            const bool alt_val = valv && !valv->is_null();
+            if (opv && !opv->is_null()) f.op = event_choice_view(opv, EVENT_VAR_OPS, EVENT_VAR_OPS_COUNT, -1);
+            else if (opv) f.op = -1;                 // op: null -> Combo leer
+            else if (alt_add && alt_val) f.op = -1;  // Altform gemischt: Operation wählen
+            else if (alt_add) f.op = 1;              // Altform {"add":n} = add
+            else f.op = 0;                           // nur value = set
+            // Bei reiner Altform steht der Wert in "add", sonst in "value".
+            f.val1 = (f.op == 1 && alt_add && !alt_val) ? num("add") : num("value");
+            break;
+        }
         case ET_IF_VARIABLE: f.op = event_unique(c, "op") ? event_choice_view(c.find("op"), EVENT_OPS, 6, 0) : -1; f.val1 = num("value", "0"); break;
         case ET_TELEPORT: f.val1 = num("x", "0"); f.val2 = num("z", "0"); f.val3 = num("yaw", "3.14159265"); break;
         case ET_MOVE_PLAYER: f.val1 = num("x", "0"); f.val2 = num("z", "0"); break;
@@ -705,7 +726,7 @@ inline std::vector<const char*> event_command_keys(int type) {
         case ET_WAIT: return {"seconds"};
         case ET_SWITCH: return {"name", "value"};
         case ET_TOGGLE_SWITCH: return {"name"};
-        case ET_VARIABLE: return {"name", "value", "add"};
+        case ET_VARIABLE: return {"name", "op", "value"};
         case ET_IF_SWITCH: return {"name", "value", "then", "else"};
         case ET_IF_VARIABLE: return {"name", "value", "op", "then", "else"};
         case ET_SCRIPT: return {"name", "code"};
@@ -830,16 +851,20 @@ inline EventEdit event_command_prepare(const JsonValue* existing, const EventCom
         return true;
     };
     // Operator der Wenn-Befehle (XP 111): gemeinsam für Variable, Gold, Item.
-    auto op_feld = [&]() {
+    auto op_feld_mit = [&](const char* const* liste, int anzahl) {
+        // Bereich zuerst: eine gemischte Altform (value + add) oder ein
+        // unbekannter Operator hat op = -1 und verlangt eine bewusste Wahl -
+        // auch dann, wenn das Combo unverändert bleibt.
+        if (after.op < 0 || after.op >= anzahl) return fail("cmd_op", "Einen gültigen Operator auswählen.");
         if (!fresh && before.op == after.op) return true;
         if (!unique("op", "cmd_op")) return false;
-        if (after.op < 0 || after.op >= 6) return fail("cmd_op", "Einen gültigen Operator auswählen.");
         const JsonValue* old_op = r.value.find("op");
-        if (old_op && !old_op->is_null() && event_choice_view(old_op, EVENT_OPS, 6, -1) < 0)
+        if (old_op && !old_op->is_null() && event_choice_view(old_op, liste, anzahl, -1) < 0)
             r.replaces_invalid = true;
-        r.value.set("op", JsonValue::make_str(EVENT_OPS[after.op]));
+        r.value.set("op", JsonValue::make_str(liste[after.op]));
         return true;
     };
+    auto op_feld = [&]() { return op_feld_mit(EVENT_OPS, static_cast<int>(EVENT_OPS_COUNT)); };
     const double unlimited = std::numeric_limits<double>::infinity();
     auto num = [&](const char* key, const char* field, const std::string& was, const std::string& now,
                    bool optional = false, const char* fallback = "0", bool integer = false,
@@ -922,8 +947,25 @@ inline EventEdit event_command_prepare(const JsonValue* existing, const EventCom
             if (ok) ok = boolean("value", "cmd_flag", before.flag, after.flag);
             break;
         }
-        case ET_VARIABLE:
-            ok = name() && v1("value", true) && v2("add", true); break;
+        case ET_VARIABLE: {
+            // Etappe 20d: op + value. Die Altform `add` wird übernommen und
+            // danach entfernt, sonst rechnete der Interpreter beides.
+            ok = name() && op_feld_mit(EVENT_VAR_OPS, static_cast<int>(EVENT_VAR_OPS_COUNT)) &&
+                 v1("value", true);
+            if (!ok) break;
+            const JsonValue* alt_add = r.value.find("add");
+            const bool hatte_add = alt_add && !alt_add->is_null();
+            if (!r.value.find("value")) {
+                JsonValue zahl;
+                if (event_number_parse(database_trim(after.val1), false, true, zahl))
+                    r.value.set("value", std::move(zahl));
+            }
+            if (!r.value.find("op") && after.op >= 0 &&
+                after.op < static_cast<int>(EVENT_VAR_OPS_COUNT))
+                r.value.set("op", JsonValue::make_str(EVENT_VAR_OPS[after.op]));
+            if (hatte_add && r.value.find("op")) event_erase(r.value, "add");
+            break;
+        }
         case ET_IF_VARIABLE:
             ok = name() && op_feld() && v1("value");
             break;

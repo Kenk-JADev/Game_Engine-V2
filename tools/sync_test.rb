@@ -96,6 +96,14 @@ end
 check('EV_OPS (C++) == MapCheck::VERGLEICH') do
   c_array('EV_OPS', wide: true) == MapCheck::VERGLEICH
 end
+check('Variable-Operationen (C++ EVENT_VAR_OPS) == MapCheck::VARIABLE_OPS') do
+  c_array('EVENT_VAR_OPS') == MapCheck::VARIABLE_OPS
+end
+check('Combos in editor_main.cpp nennen dieselben Variable-Operationen') do
+  main = File.read(File.join(ROOT, 'src', 'editor', 'editor_main.cpp'), encoding: 'utf-8')
+  liste = main[/EV_VAR_OPS\[6\] = \{([^}]*)\}/, 1].to_s
+  liste.scan(/L"([^"]+)"/).flatten == MapCheck::VARIABLE_OPS
+end
 check('portables F6-Modell verwendet dieselben Trigger und Operatoren wie die Win32-Combos') do
   c_array('EVENT_TRIGGERS') == c_array('EV_TRIGGERS', wide: true) &&
     c_array('EVENT_OPS') == c_array('EV_OPS', wide: true)

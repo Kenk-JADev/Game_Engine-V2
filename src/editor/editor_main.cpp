@@ -7202,6 +7202,27 @@ const wchar_t* const EV_TYPE_LABELS[ET_COUNT] = {
 };
 const wchar_t* const EV_TRIGGERS[4] = { L"action", L"touch", L"auto", L"parallel" };
 const wchar_t* const EV_OPS[6] = { L"==", L"!=", L"<", L"<=", L">", L">=" };
+// Etappe 20d: eigene Operationen für `variable` (XP 122). Das Operator-Combo
+// trägt je Befehlstyp ein anderes Vokabular; umgeschaltet wird in
+// ev_op_combo_mode() nur bei Bedarf, damit die Auswahl erhalten bleibt.
+const wchar_t* const EV_VAR_OPS[6] = { L"set", L"add", L"sub", L"mul", L"div", L"mod" };
+bool g_ev_var_ops_mode = false;
+
+void ev_op_combo_mode(bool var_ops) {
+    if (!g_ev.cb_ce_op) return;
+    if (g_ev_var_ops_mode == var_ops && SendMessageW(g_ev.cb_ce_op, CB_GETCOUNT, 0, 0) > 0) return;
+    g_ev_var_ops_mode = var_ops;
+    SendMessageW(g_ev.cb_ce_op, CB_RESETCONTENT, 0, 0);
+    if (var_ops) {
+        for (const wchar_t* o : EV_VAR_OPS)
+            SendMessageW(g_ev.cb_ce_op, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(o));
+    } else {
+        for (const wchar_t* o : EV_OPS)
+            SendMessageW(g_ev.cb_ce_op, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(o));
+    }
+    SendMessageW(g_ev.cb_ce_op, CB_SETCURSEL,
+                 static_cast<WPARAM>(g_ev.command_before.op), 0);
+}
 
 std::string ev_num_str(double v, int prec = 2) {
     return editor_number_text(v, prec);
@@ -7685,7 +7706,9 @@ void ev_cmd_visibility() {
     const bool has_val2 = event_command_uses_field(t, 2);
     const bool has_val3 = event_command_uses_field(t, 3);
     const bool is_text = event_command_uses_field(t, 4);
-    const bool has_op = (t == ET_IF_VARIABLE || t == ET_IF_GOLD || t == ET_IF_ITEM);
+    const bool has_op = (t == ET_IF_VARIABLE || t == ET_IF_GOLD || t == ET_IF_ITEM ||
+                         t == ET_VARIABLE);
+    ev_op_combo_mode(t == ET_VARIABLE);
     const bool has_bool = (t == ET_SWITCH || t == ET_IF_SWITCH ||
                           t == ET_SELF_SWITCH || t == ET_IF_SELF_SWITCH ||
                           t == ET_MOVE_ROUTE || t == ET_INPUT_NUMBER || t == ET_BATTLE ||
@@ -7704,11 +7727,12 @@ void ev_cmd_visibility() {
     show(g_ev.cb_ce_bool, has_bool);
     const bool has_hint = t == ET_INPUT_NUMBER || t == ET_BATTLE || t == ET_FADE ||
                           t == ET_EFFECT || t == ET_WEATHER || t == ET_ITEM ||
-                          t == ET_HEAL || t == ET_MOVE_PLAYER || t == ET_VARIABLE ||
+                          t == ET_HEAL || t == ET_MOVE_PLAYER ||
                           t == ET_SELF_SWITCH || t == ET_IF_SELF_SWITCH ||
                           t == ET_LOOP || t == ET_BREAK || t == ET_EXIT_EVENT ||
                           t == ET_ERASE_EVENT || t == ET_TEXT_OPTIONS ||
                           t == ET_COMMON_EVENT || t == ET_IF_SCRIPT || t == ET_TIMER ||
+                          t == ET_VARIABLE ||
                           t == ET_ACTOR_HP || t == ET_ACTOR_SP || t == ET_ACTOR_EXP ||
                           t == ET_ACTOR_LEVEL ||
                           t == ET_SAVE_ACCESS || t == ET_MENU_ACCESS ||
@@ -7809,6 +7833,13 @@ void ev_cmd_visibility() {
                            SetWindowTextW(g_ev.lbl_val1, L"Anzahl");
                            SetWindowTextW(g_ev.lbl_text, L"Vergleicht die Menge dieses Items im Inventar."); }
     if (t == ET_IF_SCRIPT) SetWindowTextW(g_ev.lbl_text, L"Ruby-Ausdruck; wahr, wenn das Ergebnis nicht nil/false ist.");
+    if (t == ET_VARIABLE) {
+        SetWindowTextW(g_ev.lbl_name, L"Variable");
+        SetWindowTextW(g_ev.lbl_val1, L"Wert");
+        SetWindowTextW(g_ev.lbl_text,
+                       L"Operation links (set/add/sub/mul/div/mod), rechts der Wert. "
+                       L"Alte Befehle mit \"add\" werden beim Übernehmen umgestellt (XP 122).");
+    }
     if (t == ET_ACTOR_HP || t == ET_ACTOR_SP || t == ET_ACTOR_EXP || t == ET_ACTOR_LEVEL) {
         SetWindowTextW(g_ev.lbl_name, L"Ziel (alle oder Actor-Name)");
         SetWindowTextW(g_ev.lbl_val1, L"Menge (+/-)");

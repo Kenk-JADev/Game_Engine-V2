@@ -395,10 +395,43 @@ class Interpreter
 
   private
 
+  # Etappe 20d: Variable setzen/rechnen (XP 122). Neu ist `op` mit
+  # set/add/sub/mul/div/mod; `value` ist dann der Operand. Die Altform ohne
+  # `op` (value setzt, add addiert) bleibt gültig - der Editor stellt sie beim
+  # nächsten Übernehmen um.
+  #
+  # Operatoren als Tabelle statt case: sync_test liest alle "when"-Zeilen mit
+  # 4er-Einzug als Operator-Tabelle von compare_variable.
+  VARIABLE_OPS = {
+    'set' => ->(_v, x) { x },
+    'add' => ->(v, x) { v + x },
+    'sub' => ->(v, x) { v - x },
+    'mul' => ->(v, x) { v * x },
+    'div' => ->(v, x) { v / x },
+    'mod' => ->(v, x) { v % x }
+  }.freeze
+
   def apply_variable(cmd)
     name = cmd['name']
     return Rune::Log.warn("Interpreter: variable ohne name") unless name
     v = GameState.variable(name)
+    if cmd.key?('op')
+      op = cmd['op'].to_s
+      rechner = VARIABLE_OPS[op]
+      if rechner.nil?
+        Rune::Log.warn("Interpreter: unbekannte Variable-Operation '#{op}'")
+        Issues.report('Interpreter', "variable: Operation '#{op}' unbekannt")
+        return false
+      end
+      operand = (cmd['value'] || 0).to_f
+      if %w[div mod].include?(op) && operand.zero?
+        Rune::Log.warn("Interpreter: variable #{op} durch 0 bei '#{name}' ignoriert")
+        Issues.report('Interpreter', "variable '#{name}': #{op} durch 0")
+        return false
+      end
+      GameState.set_variable(name, rechner.call(v, operand))
+      return true
+    end
     v = cmd['value'].to_f if cmd.key?('value')
     v = v + cmd['add'].to_f if cmd.key?('add')
     GameState.set_variable(name, v)

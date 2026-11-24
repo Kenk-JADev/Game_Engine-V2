@@ -94,6 +94,9 @@ module MapCheck
   # eigene Liste, weil mapcheck.rb vor common_events.rb geladen wird).
   COMMON_TRIGGER = %w[none autorun parallel].freeze
   TIMER_MODI = %w[start stop].freeze     # Etappe 20d (XP 124)
+  # Etappe 20d: Operationen von `variable` (XP 122) - dieselbe Liste wie
+  # EVENT_VAR_OPS im Editor (sync_test vergleicht beide).
+  VARIABLE_OPS = %w[set add sub mul div mod].freeze
   TASTEN = (%w[e space enter escape up down left right shift ctrl alt tab
                backspace] + ('a'..'z').to_a + (1..12).map { |n| "f#{n}" }).freeze
   # Etappe 19g, XP-Vokabular seit 19h.2: muss zu Mover::SCHRITTE passen
@@ -333,6 +336,29 @@ module MapCheck
 
     def melde(severity, where, message)
       @liste << Finding.new(severity, where, message)
+    end
+
+    # Etappe 20d: `variable` prüfen (XP 122). Neu ist `op` + `value`; die
+    # Altform (`value`/`add` ohne op) bleibt gültig, wird aber angemahnt, weil
+    # der Editor sie beim nächsten Übernehmen umstellt.
+    def pruefe_variable(c, w)
+      op = c['op']
+      if op
+        unless VARIABLE_OPS.include?(op.to_s)
+          melde(FEHLER, w, "unbekannte Variable-Operation '#{op}' (#{VARIABLE_OPS.join('/')})")
+        end
+        melde(WARNUNG, w, "'value' fehlt oder ist keine Zahl") unless zahl?(c['value'])
+        if %w[div mod].include?(op.to_s) && zahl?(c['value']) && c['value'].to_f.zero?
+          melde(FEHLER, w, "#{op} durch 0")
+        end
+        if c.key?('add')
+          melde(WARNUNG, w, "'add' (Altform) neben 'op' - 'add' wird ignoriert")
+        end
+      elsif !c.key?('value') && !c.key?('add')
+        melde(WARNUNG, w, "weder 'value' noch 'add' (Befehl ohne Wirkung)")
+      elsif c.key?('value') && c.key?('add')
+        melde(WARNUNG, w, "Altform: 'value' setzt und 'add' addiert - bitte 'op' verwenden")
+      end
     end
 
     def zahl?(v) = v.is_a?(Numeric)
@@ -889,9 +915,7 @@ module MapCheck
         end
       when 'switch', 'toggle_switch', 'variable'
         melde(FEHLER, w, "'name' fehlt oder ist leer") unless text?(c['name'])
-        if typ == 'variable' && !c.key?('value') && !c.key?('add')
-          melde(WARNUNG, w, "weder 'value' noch 'add' (Befehl ohne Wirkung)")
-        end
+        pruefe_variable(c, w) if typ == 'variable'   # Etappe 20d (XP 122)
       when 'script'
         if !text?(c['name']) && !text?(c['code'])
           melde(FEHLER, w, "weder 'name' noch 'code'")
