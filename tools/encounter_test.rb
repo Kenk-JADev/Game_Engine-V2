@@ -784,6 +784,7 @@ ensure
   Rune::Input.keys = []
   $project_root = File.join(Rune::ROOT, 'game', 'data')
   Database.reset!
+  Game.clear_playtest_start   # Parität zu enter_title! (jetzt Scene_Gameover)
   Battle.abort!
 end
 check('erlaubte Niederlage setzt die Event-Befehle fort') do

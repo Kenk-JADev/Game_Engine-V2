@@ -19,7 +19,7 @@
 #    3. execute: Heldenaktionen wirken (nach Agilität), dann ziehen alle
 #       Gegner (zufälliger lebender Held), dann Sieg-/Niederlage-Prüfung.
 #    4. Sieg: Exp/Gold/Drop an die Party, Ende. Niederlage: gameover-Flag
-#       ($game_temp.gameover -> Game.to_title!), außer can_lose.
+#       ($game_temp.gameover -> Scene_Gameover, Taste -> Titel), außer can_lose.
 #
 #  Event-Befehl: {"cmd":"battle","name":"waldweg","can_escape":true,
 #                 "can_lose":false} - der Interpreter blockiert bis zum Ende.

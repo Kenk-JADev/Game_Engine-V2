@@ -122,6 +122,11 @@ module UI
     lines.each_with_index do |l, i|
       text(x + 22, y + 18 + i * line_h, l, TEXT, 18)
     end
+    # Pause-Zeiger ▾ (M/XP Window_Message): blinkt unten rechts, solange
+    # auf die Bestätigung gewartet wird - sonst ahnt man E/Space nicht.
+    if ((Time.now.to_f * 2.0).to_i % 2).zero?
+      text(x + w - 28, y + h - 24, '▾', ACCENT, 16)
+    end
   end
 
   # Wahlmöglichkeiten (Etappe 18f, RPG-Maker-Show-Choices): Fenster mit

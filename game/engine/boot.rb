@@ -49,6 +49,7 @@ require 'project'
 require 'scene_base'    # Szenen-Basis (Scene_Base) für Titel & Ladeschirm
 require 'scene_title'   # AB: Startbildschirm Scene_Title statt Launcher
 require 'scene_file'    # AB: Scene_File (Continue -> Slot-Wähler + Vorschau)
+require 'scene_gameover' # Z4-K: Game-Over-Bildschirm (Taste -> Titel)
 
 Rune::Log.info("Bootstrap fertig, lade game/main.rb")
 load File.join(Rune::ROOT, 'game', 'main.rb')

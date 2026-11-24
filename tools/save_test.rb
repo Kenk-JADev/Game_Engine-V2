@@ -57,7 +57,7 @@ begin
   check('latest_save nil') { Project.latest_save(name).nil? }
   check('load_save leerer Slot nil') { Project.load_save(name, 2).nil? }
 
-  data1 = { 'map' => 'welt01', 'saved' => '2025-01-01 10:00',
+  data1 = { 'map' => 'welt01', 'saved' => '2025-01-01 10:00', 'time' => 42.5,
             'player' => { 'x' => 1.5, 'y' => 0.2, 'z' => -3.0, 'yaw' => 3.14, 'mode' => 'third' },
             'state' => { 'switches' => { 'x' => true }, 'variables' => { 'kristalle' => 1.0 } },
             'fired' => ['Wegweiser am Zaun'] }
@@ -71,7 +71,10 @@ begin
   check('Roundtrip: Schalter') { d.dig('state', 'switches', 'x') == true }
   check('Roundtrip: fired-Flags') { d['fired'] == ['Wegweiser am Zaun'] }
 
-  check('save_info liefert Zeit') { Project.save_info(name, 1)['saved'] == '2025-01-01 10:00' }
+  check('save_info liefert Zeitstempel und Spielzeit') do
+    info = Project.save_info(name, 1)
+    info['saved'] == '2025-01-01 10:00' && info['time'] == 42.5
+  end
   check('save_info leerer Slot nil') { Project.save_info(name, 3).nil? }
 
   Project.save(name, 3, { 'saved' => '2025-01-02 11:00' })

@@ -142,7 +142,7 @@ module Project
   # Kurzinfo eines Slots (für Menü/Titelbildschirm): nil oder Zeit+Karte.
   def save_info(name, slot)
     d = load_save(name, slot)
-    d && { 'saved' => d['saved'], 'map' => d['map'] }
+    d && { 'saved' => d['saved'], 'map' => d['map'], 'time' => d['time'] }
   end
 
   # Höchster belegter Slot (3..1), nil wenn keine Spielstände existieren.

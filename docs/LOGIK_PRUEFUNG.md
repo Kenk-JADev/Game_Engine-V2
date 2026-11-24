@@ -343,10 +343,10 @@ ergänzt; die Einträge unten sind jeweils als behoben markiert.
 | `$game_party` (Gold, Items, HP/MP/Level/EXP je Held) | `party.snapshot` | ✅ (max_hp wächst nicht — folgt fehlendem Level-Up, D4) |
 | `$game_map` (Events: Positionen, Seiten, **gelöschte Events**, laufende Routen) | `fired`-Namen + NPC-Snapshots (x/z/Wegpunkt) | ⚠️ Seiten werden aus Schaltern neu berechnet (gleichwertig); **gelöschte Events** gibt es nicht (fehlender Befehl 116); laufende Bewegungs-Routen sind flüchtig (`Mover.reset!`) — XP stellt sie wieder her |
 | `$game_player` (Position, **steps, encounter_count, Richtung**) | Position + Kamera | ⚠️ Schritte/Zähler werden beim Laden neu gewürfelt (XP bewahrt den Restwert) |
-| `$game_system` (Timer, `save_count`, **menu/save/encounter_disabled**, Windowskin, BGM) | — | ❌ **nicht gespeichert** — gesperrte Menüs/Speicherstände/Zufallskämpfe sind nach dem Laden zurückgesetzt |
+| `$game_system` (Timer, `save_count`, **menu/save/encounter_disabled**, Windowskin, BGM) | `'system'`-Snapshot im Spielstand (`Game.system_snapshot`: Sperr-Flags, Timer, `save_count`, das Save-Game zählt wie XP mit); alte Spielstände ohne `'system'` behalten die Defaults (`system_restore!` = Noop) | ✅ seit Runde 14 (Windowskin/BGM weiter nicht gespeichert — braucht Audio-Infrastruktur, s. N) |
 | `$game_screen` (Tone/Flash/Shake, **Wetter**) | — | ⚠️ Laufzeit-Wetter-Änderungen gehen verloren (Karten-Wetter wird aus der Karten-JSON wiederhergestellt) |
 | `Graphics.frame_count` (Spielzeit) | `time` | ✅ |
-| Zeichen für die Slot-Vorschau (Gesichter) | `saved`-Zeitstempel (+ `map` im JSON) | ⚠️ Menü zeigt nur den Zeitstempel; XP zeigt **Spielzeit + Party** in der Vorschau (`Window_SaveFile`) — `save_info` liest `map`, das Menü nutzt es nicht |
+| Zeichen für die Slot-Vorschau (Gesichter) | `save_info` liefert `saved` + `map` + `time`; Menü und `Scene_File` zeigen Karte · Spielzeit (Runde 14); Party-Gesichter fehlen | ⚠️ nur noch Gesichter (mit 20b) |
 | Editor-Schreibschutz | — | ⚠️ `Project.save` schreibt direkt (kein Temp+Rename) — Karten/F9 sind geschützt, Spielstände nicht (Backlog gilt); XP ist ebenso ungeschützt, wir haben aber die besseren Werkzeuge parat |
 
 ### Weitere Befunde
@@ -372,14 +372,15 @@ ergänzt; die Einträge unten sind jeweils als behoben markiert.
 | XP | Rune3D | Status |
 |---|---|---|
 | Titel: New Game / Continue / Shutdown | `Scene_Title`: Neues Spiel / Fortsetzen / Spiel beenden (`command_new_game/command_continue/command_shutdown`); Esc beendet nicht (XP-treu) | ✅ seit Runde 12 |
-| Slot-Vorschau (Spielzeit, Zeitstempel, Party-Gesichter) | `Scene_File` zeigt Karte + Zeitstempel; Esc-Menü-Panel weiter „(belegt: Zeitstempel)" | ⚠️ Spielzeit/Party-Gesichter fehlen weiter (Daten liegen vor: `time`, `map`) |
-| `Scene_Gameover`: Game-Over-Bild, Tastendruck → Titel | — | ❌ **fehlt komplett**: `process_temp_scene_change` springt bei `$game_temp.gameover` sofort zum Titel (`to_title!`) — der Spieler sieht nur das Log „Die Party ist besiegt…" |
+| Slot-Vorschau (Spielzeit, Zeitstempel, Party-Gesichter) | `Scene_File` und Esc-Menü zeigen Karte · Spielzeit (`save_info.time`, Format `Game.zeit_text`) · Zeitstempel; Party-Gesichter fehlen (keine Face-Infrastruktur) | ✅ seit Runde 14 (nur Gesichter offen, mit 20b) |
+| `Scene_Gameover`: Game-Over-Bild, Tastendruck → Titel | **`Scene_Gameover`** (schwarz, „Game Over", „[Enter] Weiter zum Titel"); `process_temp_scene_change` zeigt erst den Screen, eine Taste ruft `to_title!` | ✅ seit Runde 14 |
 | Shutdown | Menüpunkt „Spiel beenden" = `Rune::App.quit` (Esc auf dem Titel beendet bewusst nicht, XP-treu) | ✅ |
 | Fortsetzen-Liste mit Beschriftung „File 1…" | `Scene_File` (Continue vom Titel) mit 3 Slots + Vorschau | ✅ seit Runde 12 (K-Lücke geschlossen; das Esc-Menü behält seine Inline-Slots) |
 
-**Fix-Kandidaten (klein, sichtbar):** Game-Over-Bildschirm (aufbauend auf
-`Fade`/UI, Tastendruck → `to_title!`), Slot-Anzeige mit Spielzeit/Karte,
-Slot-Wähler oder mindestens Bestätigung bei `L`.
+**Fix-Kandidaten (klein, sichtbar):** ~~Game-Over-Bildschirm, Slot-Anzeige
+mit Spielzeit/Karte~~ **→ erledigt in Runde 14** (`Scene_Gameover`,
+`save_info.time` + `Game.zeit_text` in Scene_File/Menü). Offen: nur noch
+Bestätigung bei `L`, falls gewünscht.
 
 ## L. Kampf-Ablauf (Ergänzung zu D4)
 
@@ -404,7 +405,7 @@ Slot-Wähler oder mindestens Bestätigung bei `L`.
 | 102 + **cancel_type** + 403 Else (Abbruch-Zweig) | nur Options-Zweige; **Esc bei Wahlen wird ignoriert** (editorseitig kein cancel-Feld) | ❌ Abbruch-/Else-Zweig fehlt komplett (Engine + Editor) |
 | 103 Input Number **im Textfenster**, ohne Abbruch-Taste | eigenes Ziffernfenster, **Esc=Abbruch(0)** als Default (editor `cancel`) | ⚠️ Rune3D erweiternd (XP kennt kein Esc hier); Position/Fade abweichend, Kernlogik ✓ |
 | 104 Change Text Options (Position/Hintergrund mitten in der Meldung) | — | ❌ fehlt (Nische) |
-| Pause-Zeiger ▾, wenn auf Bestätigung gewartet wird | **kein Fortsetzungs-Indikator** — man muss E/Space ahnen | ⚠️ UX-Lücke |
+| Pause-Zeiger ▾, wenn auf Bestätigung gewartet wird | blinkender `▾` unten rechts im Textfenster (`UI.message`, 2-Hz-Blinkleuchten) | ✅ seit Runde 14 |
 | Effekt: Fenster-Fade, kein Tipp-Effekt (XP zeigt alles sofort) | sofort alles da | ✅ gleichwertig |
 | Choices mit Pfeiltasten + OK/Abbruch-SE (decision/cancel SE) | Pfeiltasten/Klick + `klick`-Prozeduralton | ⚠️ funktionell ✓, Sound-Bestand s. N |
 
@@ -555,11 +556,11 @@ Roadmap-Baustein (20x analog zu 20f Bilder).
 |---|---|---|
 | 6 Befehle: Item, Skill, Equip, Status, Save, Game End | Zurück, Speichern×3, Laden×3, Zum Titel | ⚠️ Item/Skill/Equip/Status/Beenden fehlen — Roadmap **20b** (braucht 20a fürs Skill-Fenster); Slots direkt statt Unterliste = sinnvolle Erweiterung |
 | Save wird bei `$game_system.save_disabled` **grau** gezeigt | Aktion wird in `save_game` geblockt (Warnung + `ablehnen`-Ton), nicht optisch deaktiviert | ✅ funktional gleich, optisch anders |
-| Nebenfenster: **PlayTime, Steps, Gold, MenuStatus** (Gesichter+HP) | Party-Panel: HP-Zeilen, Gold, Inventar (`Party.status_lines`) | ⚠️ kein Playtime/Steps — Spielzeit (`@time`) und Schritte (`steps`) existieren, werden nur nicht angezeigt |
+| Nebenfenster: **PlayTime, Steps, Gold, MenuStatus** (Gesichter+HP) | Party-Panel: HP-Zeilen, Gold, Inventar (`Party.status_lines`) **+ Spielzeit (`@time`) + Schritte (`$game_party.steps`)** seit Runde 14; Gesichter fehlen | ✅ Playtime/Steps (Gesichter mit 20b) |
 | `@@menu_index` bleibt zwischen Öffnungen erhalten | `@menu_sel = 0` bei jedem Öffnen | ⚠️ Kleinigkeit |
 | Befehl **351 „Menü öffnen"** aus Events | nur Esc (roadmap 20f, `XP_VERGLEICH` ❌) | ❌ bekannt |
 | Scene_Update friert die Karte (eigene Szene) | `update_menu; return` friert Interpreter/NPCs ✓ (Physik nicht — s. O/F5) | ✅ bis auf F5 |
-| **Performance:** XP liest Spielstände einmal beim Szenenaufbau (`Scene_File#snapshots`) | `menu_items` ruft pro Frame `save_info` → `load_save` → **`File.read + JSON.parse` je belegtem Slot**, in `update_menu` *und* `draw_menu` → **bis zu 12 Save-JSON-Parings pro Frame**, solange das Menü offen ist | ⚠️ **neu:** Menü-Items beim Öffnen cachen (1 Zeile); große Spielstände machen das sonst spürbar |
+| **Performance:** XP liest Spielstände einmal beim Szenenaufbau (`Scene_File#snapshots`) | ~~`menu_items` rief pro Frame bis zu 12× `save_info` (update+draw)~~ → **seit Runde 14 beim Öffnen in `@menu_items` gecacht** (Schließen/Szenenwechsel invalidieren, Speichern/Laden schliesst das Menü) | ✅ seit Runde 14 |
 
 ## W. Zufallskämpfe & Ressourcen-Teardown (F5/Kartenwechsel)
 
@@ -861,13 +862,17 @@ Spiel" entfällt (Doku: `XP_VERGLEICH`-Zeile165 korrigieren,
    ergänzen.~~ **→ umgesetzt in Runde 13** (sync_demo additiv mit
    `dry:`-Prüflauf + `sync_demo_test`, Troops/encounters im Demo
    nachgezogen, `add_demo_script_events` in beiden Bäumen).
-4. **Kleine Sichtbarkeits-Etappe:** Game-Over-Bildschirm (K),
+4. ~~**Kleine Sichtbarkeits-Etappe:** Game-Over-Bildschirm (K),
    Slot-Vorschau mit Spielzeit/Karte (J), `$game_system`-Zustand
    (Timer/Sperr-Flags) ins Savegame übernehmen, Fortsetzungs-Zeiger ▾
    im Textfenster (M), **Menü-Items beim Öffnen cachen** (V,
    12 Save-Parings/Frame), Menü-Playtime/Steps ins Party-Panel (V).
    Optional als Entscheidung: Encounter-Kadenz auf 1 m/Schritt
-   angleichen (W).
+   angleichen (W).~~ **→ umgesetzt in Runde 14** (echte
+   `Scene_Gameover` statt Sofort-Titel, Karte+Spielzeit in Menü und
+   `Scene_File`, ▾-Blinkzeiger, `@menu_items`-Cache, Playtime/Steps im
+   Party-Panel, `'system'`-Snapshot ins Savegame inkl. `save_count`;
+   Encounter-Kadenz (W) bewusst offen).
 5. **Dialoge/XP-Parity klein:** Wahl-Abbruch (cancel/Else-Zweig) in
    Engine+Editor, optional Text+Wahl im selben Fenster (M).
 6. **Designentscheidung mit dir:** D1 (`auto` = XP-Autorun) und D2

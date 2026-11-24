@@ -58,9 +58,10 @@ class Scene_File < Scene_Base
                 sel ? 0.8 : 0.5)
       info = @projekt ? Project.save_info(@projekt, slot) : nil
       if info
+        zeit = info['time'] ? "   Spielzeit #{Game.zeit_text(info['time'])}" : ''
         UI.text(104, y + 16, "Slot #{slot}", UI::TEXT, 19)
         UI.text(104, y + 48,
-                "Karte: #{info['map']}   #{info['saved'].to_s[0, 16]}",
+                "Karte: #{info['map']}#{zeit}   #{info['saved'].to_s[0, 16]}",
                 UI::TEXT_DIM, 15)
       else
         UI.text(104, y + 16, "Slot #{slot}", UI::TEXT_DIM, 19)

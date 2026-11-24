@@ -264,6 +264,24 @@ if ARGV[0] == '--playtest-child'
         # mit der Prüfung, dass Slot1 noch leer ist.
         File.delete(titel_slot) if File.exist?(titel_slot)
       end
+      # Z4-K: Gameover-Flag zeigt erst Scene_Gameover, erst eine Taste
+      # führt weiter zum Titel (XP Scene_Gameover).
+      check('Gameover-Flag zeigt Scene_Gameover statt sofort Titel') do
+        $game_temp.gameover = true
+        verarbeitet = Game.process_temp_scene_change
+        ok = verarbeitet && $scene.is_a?(Scene_Gameover) &&
+          Game.instance_variable_get(:@mode) == :title &&
+          $game_temp.gameover == false
+        # Wartezeit des Screens überspringen (echte Uhr, kein Frame-Zeit).
+        $scene.instance_variable_set(:@start, Time.now.to_f - 1.0) if $scene
+        ok
+      end
+      check('Scene_Gameover: Enter führt zum echten Titelbildschirm') do
+        Rune::Input.keys = [:enter]
+        runtime_frame(0.016)
+        Rune::Input.keys = []
+        $scene.is_a?(Scene_Title) && Game.instance_variable_get(:@mode) == :title
+      end
       check('nach Titelbildschirm und erneuter Wahl gilt wieder die normale Projekt-Startkarte') do
         Game.to_title!
         Game.start_project(PLAYTEST_PROJECT)
@@ -380,11 +398,21 @@ if ARGV[0] == '--playtest-child'
         end
         check('echtes Project schreibt die Party nach dem Kampf in eine Slot-Datei') do
           absent = !File.exist?(slot_path)
+          # J: Sperr-Flags/Timer vor dem Speichern - sie müssen im
+          # Spielstand landen und nach dem Laden wiederhergestellt werden.
+          if $game_system
+            $game_system.menu_disabled = true
+            $game_system.timer = 4242.0
+            $game_system.timer_working = true
+          end
           saved_party = Party.snapshot
           saved = Game.save_game(1)
           from_disk = JSON.parse(File.read(slot_path, encoding: 'UTF-8'))
+          sys = from_disk['system']
           absent && saved && File.file?(slot_path) && from_disk['map'] == PLAYTEST_MAP &&
-            from_disk['party'] == saved_party && from_disk.dig('party', 'items', 'heiltrank') == 1
+            from_disk['party'] == saved_party && from_disk.dig('party', 'items', 'heiltrank') == 1 &&
+            sys.is_a?(Hash) && sys['menu_disabled'] == true && sys['timer'] == 4242.0 &&
+            sys['timer_working'] == true && sys['save_count'].is_a?(Integer)
         end
         check('Game.load_game liest Datei und stellt HP, MP, Inventar und Karte wieder her') do
           Party.find('arik').hp = 1
@@ -394,7 +422,19 @@ if ARGV[0] == '--playtest-child'
           Game.change_map('start')
           changed = Game.map_id == 'start' && Party.snapshot != saved_party
           loaded = Game.load_game(1)
-          changed && loaded && Game.map_id == PLAYTEST_MAP && Party.snapshot == saved_party &&
+          sys_ok = $game_system && $game_system.menu_disabled &&
+            $game_system.timer == 4242.0 && $game_system.timer_working &&
+            $game_system.save_count >= 1
+          # Flags zurücksetzen: die F5-Menü-Checks danach brauchen ein
+          # offenes Menü und einen laufenden Timer-Zustand.
+          if $game_system
+            $game_system.menu_disabled = false
+            $game_system.timer = 0
+            $game_system.timer_working = false
+            $game_system.save_count = 0
+          end
+          changed && loaded && sys_ok && Game.map_id == PLAYTEST_MAP &&
+            Party.snapshot == saved_party &&
             Party.find('mira').hp.between?(38, 40) && Party.find('mira').mp == 2 &&
             Party.item_count('heiltrank') == 1 && !Battle.active? && !Rune::Simulation.paused
         end
@@ -420,12 +460,15 @@ if ARGV[0] == '--playtest-child'
           Game.instance_variable_set(:@intro, nil)
           Rune::Input.keys = [:escape]
           runtime_frame          # Esc öffnet das Menü
-          offen = Game.instance_variable_get(:@menu) && Rune::Simulation.paused
+          # V: beim Öffnen gecachte Items (kein save_info pro Frame).
+          offen = Game.instance_variable_get(:@menu) && Rune::Simulation.paused &&
+            Game.instance_variable_get(:@menu_items).is_a?(Array)
           Rune::Input.keys = []
           runtime_frame          # Tastenkante frei
           Rune::Input.keys = [:escape]
           runtime_frame          # Esc schliesst das Menü
-          offen && !Game.instance_variable_get(:@menu) && !Rune::Simulation.paused
+          offen && !Game.instance_variable_get(:@menu) && !Rune::Simulation.paused &&
+            Game.instance_variable_get(:@menu_items).nil?
         end
         check('F5: offener Text pausiert die Simulation') do
           Game.interpreter.start([{ 'cmd' => 'text', 'lines' => ['F5-Testzeile'] }])

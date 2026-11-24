@@ -174,7 +174,7 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 | Scene_Battle | `battle.rb` | ⚠️ Grundgerüst |
 | Scene_Shop | — | ❌ |
 | Scene_Name (Namenseingabe) | — | ❌ |
-| Scene_Gameover | Game-Over-Flag | ✅ |
+| Scene_Gameover | eigene Szene `Scene_Gameover` (Game-Over-Panel, Taste → Titel) | ✅ |
 | Scene_Debug | — | ❌ |
 
 ---

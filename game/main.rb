@@ -234,6 +234,9 @@ end
       Rune::Log.warn('Speichern gesperrt ($game_system.save_disabled)')
       return false
     end
+    # XP Scene_Save: der Save-Zähler zählt den anstehenden Schreibvorgang
+    # und wird mitgeschrieben (J/$game_system im Savegame).
+    $game_system.save_count = $game_system.save_count.to_i + 1 if $game_system
     px, py, pz = Rune::Player.position
     data = {
       'map'       => @map_id,
@@ -241,6 +244,7 @@ end
                        'yaw' => Rune::Camera.yaw, 'mode' => Rune::Camera.mode.to_s },
       'state'     => GameState.snapshot,
       'party'     => Party.snapshot,
+      'system'    => system_snapshot,
       'fired'     => @events.select(&:fired).map(&:name),
       'npcs'      => @npcs.map(&:snapshot),
       'time'      => @time,
@@ -253,6 +257,29 @@ end
   rescue StandardError => e
     Rune::Log.error("Speichern fehlgeschlagen: #{e.message}")
     false
+  end
+
+  # $game_system-Zustand im Spielstand (J/XP $game_system): Sperr-Flags,
+  # Timer und Save-Zähler. Alte Spielstände ohne 'system' behalten die
+  # Default-Werte - system_restore! ist dafür bewusst ein Noop.
+  def self.system_snapshot
+    return nil unless $game_system
+    { 'menu_disabled'      => !!$game_system.menu_disabled,
+      'save_disabled'      => !!$game_system.save_disabled,
+      'encounter_disabled' => !!$game_system.encounter_disabled,
+      'timer'              => $game_system.timer.to_f,
+      'timer_working'      => !!$game_system.timer_working,
+      'save_count'         => $game_system.save_count.to_i }
+  end
+
+  def self.system_restore!(data)
+    return unless $game_system && data.is_a?(Hash)
+    $game_system.menu_disabled      = !!data['menu_disabled']
+    $game_system.save_disabled      = !!data['save_disabled']
+    $game_system.encounter_disabled = !!data['encounter_disabled']
+    $game_system.timer              = data['timer'].to_f
+    $game_system.timer_working      = !!data['timer_working']
+    $game_system.save_count         = data['save_count'].to_i
   end
 
   # Spielstand laden: Karte neu aufbauen, Zustand und Position übernehmen.
@@ -278,6 +305,7 @@ end
     end
 
     GameState.restore!(data['state'] || {})
+    system_restore!(data['system'])   # J: Sperr-Flags/Timer/Save-Zähler
     Party.setup(Database.database)
     Party.restore!(data['party'] || {})
     @intro = nil   # Intro nicht nochmal zeigen
@@ -339,6 +367,7 @@ end
   # selbst setzen dürfen.
   def self.enter_title!
     @menu = nil
+    @menu_items = nil
     @mode = :title
     @menu_sel = 0
     @intro = nil
@@ -398,27 +427,60 @@ end
 
     if $game_temp.gameover
       $game_temp.gameover = false
+      show_gameover!   # K/XP Scene_Gameover: erst der Screen, dann der Titel
     elsif $game_temp.to_title
       $game_temp.to_title = false
+      to_title!
     else
       return false
     end
-    to_title!
     true
   end
 
+  # Game Over (K/XP 080): schwarzer Bildschirm mit „Game Over", eine Taste
+  # führt über Scene_Gameover#update zum Titel. Bewusst KEIN enter_title!:
+  # Projekt und Playtest-Vorgabe bleiben gebunden, bis der Spieler die
+  # Taste drückt (XP zeigt zuerst den Screen, danach den Titel).
+  def self.show_gameover!
+    @menu = nil
+    @menu_items = nil
+    @mode = :title
+    Rune::Input.capture = false
+    $scene = Scene_Gameover.new
+    Rune::Log.info('Game Over (Scene_Gameover) - Taste führt zum Titel')
+  end
+
   # ------------------------------------------------------------- Menü (Esc)
+
+  # Spielzeit als m:ss bzw. h:mm:ss (Menü-Panel und Slot-Vorschau, V/J).
+  def self.zeit_text(sekunden)
+    s = sekunden.to_f
+    h = (s / 3600).to_i
+    m = ((s - h * 3600) / 60).to_i
+    sec = (s - h * 3600 - m * 60).to_i
+    h.positive? ? format('%d:%02d:%02d', h, m, sec) : format('%d:%02d', m, sec)
+  end
 
   def self.menu_items
     items = [{ 'label' => 'Zurück zum Spiel', 'act' => [:resume] }]
     1.upto(3) do |s|
       info = Project.save_info($project_name, s)
-      label = "Speichern Slot #{s}" + (info ? "   (belegt: #{info['saved']})" : '   (leer)')
+      label = if info
+                zeit = info['time'] ? " · #{zeit_text(info['time'])}" : ''
+                "Speichern Slot #{s}   (belegt: #{info['map']}#{zeit})"
+              else
+                "Speichern Slot #{s}   (leer)"
+              end
       items << { 'label' => label, 'act' => [:save, s] }
     end
     1.upto(3) do |s|
       info = Project.save_info($project_name, s)
-      label = "Laden     Slot #{s}" + (info ? "   (#{info['saved']})" : '   (leer)')
+      label = if info
+                zeit = info['time'] ? " · #{zeit_text(info['time'])}" : ''
+                "Laden     Slot #{s}   (#{info['map']}#{zeit})"
+              else
+                "Laden     Slot #{s}   (leer)"
+              end
       items << { 'label' => label, 'act' => [:load, s], 'off' => info.nil? }
     end
     items << { 'label' => 'Zum Titelbildschirm', 'act' => [:title] }
@@ -427,6 +489,10 @@ end
 
   def self.open_menu
     @menu_sel = 0
+    # V: beim Öffnen cachen - vorher las update+draw pro Frame bis zu
+    # 12 Save-JSONs (save_info je Slot, doppelt). Menü-Labels ändern sich
+    # nur durch Speichern/Laden; beides schliesst das Menü (neuer Cache).
+    @menu_items = menu_items
     @menu = true
     Rune::Simulation.paused = true   # F5: Menü friert die Simulation ein
     Rune::Input.capture = false   # Menü mit freiem Zeiger
@@ -436,6 +502,7 @@ end
 
   def self.close_menu
     @menu = nil
+    @menu_items = nil
     # Steht noch ein Text/Wahl/Zahl offen, hält die Pause (F5) - der
     # nächste Frame rechnet ohnehin neu.
     Rune::Simulation.paused = !!(@interpreter &&
@@ -447,7 +514,7 @@ end
   end
 
   def self.update_menu
-    items = menu_items
+    items = @menu_items || (@menu_items = menu_items)
     n = items.size
     @menu_sel = (@menu_sel - 1) % n if Rune::Input.pressed?(:up)
     @menu_sel = (@menu_sel + 1) % n if Rune::Input.pressed?(:down)
@@ -483,7 +550,7 @@ end
   def self.draw_menu
     w = Rune::Window.width
     h = Rune::Window.height
-    items = menu_items
+    items = @menu_items || (@menu_items = menu_items)
     mw = 480
     mh = 66 + items.size * 34 + 12
     mx = w / 2 - mw / 2
@@ -503,9 +570,14 @@ end
             UI::TEXT_DIM, 13)
 
     # Etappe 17g: Party-Status (Helden, Gold, Inventar) neben dem Menü.
+    # V: Playtime/Steps wie XP Scene_Menu ins Panel (Spielzeit = @time,
+    # Schritte = $game_party.steps aus F3).
     lines = Party.status_lines
+    stufen = (defined?($game_party) && $game_party) ? $game_party.steps.to_i : 0
+    extra = ["Spielzeit  #{zeit_text(@time)}", "Schritte  #{stufen}"]
+    alle = lines + extra
     pw = 380
-    ph = 60 + lines.size * 28
+    ph = 60 + alle.size * 28
     px = mx - pw - 24
     py = my
     if px < 12   # bei schmalen Fenstern unter das Menü
@@ -516,8 +588,9 @@ end
     UI.panel(px, py, pw, ph, UI::PANEL, 0.95)
     UI.rahmen(px, py, pw, ph, UI::ACCENT, 0.6)
     UI.text(px + 20, py + 14, 'Party', UI::TEXT, 18)
-    lines.each_with_index do |line, i|
-      UI.text(px + 20, py + 44 + i * 28, line, UI::TEXT, 14)
+    alle.each_with_index do |line, i|
+      UI.text(px + 20, py + 44 + i * 28, line,
+              i < lines.size ? UI::TEXT : UI::TEXT_DIM, 14)
     end
   end
 
