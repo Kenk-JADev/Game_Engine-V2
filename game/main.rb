@@ -6,6 +6,10 @@
 
 Sounds.register_all   # prozedurale Sounds an die Engine melden (idempotent)
 
+# Etappe 20d: $game_temp-Aufträge (TempActions) - Tests laden main.rb einzeln,
+# ohne boot.rb, darum hier selbst nachziehen (LOAD_PATH zeigt auf game/engine).
+require 'temp_actions' unless defined?(TempActions)
+
 module Game
   # ---------------------------------------------------------------- Aufbau
 
