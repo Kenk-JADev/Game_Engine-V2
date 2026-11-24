@@ -1589,9 +1589,13 @@ void event_form_tests(const std::string& wurzel) {
         R"({"cmd":"if_script","code":"true","then":[],"else":[]})",
         R"({"cmd":"save_access","allowed":false})", R"({"cmd":"menu_access","allowed":true})",
         R"({"cmd":"encounter_access","allowed":false})",
-        R"({"cmd":"timer","mode":"start","seconds":120})"
+        R"({"cmd":"timer","mode":"start","seconds":120})",
+        R"({"cmd":"actor_hp","target":"alle","amount":-20})",
+        R"({"cmd":"actor_sp","amount":10})",
+        R"({"cmd":"actor_exp","target":"arik","amount":50})",
+        R"({"cmd":"actor_level","amount":1})"
     };
-    check("Beispiel für jeden der 42 Befehlstypen vorhanden", samples.size() == ET_COUNT);
+    check("Beispiel für jeden der 46 Befehlstypen vorhanden", samples.size() == ET_COUNT);
     for (size_t i = 0; i < samples.size(); ++i) {
         JsonValue c = json_parse(samples[i]); c.set("extra_meta", json_parse(R"({"n":9007199254740993})"));
         const EventCommandForm f = event_command_form_read(c);

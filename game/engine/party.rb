@@ -332,6 +332,78 @@ class Party
     true
   end
 
+  # ------------------------------------------- Werte ändern (Etappe 20d)
+  # XP 311/312/315/316 (HP/SP/EXP/Stufe ändern) mit Ziel "alle" oder einem
+  # Actor. Rune3D rechnet mit EINER vorzeichenbehafteten Menge statt mit
+  # XP-Operation (+/-/setzen): positiv heilt/erhöht, negativ senkt. Dadurch
+  # braucht das Formular nur ein Zahlenfeld.
+  #
+  # Ziel-Schreibweise: nil, "" oder "alle" = ganze Party; sonst Actor-ID oder
+  # Name (Gross-/Kleinschreibung egal).
+  def self.ziel_actors(ziel)
+    name = ziel.to_s.strip
+    return @actors if name.empty? || name.casecmp?('alle')
+
+    treffer = @actors.find { |a| a.id.to_s.casecmp?(name) } ||
+              @actors.find { |a| a.name.to_s.casecmp?(name) }
+    treffer ? [treffer] : []
+  end
+
+  def self.change_hp(ziel, amount)
+    actors = ziel_actors(ziel)
+    return 0 if actors.empty?
+
+    delta = amount.to_i
+    actors.each do |a|
+      alt = a.hp
+      a.hp = [[alt + delta, a.max_hp].min, 0].max
+      Rune::Log.info("Party: #{a.name} HP #{alt} -> #{a.hp}")
+    end
+    actors.size
+  end
+
+  # SP heissen in Rune3D MP (XP-Feld "mp" in database.json) - der Befehl folgt
+  # der XP-Bezeichnung, die Daten bleiben beim gewohnten Namen.
+  def self.change_mp(ziel, amount)
+    actors = ziel_actors(ziel)
+    return 0 if actors.empty?
+
+    delta = amount.to_i
+    actors.each do |a|
+      alt = a.mp
+      a.mp = [[alt + delta, a.max_mp].min, 0].max
+      Rune::Log.info("Party: #{a.name} MP #{alt} -> #{a.mp}")
+    end
+    actors.size
+  end
+
+  # EXP über den normalen Weg (set_exp): Stufenaufstieg inklusive Wachstum,
+  # negative Mengen senken die Erfahrung ohne Stufenabbau (XP verliert beim
+  # Senken ebenfalls keine Stufe).
+  def self.change_exp(ziel, amount)
+    actors = ziel_actors(ziel)
+    actors.each { |a| set_exp(a, a.exp.to_i + amount.to_i) }
+    actors.size
+  end
+
+  # Stufe setzen: Aufstieg über level_up! (Wachstum wie im Kampf), Abstieg
+  # senkt nur die Stufe - max_hp/atk usw. bleiben stehen, weil Rune3D keine
+  # Klassentabellen hat, aus denen man sie neu berechnen könnte (LOGIK AD.7).
+  def self.change_level(ziel, amount)
+    actors = ziel_actors(ziel)
+    actors.each do |a|
+      ziel_stufe = [[a.level.to_i + amount.to_i, MAX_LEVEL].min, 1].max
+      if ziel_stufe > a.level
+        (ziel_stufe - a.level).times { level_up!(a) }
+      elsif ziel_stufe < a.level
+        Rune::Log.info("Party: #{a.name} Stufe #{a.level} -> #{ziel_stufe}")
+        a.level = ziel_stufe
+        a[:exp] = [exp_for_level(ziel_stufe), a.exp.to_i].min
+      end
+    end
+    actors.size
+  end
+
   # ------------------------------------------------------- Speichern/Laden
 
   def self.snapshot

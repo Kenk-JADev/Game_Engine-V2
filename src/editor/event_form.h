@@ -44,7 +44,7 @@ enum EvType {
     ET_BUTTON_INPUT, ET_TEXT_OPTIONS, ET_COMMON_EVENT,
     ET_IF_GOLD, ET_IF_ITEM, ET_IF_SCRIPT,
     ET_SAVE_ACCESS, ET_MENU_ACCESS, ET_ENCOUNTER_ACCESS,
-    ET_TIMER, ET_COUNT
+    ET_TIMER, ET_ACTOR_HP, ET_ACTOR_SP, ET_ACTOR_EXP, ET_ACTOR_LEVEL, ET_COUNT
 };
 inline constexpr const char* const EV_TYPES[ET_COUNT] = {
     "text", "choices", "log", "wait", "switch", "toggle_switch", "variable",
@@ -54,7 +54,8 @@ inline constexpr const char* const EV_TYPES[ET_COUNT] = {
     "loop", "break", "label", "jump", "exit_event", "erase_event",
     "button_input", "text_options", "common_event",
     "if_gold", "if_item", "if_script",
-    "save_access", "menu_access", "encounter_access", "timer"
+    "save_access", "menu_access", "encounter_access", "timer",
+    "actor_hp", "actor_sp", "actor_exp", "actor_level"
 };
 inline constexpr const char* const EVENT_TRIGGERS[] = {"action", "touch", "auto", "parallel"};
 inline constexpr const char* const EVENT_OPS[] = {"==", "!=", "<", "<=", ">", ">="};
@@ -70,13 +71,15 @@ inline bool event_command_uses_field(int type, size_t field) {
             type == ET_IF_SELF_SWITCH || type == ET_FADE || type == ET_MOVE_ROUTE ||
             type == ET_INPUT_NUMBER || type == ET_BATTLE || type == ET_LABEL ||
             type == ET_JUMP || type == ET_BUTTON_INPUT || type == ET_TEXT_OPTIONS ||
-            type == ET_COMMON_EVENT || type == ET_IF_ITEM;
+            type == ET_COMMON_EVENT || type == ET_IF_ITEM ||
+            type == ET_ACTOR_HP || type == ET_ACTOR_SP || type == ET_ACTOR_EXP || type == ET_ACTOR_LEVEL;
         case 1: return type == ET_WAIT || type == ET_VARIABLE || type == ET_IF_VARIABLE ||
             type == ET_TELEPORT || type == ET_MOVE_PLAYER || type == ET_SOUND || type == ET_EFFECT ||
             type == ET_GOLD || type == ET_HEAL || type == ET_WEATHER || type == ET_SAVE_GAME ||
             type == ET_LOAD_GAME || type == ET_FADE || type == ET_MOVE_ROUTE || type == ET_INPUT_NUMBER ||
             type == ET_CHOICES || type == ET_IF_GOLD || type == ET_IF_ITEM ||
-            type == ET_TIMER;
+            type == ET_TIMER || type == ET_ACTOR_HP || type == ET_ACTOR_SP ||
+            type == ET_ACTOR_EXP || type == ET_ACTOR_LEVEL;
         case 2: return type == ET_VARIABLE || type == ET_TELEPORT || type == ET_MOVE_PLAYER ||
             type == ET_EFFECT || type == ET_ITEM || type == ET_MOVE_ROUTE || type == ET_INPUT_NUMBER ||
             type == ET_BATTLE || type == ET_TEXT_OPTIONS;
@@ -675,6 +678,8 @@ inline EventCommandForm event_command_form_read(const JsonValue& c) {
         case ET_SAVE_ACCESS: case ET_MENU_ACCESS: case ET_ENCOUNTER_ACCESS:
             f.flag = flag("allowed", 0); break;
         case ET_TIMER: f.name = text("mode", "start"); f.val1 = num("seconds", "0"); break;
+        case ET_ACTOR_HP: case ET_ACTOR_SP: case ET_ACTOR_EXP: case ET_ACTOR_LEVEL:
+            f.name = text("target", "alle"); f.val1 = num("amount", "0"); break;
         case ET_TEXT_OPTIONS:
             f.name = text("position", "unten");
             f.flag = flag("frame", 0);
@@ -729,6 +734,8 @@ inline std::vector<const char*> event_command_keys(int type) {
         case ET_IF_SCRIPT: return {"code", "name", "then", "else"};
         case ET_SAVE_ACCESS: case ET_MENU_ACCESS: case ET_ENCOUNTER_ACCESS: return {"allowed"};
         case ET_TIMER: return {"mode", "seconds"};
+        case ET_ACTOR_HP: case ET_ACTOR_SP: case ET_ACTOR_EXP: case ET_ACTOR_LEVEL:
+            return {"target", "amount"};
         default: return {};
     }
 }
@@ -1058,6 +1065,12 @@ inline EventEdit event_command_prepare(const JsonValue* existing, const EventCom
         case ET_SAVE_ACCESS: case ET_MENU_ACCESS: case ET_ENCOUNTER_ACCESS:
             ok = boolean("allowed", "cmd_flag", before.flag, after.flag);
             break;
+        case ET_ACTOR_HP: case ET_ACTOR_SP: case ET_ACTOR_EXP: case ET_ACTOR_LEVEL: {
+            // Etappe 20d: Ziel "alle" oder ein Actor, Menge vorzeichenbehaftet.
+            ok = text("target", "cmd_name", before.name, after.name, true, false, false);
+            if (ok) ok = v1("amount", false, "0", true, true, -9999999, 9999999);
+            break;
+        }
         case ET_TIMER: {
             // Etappe 20d: moderiert wie fade - "start"/"stop", Sekunden >= 0.
             if (fresh || before.name != after.name) {

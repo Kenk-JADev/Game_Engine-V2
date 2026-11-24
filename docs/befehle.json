@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "stand": "Etappe 20d (Runde 28): 42 Befehle",
+  "stand": "Etappe 20d (Runde 28): 46 Befehle",
   "zweck": "Quellen-Register der Event-Befehlstypen. Vier Stellen im Baum müssen zu dieser Liste passen: CMD_TYPES (game/engine/mapcheck.rb), die Ausführung (game/engine/interpreter.rb), ISSUE_CMD_TYPES (src/editor/editor_main.cpp) und EvType/EV_TYPES (src/editor/event_form.h). Ein neuer Befehl ist erst fertig, wenn er hier UND in allen vier Stellen steht; tools/befehle_test.rb meldet die Lücke vor dem Commit.",
   "reihenfolge": "Die Reihenfolge ist die des Registers; die vier Stellen halten dieselbe Reihenfolge ein, damit Diffs lesbar bleiben.",
   "bereiche": [
@@ -13,7 +13,8 @@
     "Ton",
     "Bild",
     "Inventar",
-    "System"
+    "System",
+    "Party"
   ],
   "befehle": [
     {
@@ -456,6 +457,50 @@
         "seconds"
       ],
       "beschreibung": "Startet oder stoppt den Spieltimer; waehrend er laeuft, zeigt der Bildschirm die Restzeit oben rechts (XP 124)."
+    },
+    {
+      "typ": "actor_hp",
+      "bereich": "Party",
+      "pflicht": [
+        "amount"
+      ],
+      "optional": [
+        "target"
+      ],
+      "beschreibung": "Aendert die HP (XP 311); Ziel 'alle' oder ein Actor, positiv heilt, negativ schaedigt (geklemmt auf 0..Max)."
+    },
+    {
+      "typ": "actor_sp",
+      "bereich": "Party",
+      "pflicht": [
+        "amount"
+      ],
+      "optional": [
+        "target"
+      ],
+      "beschreibung": "Aendert SP/MP (XP 312) wie actor_hp, geklemmt auf 0..Max."
+    },
+    {
+      "typ": "actor_exp",
+      "bereich": "Party",
+      "pflicht": [
+        "amount"
+      ],
+      "optional": [
+        "target"
+      ],
+      "beschreibung": "Aendert die Erfahrung (XP 315); positive Mengen loesen Stufenaufstiege aus."
+    },
+    {
+      "typ": "actor_level",
+      "bereich": "Party",
+      "pflicht": [
+        "amount"
+      ],
+      "optional": [
+        "target"
+      ],
+      "beschreibung": "Aendert die Stufe (XP 316); Aufstieg ueber den normalen Level-Up, Abstieg senkt nur die Stufe."
     }
   ]
 }

@@ -211,7 +211,7 @@ check('allowed als Text -> Warnung') do
   hat?(MapCheck.scan(karte_mit([{ 'cmd' => 'save_access', 'allowed' => 'nein' }]), **OPTS),
        "'allowed' muss true oder false sein", MapCheck::WARNUNG)
 end
-check('alle 42 Befehlstypen im Register der Prüfung') { MapCheck::CMD_TYPES.size == 42 }
+check('alle 46 Befehlstypen im Register der Prüfung') { MapCheck::CMD_TYPES.size == 46 }
 
 puts($fail.zero? ? 'ALLE CHECKS GRUEN' : "#{$fail} CHECK(S) FEHLGESCHLAGEN")
 exit($fail.zero? ? 0 : 1)

@@ -57,6 +57,8 @@
 #    {"cmd":"save_access","allowed":false} / menu_access / encounter_access
 #                                                       (20d; XP 134/135/136)
 #    {"cmd":"timer","mode":"start","seconds":120}       (Timer, 20d; XP 124)
+#    {"cmd":"actor_hp","target":"alle","amount":-20}    (Werte ändern, 20d)
+#    {"cmd":"actor_sp"/"actor_exp"/"actor_level",...}   (XP 311/312/315/316)
 #    {"cmd":"script","name":"projekt_script"}  |  {"cmd":"script","code":"..."}
 # ============================================================================
 
@@ -307,6 +309,14 @@ class Interpreter
         end
       when 'gold'   # {"cmd":"gold","amount":50}  (negativ = abziehen)
         Party.add_gold(cmd['amount'].to_i)
+      when 'actor_hp'  # Etappe 20d: HP ändern (XP 311), negativ = Schaden
+        Party.change_hp(cmd['target'], cmd['amount'])
+      when 'actor_sp'  # Etappe 20d: SP/MP ändern (XP 312)
+        Party.change_mp(cmd['target'], cmd['amount'])
+      when 'actor_exp'  # Etappe 20d: Erfahrung ändern (XP 315, mit Aufstieg)
+        Party.change_exp(cmd['target'], cmd['amount'])
+      when 'actor_level'  # Etappe 20d: Stufe ändern (XP 316)
+        Party.change_level(cmd['target'], cmd['amount'])
       when 'heal'   # {"cmd":"heal"} = voll, {"cmd":"heal","amount":30}
         Party.heal_all(cmd.key?('amount') ? cmd['amount'].to_i : 0)
       when 'weather'   # {"cmd":"weather","name":"schnee","intensity":1.5} (Etappe 17h)

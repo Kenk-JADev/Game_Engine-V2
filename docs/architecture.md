@@ -1868,6 +1868,31 @@ nicht als Absturz behandelt. `player_new_x/y/direction` bleiben offen
 
 **Tests:** `tools/temp_flags_test.rb` (14 Checks).
 
+### Werte ändern: HP, SP, EXP, Stufe (XP 311/312/315/316)
+
+Vier Befehle (Register **46 Typen**, Bereich „Party" in `docs/befehle.json`):
+
+```json
+{"cmd":"actor_hp",   "target":"alle", "amount":-20}
+{"cmd":"actor_sp",   "target":"arik", "amount":10}
+{"cmd":"actor_exp",  "amount":50}
+{"cmd":"actor_level","target":"Arik", "amount":1}
+```
+
+- `target` fehlt/leer/`alle` → ganze Party, sonst Actor-ID oder Name.
+- `amount` ist **vorzeichenbehaftet** (XP-Operation `+`/`-` in einer Zahl):
+  positiv heilt/erhöht, negativ senkt. HP/SP klemmen auf `0..Max`.
+- `actor_exp` läuft über `Party.set_exp` (Stufenaufstieg inklusive),
+  `actor_level` über `level_up!` — also dasselbe Wachstum wie im Kampf.
+  Abstieg senkt nur die Stufe, weil Rune3D keine Klassentabellen hat, aus
+  denen Werte neu berechnet werden könnten.
+- SP heißen in den Daten weiterhin `mp` (XP-Feld), der Befehl folgt der
+  XP-Bezeichnung.
+
+MapCheck prüft `amount` (Pflicht, ≠ 0), den Actor-Namen gegen
+`database.json` und den Stufenbereich. **Tests:** `tools/actor_wert_test.rb`
+(24 Checks), `json_test` 753 Checks.
+
 ## Professionalisierung: Sync-Test + README (Etappe 19j)
 
 Die Sync-Pflicht für neue Befehlstypen (MapCheck::CMD_TYPES in Ruby =

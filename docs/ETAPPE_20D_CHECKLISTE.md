@@ -6,6 +6,12 @@ was fehlt, und woran erkennt man „fertig". Stand: **Runde 28**.
 
 Legende: `[x]` erledigt und committet · `[~]` erledigt, CI offen · `[ ]` offen
 
+**Kurzfassung Stand:** 11 von 17 Punkten aus Abschnitt 3 sind erledigt
+(6 Bedingungen/Sperren, Timer, `$game_temp`, 4 Wert-Befehle gezählt als
+Pakete). Es fehlen noch **Variable-Operationen (122)**, **Actor/Button-
+Bedingungen**, **`party_member` (129)**, **Transfer-Startposition** und der
+Abschluss (Bilanz/HANDOFF/CI).
+
 ## 0. Definition of Done für JEDEN neuen Befehlstyp
 
 Ein Befehl gilt erst als fertig, wenn **alle** Punkte stimmen:
@@ -31,7 +37,8 @@ Ein Befehl gilt erst als fertig, wenn **alle** Punkte stimmen:
 
 ## 1. Registerstand
 
-- [x] 42 Befehlstypen statt 35 (35 + sechs Bedingungen/Sperren + Timer)
+- [x] **46 Befehlstypen** statt 35 (35 + sechs Bedingungen/Sperren + Timer
+      + vier Wert-Befehle)
 - [ ] Ziel am Ende von 20d: alle geplanten Typen eingetragen (siehe 3.)
 
 ## 2. Fertig in Runde 28
@@ -47,6 +54,10 @@ Ein Befehl gilt erst als fertig, wenn **alle** Punkte stimmen:
 - [x] **`timer`** (XP 124) — `mode` start/stop + `seconds`, Restzeit als
       `mm:ss` oben rechts (`UI.timer`), `GameSystem#update(dt)` zählt in
       XP-Frames, Timer im `system`-Snapshot
+- [x] **`actor_hp` / `actor_sp` / `actor_exp` / `actor_level`**
+      (XP 311/312/315/316) — `target` (`alle` oder Actor), `amount`
+      vorzeichenbehaftet; EXP/Stufe über denselben Weg wie der Kampf;
+      MapCheck prüft Menge, Actor-Namen, Stufenbereich
 - [x] **`$game_temp`-Calling-Flags** (LOGIK E.3) — `TempActions.tick` für
       `battle_calling`, `menu_calling`, `save_calling`, `player_transferring`,
       `to_title`; ein Auftrag pro Frame, Flag vorher gelöscht
@@ -55,8 +66,8 @@ Ein Befehl gilt erst als fertig, wenn **alle** Punkte stimmen:
 - [x] Zweige der neuen Wenn-Typen im F6-Baum einfügbar/bearbeitbar und im
       Editor-Issue-Scan rekursiv geprüft (`event_cmd_has_branches`)
 - [x] Tests: `bedingungen_test.rb` (26), `timer_test.rb` (20),
-      `temp_flags_test.rb` (14), `json_test` 741, `sync_test` grün,
-      `mapcheck_test` 105 `ok`
+      `temp_flags_test.rb` (14), `actor_wert_test.rb` (24), `json_test` 753,
+      `sync_test` grün, `mapcheck_test` 105 `ok`
 - [x] Doku nachgezogen (42 Typen, Bilanz 34 ✅ · 9 ⚠️ · 49 ❌)
 
 ## 3. Offen in 20d
@@ -69,8 +80,8 @@ Ein Befehl gilt erst als fertig, wenn **alle** Punkte stimmen:
       vorhanden?) und `if_button` (Taste gedrückt) — Timer/Enemy/Character/
       Weapon/Armor bleiben bewusst offen (keine Daten in Rune3D)
 - [ ] **`party_member`** (XP 129) — Mitglied hinzufügen/entfernen
-- [ ] **HP ändern (311) / SP ändern (312) / EXP ändern (315) / Level ändern (316)**
-      — Ziel (ganze Party oder ein Actor), Operation (`+`/`-`/`=`), Menge
+- [ ] **Werte-Befehle erweitern:** Operand „Variable" (XP erlaubt statt
+      Konstante `variable[x]`) und Ziel „ganze Party" bei `actor_exp` prüfen
 - [ ] **`player_transferring`:** Startposition `player_new_x/y/direction`
       anwenden (Rune3D-Weltkoordinaten ≠ XP-Kacheln → Umrechnung festlegen,
       LOGIK AC.10)

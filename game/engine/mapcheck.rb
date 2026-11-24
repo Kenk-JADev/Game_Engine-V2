@@ -76,6 +76,7 @@ module MapCheck
     if_gold if_item if_script
     save_access menu_access encounter_access
     timer
+    actor_hp actor_sp actor_exp actor_level
   ].freeze
 
   TRIGGER   = %w[action touch auto parallel].freeze
@@ -1050,6 +1051,24 @@ module MapCheck
               melde(WARNUNG, w, "'value' sollte nicht negativ sein (Item-Menge)")
             end
           end
+        end
+      when 'actor_hp', 'actor_sp', 'actor_exp', 'actor_level'
+        # Etappe 20d: HP/SP/EXP/Stufe ändern (XP 311/312/315/316). Ein
+        # vorzeichenbehaftetes Feld: positiv heilt/erhöht, negativ senkt.
+        melde(FEHLER, w, "'amount' fehlt oder ist keine Zahl") unless zahl?(c['amount'])
+        if c['amount'].is_a?(Numeric) && c['amount'].to_i.zero?
+          melde(WARNUNG, w, "'amount' ist 0 - der Befehl bewirkt nichts")
+        end
+        ziel = c.key?('target') ? c['target'].to_s.strip : ''
+        if !ziel.empty? && !ziel.casecmp?('alle')
+          namen = (Database.database['actors'] || []).filter_map do |h|
+            h.is_a?(Hash) ? [h['id'].to_s, (h['name'] || h['id']).to_s] : nil
+          end
+          bekannt = namen.any? { |id, name| ziel.casecmp?(id) || ziel.casecmp?(name) }
+          melde(WARNUNG, w, "Actor '#{ziel}' nicht in database.json") unless bekannt
+        end
+        if typ == 'actor_level' && c['amount'].is_a?(Numeric) && c['amount'].to_i.abs > 99
+          melde(WARNUNG, w, "'amount' übersteigt den Stufenbereich")
         end
       when 'timer'
         # Etappe 20d: Timer steuern (XP 124).
