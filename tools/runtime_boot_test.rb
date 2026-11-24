@@ -376,9 +376,11 @@ if ARGV[0] == '--playtest-child'
           fighting = Battle.active? && $game_temp.in_battle && Rune::Simulation.paused &&
                      Party.find('arik').hp == 60 && Party.find('mira').hp.zero? && Party.find('mira').mp == 2
           Battle.enemies.each { |enemy| enemy.instance_variable_set(:@atk, 0) }
-          frame.call(:down)
+          frame.call(:down)   # Fertigkeit
+          frame.call(nil)
+          frame.call(:down)   # Item (dritter Befehl seit 20a)
           frame.call(:enter)
-          frame.call(:enter) # gehalten: keine zweite Bestätigung
+          frame.call(:enter)  # gehalten: keine zweite Bestätigung
           held_item = Battle.phase == :item && Battle.actions.empty?
           frame.call(nil)
           frame.call(:enter)

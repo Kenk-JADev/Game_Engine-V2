@@ -64,6 +64,10 @@ mit der mittleren Maustaste lässt sich der Mausblick wieder einschalten.
 
 ## Ablauf und Erwartungen
 
+Seit Etappe 20a lautet die Befehlsliste **Angriff / Fertigkeit / Item /
+Flucht** (XP-Reihenfolge). „Item" ist damit der dritte Eintrag: im
+Befehlsfenster zweimal ↓ drücken.
+
 1. Im Kampf muss Arik bei 60/120 HP stehen, Mira bei 0/80 HP und 2/40 MP.
    Nur Arik erhält zunächst einen Befehl. Während des Kampfes dürfen Spieler
    und Weltphysik nicht weiterlaufen. Das Fenster bei Bedarf auch mit anderer
@@ -84,7 +88,15 @@ mit der mittleren Maustaste lässt sich der Mausblick wieder einschalten.
    selbst. Nach Ausführung muss ihr MP-Wert 22 sein; die Wirkungen im
    Kampflog prüfen. Die Gegner können danach erneut je 1 HP abziehen. Den
    vollständigen Inventarstand erst nach dem Kampf im Weltmenü vergleichen.
-5. Gegnerwahl öffnen, mit Esc abbrechen und prüfen, dass keine unerwünschte
+5. **Fertigkeit** ausprobieren: Arik hat Kraftschlag (5 MP), Wutausbruch
+   (3 MP, wirkt sofort auf ihn selbst, +6 Angriff mit Zustandsanzeige
+   „Wut(3)") und Schutzhaltung (4 MP auf einen Helden). Mira hat Feuerball
+   (6 MP, 40 % Brand), Eisspeer, Heilung (5 MP) und Regeneration. Zu teure
+   Fertigkeiten müssen gedimmt sein und eine Meldung „nicht genug MP"
+   erzeugen, ohne MP abzuziehen. Nach einer Runde müssen Gift/Brand 6 bzw.
+   4 HP kosten, Regeneration 10 HP heilen und die Restdauer in Klammern
+   sinken; abgelaufene Zustände verschwinden mit einer Log-Zeile.
+6. Gegnerwahl öffnen, mit Esc abbrechen und prüfen, dass keine unerwünschte
    Aktion ausgeführt wird. Esc in der **Befehlswahl** versucht Flucht statt
    das Weltmenü zu öffnen. Bei Fehlschlag verfallen vorgemerkte Aktionen,
    die Gegner ziehen; bis zum Erfolg erneut versuchen. Nach dem Kampf müssen
@@ -96,12 +108,12 @@ mit der mittleren Maustaste lässt sich der Mausblick wieder einschalten.
    Falls das Party-Panel nicht erscheint, das Spielfenster verbreitern oder
    maximieren; bei zu wenig Platz wird es ausgeblendet. Wenn es nicht sichtbar
    gemacht werden kann, diese Sichtprüfung als offen festhalten.
-6. Das Event erneut starten und **F5 im Spiel** während des Kampfes drücken.
+7. Das Event erneut starten und **F5 im Spiel** während des Kampfes drücken.
    Der Kampf ist abgebrochen und der Spieler danach wieder beweglich; das
    erneut erscheinende Intro mit E oder Enter bestätigen. F5 startet den
    Spielzustand neu; es ist kein Speichern und soll die gerade nicht
    gespeicherte Party nicht erhalten.
-7. Optional im F11-Script `kampf_alle_ko` mit
+8. Optional im F11-Script `kampf_alle_ko` mit
    `party.actors.each { |held| held.hp = 0 }` anlegen. Zwei getrennt erreichbare
    Action-Events anlegen: jeweils zuerst das Script, dann den Kampf und einen
    Textbefehl einfügen. Beim ersten Kampf `Verlust 0` wählen: Der Titel muss

@@ -52,7 +52,8 @@ Laufzeit neu geladen werden.
 **Engine**: Third-Person-Spieler mit Physik (Schwerkraft, Sprung, `solid`-Teile
 als Hindernisse, Kartengrenze), Event-Interpreter mit Verzweigungen und
 Wahlmöglichkeiten, Party/Helden mit Items und Gold, **rundenbasiertes
-Kampf-Grundgerüst** (Angriff/Item/Flucht, Exp/Gold/Beute, Game-Over-Flag),
+Kampf-Grundgerüst** (Angriff/Fertigkeit/Item/Flucht, Fertigkeiten mit
+MP-Kosten, Zustände, Exp/Level-Up/Gold/Beute, Game-Over-Flag),
 **Zahleneingabe** wie XP „Input Number", NPC-Patrouillen mit Wegpunkten und
 **Bewegungsrouten** (XP-Schrittnamen und -Codes), Bildschirmblende,
 Partikel-Effekte, Wetter (Regen/Schnee), prozedurale Texturen und Sounds,
@@ -112,7 +113,7 @@ ist benutzbar. Der grafische Kampf-Live-Test ist noch offen:
 | Script-Editor (Ruby/RGSS) | Zeilennummern, Syntaxprüfung, opt-in Startscripts; keine Sandbox | ✅ teilweise |
 | Playtest | F4 startet die gewählte Karte im eigenen Spielprozess; keine Sandbox | ✅ teilweise |
 | Nebel / Panorama / Wetter | Karten-JSON + Interpreter | ✅ |
-| Kampfsystem | Rundenkampf-Grundgerüst (`battle.rb`): Angriff/Item/Flucht, Exp/Gold/Drops; Zufallskämpfe pro Karte im F2-Dialog; keine Skills/Zustände | ✅ teilweise |
+| Kampfsystem | Rundenkampf (`battle.rb`): Angriff/Fertigkeit/Item/Flucht, Fertigkeiten mit MP-Kosten und Zielwahl, Zustände mit Dauer (Gift/Regeneration/Wut/Schutz), Exp mit XP-Stufenaufstieg, Gold/Drops; Zufallskämpfe pro Karte im F2-Dialog; offen: Gegner-Fertigkeiten/-KI, F9-Reiter für `skills`/`states` | ✅ teilweise |
 | Bewegungsfolgen (Move Routes) | `mover.rb`, XP-Schrittnamen + Codes, Routen im Event-Befehl | ✅ |
 | Self-Switches | A-D, Seiten-Bedingung + Befehle | ✅ |
 | Zahleneingabe (Input Number) | `input_number`-Befehl, Ziffernfeld 1-6 Stellen | ✅ |
