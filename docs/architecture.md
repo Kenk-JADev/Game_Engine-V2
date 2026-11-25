@@ -1961,21 +1961,41 @@ Audio.bgm_play('Audio/BGM/dorf', 80, 120)          # RGSS-Aufruf, Pitch 120 %
 - `src/core/ogg.h` dekodiert **OGG Vorbis** (XP-Standard) über das
   mitgelieferte `src/core/stb_vorbis.cpp` (v1.25, public domain / MIT) und
   schickt das Ergebnis durch denselben Resampler auf 22,05 kHz mono/16 Bit.
-  Grenzen: ein Vorbis-Strom, 60 s, kein MP3. `sound::load_audio` erkennt das
+  Grenzen: ein Vorbis-Strom, 60 s. `sound::load_audio` erkennt das
   Format an den ersten Bytes, nicht an der Dateiendung; `tools/ogg_test.cpp`
   prüft das ohne Windows (CI + `build.ps1 -Test`).
-- `src/core/sound.cpp` bekommt `load_audio(name, bytes, size, pitch)` (WAV und
-  OGG, Format an den ersten Bytes erkannt) und `has()`;
+- `src/core/mp3.h` liest **MP3** über das mitgelieferte `src/core/minimp3.h`
+  (CC0) + `src/core/minimp3.cpp` (Implementierung): `ist_mp3` erkennt ID3v2
+  oder den Frame-Sync, `parse` überspringt den ID3v2-Kopf, dekodiert
+  rahmenweise und schickt das Ergebnis durch denselben Resampler (mono,
+  22050 Hz, 60 s). `tools/mp3_test.cpp` prüft das ohne Windows (CI +
+  `build.ps1 -Test`).
+- `src/core/sound.cpp` bekommt `load_audio(name, bytes, size, pitch)` (WAV,
+  OGG und MP3, Format an den ersten Bytes erkannt) und `has()`;
   Ruby ruft sie über `Rune::Sound.load(name, bytes, pitch)` und
   `Rune::Sound.known?(name)`.
 - `game/engine/audio_files.rb` holt die Bytes über die sichere Assets-Brücke
   (max. 8 MB), sucht Kandidaten (`<pfad>`, `audio/<name>`, `audio/bgm/<name>`,
-  `audio/se/<name>`; `.wav`, `.ogg`, `.mp3`), lädt WAV oder OGG und warnt nur
-  noch bei MP3 (kein Decoder).
+  `audio/bgs/<name>`, `audio/se/<name>`, `audio/me/<name>`; `.wav`, `.ogg`,
+  `.mp3`) und lädt WAV, OGG oder MP3 (seit Etappe 22).
 - `Audio.bgm_play`/`bgs_play`/`se_play`/`me_play` versuchen zuerst eine Datei
   und fallen sonst auf den prozeduralen Klang zurück — alte Projekte klingen
   weiter. Eine neue Musik **ersetzt** die laufende (`AudioFiles.stop` auf die
   vorige Datei), wie XP 241.
+- **Einmal-Sounds stoppen:** `Audio.se_play`/`me_play` merken sich die
+  gestarteten Namen (max. 24). `Audio.se_stop` und `Audio.me_stop` stoppen sie
+  über `AudioFiles.stop` (Datei) bzw. `Rune::Sound.stop` (prozedural). Ein ME
+  liegt wie in RGSS auf dem BGM-Kanal: `Audio.me_play` verstummt die laufende
+  Musik und setzt sie nicht fort, sondern vergisst sie in `MapAudio`
+  (`vergiss(:bgm)`).
+- **Merken/Wiederherstellen:** `GameSystem#bgm_memorize`/`bgm_restore`,
+  `bgs_memorize`/`bgs_restore` und `playing_bgm`/`playing_bgs` (flüchtig wie in
+  XP); `bgm_play(nil)` bzw. ein leerer Name stoppt. `bgm_fade`/`bgs_fade`
+  erwarten Sekunden und geben `time * 1000` an `Audio` weiter.
+- **Kampfmusik:** `Battle.musik_start` merkt die Kartenmusik und spielt
+  `$game_system.battle_bgm`; `Battle.musik_ende(sieg:)` spielt bei einem Sieg
+  zuerst `battle_end_me` und stellt dann mit `bgm_restore` zurück (Reihenfolge
+  wie `Scene_Battle#battle_end`). `abort!` stellt ohne ME zurück.
 - **Fade über Zeit:** `sound::set_volume(name, vol)`/`volume_of(name)`,
   erreichbar als `Rune::Sound.volume(name, vol = nil)`. `AudioFiles.fade`
   (Sekunden) / `fade_ms` (RGSS-Millisekunden) merken sich Dauer, Rest und
@@ -1994,7 +2014,8 @@ Audio.bgm_play('Audio/BGM/dorf', 80, 120)          # RGSS-Aufruf, Pitch 120 %
   `Weather.load_map`: genanntes BGM/BGS startet, eine Karte ohne Eintrag lässt
   die laufende Musik weiterlaufen (XP startet dann ebenfalls nichts), und
   dieselbe Datei mit gleichen Werten wird **nicht** neu gestartet. MapCheck
-  `pruefe_ton` prüft Objekt, Namen, MP3-Warnung und die Grenzen. Gepflegt wird
+  `pruefe_ton` prüft Objekt, Namen und die Grenzen; gewarnt wird nur vor
+  Endungen, die kein Tonformat sind (`.mid`, `.wma` …). Gepflegt wird
   das im Editor über F2 „Karten-Eigenschaften" → Gruppe „Ton (Kartenmusik)"
   (`MapPropsForm.bgm_*`/`bgs_*`, `map_props_check`/`map_props_apply`); ein
   leerer Name löscht den Eintrag.

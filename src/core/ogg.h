@@ -12,7 +12,8 @@
 //  `src/core/sound.cpp`; Fehlertexte sind deutsch und landen im Log.
 //
 //  Grenzen: nur EIN Vorbis-Strom (kein Chaining), max. 60 Sekunden wie beim
-//  WAV-Leser, kein MP3. Fehlerhafte oder abgeschnittene Daten liefern false
+//  WAV-Leser. MP3 liest seit Etappe 22 `src/core/mp3.h` (minimp3).
+//  Fehlerhafte oder abgeschnittene Daten liefern false
 //  statt eines Absturzes.
 // ============================================================================
 

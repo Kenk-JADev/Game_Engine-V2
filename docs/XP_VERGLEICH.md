@@ -17,7 +17,7 @@ Rune3D (Stand nach 19y) steht — mit Blick darauf, was sich sinngemäß in 3D
 ## 1. Event-Befehle — 92 XP-Befehle, 39 in Rune3D
 
 XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
-**65 Befehlstypen**. Bilanz: **49 ✅ · 7 ⚠️ · 36 ❌**.
+**65 Befehlstypen**. Bilanz: **51 ✅ · 8 ⚠️ · 33 ❌**.
 
 ### A. Nachricht & Ablaufsteuerung (101–119)
 
@@ -88,13 +88,13 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 
 | XP | Code | Rune3D | Status |
 |---|---|---|---|
-| BGM abspielen | 241 | `play_bgm` (R35) → `Audio.bgm_play` → `AudioFiles` (WAV/OGG) mit Rückfall auf den prozeduralen Loop | ✅ Datei + Lautstärke 0–100 + Pitch 50–150 %, neue Musik ersetzt die alte; Karten-BGM läuft seit R37 beim Kartenwechsel (`MapAudio`) |
+| BGM abspielen | 241 | `play_bgm` (R35) → `Audio.bgm_play` → `AudioFiles` (WAV/OGG/MP3) mit Rückfall auf den prozeduralen Loop | ✅ Datei + Lautstärke 0–100 + Pitch 50–150 %, neue Musik ersetzt die alte; Karten-BGM läuft seit R37 beim Kartenwechsel (`MapAudio`) |
 | BGM ausblenden | 242 | `fadeout_bgm` (R35) → `AudioFiles.fade_ms` im Engine-Takt | ✅ Dauer in Sekunden, 0 = sofort, nicht blockierend |
-| BGS abspielen/ausblenden | 245/246 | `play_bgs`/`fadeout_bgs` (R35) → `Audio.bgs_play`/`AudioFiles.fade_ms` | ✅ wie BGM; BGS merken/wiederherstellen (247/248) bleibt offen |
-| BGS merken/wiederherstellen | 247/248 | — | ❌ |
-| ME abspielen | 249 | — | ❌ |
+| BGS abspielen/ausblenden | 245/246 | `play_bgs`/`fadeout_bgs` (R35) → `Audio.bgs_play`/`AudioFiles.fade_ms` | ✅ wie BGM, mit den Ordnern `audio/bgs/` und `audio/me/` (R40) |
+| BGM/BGS merken und wiederherstellen | 247/248 | nur RGSS-API: `$game_system.bgm_memorize`/`bgm_restore`/`bgs_*` + `playing_bgm`/`playing_bgs` (R40) | ⚠️ Verhalten vorhanden und von der Kampfmusik genutzt; der **Event-Befehl** fehlt noch (kommt mit 243/244) |
+| ME abspielen | 249 | `Audio.me_play` (R40) → Datei (`audio/me/`) oder prozedural | ✅ verstummt wie RGSS die BGM, ohne sie fortzusetzen; `Audio.me_stop` stoppt das ME |
 | SE abspielen | 250 | `sound` | ✅ (7 prozedurale Sounds) |
-| SE stoppen | 251 | — | ❌ |
+| SE stoppen | 251 | `Audio.se_stop` (R40) | ✅ stoppt alle gestarteten Einmal-Sounds (Datei und prozedural) |
 
 ### F. Kampf & Actor-Status (301–340)
 
