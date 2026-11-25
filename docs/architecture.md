@@ -1895,7 +1895,7 @@ im Frame des Tastendrucks (`Rune::Input.pressed?`, wie XP `Input.trigger?`;
 ohne Eingabeschicht — kopfloser Test — falsch). Beide haben `then`/`else`
 wie die übrigen Wenn-Befehle und werden im F6-Baum rekursiv geprüft; MapCheck
 prüft den Namen (Actor gegen `database.json`, Taste auf Existenz).
-Register: **56 Typen**. **Tests:** `tools/bedingungen_test.rb` (34 Checks).
+Register: **61 Typen**. **Tests:** `tools/bedingungen_test.rb` (34 Checks).
 
 ### Variable-Operationen (XP 122)
 
@@ -1942,6 +1942,35 @@ Vier Befehle (Bereich „Party" in `docs/befehle.json`):
 MapCheck prüft `amount` (Pflicht, ≠ 0), den Actor-Namen gegen
 `database.json` und den Stufenbereich. **Tests:** `tools/actor_wert_test.rb`
 (24 Checks), `json_test` 778 Checks.
+
+### Bildschirm-Bilder (XP 231–235)
+
+```json
+{"cmd":"show_picture","number":1,"name":"bilder/logo.png","x":320,"y":240,"zoom_x":100,"zoom_y":100,"opacity":255,"blend":0,"origin":0}
+{"cmd":"move_picture","number":1,"x":100,"y":80,"frames":40}
+{"cmd":"rotate_picture","number":1,"speed":5}
+{"cmd":"tint_picture","number":1,"r":-60,"b":40,"frames":20}
+{"cmd":"erase_picture","number":1}
+```
+
+**Bildlader** (`game/engine/image_loader.rb`): PNG (8 Bit, nicht verschränkt,
+Farbtypen 0/2/3/4/6, `tRNS`) und BMP (24/32 Bit) werden in Ruby dekodiert
+(`decode` ist eine reine Funktion, kopflos getestet) und über
+`Rune::Gfx.image` beim Renderer angemeldet; die Datei kommt durch die sichere
+Assets-Brücke. JPEG wird bewusst nicht dekodiert (Warnung statt Absturz).
+
+**Zeichnen**: `src/gfx/ui.cpp` hat einen eigenen Bild-Durchgang (eigene Textur,
+linearer Sampler, Tint × Deckkraft, Drehung um die Mitte). Reihenfolge im
+Frame: Bilder über der Welt und über `Graphics.draw`, aber **unter** HUD,
+Meldungen und Fenstern — wie XP.
+
+**Zustand** (`game/engine/pictures.rb`): Bilder 1–50, gezeichnet nach Nummer
+aufsteigend. `move` interpoliert linear vom Stand beim Befehl zum Ziel,
+`rotate` dreht mit Grad pro Frame, `tint` blendet die Kanäle über die Frames.
+Genähert: Tint ist eine Multiplikation (positive Kanäle dämpfen die
+Gegenkanäle, negative dunkeln), Blend 1/2 (addieren/abziehen) zeichnen wie 0 —
+MapCheck warnt. **Tests:** `tools/image_loader_test.rb` (19 Checks),
+`tools/pictures_test.rb` (39 Checks), `json_test` (838 Checks).
 
 ### Bildschirmwackeln (XP 225)
 
@@ -2003,7 +2032,7 @@ im Gegenanteil, `gray` einen grauen Schleier. Der **Verlauf** ist XP-gleich.
 Das Formular zeigt die vier Kanäle als `r,g,b,grau` in einem Feld (je −255..255)
 und `frames` getrennt; der Blitz moderiert die Farbe wie `fade`.
 **Tests:** `tools/screen_fx_test.rb` (36 Checks; Ton, Blitz, Wackeln),
-`json_test` prüft Lesen, Null-Kanäle, Grenzen und Fehlerfälle (823 Checks).
+`json_test` prüft Lesen, Null-Kanäle, Grenzen und Fehlerfälle (838 Checks).
 
 ### Namenseingabe (XP 303)
 

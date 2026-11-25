@@ -13,6 +13,8 @@ require 'temp_actions' unless defined?(TempActions)
 require 'shop' unless defined?(Shop)
 require 'name_input' unless defined?(NameInput)
 require 'screen_fx' unless defined?(ScreenFx)
+require 'image_loader' unless defined?(ImageLoader)
+require 'pictures' unless defined?(Pictures)
 
 module Game
   # ---------------------------------------------------------------- Aufbau
@@ -1122,6 +1124,8 @@ end
     # Etappe 20f: Bildschirmton/Blitz laufen weiter, auch während Menü, Laden
     # oder Textfenster offen sind (XP: $game_screen#update in jedem Frame).
     ScreenFx.update(dt) if defined?(ScreenFx)
+    # Etappe 20f: Bilder bewegen/drehen/tönen (XP 231-235).
+    Pictures.update(dt) if defined?(Pictures)
     Rune::Log.info("Spielzeit #{@time.to_i}s") if (@time - dt).to_i != @time.to_i && @time.to_i % 30 == 0
 
     if Rune::Input.pressed?(:f2)
@@ -1565,6 +1569,9 @@ end
     end
 
     Graphics.draw   # Etappe 19h: RGSS-Sprites/Fenster über der Welt
+
+    # Etappe 20f: Bildschirm-Bilder über der Karte, unter Fenstern und Meldungen.
+    Pictures.draw if defined?(Pictures)
 
     # 2D-Overlay zuletzt
     UI.hud

@@ -211,7 +211,7 @@ check('EV_TYPES (C++) nennt party_member an der Registerstelle') do
   form.include?('"party_member", "shop", "name_input"') &&
     MapCheck::CMD_TYPES.each_cons(3).include?(%w[party_member shop name_input])
 end
-check('alle 56 Befehlstypen im Register der Prüfung') { MapCheck::CMD_TYPES.size == 56 }
+check('alle 61 Befehlstypen im Register der Prüfung') { MapCheck::CMD_TYPES.size == 61 }
 
 puts($fail.zero? ? 'ALLE CHECKS GRUEN' : "#{$fail} CHECK(S) FEHLGESCHLAGEN")
 exit($fail.zero? ? 0 : 1)

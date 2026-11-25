@@ -62,6 +62,11 @@
 #    {"cmd":"screen_tone","r":-34,"g":0,"b":68,"gray":0,"frames":60} (20f; XP 223)
 #    {"cmd":"flash","color":"weiss","strength":255,"frames":20}       (20f; XP 224)
 #    {"cmd":"shake","power":5,"speed":5,"frames":40}         (Wackeln, 20f; XP 225)
+#    {"cmd":"show_picture","number":1,"name":"pictures/logo.png","x":320,"y":240}
+#    {"cmd":"move_picture","number":1,"x":200,"frames":40}
+#    {"cmd":"rotate_picture","number":1,"speed":5}
+#    {"cmd":"tint_picture","number":1,"r":-60,"frames":20}
+#    {"cmd":"erase_picture","number":1}                      (Bilder, 20f; XP 231-235)
 #    {"cmd":"menu"}                                        (Menü öffnen, 20f; XP 351)
 #    {"cmd":"if_battle_result","result":"sieg","then":[],"else":[]}   (20f; XP 601-603)
 #    {"cmd":"if_actor","name":"arik","then":[],"else":[]}   (Wenn Actor, 20d)
@@ -375,6 +380,24 @@ class Interpreter
         else
           Rune::Log.warn('Interpreter: menu ohne $game_temp (Kopfloser Lauf?)')
         end
+      when 'show_picture'   # Etappe 20f (XP 231): Bild zeigen
+        Pictures.show(cmd['number'], cmd['name'], x: cmd['x'] || 0, y: cmd['y'] || 0,
+                      zoom_x: cmd['zoom_x'] || 100, zoom_y: cmd['zoom_y'] || 100,
+                      opacity: cmd['opacity'] || 255, blend: cmd['blend'] || 0,
+                      origin: cmd['origin'] || 0)
+      when 'move_picture'   # Etappe 20f (XP 232): Bild bewegen/skalieren
+        Pictures.move(cmd['number'], x: cmd['x'], y: cmd['y'],
+                      zoom_x: cmd['zoom_x'], zoom_y: cmd['zoom_y'],
+                      opacity: cmd['opacity'], blend: cmd['blend'],
+                      origin: cmd['origin'], frames: cmd['frames'] || 40)
+      when 'rotate_picture'  # Etappe 20f (XP 233): Drehgeschwindigkeit in Grad/Frame
+        Pictures.rotate(cmd['number'], speed: cmd['speed'] || 0)
+      when 'tint_picture'    # Etappe 20f (XP 234): Bild tönen
+        Pictures.tint(cmd['number'],
+                      tone: { r: cmd['r'], g: cmd['g'], b: cmd['b'], gray: cmd['gray'] },
+                      frames: cmd['frames'] || 40)
+      when 'erase_picture'   # Etappe 20f (XP 235): Bild löschen
+        Pictures.erase(cmd['number'])
       when 'shake'   # Etappe 20f (XP 225): Bildschirmwackeln über die Kamera
         ScreenFx.shake(power: cmd['power'] || 5, speed: cmd['speed'] || 5,
                        frames: cmd['frames'] || 40)

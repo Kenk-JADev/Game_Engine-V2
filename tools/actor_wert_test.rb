@@ -178,7 +178,7 @@ check('Stufe über 99 Schritte -> Warnung') do
   hat?(MapCheck.scan(karte_mit([{ 'cmd' => 'actor_level', 'amount' => 200 }]), **OPTS),
        'übersteigt den Stufenbereich', MapCheck::WARNUNG)
 end
-check('alle 56 Befehlstypen im Register der Prüfung') { MapCheck::CMD_TYPES.size == 56 }
+check('alle 61 Befehlstypen im Register der Prüfung') { MapCheck::CMD_TYPES.size == 61 }
 
 puts($fail.zero? ? 'ALLE CHECKS GRUEN' : "#{$fail} CHECK(S) FEHLGESCHLAGEN")
 exit($fail.zero? ? 0 : 1)

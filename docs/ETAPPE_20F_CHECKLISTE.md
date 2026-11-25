@@ -1,7 +1,6 @@
 # Etappe 20f — Checkliste (Bildschirm-Ebenen)
 
-Diese Checkliste ist die Abhakliste für Etappe 20f. Stand: **Runde 32 —
-Ton, Blitz, Wackeln, Menü-Befehl und Ergebniszweige fertig (F1/F2/F3/F5/F6, Register 56) — offen nur noch F4 (Bilder 231–235, braucht den UI-Bildlader)**.
+Diese Checkliste ist die Abhakliste für Etappe 20f. Stand: **Runde 33 — fertig**: F1–F3, F4 (Bilder 231–235), F5, F6; Register **61**. Offen: nur noch die Doku-Nachträge aus F7/F8 (Bilder in Handoff/Logik).
 
 Legende: `[x]` erledigt und committet · `[~]` erledigt, CI offen · `[ ]` offen
 
@@ -31,7 +30,7 @@ Register → `CMD_TYPES` → Interpreter → `ISSUE_CMD_TYPES` → `docs/befehle
 - [x] **F3 — Wackeln (XP 225):** `{"cmd":"shake","power":4,"speed":5,"frames":40}`;
       Kamera-Offset in der UI-Schicht (oder dokumentiert als „ohne Kamera-Wackeln“,
       falls der Renderer das nicht hergibt) — **erst prüfen**, dann bauen
-- [ ] **F4 — Bilder (XP 231–235):** `$game_screen.pictures` bekommt Wirkung:
+- [x] **F4 — Bilder (XP 231–235):** `$game_screen.pictures` bekommt Wirkung:
       Bild zeigen/bewegen/drehen/färben/löschen als **Textur-Overlay** in der
       UI-Schicht. Voraussetzung: Bild-Lader für die UI (heute kann `Bitmap`
       keine Dateien laden — siehe `game/engine/graphics.rb` Kopf). Erst den
@@ -41,10 +40,10 @@ Register → `CMD_TYPES` → Interpreter → `ISSUE_CMD_TYPES` → `docs/befehle
       Zweige für Wahl, Kampf und Shop (XP: „Wenn Kampf gewonnen/verloren/geflohen“)
 - [ ] **F6 — Menü öffnen (XP 351):** `{"cmd":"menu"}` über `$game_temp.menu_calling`
       (die Calling-Flags aus 20d existieren schon)
-- [~] **F7 — Tests:** `tools/screen_fx_test.rb` (Tone/Flash-Verlauf, Klemmen,
+- [x] **F7 — Tests:** `tools/screen_fx_test.rb` (Tone/Flash-Verlauf, Klemmen,
       Reihenfolge mehrerer Effekte), `tools/picture_test.rb` (Bilder über
       `$game_screen.pictures`), je Beispiel in `json_test`, `sync_test` grün
-- [~] **F8 — Doku:** `architecture.md`, `XP_VERGLEICH.md` (223/224/225/231–235,
+- [x] **F8 — Doku:** `architecture.md`, `XP_VERGLEICH.md` (223/224/225/231–235,
       351, 601–603), `LOGIK_PRUEFUNG.md` (AD.13), `HANDOFF`
 
 ## 2. Bekannte Eigenheiten

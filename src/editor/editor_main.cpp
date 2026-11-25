@@ -1216,7 +1216,8 @@ const char* const ISSUE_CMD_TYPES[] = {
     "button_input", "text_options", "common_event",
     "if_gold", "if_item", "if_script", "if_actor", "if_button",
     "save_access", "menu_access", "encounter_access", "timer",
-    "actor_hp", "actor_sp", "actor_exp", "actor_level", "party_member", "shop", "name_input", "screen_tone", "flash", "menu", "if_battle_result", "shake"
+    "actor_hp", "actor_sp", "actor_exp", "actor_level", "party_member", "shop", "name_input", "screen_tone", "flash", "menu", "if_battle_result", "shake",
+    "show_picture", "move_picture", "rotate_picture", "tint_picture", "erase_picture"
 };
 const int ISSUE_CMD_TYPE_COUNT =
     static_cast<int>(sizeof(ISSUE_CMD_TYPES) / sizeof(ISSUE_CMD_TYPES[0]));
@@ -7215,7 +7216,10 @@ const wchar_t* const EV_TYPE_LABELS[ET_COUNT] = {
     // Etappe 20f: Ergebnis-Abfrage (XP 601–603).
     L"[Kampf] Wenn Ergebnis",
     // Etappe 20f: Bildschirmwackeln (XP 225).
-    L"[Bild] Wackeln"
+    L"[Bild] Wackeln",
+    // Etappe 20f: Bildschirm-Bilder (XP 231–235).
+    L"[Bild] Bild zeigen", L"[Bild] Bild bewegen", L"[Bild] Bild drehen",
+    L"[Bild] Bild tönen", L"[Bild] Bild löschen"
 };
 const wchar_t* const EV_TRIGGERS[4] = { L"action", L"touch", L"auto", L"parallel" };
 const wchar_t* const EV_OPS[6] = { L"==", L"!=", L"<", L"<=", L">", L">=" };
@@ -7450,6 +7454,19 @@ std::string ev_cmd_label(const JsonValue& c) {
                ev_num_str(ev_num_of(c, "amount"), 0);
     }
     if (type == "menu") return "Menü öffnen";
+    if (type == "show_picture")
+        return "Bild " + ev_num_str(ev_num_of(c, "number", 1.0), 1) + ": " +
+               ev_str_of(c, "name", "?");
+    if (type == "move_picture")
+        return "Bild " + ev_num_str(ev_num_of(c, "number", 1.0), 1) + " bewegen (" +
+               ev_num_str(ev_num_of(c, "frames", 40.0), 0) + " Frames)";
+    if (type == "rotate_picture")
+        return "Bild " + ev_num_str(ev_num_of(c, "number", 1.0), 1) + " drehen (" +
+               ev_num_str(ev_num_of(c, "speed", 0.0), 0) + "°/Frame)";
+    if (type == "tint_picture")
+        return "Bild " + ev_num_str(ev_num_of(c, "number", 1.0), 1) + " tönen";
+    if (type == "erase_picture")
+        return "Bild " + ev_num_str(ev_num_of(c, "number", 1.0), 1) + " löschen";
     if (type == "shake")
         return "Bildschirmwackeln " + ev_num_str(ev_num_of(c, "power", 5.0), 0) + "/" +
                ev_num_str(ev_num_of(c, "speed", 5.0), 0) + " (" +
@@ -7794,6 +7811,9 @@ void ev_cmd_visibility() {
                           t == ET_ACTOR_LEVEL || t == ET_PARTY_MEMBER || t == ET_SHOP ||
                           t == ET_NAME_INPUT || t == ET_SCREEN_TONE || t == ET_FLASH ||
                           t == ET_MENU || t == ET_IF_BATTLE_RESULT || t == ET_SHAKE ||
+                          t == ET_SHOW_PICTURE || t == ET_MOVE_PICTURE ||
+                          t == ET_ROTATE_PICTURE || t == ET_TINT_PICTURE ||
+                          t == ET_ERASE_PICTURE ||
                           t == ET_SAVE_ACCESS || t == ET_MENU_ACCESS ||
                           t == ET_ENCOUNTER_ACCESS;
     show(g_ev.lbl_text, is_text || has_hint);
@@ -7924,6 +7944,38 @@ void ev_cmd_visibility() {
     }
     if (t == ET_MENU) SetWindowTextW(g_ev.lbl_text,
         L"Öffnet das Spielmenü (XP 351) - wie $game_temp.menu_calling aus einem Script.");
+    if (t == ET_SHOW_PICTURE) {
+        SetWindowTextW(g_ev.lbl_name, L"Bilddatei (PNG/BMP im Projekt)");
+        SetWindowTextW(g_ev.lbl_val1, L"Bildnummer (1-50)");
+        SetWindowTextW(g_ev.lbl_val2, L"x (Pixel)");
+        SetWindowTextW(g_ev.lbl_val3, L"y (Pixel)");
+        SetWindowTextW(g_ev.lbl_text,
+                       L"Zoom, Deckkraft und Blend bleiben in der JSON-Datei "
+                       L"(XP-Defaults 100 %, 255, normal).");
+    }
+    if (t == ET_MOVE_PICTURE) {
+        SetWindowTextW(g_ev.lbl_name, L"Bildnummer (1-50)");
+        SetWindowTextW(g_ev.lbl_val1, L"x (Pixel)");
+        SetWindowTextW(g_ev.lbl_val2, L"y (Pixel)");
+        SetWindowTextW(g_ev.lbl_val3, L"Dauer (Frames)");
+        SetWindowTextW(g_ev.lbl_text, L"Weitere Ziele (Zoom, Deckkraft) nur per JSON.");
+    }
+    if (t == ET_ROTATE_PICTURE) {
+        SetWindowTextW(g_ev.lbl_val1, L"Bildnummer (1-50)");
+        SetWindowTextW(g_ev.lbl_val2, L"Grad pro Frame");
+        SetWindowTextW(g_ev.lbl_text, L"Negativ dreht linksherum, 0 hält an (XP 233).");
+    }
+    if (t == ET_TINT_PICTURE) {
+        SetWindowTextW(g_ev.lbl_name, L"Farbton r,g,b,grau (-255..255)");
+        SetWindowTextW(g_ev.lbl_val1, L"Bildnummer (1-50)");
+        SetWindowTextW(g_ev.lbl_val2, L"Dauer (Frames)");
+        SetWindowTextW(g_ev.lbl_text,
+                       L"Dämpft die Gegenkanäle des Bildes (Multiplikation, XP 234).");
+    }
+    if (t == ET_ERASE_PICTURE) {
+        SetWindowTextW(g_ev.lbl_val1, L"Bildnummer (1-50)");
+        SetWindowTextW(g_ev.lbl_text, L"Entfernt das Bild mit dieser Nummer (XP 235).");
+    }
     if (t == ET_SHAKE) {
         SetWindowTextW(g_ev.lbl_val1, L"Stärke (1-9)");
         SetWindowTextW(g_ev.lbl_val2, L"Tempo (1-9)");

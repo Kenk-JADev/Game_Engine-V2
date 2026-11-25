@@ -45,7 +45,8 @@ enum EvType {
     ET_IF_GOLD, ET_IF_ITEM, ET_IF_SCRIPT, ET_IF_ACTOR, ET_IF_BUTTON,
     ET_SAVE_ACCESS, ET_MENU_ACCESS, ET_ENCOUNTER_ACCESS,
     ET_TIMER, ET_ACTOR_HP, ET_ACTOR_SP, ET_ACTOR_EXP, ET_ACTOR_LEVEL,
-    ET_PARTY_MEMBER, ET_SHOP, ET_NAME_INPUT, ET_SCREEN_TONE, ET_FLASH, ET_MENU, ET_IF_BATTLE_RESULT, ET_SHAKE, ET_COUNT
+    ET_PARTY_MEMBER, ET_SHOP, ET_NAME_INPUT, ET_SCREEN_TONE, ET_FLASH, ET_MENU, ET_IF_BATTLE_RESULT, ET_SHAKE, ET_SHOW_PICTURE, ET_MOVE_PICTURE, ET_ROTATE_PICTURE,
+    ET_TINT_PICTURE, ET_ERASE_PICTURE, ET_COUNT
 };
 inline constexpr const char* const EV_TYPES[ET_COUNT] = {
     "text", "choices", "log", "wait", "switch", "toggle_switch", "variable",
@@ -57,7 +58,8 @@ inline constexpr const char* const EV_TYPES[ET_COUNT] = {
     "if_gold", "if_item", "if_script", "if_actor", "if_button",
     "save_access", "menu_access", "encounter_access", "timer",
     "actor_hp", "actor_sp", "actor_exp", "actor_level", "party_member", "shop", "name_input", "screen_tone", "flash",
-    "menu", "if_battle_result", "shake"
+    "menu", "if_battle_result", "shake",
+    "show_picture", "move_picture", "rotate_picture", "tint_picture", "erase_picture"
 };
 inline constexpr const char* const EVENT_TRIGGERS[] = {"action", "touch", "auto", "parallel"};
 inline constexpr const char* const EVENT_OPS[] = {"==", "!=", "<", "<=", ">", ">="};
@@ -86,9 +88,11 @@ inline bool event_command_uses_field(int type, size_t field) {
             type == ET_IF_ACTOR || type == ET_IF_BUTTON ||
             type == ET_ACTOR_HP || type == ET_ACTOR_SP || type == ET_ACTOR_EXP || type == ET_ACTOR_LEVEL ||
             type == ET_PARTY_MEMBER || type == ET_NAME_INPUT || type == ET_SCREEN_TONE ||
-            type == ET_FLASH || type == ET_IF_BATTLE_RESULT;
+            type == ET_FLASH || type == ET_IF_BATTLE_RESULT ||
+            type == ET_SHOW_PICTURE || type == ET_MOVE_PICTURE || type == ET_TINT_PICTURE;
         case 1: return type == ET_WAIT || type == ET_VARIABLE || type == ET_IF_VARIABLE ||
-            type == ET_SHAKE ||
+            type == ET_SHAKE || type == ET_SHOW_PICTURE || type == ET_MOVE_PICTURE ||
+            type == ET_ROTATE_PICTURE || type == ET_TINT_PICTURE || type == ET_ERASE_PICTURE ||
             type == ET_TELEPORT || type == ET_MOVE_PLAYER || type == ET_SOUND || type == ET_EFFECT ||
             type == ET_GOLD || type == ET_HEAL || type == ET_WEATHER || type == ET_SAVE_GAME ||
             type == ET_LOAD_GAME || type == ET_FADE || type == ET_MOVE_ROUTE || type == ET_INPUT_NUMBER ||
@@ -97,10 +101,12 @@ inline bool event_command_uses_field(int type, size_t field) {
             type == ET_ACTOR_EXP || type == ET_ACTOR_LEVEL || type == ET_PARTY_MEMBER ||
             type == ET_NAME_INPUT || type == ET_SCREEN_TONE || type == ET_FLASH;
         case 2: return type == ET_TELEPORT || type == ET_MOVE_PLAYER || type == ET_FLASH ||
-            type == ET_SHAKE ||
+            type == ET_SHAKE || type == ET_SHOW_PICTURE || type == ET_MOVE_PICTURE ||
+            type == ET_ROTATE_PICTURE || type == ET_TINT_PICTURE ||
             type == ET_EFFECT || type == ET_ITEM || type == ET_MOVE_ROUTE || type == ET_INPUT_NUMBER ||
             type == ET_BATTLE || type == ET_TEXT_OPTIONS;
-        case 3: return type == ET_TELEPORT || type == ET_MOVE_ROUTE || type == ET_SHAKE;
+        case 3: return type == ET_TELEPORT || type == ET_MOVE_ROUTE || type == ET_SHAKE ||
+            type == ET_SHOW_PICTURE || type == ET_MOVE_PICTURE;
         case 4: return type == ET_TEXT || type == ET_LOG || type == ET_CHOICES || type == ET_MOVE_ROUTE ||
             type == ET_SHOP || type == ET_VARIABLE ||
             type == ET_BUTTON_INPUT || type == ET_IF_SCRIPT;
@@ -693,6 +699,40 @@ inline EventCommandForm event_command_form_read(const JsonValue& c) {
             f.text = event_unique(c, "goods") ? event_goods_view(c.find("goods")) : "[mehrfach vorhanden]";
             break;
         case ET_IF_BATTLE_RESULT: f.name = text("result", "sieg"); break;
+        case ET_SHOW_PICTURE:
+            // Etappe 20f (XP 231): Datei im Namensfeld, dann Nummer, x, y.
+            f.name = text("name");
+            f.val1 = num("number", "1");
+            f.val2 = num("x", "0");
+            f.val3 = num("y", "0");
+            break;
+        case ET_MOVE_PICTURE:
+            // Etappe 20f (XP 232): Nummer im Namensfeld, dann x, y, Frames.
+            f.name = num("number", "1");
+            f.val1 = num("x", "0");
+            f.val2 = num("y", "0");
+            f.val3 = num("frames", "40");
+            break;
+        case ET_ROTATE_PICTURE:
+            // Etappe 20f (XP 233): Nummer und Grad pro Frame.
+            f.val1 = num("number", "1");
+            f.val2 = num("speed", "0");
+            break;
+        case ET_TINT_PICTURE:
+            // Etappe 20f (XP 234): Nummer, Kanäle als Feld, Frames.
+            f.val1 = num("number", "1");
+            if (!event_unique(c, "r") || !event_unique(c, "g") ||
+                !event_unique(c, "b") || !event_unique(c, "gray"))
+                f.name = "[mehrfach vorhanden]";
+            else
+                f.name = num("r", "0") + "," + num("g", "0") + "," +
+                         num("b", "0") + "," + num("gray", "0");
+            f.val2 = num("frames", "40");
+            break;
+        case ET_ERASE_PICTURE:
+            // Etappe 20f (XP 235): nur die Nummer.
+            f.val1 = num("number", "1");
+            break;
         case ET_SHAKE:
             // Etappe 20f (XP 225): Stärke, Tempo (je 1..9) und Dauer - die
             // drei Zahlenfelder reichen, das Namensfeld bleibt frei.
@@ -1162,6 +1202,66 @@ inline EventEdit event_command_prepare(const JsonValue* existing, const EventCom
             }
             break;
         }
+        // Etappe 20f: Bildschirm-Bilder (XP 231-235). Nummer als ganze Zahl
+        // 1..50; die übrigen Werte bleiben optional und behalten ihre
+        // XP-Defaults, wenn das Feld leer ist.
+        case ET_SHOW_PICTURE: {
+            ok = text("name", "cmd_name", before.name, after.name, false, false, true);
+            if (ok) ok = v1("number", true, "1", true, true, 1, 50);
+            if (ok) ok = v2("x", true, "0");
+            if (ok) ok = num("y", "cmd_val3", before.val3, after.val3, true, "0", false, true);
+            break;
+        }
+        case ET_MOVE_PICTURE: {
+            ok = num("number", "cmd_name", before.name, after.name, true, "1", true, true, 1, 50);
+            if (ok) ok = v1("x", true, "0");
+            if (ok) ok = v2("y", true, "0");
+            if (ok) ok = num("frames", "cmd_val3", before.val3, after.val3, true, "40",
+                             true, true, 0, unlimited);
+            break;
+        }
+        case ET_ROTATE_PICTURE:
+            ok = v1("number", true, "1", true, true, 1, 50);
+            if (ok) ok = v2("speed", true, "0");
+            break;
+        case ET_TINT_PICTURE: {
+            if (fresh || before.name != after.name) {
+                if (!unique("r", "cmd_name") || !unique("g", "cmd_name") ||
+                    !unique("b", "cmd_name") || !unique("gray", "cmd_name")) break;
+                std::vector<std::string> teile;
+                std::string rest = after.name;
+                size_t pos = 0;
+                while ((pos = rest.find(',')) != std::string::npos) {
+                    teile.push_back(rest.substr(0, pos));
+                    rest = rest.substr(pos + 1);
+                }
+                teile.push_back(rest);
+                if (teile.size() != 4) {
+                    ok = fail("cmd_name", "Bitte vier Zahlen r,g,b,grau eingeben (je -255..255).");
+                    break;
+                }
+                const char* const schluessel[4] = {"r", "g", "b", "gray"};
+                bool weitermachen = true;
+                for (size_t i = 0; i < 4 && weitermachen; ++i) {
+                    JsonValue zahl;
+                    if (!event_number_parse(database_trim(teile[i]), true, false, zahl) ||
+                        zahl.number() < -255 || zahl.number() > 255) {
+                        ok = fail("cmd_name", "Bitte vier Zahlen r,g,b,grau eingeben (je -255..255).");
+                        weitermachen = false;
+                        break;
+                    }
+                    if (zahl.number() == 0) event_erase(r.value, schluessel[i]);
+                    else r.value.set(schluessel[i], std::move(zahl));
+                }
+                if (!weitermachen) break;
+            }
+            if (ok) ok = v1("number", true, "1", true, true, 1, 50);
+            if (ok) ok = v2("frames", true, "40", true, true, 0, unlimited);
+            break;
+        }
+        case ET_ERASE_PICTURE:
+            ok = v1("number", true, "1", true, true, 1, 50);
+            break;
         case ET_SHAKE:
             // Etappe 20f (XP 225): power/speed 1..9, frames >= 0.
             ok = v1("power", true, "5", true, true, 1, 9);

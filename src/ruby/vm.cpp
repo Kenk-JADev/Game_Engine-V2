@@ -461,6 +461,53 @@ VALUE rune_gfx_rect(int argc, VALUE* argv, VALUE) {
     return Qnil;
 }
 
+// Bild für die Bildschirm-Bilder (XP 231-235, Etappe 20f): RGBA-Pixel
+// anmelden; der Name ist der Schlüssel für picture(). Gleiche Grenzen wie
+// Texturen (1..4096), gleiche Byte-Reihenfolge (w*h*4, zeilenweise, oben links).
+VALUE rune_gfx_image(VALUE, VALUE name, VALUE w, VALUE h, VALUE pixels) {
+    if (!app().renderer) return Qfalse;
+    const int width  = NUM2INT(w);
+    const int height = NUM2INT(h);
+    Check_Type(pixels, T_STRING);
+    std::size_t count = 0;
+    if (!world::texture_byte_count(width, height, count))
+        rb_raise(rb_eArgError, "Bildbreite und -höhe müssen zwischen 1 und 4096 liegen");
+    if (static_cast<std::size_t>(RSTRING_LEN(pixels)) != count)
+        rb_raise(rb_eArgError, "Bild: erwartet %ld Bytes, bekommen %ld",
+                 static_cast<long>(count), RSTRING_LEN(pixels));
+    const std::string key = to_std(name);
+    const bool ok = app().renderer->ui().image(key, width, height, RSTRING_PTR(pixels), count);
+    return ok ? Qtrue : Qfalse;
+}
+
+// Bild zeichnen: Rune::Gfx.picture(name, x, y, w, h, deckkraft, tint, winkel)
+// Fehlende Angaben: Deckkraft 1.0, Tint weiss, Winkel 0.
+VALUE rune_gfx_picture(int argc, VALUE* argv, VALUE) {
+    VALUE name, x, y, w, h, alpha = Qnil, tint = Qnil, angle = Qnil;
+    rb_scan_args(argc, argv, "53", &name, &x, &y, &w, &h, &alpha, &tint, &angle);
+    if (!app().renderer) return Qnil;
+    app().renderer->ui().picture(to_std(name),
+                                 static_cast<float>(NUM2DBL(x)),
+                                 static_cast<float>(NUM2DBL(y)),
+                                 static_cast<float>(NUM2DBL(w)),
+                                 static_cast<float>(NUM2DBL(h)),
+                                 NIL_P(tint) ? 0xFFFFFFu : static_cast<uint32_t>(NUM2UINT(tint)),
+                                 NIL_P(alpha) ? 1.0f : static_cast<float>(NUM2DBL(alpha)),
+                                 NIL_P(angle) ? 0.0f : static_cast<float>(NUM2DBL(angle)));
+    return Qnil;
+}
+
+// Bilder vergessen (Projektwechsel): ohne Namen alle.
+VALUE rune_gfx_forget_image(int argc, VALUE* argv, VALUE) {
+    VALUE name = Qnil;
+    rb_scan_args(argc, argv, "01", &name);
+    if (!app().renderer) return Qnil;
+    gfx::Ui& ui = app().renderer->ui();
+    if (NIL_P(name)) ui.forget_images();
+    else ui.remove_image(to_std(name));
+    return Qnil;
+}
+
 VALUE rune_gfx_text(int argc, VALUE* argv, VALUE) {
     VALUE x, y, str, color = Qnil, size = Qnil;
     rb_scan_args(argc, argv, "32", &x, &y, &str, &color, &size);
@@ -963,6 +1010,9 @@ void register_bindings() {
     rb_define_module_function(mGfx, "sun", RUBY_METHOD_FUNC(rune_gfx_sun), 4);
     rb_define_module_function(mGfx, "shadows=", RUBY_METHOD_FUNC(rune_gfx_shadows_set), 1);
     rb_define_module_function(mGfx, "rect", RUBY_METHOD_FUNC(rune_gfx_rect), -1);
+    rb_define_module_function(mGfx, "image", RUBY_METHOD_FUNC(rune_gfx_image), 4);
+    rb_define_module_function(mGfx, "picture", RUBY_METHOD_FUNC(rune_gfx_picture), -1);
+    rb_define_module_function(mGfx, "forget_image", RUBY_METHOD_FUNC(rune_gfx_forget_image), -1);
     rb_define_module_function(mGfx, "text", RUBY_METHOD_FUNC(rune_gfx_text), -1);
 
     VALUE mAssets = rb_define_module_under(mRune, "Assets");

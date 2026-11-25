@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "stand": "Etappe 20f (Runde 32): 56 Befehle",
+  "stand": "Etappe 20f (Runde 33): 61 Befehle",
   "zweck": "Quellen-Register der Event-Befehlstypen. Vier Stellen im Baum müssen zu dieser Liste passen: CMD_TYPES (game/engine/mapcheck.rb), die Ausführung (game/engine/interpreter.rb), ISSUE_CMD_TYPES (src/editor/editor_main.cpp) und EvType/EV_TYPES (src/editor/event_form.h). Ein neuer Befehl ist erst fertig, wenn er hier UND in allen vier Stellen steht; tools/befehle_test.rb meldet die Lücke vor dem Commit.",
   "reihenfolge": "Die Reihenfolge ist die des Registers; die vier Stellen halten dieselbe Reihenfolge ein, damit Diffs lesbar bleiben.",
   "bereiche": [
@@ -610,6 +610,77 @@
         "frames"
       ],
       "beschreibung": "Schuettelt die Kamera (XP 225): Staerke und Tempo 1..9, Dauer in Frames (40/s); ohne Angaben 5/5/40."
+    },
+    {
+      "typ": "show_picture",
+      "bereich": "Bild",
+      "pflicht": [
+        "name"
+      ],
+      "optional": [
+        "number",
+        "x",
+        "y",
+        "zoom_x",
+        "zoom_y",
+        "opacity",
+        "blend",
+        "origin"
+      ],
+      "beschreibung": "Zeigt ein Bild (XP 231): Datei, Nummer 1..50, Position in Pixeln, Zoom in Prozent, Deckkraft 0..255, Blend 0..3, Ursprung 0=oben links/1=Mitte."
+    },
+    {
+      "typ": "move_picture",
+      "bereich": "Bild",
+      "pflicht": [
+        "number"
+      ],
+      "optional": [
+        "x",
+        "y",
+        "zoom_x",
+        "zoom_y",
+        "opacity",
+        "blend",
+        "origin",
+        "frames"
+      ],
+      "beschreibung": "Bewegt/skaliert/blendet ein Bild ueber die angegebenen Frames (XP 232); weggelassene Werte bleiben stehen."
+    },
+    {
+      "typ": "rotate_picture",
+      "bereich": "Bild",
+      "pflicht": [
+        "number"
+      ],
+      "optional": [
+        "speed"
+      ],
+      "beschreibung": "Dreht ein Bild fortlaufend mit speed Grad pro Frame (XP 233); 0 stoppt die Drehung."
+    },
+    {
+      "typ": "tint_picture",
+      "bereich": "Bild",
+      "pflicht": [
+        "number"
+      ],
+      "optional": [
+        "r",
+        "g",
+        "b",
+        "gray",
+        "frames"
+      ],
+      "beschreibung": "Toent ein Bild (XP 234): Kanaele je -255..255, Uebergang ueber frames. Genaehert als Multiplikation (Gegenkanaele werden gedaempft)."
+    },
+    {
+      "typ": "erase_picture",
+      "bereich": "Bild",
+      "pflicht": [
+        "number"
+      ],
+      "optional": [],
+      "beschreibung": "Loescht ein angezeigtes Bild (XP 235)."
     }
   ]
 }

@@ -79,7 +79,8 @@ module MapCheck
     actor_hp actor_sp actor_exp actor_level
     party_member shop name_input
     screen_tone flash
-    menu if_battle_result shake
+    menu if_battle_result shake show_picture move_picture rotate_picture
+    tint_picture erase_picture
   ].freeze
 
   TRIGGER   = %w[action touch auto parallel].freeze
@@ -103,6 +104,11 @@ module MapCheck
   # Ergebnisfälle für `if_battle_result` (XP 601-603) - dieselben Symbole,
   # die Battle#ende setzt.
   ERGEBNISSE = %w[sieg flucht niederlage].freeze
+
+  # Bildschirm-Bilder (Etappe 20f, XP 231-235): dieselben Grenzen wie
+  # Pictures (Number 1..50, Zoom 0..2000 %, Deckkraft 0..255, Blend 0..3).
+  PIC_MAX_NUMMER = 50
+  PIC_ZOOM_MAX = 2000
 
   FLASH_FARBEN = %w[weiss rot gruen blau gelb].freeze
   # Etappe 20d: Operationen von `variable` (XP 122) - dieselbe Liste wie
@@ -414,6 +420,50 @@ module MapCheck
         melde(WARNUNG, w, "weder 'value' noch 'add' (Befehl ohne Wirkung)")
       elsif c.key?('value') && c.key?('add')
         melde(WARNUNG, w, "Altform: 'value' setzt und 'add' addiert - bitte 'op' verwenden")
+      end
+    end
+
+    # Bildnummer 1..50 - Pflichtfeld für alle Bild-Befehle (XP 231-235).
+    def bild_nummer(c, w)
+      nummer = c['number']
+      if !zahl?(nummer)
+        melde(FEHLER, w, "'number' fehlt oder ist keine Zahl")
+      elsif nummer.to_i != nummer || !nummer.to_i.between?(1, PIC_MAX_NUMMER)
+        melde(FEHLER, w, "'number' muss eine ganze Zahl von 1 bis #{PIC_MAX_NUMMER} sein")
+      end
+    end
+
+    # Wertebereiche der Bild-Befehle; fehlende Felder bleiben XP-Defaults.
+    def bild_werte(c, w, felder)
+      %w[x y].each do |k|
+        melde(FEHLER, w, "'#{k}' ist keine Zahl") if c.key?(k) && !zahl?(c[k])
+      end
+      %w[zoom_x zoom_y].each do |k|
+        next unless c.key?(k)
+
+        wert = c[k]
+        if !zahl?(wert)
+          melde(FEHLER, w, "'#{k}' ist keine Zahl")
+        elsif !wert.to_f.between?(0.0, PIC_ZOOM_MAX.to_f)
+          melde(FEHLER, w, "'#{k}' muss zwischen 0 und #{PIC_ZOOM_MAX} liegen")
+        end
+      end
+      if c.key?('opacity')
+        wert = c['opacity']
+        if !zahl?(wert) || !wert.to_i.between?(0, 255)
+          melde(FEHLER, w, "'opacity' muss eine Zahl von 0 bis 255 sein")
+        end
+      end
+      if c.key?('blend')
+        wert = c['blend']
+        if !zahl?(wert) || !wert.to_i.between?(0, 3)
+          melde(FEHLER, w, "'blend' muss 0 (normal), 1 (addieren), 2 (abziehen) oder 3 (multiplizieren) sein")
+        elsif [1, 2].include?(wert.to_i)
+          melde(WARNUNG, w, "'blend' #{wert.to_i} wird wie 0 gezeichnet (noch kein Additions-Blend)")
+        end
+      end
+      if c.key?('origin') && !(zahl?(c['origin']) && [0, 1].include?(c['origin'].to_i))
+        melde(FEHLER, w, "'origin' muss 0 (oben links) oder 1 (Mitte) sein")
       end
     end
 
@@ -1179,6 +1229,52 @@ module MapCheck
         if typ == 'actor_level' && c['amount'].is_a?(Numeric) && c['amount'].to_i.abs > 99
           melde(WARNUNG, w, "'amount' übersteigt den Stufenbereich")
         end
+      when 'show_picture'
+        # Etappe 20f (XP 231): Bild zeigen. Die Datei selbst prüft der
+        # Bildlader beim Laden (Pfad/Format) - hier nur die Werte.
+        melde(FEHLER, w, "'name' fehlt oder ist leer") unless text?(c['name'])
+        bild_nummer(c, w)
+        bild_werte(c, w, %w[x y zoom_x zoom_y opacity blend origin])
+        melde(WARNUNG, w, "'x'/'y' fehlen - das Bild erscheint oben links") unless
+          c.key?('x') || c.key?('y')
+      when 'move_picture'
+        # Etappe 20f (XP 232): Bewegen/Skalieren/Überblenden.
+        bild_nummer(c, w)
+        bild_werte(c, w, %w[x y zoom_x zoom_y opacity blend origin])
+        melde(FEHLER, w, "'frames' muss eine Zahl >= 0 sein") if c.key?('frames') &&
+          !(zahl?(c['frames']) && c['frames'].to_f >= 0)
+        melde(WARNUNG, w, 'move_picture ohne Zielwerte - der Befehl bewirkt nichts') unless
+          %w[x y zoom_x zoom_y opacity blend origin].any? { |k| c.key?(k) }
+      when 'rotate_picture'
+        # Etappe 20f (XP 233): Drehgeschwindigkeit in Grad pro Frame.
+        bild_nummer(c, w)
+        if c.key?('speed') && !zahl?(c['speed'])
+          melde(FEHLER, w, "'speed' ist keine Zahl")
+        elsif zahl?(c['speed']) && c['speed'].to_f.zero?
+          melde(WARNUNG, w, "'speed' ist 0 - das Bild dreht sich nicht")
+        elsif !c.key?('speed')
+          melde(WARNUNG, w, "'speed' fehlt - es wird 0 angenommen")
+        end
+      when 'tint_picture'
+        # Etappe 20f (XP 234): Kanäle -255..255, Übergang in Frames.
+        bild_nummer(c, w)
+        %w[r g b gray].each do |kanal|
+          next unless c.key?(kanal)
+
+          wert = c[kanal]
+          if !zahl?(wert)
+            melde(FEHLER, w, "'#{kanal}' ist keine Zahl")
+          elsif !wert.to_i.between?(-255, 255)
+            melde(FEHLER, w, "'#{kanal}' muss zwischen -255 und 255 liegen")
+          end
+        end
+        melde(FEHLER, w, "'frames' muss eine Zahl >= 0 sein") if c.key?('frames') &&
+          !(zahl?(c['frames']) && c['frames'].to_f >= 0)
+        melde(WARNUNG, w, 'tint_picture ohne Werte - die Tönung wird zurückgesetzt') unless
+          %w[r g b gray].any? { |k| c.key?(k) }
+      when 'erase_picture'
+        # Etappe 20f (XP 235): Bild löschen.
+        bild_nummer(c, w)
       when 'shake'
         # Etappe 20f (XP 225): Stärke und Tempo 1..9, Dauer in Frames.
         %w[power speed].each do |k|

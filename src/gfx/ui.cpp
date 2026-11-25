@@ -1,7 +1,9 @@
 #include "gfx/ui.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
+#include <utility>
 
 #include <d3dcompiler.h>
 
@@ -31,7 +33,10 @@ VSOut VSMain(VSIn i) {
 
 float4 PSMain(VSOut i) : SV_TARGET {
     float4 c = i.col;
-    if (use_tex > 0.5f) {
+    if (use_tex > 1.5f) {
+        // Bild (XP 231-235): RGBA mal Tint und Deckkraft.
+        c *= tex0.Sample(samp0, i.uv);
+    } else if (use_tex > 0.5f) {
         float a = tex0.Sample(samp0, i.uv).r;  // weisse Glyphen -> Luminanz als Alpha
         c.rgb *= a;
         c.a   *= a;
@@ -88,6 +93,12 @@ bool Ui::init(ID3D11Device* dev, ID3D11DeviceContext* ctx, int width, int height
         sd.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
         m_dev->CreateSamplerState(&sd, &m_sampler);
         if (!m_sampler) core::log_error("Ui: Sampler fehlgeschlagen");
+
+        // Bilder werden im Zoom weich gezeichnet (XP skaliert ebenfalls glatt).
+        D3D11_SAMPLER_DESC sd2 = sd;
+        sd2.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+        m_dev->CreateSamplerState(&sd2, &m_sampler_linear);
+        if (!m_sampler_linear) core::log_error("Ui: Linear-Sampler fehlgeschlagen");
     }
 
     core::log_info("Ui-Overlay bereit (" + std::to_string(width) + "x" + std::to_string(height) + ")");
@@ -231,8 +242,73 @@ HFONT Ui::font_for(float size) {
 }
 
 void Ui::clear() {
+    m_pics.clear();
     m_rects.clear();
     m_texts.clear();
+}
+
+bool Ui::image(const std::string& name, int w, int h, const void* rgba, std::size_t bytes) {
+    if (name.empty() || w <= 0 || h <= 0 || !rgba) return false;
+    if (bytes < static_cast<std::size_t>(w) * static_cast<std::size_t>(h) * 4) return false;
+    if (!m_dev) return false;
+
+    // Vorhandenes Bild gleichen Namens ersetzen (XP zeigt immer das aktuelle).
+    remove_image(name);
+
+    D3D11_TEXTURE2D_DESC td{};
+    td.Width = static_cast<UINT>(w);
+    td.Height = static_cast<UINT>(h);
+    td.MipLevels = 1;
+    td.ArraySize = 1;
+    td.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    td.SampleDesc.Count = 1;
+    td.Usage = D3D11_USAGE_IMMUTABLE;
+    td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+
+    D3D11_SUBRESOURCE_DATA sd{};
+    sd.pSysMem = rgba;
+    sd.SysMemPitch = static_cast<UINT>(w) * 4;
+
+    Image img;
+    img.w = w;
+    img.h = h;
+    if (FAILED(m_dev->CreateTexture2D(&td, &sd, &img.tex))) {
+        core::log_error("Ui: Bildtextur fehlgeschlagen (" + name + ")");
+        return false;
+    }
+    if (FAILED(m_dev->CreateShaderResourceView(img.tex, nullptr, &img.srv))) {
+        core::log_error("Ui: Bild-SRV fehlgeschlagen (" + name + ")");
+        img.tex->Release();
+        return false;
+    }
+    m_images[name] = img;
+    return true;
+}
+
+bool Ui::has_image(const std::string& name) const {
+    return m_images.find(name) != m_images.end();
+}
+
+void Ui::remove_image(const std::string& name) {
+    auto it = m_images.find(name);
+    if (it == m_images.end()) return;
+    if (it->second.srv) it->second.srv->Release();
+    if (it->second.tex) it->second.tex->Release();
+    m_images.erase(it);
+}
+
+void Ui::forget_images() {
+    for (auto& [name, img] : m_images) {
+        if (img.srv) img.srv->Release();
+        if (img.tex) img.tex->Release();
+    }
+    m_images.clear();
+}
+
+void Ui::picture(const std::string& name, float x, float y, float w, float h,
+                 uint32_t rgb, float alpha, float angle) {
+    if (m_images.find(name) == m_images.end()) return;
+    m_pics.push_back(PicCmd{name, x, y, w, h, rgb, alpha, angle});
 }
 
 void Ui::rect(float x, float y, float w, float h, uint32_t rgb, float alpha) {
@@ -254,6 +330,34 @@ void Ui::push_quad(std::vector<Vertex>& out, float x, float y, float w, float h,
         {x + w, y + h, u1, v1, r, g, b, alpha},
         {x,     y + h, u0, v1, r, g, b, alpha},
     };
+    const unsigned idx[6] = {0, 1, 2, 0, 2, 3};
+    for (unsigned k : idx) out.push_back(v[k]);
+}
+
+void Ui::push_quad_rot(std::vector<Vertex>& out, float x, float y, float w, float h,
+                       float angle_deg, uint32_t rgb, float alpha) {
+    const float r = ((rgb >> 16) & 0xFF) / 255.0f;
+    const float g = ((rgb >> 8) & 0xFF) / 255.0f;
+    const float b = (rgb & 0xFF) / 255.0f;
+    const float cx = x + w * 0.5f;
+    const float cy = y + h * 0.5f;
+    const float rad = angle_deg * 3.14159265f / 180.0f;
+    const float cs = std::cos(rad);
+    const float sn = std::sin(rad);
+    const float hw = w * 0.5f;
+    const float hh = h * 0.5f;
+
+    auto ecke = [&](float dx, float dy, Vertex& v) {
+        v.x = cx + dx * cs - dy * sn;
+        v.y = cy + dx * sn + dy * cs;
+        v.r = r; v.g = g; v.b = b; v.a = alpha;
+    };
+
+    Vertex v[4];
+    ecke(-hw, -hh, v[0]); v[0].u = 0.0f; v[0].v = 0.0f;
+    ecke( hw, -hh, v[1]); v[1].u = 1.0f; v[1].v = 0.0f;
+    ecke( hw,  hh, v[2]); v[2].u = 1.0f; v[2].v = 1.0f;
+    ecke(-hw,  hh, v[3]); v[3].u = 0.0f; v[3].v = 1.0f;
     const unsigned idx[6] = {0, 1, 2, 0, 2, 3};
     for (unsigned k : idx) out.push_back(v[k]);
 }
@@ -317,7 +421,7 @@ std::wstring Ui::to_wide(const std::string& s) {
 }
 
 void Ui::render() {
-    if (!m_ctx || (m_rects.empty() && m_texts.empty())) return;
+    if (!m_ctx || (m_rects.empty() && m_texts.empty() && m_pics.empty())) return;
 
     CB2D cb;
     cb.screen[0] = static_cast<float>(m_w);
@@ -335,14 +439,25 @@ void Ui::render() {
     m_ctx->OMSetBlendState(m_blend, nullptr, 0xFFFFFFFF);
     m_ctx->RSSetState(m_raster);
 
-    // Vertexliste bauen: erst Rechtecke, dann Text.
+    // Vertexliste bauen: erst Bilder, dann Rechtecke, dann Text.
     std::vector<Vertex> verts;
-    verts.reserve((m_rects.size() + m_texts.size()) * 6);
+    verts.reserve((m_pics.size() + m_rects.size() + m_texts.size()) * 6);
 
+    // Jedes Bild bekommt seinen eigenen Draw (eigene Textur); Start/Anzahl
+    // merken, damit die Bereiche beim Zeichnen bekannt sind.
+    std::vector<std::pair<size_t, size_t>> pic_bereiche;
+    pic_bereiche.reserve(m_pics.size());
+    for (const PicCmd& p : m_pics) {
+        const size_t start = verts.size();
+        push_quad_rot(verts, p.x, p.y, p.w, p.h, p.angle, p.rgb, p.alpha);
+        pic_bereiche.emplace_back(start, verts.size() - start);
+    }
+
+    const size_t pic_vcount = verts.size();
     for (const RectCmd& r : m_rects) {
         push_quad(verts, r.x, r.y, r.w, r.h, 0.0f, 0.0f, 0.0f, 0.0f, r.rgb, r.alpha);
     }
-    const size_t rect_vcount = verts.size();
+    const size_t rect_vcount = verts.size();   // Bilder + Rechtecke
 
     if (!m_texts.empty() && rebuild_text_texture()) {
         const float iw = 1.0f / static_cast<float>(m_w);
@@ -365,13 +480,30 @@ void Ui::render() {
     std::memcpy(mapped.pData, verts.data(), std::min<size_t>(bytes, sizeof(Vertex) * 6 * 4096));
     m_ctx->Unmap(m_vb, 0);
 
+    // Pass 0: Bilder (jeweils eigene Textur, use_tex=2)
+    if (!pic_bereiche.empty() && m_sampler_linear) {
+        cb.use_tex = 2.0f;
+        m_ctx->UpdateSubresource(m_cb, 0, nullptr, &cb, 0, 0);
+        m_ctx->PSSetSamplers(0, 1, &m_sampler_linear);
+        for (size_t i = 0; i < m_pics.size(); ++i) {
+            auto it = m_images.find(m_pics[i].name);
+            if (it == m_images.end() || !it->second.srv) continue;
+            m_ctx->PSSetShaderResources(0, 1, &it->second.srv);
+            m_ctx->Draw(static_cast<UINT>(pic_bereiche[i].second),
+                        static_cast<UINT>(pic_bereiche[i].first));
+        }
+        m_ctx->PSSetSamplers(0, 1, &m_sampler);
+    }
+
     // Pass 1: Rechtecke (weisse Textur, use_tex=0)
     {
         cb.use_tex = 0.0f;
         m_ctx->UpdateSubresource(m_cb, 0, nullptr, &cb, 0, 0);
         ID3D11ShaderResourceView* srv = m_white_srv;
         m_ctx->PSSetShaderResources(0, 1, &srv);
-        if (rect_vcount > 0) m_ctx->Draw(static_cast<UINT>(rect_vcount), 0);
+        const size_t rect_count = rect_vcount - pic_vcount;
+        if (rect_count > 0)
+            m_ctx->Draw(static_cast<UINT>(rect_count), static_cast<UINT>(pic_vcount));
     }
     // Pass 2: Text (Textfläche, use_tex=1)
     {
@@ -402,6 +534,12 @@ void Ui::resize(int width, int height) {
 }
 
 void Ui::shutdown() {
+    for (auto& [name, img] : m_images) {
+        if (img.srv) img.srv->Release();
+        if (img.tex) img.tex->Release();
+    }
+    m_images.clear();
+    if (m_sampler_linear) { m_sampler_linear->Release(); m_sampler_linear = nullptr; }
     for (auto& [k, f] : m_fonts) DeleteObject(f);
     m_fonts.clear();
     if (m_text_srv) { m_text_srv->Release(); m_text_srv = nullptr; }
