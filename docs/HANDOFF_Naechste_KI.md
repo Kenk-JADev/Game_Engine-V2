@@ -88,6 +88,7 @@ Der User beauftragte eine Überarbeitung von Engine und Editor **im Stil von RPG
 | 20d-1 | `1eaa611` | Erweiterte Bedingungen (`if_gold`/`if_item`/`if_script`) und Sperr-Befehle 134/135/136 in Engine, F6-Modell, Issue-Scan und MapCheck; `tools/bedingungen_test.rb` |
 | 20d-2 | `33ac986` (CI grün: 45506017149) | Timer-Befehl 124 + Anzeige (`UI.timer`), Formular/MapCheck/Register (42 Typen); `tools/timer_test.rb` |
 | 20d-3 | `a40e5e2` (CI grün: 45506936568) | `$game_temp`-Calling-Flags über `TempActions` (LOGIK E.3); `tools/temp_flags_test.rb` |
+| 22-5 | `6d703a6` (CI grün: 45604211413) | Doku: Checkliste abgehakt, `architecture.md` (MP3, SE-Stop/ME, Merken, Kampfmusik), `XP_VERGLEICH` (249/251 ✅, 247/248 ⚠️, Bilanz 51/8/33), `LOGIK_PRUEFUNG` (N-Tabelle, AD.18/19) |
 | 22-4 | `bfb7dbd` (CI grün: 45603462533) | Merken-Tests mit frischem `RGSS::GameSystem` (`reset!` lässt `$game_system` stehen); damit alle vier Jobs grün |
 | 22-3 | `8fce64d` | `AudioFiles`-Attrappe im `rgss_test` auf oberster Ebene (sie steckte in `module Rune`) |
 | 22-2 | `01aa62a` | `Audio`-Platzhalter im `battle_test` auf oberster Ebene; `mp3_test`-Abschluss ohne Format-Mehrdeutigkeit |
