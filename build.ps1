@@ -273,6 +273,7 @@ if ($WarpTest) {
         "$ProjectRoot\tools\embedded_texture_test.cpp",
         "$ProjectRoot\src\app.cpp", "$ProjectRoot\src\ruby\vm.cpp",
         "$ProjectRoot\src\core\log.cpp", "$ProjectRoot\src\core\sound.cpp",
+        "$ProjectRoot\src\core\stb_vorbis.cpp",
         "$ProjectRoot\src\core\window.cpp", "$ProjectRoot\src\gfx\camera.cpp",
         "$ProjectRoot\src\gfx\renderer.cpp", "$ProjectRoot\src\gfx\ui.cpp",
         "$ProjectRoot\src\world\physics.cpp", "$ProjectRoot\src\world\terrain.cpp",
@@ -420,6 +421,18 @@ if ($Test) {
     if ($LASTEXITCODE -ne 0) { throw 'wav_test.exe konnte nicht gebaut werden' }
     & $WavTestExe
     if ($LASTEXITCODE -ne 0) { throw 'WAV-Test fehlgeschlagen' }
+
+    Write-Step 'OGG-Vorbis-Leser prüfen (Etappe 21, T2) ...'
+    $OggTestExe = Join-Path $BuildDir 'ogg_test.exe'
+    $OggTestFlags = @(
+        '-std=c++20', '-O1', '-Wall', '-Wextra', '-Werror',
+        "-I$ProjectRoot\src", "$ProjectRoot\src\core\stb_vorbis.cpp",
+        "$ProjectRoot\tools\ogg_test.cpp", '-o', $OggTestExe
+    )
+    & $Gcc @OggTestFlags
+    if ($LASTEXITCODE -ne 0) { throw 'ogg_test.exe konnte nicht gebaut werden' }
+    & $OggTestExe
+    if ($LASTEXITCODE -ne 0) { throw 'OGG-Test fehlgeschlagen' }
 
     Write-Step 'Materialdokument und Windows-Dateihandles prüfen ...'
     $MaterialTestExe = Join-Path $BuildDir 'material_test.exe'

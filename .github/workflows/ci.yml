@@ -97,6 +97,12 @@ jobs:
           g++ -std=c++20 -O2 -Wall -Wextra -Werror -Isrc tools/wav_test.cpp -o wav_test
           ./wav_test
 
+      - name: OGG-Vorbis-Leser portabel prüfen (Etappe 21, T2)
+        run: |
+          g++ -std=c++20 -O2 -Wall -Wextra -Werror -Isrc \
+            src/core/stb_vorbis.cpp tools/ogg_test.cpp -o ogg_test
+          ./ogg_test
+
       - name: Materialdokument portabel prüfen
         run: |
           g++ -std=c++20 -O2 -Wall -Wextra -Werror \

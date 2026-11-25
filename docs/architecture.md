@@ -1958,13 +1958,20 @@ Audio.bgm_play('Audio/BGM/dorf', 80, 120)          # RGSS-Aufruf, Pitch 120 %
   stereo, `WAVE_FORMAT_EXTENSIBLE`, 8–192 kHz, max. 60 s). Er mischt auf mono,
   rechnet die Abtastrate und den Pitch um und wird von `tools/wav_test.cpp`
   ohne Windows geprüft (CI + `build.ps1 -Test`).
-- `src/core/sound.cpp` bekommt `load_wav(name, bytes, size, pitch)` und `has()`;
+- `src/core/ogg.h` dekodiert **OGG Vorbis** (XP-Standard) über das
+  mitgelieferte `src/core/stb_vorbis.cpp` (v1.25, public domain / MIT) und
+  schickt das Ergebnis durch denselben Resampler auf 22,05 kHz mono/16 Bit.
+  Grenzen: ein Vorbis-Strom, 60 s, kein MP3. `sound::load_audio` erkennt das
+  Format an den ersten Bytes, nicht an der Dateiendung; `tools/ogg_test.cpp`
+  prüft das ohne Windows (CI + `build.ps1 -Test`).
+- `src/core/sound.cpp` bekommt `load_audio(name, bytes, size, pitch)` (WAV und
+  OGG, Format an den ersten Bytes erkannt) und `has()`;
   Ruby ruft sie über `Rune::Sound.load(name, bytes, pitch)` und
   `Rune::Sound.known?(name)`.
 - `game/engine/audio_files.rb` holt die Bytes über die sichere Assets-Brücke
   (max. 8 MB), sucht Kandidaten (`<pfad>`, `audio/<name>`, `audio/bgm/<name>`,
-  `audio/se/<name>`; `.wav`, `.ogg`, `.mp3`), lädt WAV und warnt bei OGG/MP3
-  (noch kein Decoder).
+  `audio/se/<name>`; `.wav`, `.ogg`, `.mp3`), lädt WAV oder OGG und warnt nur
+  noch bei MP3 (kein Decoder).
 - `Audio.bgm_play`/`bgs_play`/`se_play`/`me_play` versuchen zuerst eine Datei
   und fallen sonst auf den prozeduralen Klang zurück — alte Projekte klingen
   weiter. Eine neue Musik **ersetzt** die laufende (`AudioFiles.stop` auf die

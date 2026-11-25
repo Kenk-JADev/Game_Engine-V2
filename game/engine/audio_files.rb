@@ -1,6 +1,6 @@
 #encoding: utf-8
 # ============================================================================
-#  Ton aus Dateien (Etappe 21, T1/T5) — WAV über die Engine, OGG später.
+#  Ton aus Dateien (Etappe 21, T1/T2/T5) — WAV und OGG über die Engine.
 #
 #  Bis Etappe 20 waren alle Klänge prozedural: Ruby rechnete PCM und meldete es
 #  über Rune::Sound.register an. XP spielt dagegen Dateien aus Audio/BGM und
@@ -65,8 +65,10 @@ module AudioFiles
         bytes = lese(pfad)
         next if bytes.nil?
 
-        if pfad.downcase.end_with?('.ogg', '.mp3')
-          warn(pfad, 'OGG/MP3 kann noch nicht dekodiert werden (WAV verwenden)')
+        # Etappe 21/T2: OGG Vorbis dekodiert die Engine (stb_vorbis); MP3
+        # bleibt draussen (kein Dekoder, XP nutzt es ohnehin nicht).
+        if pfad.downcase.end_with?('.mp3')
+          warn(pfad, 'MP3 kann nicht dekodiert werden (WAV oder OGG verwenden)')
           next
         end
 

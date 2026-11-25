@@ -1,6 +1,7 @@
 #include "core/sound.h"
 #include "core/log.h"
 #include "core/wav.h"   // Etappe 21: portabler WAV-Leser
+#include "core/ogg.h"   // Etappe 21: OGG Vorbis (stb_vorbis, mitgeliefert)
 
 #include <atomic>
 #include <cstring>
@@ -102,14 +103,19 @@ void register_sound(const std::string& name, int rate, const int16_t* samples, s
 // Etappe 21: WAV-Bytes kommen aus Ruby (sichere Assets-Brücke), werden hier
 // geparst, auf mono heruntergemischt und mit Pitch auf die Geräterate
 // gebracht. register_sound übernimmt den Rest (Resampling auf 44100 Hz).
-bool load_wav(const std::string& name, const unsigned char* bytes, size_t size, int pitch) {
+bool load_audio(const std::string& name, const unsigned char* bytes, size_t size, int pitch) {
     if (!bytes || size == 0) {
-        log_warn("Sound: leere WAV-Daten für '" + name + "'");
+        log_warn("Sound: leere Audiodaten für '" + name + "'");
         return false;
     }
     wav::Clip clip;
     std::string fehler;
-    if (!wav::parse(bytes, size, clip, &fehler)) {
+    // Etappe 21: OGG Vorbis (XP-Standard) und WAV teilen sich den Weg; die
+    // Kennung entscheidet, nicht die Dateiendung.
+    const bool ogg_datei = ogg::ist_ogg(bytes, size);
+    const bool gelesen = ogg_datei ? ogg::parse(bytes, size, clip, &fehler)
+                                   : wav::parse(bytes, size, clip, &fehler);
+    if (!gelesen) {
         log_warn("Sound: '" + name + "': " + fehler);
         return false;
     }

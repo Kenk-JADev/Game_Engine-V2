@@ -968,7 +968,7 @@ VALUE rune_sound_load(int argc, VALUE* argv, VALUE) {
     rb_scan_args(argc, argv, "21", &name, &bytes, &pitch);
     Check_Type(bytes, T_STRING);
     const int p = NIL_P(pitch) ? 100 : NUM2INT(pitch);
-    const bool ok = core::sound::load_wav(
+    const bool ok = core::sound::load_audio(
         to_std(name), reinterpret_cast<const unsigned char*>(RSTRING_PTR(bytes)),
         static_cast<size_t>(RSTRING_LEN(bytes)), p);
     return ok ? Qtrue : Qfalse;

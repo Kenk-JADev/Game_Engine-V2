@@ -20,7 +20,7 @@
 #
 #  Ohne Datei greift `Audio.*` auf die prozeduralen Klaenge zurueck; der
 #  Karten-Eintrag ist damit auch ohne WAV-Datei wirksam (und MapCheck warnt
-#  bei OGG/MP3).
+#  bei MP3).
 # ============================================================================
 
 module MapAudio

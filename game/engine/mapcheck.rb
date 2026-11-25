@@ -1056,8 +1056,8 @@ module MapCheck
         # Etappe 21: BGM/BGS aus Dateien (XP 241/245).
         if !text?(c['name'])
           melde(FEHLER, w, "'name' fehlt oder ist leer")
-        elsif c['name'].to_s.downcase.end_with?('.ogg', '.mp3')
-          melde(WARNUNG, w, 'OGG/MP3 kann noch nicht dekodiert werden (WAV verwenden)')
+        elsif c['name'].to_s.downcase.end_with?('.mp3')
+          melde(WARNUNG, w, 'MP3 kann nicht dekodiert werden (WAV oder OGG verwenden)')
         end
         if c.key?('volume') && !(zahl?(c['volume']) && TON_LAUTSTAERKE.cover?(c['volume']))
           melde(FEHLER, w, "'volume' muss zwischen 0 und 100 liegen")
@@ -1594,8 +1594,8 @@ module MapCheck
           melde(WARNUNG, wo, "'name' fehlt (Karte spielt keine eigene Musik)")
         elsif !text?(name)
           melde(FEHLER, wo, "'name' ist leer oder kein Text")
-        elsif name.to_s.downcase.end_with?('.ogg', '.mp3')
-          melde(WARNUNG, wo, 'OGG/MP3 kann noch nicht dekodiert werden (WAV verwenden)')
+        elsif name.to_s.downcase.end_with?('.mp3')
+          melde(WARNUNG, wo, 'MP3 kann nicht dekodiert werden (WAV oder OGG verwenden)')
         end
         if wert.key?('volume') && !wert['volume'].nil? &&
            !(zahl?(wert['volume']) && TON_LAUTSTAERKE.cover?(wert['volume']))

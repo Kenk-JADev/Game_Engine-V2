@@ -1,8 +1,8 @@
 # Etappe 21 — Checkliste (Ton: Dateien statt Prozedur-Sounds)
 
-Diese Checkliste ist die Abhakliste für Etappe 21. Stand: **Runde 36 — T1
-(WAV-Lader), T4 (Befehle 241/242/245/246) und T5 (Pitch + Fade über Zeit)
-sind fertig**.
+Diese Checkliste ist die Abhakliste für Etappe 21. Stand: **Runde 38 — T1
+(WAV), T2 (OGG), T4 (Befehle 241/242/245/246) und T5 (Pitch + Fade über Zeit)
+sind fertig, T3 läuft in der Laufzeit**.
 
 Legende: `[x]` erledigt und committet · `[~]` erledigt, CI offen · `[ ]` offen
 
@@ -35,11 +35,15 @@ Dateizugriffe laufen über die **sichere Assets-Brücke**
   resampeln, als benannten Klang anmelden (`Rune::Sound.load(name, bytes)`).
   Rückgabe `true/false`; Fehler landen als Warnung im Log und in `Issues`.
   Obergrenze: 60 s bzw. 8 MB pro Datei (XP-BGM-Längen reichen).
-- [ ] **T2 — OGG-Vorbis:** `stb_vorbis.c` (single header, public domain) unter
+- [x] **T2 — OGG-Vorbis:** `stb_vorbis.c` (single header, public domain) unter
   `src/core/` einbinden, dekodieren und über denselben Resampler schicken.
-  Alternative, falls die Lizenzprüfung im Repo das nicht will: OGG ablehnen
-  und im Handoff als offen führen — dann ist die Etappe mit WAV allein
-  trotzdem nützlich.
+  Umgesetzt (Runde 38): `src/core/stb_vorbis.cpp` (v1.25, Vendoring-Hinweis im
+  Kopf, Lizenz am Dateiende) und `src/core/ogg.h` (`ist_ogg`, `parse` →
+  `wav::Clip` mono/16 Bit/22050 Hz über `wav::resample`); `sound.cpp` erkennt
+  das Format an den ersten Bytes (`load_wav` heißt jetzt `load_audio`), Ruby
+  reicht OGG unverändert weiter, MP3 bleibt mit Warnung draußen. Test:
+  `tools/ogg_test.cpp` (11 Checks, eingebettete 0,25-s-Stereo-Fixture) in CI
+  und `build.ps1 -Test`.
 - [~] **T3 — Karten-BGM/BGS:** Karten-JSON bekommt `bgm`/`bgs`
   (Datei + Lautstärke + Pitch). Beim Kartenwechsel startet das BGM, beim
   Verlassen stoppt es (`Audio.bgm_play`/`bgm_stop`), `bgs` läuft wie XP
@@ -75,7 +79,7 @@ Dateizugriffe laufen über die **sichere Assets-Brücke**
 
 ## 2. Stand (Runde 34)
 
-Umgesetzt: `src/core/wav.h` (portabel) + `sound.cpp::load_wav` +
+Umgesetzt: `src/core/wav.h` (portabel) + `sound.cpp::load_audio` +
 `Rune::Sound.load/known?`, `game/engine/audio_files.rb`, Anbindung in
 `Audio.bgm_play`/`bgs_play`/`se_play`/`me_play` mit Rückfall auf die
 prozeduralen Klänge, Pitch 50–150 % über Resampling, CI- und
@@ -98,8 +102,13 @@ Kartenwechsel, lässt die bisherige Musik weiterlaufen, wenn die Karte nichts
 nennt, und startet dieselbe Datei nicht neu; MapCheck prüft die Kartenfelder,
 `tools/map_audio_test.rb` deckt Start/Weiterlaufen/Klemmung ab.
 
-Offen: T2 (OGG), T3-Rest (F2-Formular für Karten-BGM), Doku-Feinschliff (T7)
-und der Rest von T6 (eigener Zuschnitt eines `audio_test.rb` bzw. weitere
+OGG (T2, Runde 38): `src/core/stb_vorbis.cpp` (vendored) + `src/core/ogg.h`
+dekodieren Vorbis nach mono/16 Bit/22050 Hz; `sound::load_audio` erkennt das
+Format selbst, `tools/ogg_test.cpp` prüft Dekodieren, Stereo→Mono, Resampling
+und Fehlerfälle.
+
+Offen: T3-Rest (F2-Formular für Karten-BGM), Doku-Feinschliff (T7) und der
+Rest von T6 (eigener Zuschnitt eines `audio_test.rb` bzw. weitere
 Grenzfälle).
 
 ## 3. Bekannte Eigenheiten
@@ -122,4 +131,4 @@ Grenzfälle).
 ## 3. Reihenfolge
 
 T1 → T5 (Resampling/Pitch ist die Grundlage) → T6 (Parser-Tests) → T3 → T4 →
-T2 (OGG zuletzt, weil Vendoring und Lizenzprüfung dazukommen) → T7.
+T2 (OGG) → T7.
