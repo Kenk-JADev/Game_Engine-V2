@@ -107,7 +107,7 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 | HP ändern | 311 | `actor_hp` (R28) + `heal` | ✅ Ziel `alle` oder ein Actor, vorzeichenbehaftet (negativ = Schaden), geklemmt auf 0..Max |
 | SP ändern | 312 | `actor_sp` (R28) | ✅ wie `actor_hp`, Rune3D nennt das Feld `mp` (XP: SP) |
 | Zustand ändern | 313 | `state` (R42) | ✅ Ziel `alle`/Held, Zustand per ID oder Name, `mode` add/remove, `turns` optional; Zustände hängen am Helden (Spielstand, Menü) und wandern in den Kampf |
-| Alles wiederherstellen | 314 | `heal` ohne Betrag | ✅ |
+| Alles wiederherstellen | 314 | `heal` ohne Betrag | ✅ heilt voll und entfernt alle Zustände wie XP `recover_all`; mit `amount` nur Teilheilung (Rune3D-Zusatz, Zustände bleiben) |
 | EXP ändern | 315 | `actor_exp` (R28) | ✅ läuft über `Party.set_exp`, Stufenaufstiege inklusive |
 | Level ändern | 316 | `actor_level` (R28) | ✅ Aufstieg über `level_up!` (Wachstum wie im Kampf), Abstieg senkt nur die Stufe (keine Klassentabellen) |
 | Parameter ändern | 317 | `actor_param` (R42) | ✅ max_hp/max_mp/atk/def/spi/agi vorzeichenbehaftet, HP/MP werden bei sinkendem Maximum gekappt (XP kennt nur drei Parameter) |

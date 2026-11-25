@@ -35,10 +35,10 @@ Events, `$data_*`).
   `CMD_TYPES`, `ISSUE_CMD_TYPES`, `EvType`/`EV_TYPES`, `EV_TYPE_LABELS`,
   Feldtabellen/Formular (Ziel, Zustand/Parameter/Name, Modus/Menge),
   MapCheck-Regeln.
-- [~] **T5 — Tests:** neues `tools/zustand_test.rb` (Modell, Befehle,
+- [x] **T5 — Tests:** neues `tools/zustand_test.rb` (Modell, Befehle,
   Spielstand, Kampf-Übergabe), `json_test` (drei Beispiele), `CMD_TYPES.size`
   in elf Tests auf 72, `event_test` falls sinnvoll.
-- [~] **T6 — Doku:** `XP_VERGLEICH.md` (313 ⚠️ → ✅, 317/320 ❌ → ✅, Bilanz,
+- [x] **T6 — Doku:** `XP_VERGLEICH.md` (313 ⚠️ → ✅, 317/320 ❌ → ✅, Bilanz,
   dazu die veralteten Zeilen States/Common Events/`$data_*`),
   `architecture.md`, `LOGIK_PRUEFUNG.md`, `HANDOFF`, dieser Abschnitt.
 
@@ -63,3 +63,53 @@ dem Push mit `zig c++ -target x86_64-windows-gnu -fsyntax-only` geprüft.
 
 T1 (Modell) → T2 (ein Befehl als Muster) → T3 (die zwei einfachen) →
 T4 (Register/Editor) → T5 (Tests) → T6 (Doku).
+
+## 5. Ergebnis je Aufgabe
+
+- **T1 — Zustände am Helden:** `Party::Actor` hat `states`
+  (`[{ id:, turns: }]`), `Party::MAX_STATES = 8`, `Party.state_def` (ID oder
+  Name), `Party.state_names`, `Party.states`, `Party.change_state`,
+  `Party.clear_states`. `Party.snapshot`/`restore!` führen die Zustände im
+  Spielstand (alte Saves ohne `states` starten ohne Zustände), `heal_all` ohne
+  Betrag leert sie (XP 314 `recover_all`), `Battle.start` übernimmt sie in die
+  Battler (ohne `turns` gilt die Datenbank-Dauer) und `Battle.sync_actors!`
+  schreibt sie zurück.
+- **T2 — `state` (XP 313):** `{"cmd":"state","actor":"alle","name":"Gift",
+  "mode":"add"}`; `mode` Default `add`, `turns` optional, unbekannter Zustand
+  → `:unbekannt` + Issue, voller Block → `:voll` + Warnung.
+- **T3 — `actor_param` (XP 317) / `actor_name` (XP 320):**
+  `Party.change_param` (sechs Parameter, Maxima ≥ 1, Rest ≥ 0, HP/MP-Kappung)
+  und `Party.rename` über den Interpreter; `actor_name` verlangt genau einen
+  Helden.
+- **T4 — Register/Editor:** Register **72**, `CMD_TYPES`, `ISSUE_CMD_TYPES`,
+  `EvType`/`EV_TYPES`, `EV_TYPE_LABELS`, Feldtabellen (Zustand/Parameter/Name
+  im Namensfeld, Ziel in Wert 1, Modus/Menge in Wert 2), Anzeigezeilen und
+  Hinweise im F6-Dialog, MapCheck `state`/`actor_param`/`actor_name` +
+  `pruefe_actor_ziel`.
+- **T5 — Tests:** neues `tools/zustand_test.rb` (42 Checks, kopflos grün),
+  `json_test` **882** Checks (drei Beispiele, je Typ „unberührt“, „neu
+  erzeugen“ und Feldprüfung), `CMD_TYPES.size` in elf Tests auf 72;
+  `befehle_test`/`sync_test` unverändert grün.
+- **T6 — Doku:** `XP_VERGLEICH` (313 ✅, 317 ✅, 320 ✅; Bilanz
+  **56 ✅ · 6 ⚠️ · 31 ❌**; Datenbank-Tabelle und `$data_*`-Zeilen
+  geradegezogen), `architecture.md` (neuer Abschnitt + Zeilenzahl),
+  `LOGIK_PRUEFUNG` (AD.20), `HANDOFF` (Absatz, Kandidaten, Commit-Tabelle).
+
+## 6. Stolpersteine dieser Runde
+
+- **Kommentare im `enum EvType`-Block sind verboten:** `tools/befehle_test.rb`
+  liest die Namen zwischen `{` und `}` als Liste; ein `// …`-Kommentar dort
+  kippt „EvType hat für jeden Typ genau einen Eintrag“ (erster Push rot). Der
+  Kommentar gehört über das Enum.
+- **Zwei Jobs hingen am selben Fehler:** der Windows-Job fährt dieselbe
+  Ruby-Suite wie `build.ps1 -Test`, deshalb war auch er rot — die Zuordnung
+  „Windows = C++“ gilt nur für Kompilierfehler.
+- **Ohne installiertes Ruby testen:** `node .cache/rbc/rbtest.cjs
+  tools/<test>.rb` (ruby.wasm 3.4 in `.cache/rbc`, Repo-Dateien im Speicher).
+  Stolperfalle beim Bau des Runners: der Datei-Baum darf **nicht** als
+  Ruby-Hash-Literal injiziert werden (`#{…}` im Quelltext wird sonst
+  interpoliert) — Base64 + `JSON.parse` löst das; `puts` landet gesammelt am
+  Ende der Ausgabe, `Dir.chdir` fehlt (deshalb scheitern `befehle_test` und
+  `mapcheck_test` dort weiterhin).
+- **zig-Syntaxcheck:** endet weiterhin mit `failed to rename … .obj`; das ist
+  kein Kompilierfehler, echte Diagnosen stehen als `error: expected …` davor.
