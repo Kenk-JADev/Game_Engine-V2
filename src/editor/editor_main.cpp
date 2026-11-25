@@ -5656,7 +5656,7 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                                 L"Enter: Eigenschaften übernehmen\n"
                                 L"PNG/BMP einfach ins Fenster ziehen = Textur importieren\n\n"
                                 L"Werkzeugleiste (F-Tasten):\n"
-                                L"  F2 Karten-Eigenschaften (u. a. Wetter)\n"
+                                L"  F2 Karten-Eigenschaften (Wetter, Musik, Zufallskämpfe)\n"
                                 L"  F3 Materialbase    F4 Playtest starten\n"
                                 L"  F5 NPCs, Schilder und Objekte platzieren\n"
                                 L"  F6 Event-Editor    F7 Tileset    F8 Sound-Test\n"
@@ -6043,6 +6043,13 @@ enum {
     IDLG_ENC_STATUS  = 4121,
     IDLG_ENC_DB      = 4122,   // Datenbank auch bei offenem F2 öffnen
     IDLG_BLOCK_LABEL = 4123,
+    // Etappe 21: Kartenmusik (XP-Mapinfo) - bgm/bgs mit Name, Lautstaerke, Pitch.
+    IDLG_BGM_NAME    = 4124,
+    IDLG_BGM_VOL     = 4125,
+    IDLG_BGM_PITCH   = 4126,
+    IDLG_BGS_NAME    = 4127,
+    IDLG_BGS_VOL     = 4128,
+    IDLG_BGS_PITCH   = 4129,
 };
 
 static HWND g_dlg = nullptr;
@@ -6121,6 +6128,13 @@ MapPropsForm dlg_map_props_form() {
     form.weather_intensity = dlg_text_long(IDLG_WINT);
     form.note = dlg_text_long(IDLG_NOTE);
     form.blocked = dlg_text_long(IDLG_BLOCKED);
+    // Etappe 21: Kartenmusik.
+    form.bgm_name = dlg_text_long(IDLG_BGM_NAME);
+    form.bgm_volume = dlg_text_long(IDLG_BGM_VOL);
+    form.bgm_pitch = dlg_text_long(IDLG_BGM_PITCH);
+    form.bgs_name = dlg_text_long(IDLG_BGS_NAME);
+    form.bgs_volume = dlg_text_long(IDLG_BGS_VOL);
+    form.bgs_pitch = dlg_text_long(IDLG_BGS_PITCH);
     return form;
 }
 
@@ -6521,7 +6535,8 @@ void open_map_props() {
     // damit auch bei hohen DPI die unteren Knöpfe nicht abgeschnitten sind.
     const DWORD window_style = WS_POPUP | WS_CAPTION | WS_SYSMENU;
     const DWORD window_ex_style = WS_EX_DLGMODALFRAME;
-    RECT frame{0, 0, 770, 504};
+    // Etappe 21: eine Zeile mehr fuer die Kartenmusik (bgm/bgs).
+    RECT frame{0, 0, 770, 600};
     const UINT dpi = GetDpiForWindow(g.main);
     if (!AdjustWindowRectExForDpi(&frame, window_style, FALSE, window_ex_style, dpi)) {
         AdjustWindowRectEx(&frame, window_style, FALSE, window_ex_style);
@@ -6629,8 +6644,27 @@ void open_map_props() {
         : L"Nach OK mit Strg+S speichern.",
         0, 460, 409, 282, 38, 0);
 
-    dlg_control(L"Button", L"OK", BS_DEFPUSHBUTTON, 562, 464, 90, 30, IDLG_OK);
-    dlg_control(L"Button", L"Abbrechen", BS_PUSHBUTTON, 662, 464, 90, 30, IDLG_CANCEL);
+    // Etappe 21: Kartenmusik (XP-Mapinfo). Leerer Name = keine Kartenmusik;
+    // ohne Datei bleibt der prozedurale Klang bzw. die laufende Musik.
+    dlg_control(L"Button", L"Ton (Kartenmusik)", BS_GROUPBOX, 12, 458, 742, 84, 0);
+    dlg_label(L"Musik", 24, 480, 60);
+    dlg_control(L"Edit", nullptr, WS_BORDER | ES_LEFT, 90, 476, 290, 24, IDLG_BGM_NAME);
+    dlg_label(L"Lautstärke", 392, 480, 70);
+    dlg_control(L"Edit", nullptr, WS_BORDER | ES_LEFT, 466, 476, 50, 24, IDLG_BGM_VOL);
+    dlg_label(L"Pitch %", 524, 480, 50);
+    dlg_control(L"Edit", nullptr, WS_BORDER | ES_LEFT, 578, 476, 50, 24, IDLG_BGM_PITCH);
+    dlg_control(L"Static", L"Datei z. B. bgm/dorf.ogg;\r\nLautstärke 0-100, Pitch 50-150",
+                0, 636, 470, 110, 34, 0);
+    dlg_label(L"Hintergrund", 24, 512, 70);
+    dlg_control(L"Edit", nullptr, WS_BORDER | ES_LEFT, 90, 508, 290, 24, IDLG_BGS_NAME);
+    dlg_label(L"Lautstärke", 392, 512, 70);
+    dlg_control(L"Edit", nullptr, WS_BORDER | ES_LEFT, 466, 508, 50, 24, IDLG_BGS_VOL);
+    dlg_label(L"Pitch %", 524, 512, 50);
+    dlg_control(L"Edit", nullptr, WS_BORDER | ES_LEFT, 578, 508, 50, 24, IDLG_BGS_PITCH);
+    dlg_control(L"Static", L"Leerer Name = keine Kartenmusik", 0, 636, 512, 110, 20, 0);
+
+    dlg_control(L"Button", L"OK", BS_DEFPUSHBUTTON, 562, 552, 90, 30, IDLG_OK);
+    dlg_control(L"Button", L"Abbrechen", BS_PUSHBUTTON, 662, 552, 90, 30, IDLG_CANCEL);
 
     // Originalzahlen ohne int-/uint-Casts anzeigen. Nicht editierte Werte
     // (auch große Integer) bleiben beim OK bytegetreu im JSON-Baum erhalten.
@@ -6675,6 +6709,23 @@ void open_map_props() {
 
     const JsonValue* note = g.map_root.find("note");
     dlg_set_text(IDLG_NOTE, note ? note->str : "");
+
+    // Etappe 21: Kartenmusik aus dem Karten-JSON (fehlt sie, bleibt das Feld leer
+    // und die Karte erbt die laufende Musik).
+    {
+        auto lade_musik = [](const JsonValue& root, const char* feld, int id_name,
+                             int id_vol, int id_pitch) {
+            const JsonValue* e = root.find(feld);
+            const bool objekt = e && e->is_obj();
+            const JsonValue* name = objekt ? e->find("name") : nullptr;
+            dlg_set_text(id_name, name && name->type == JsonValue::Type::Str ? name->str
+                                                                             : std::string());
+            dlg_set_text(id_vol, map_props_number_display(objekt ? e->find("volume") : nullptr, 100.0));
+            dlg_set_text(id_pitch, map_props_number_display(objekt ? e->find("pitch") : nullptr, 100.0));
+        };
+        lade_musik(g.map_root, "bgm", IDLG_BGM_NAME, IDLG_BGM_VOL, IDLG_BGM_PITCH);
+        lade_musik(g.map_root, "bgs", IDLG_BGS_NAME, IDLG_BGS_VOL, IDLG_BGS_PITCH);
+    }
 
     // Unlesbare/lange Altwerte niemals durch das Windows-Editlimit
     // abschneiden. Die Textform enthält für jede alte Zone eine Marke.
@@ -6747,6 +6798,8 @@ bool apply_props_from_dlg() {
         else if (general_check.field == "weather_type") focus = IDLG_WTYPE;
         else if (general_check.field == "weather_intensity") focus = IDLG_WINT;
         else if (general_check.field == "note") focus = IDLG_NOTE;
+        else if (general_check.field == "bgm") focus = IDLG_BGM_NAME;
+        else if (general_check.field == "bgs") focus = IDLG_BGS_NAME;
         SetFocus(GetDlgItem(dlg, focus));
         return false;
     }

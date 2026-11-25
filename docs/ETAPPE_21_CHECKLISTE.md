@@ -1,8 +1,8 @@
 # Etappe 21 — Checkliste (Ton: Dateien statt Prozedur-Sounds)
 
-Diese Checkliste ist die Abhakliste für Etappe 21. Stand: **Runde 38 — T1
-(WAV), T2 (OGG), T4 (Befehle 241/242/245/246) und T5 (Pitch + Fade über Zeit)
-sind fertig, T3 läuft in der Laufzeit**.
+Diese Checkliste ist die Abhakliste für Etappe 21. Stand: **Runde 39 — T1
+(WAV), T2 (OGG), T3 (Karten-BGM/BGS mit F2-Formular), T4 (Befehle
+241/242/245/246) und T5 (Pitch + Fade über Zeit) sind fertig**.
 
 Legende: `[x]` erledigt und committet · `[~]` erledigt, CI offen · `[ ]` offen
 
@@ -44,15 +44,17 @@ Dateizugriffe laufen über die **sichere Assets-Brücke**
   reicht OGG unverändert weiter, MP3 bleibt mit Warnung draußen. Test:
   `tools/ogg_test.cpp` (11 Checks, eingebettete 0,25-s-Stereo-Fixture) in CI
   und `build.ps1 -Test`.
-- [~] **T3 — Karten-BGM/BGS:** Karten-JSON bekommt `bgm`/`bgs`
+- [x] **T3 — Karten-BGM/BGS:** Karten-JSON bekommt `bgm`/`bgs`
   (Datei + Lautstärke + Pitch). Beim Kartenwechsel startet das BGM, beim
   Verlassen stoppt es (`Audio.bgm_play`/`bgm_stop`), `bgs` läuft wie XP
   weiter. MapCheck: Dateiendung, Lautstärke 0–100, Pitch 50–150.
   Umgesetzt (Runde 37): `game/engine/map_audio.rb` (`enter`/`bgm`/`bgs`/
   `reset`), Aufruf in `Game.enter_map` nach `Weather.load_map`, MapCheck
   `pruefe_ton` (Objekt, Name, OGG/MP3-Warnung, Grenzen), `tools/map_audio_test.rb`.
-  Offen: Formular im F2-Dialog „Karten-Eigenschaften" (BGM/BGS eintragen) —
-  bis dahin steht das Feld von Hand in der Karten-JSON.
+  Dazu das Formular im F2-Dialog „Karten-Eigenschaften" (Gruppe „Ton
+  (Kartenmusik)"): Name, Lautstärke und Pitch für BGM und BGS, leerer Name
+  löscht den Eintrag, unbekannte Zusatzschlüssel im Objekt bleiben erhalten;
+  `tools/editor_workflow_test.cpp` prüft das Modell (9 Checks).
 - [x] **T4 — Event-Befehle 241/242/245/246:**
   `{"cmd":"play_bgm","name":"bgm/dorf.ogg","volume":100,"pitch":100}`,
   `{"cmd":"fadeout_bgm","seconds":2}`,

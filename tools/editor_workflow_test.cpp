@@ -2,6 +2,7 @@
 // RGSS-Scriptdokumente.
 #include "editor/event_rules.h"
 #include "editor/map_interaction.h"
+#include "editor/map_props_form.h"
 #include "editor/map_tree.h"
 #include "editor/script_document.h"
 
@@ -166,6 +167,78 @@ int main() {
               event_self_switch_letter_ok("A") && event_self_switch_letter_ok("D") &&
               !event_self_switch_letter_ok("E") && !event_self_switch_letter_ok("") &&
               !event_self_switch_letter_ok("a"));
+    }
+
+    // Etappe 21: Kartenmusik (bgm/bgs) im F2-Dialog.
+    {
+        BlockedEdit leer;                       // Block-Zonen unveraendert
+        JsonValue karte = json_parse(R"({"name":"dorf"})");
+        MapPropsForm vorher, nachher;
+        vorher.name = "dorf";
+        nachher.name = "dorf";
+        vorher.bgm_name = "";
+        vorher.bgm_volume = "100";
+        vorher.bgm_pitch = "100";
+        vorher.bgs_name = "";
+        vorher.bgs_volume = "100";
+        vorher.bgs_pitch = "100";
+        nachher = vorher;
+        check("Kartenmusik: unveraendertes Formular schreibt nichts",
+              map_props_check(karte, vorher, nachher).ok &&
+                  !map_props_apply(karte, vorher, nachher, leer).changed);
+
+        nachher.bgm_name = "bgm/dorf.ogg";
+        nachher.bgm_volume = "80";
+        nachher.bgm_pitch = "120";
+        const MapPropsCheck musik_check = map_props_check(karte, vorher, nachher);
+        check("Kartenmusik: gueltige Werte werden angenommen", musik_check.ok);
+        MapPropsChanges musik = map_props_apply(karte, vorher, nachher, leer);
+        const JsonValue* bgm = karte.find("bgm");
+        check("Kartenmusik: bgm landet mit Name, Lautstaerke und Pitch in der Karte",
+              musik.changed && musik.audio && bgm && bgm->is_obj() &&
+                  bgm->find("name") && bgm->find("name")->str == "bgm/dorf.ogg" &&
+                  bgm->find("volume") && bgm->find("volume")->number() == 80 &&
+                  bgm->find("pitch") && bgm->find("pitch")->number() == 120);
+
+        MapPropsForm kaputt = nachher;
+        kaputt.bgm_volume = "101";
+        check("Kartenmusik: Lautstaerke ueber 100 wird abgelehnt",
+              !map_props_check(karte, vorher, kaputt).ok &&
+                  map_props_check(karte, vorher, kaputt).field == "bgm");
+        kaputt = nachher;
+        kaputt.bgm_pitch = "20";
+        check("Kartenmusik: Pitch unter 50 wird abgelehnt",
+              !map_props_check(karte, vorher, kaputt).ok);
+        kaputt = nachher;
+        kaputt.bgs_name = "bgs/regen.ogg";
+        kaputt.bgs_pitch = "151";
+        check("Kartenmusik: Hintergrundklang wird genauso geprueft",
+              !map_props_check(karte, vorher, kaputt).ok &&
+                  map_props_check(karte, vorher, kaputt).field == "bgs");
+
+        MapPropsForm weg = nachher;
+        weg.bgm_name = "";
+        MapPropsChanges entfernt = map_props_apply(karte, nachher, weg, leer);
+        check("Kartenmusik: leerer Name entfernt den Karten-Eintrag",
+              entfernt.changed && !karte.find("bgm"));
+
+        JsonValue mit_zusatz = json_parse(
+            R"({"name":"dorf","bgm":{"name":"bgm/alt.ogg","volume":40,"pitch":100,"fade":2}})");
+        MapPropsForm alt_vorher, alt_nachher;
+        alt_vorher.name = alt_nachher.name = "dorf";
+        alt_vorher.bgm_name = alt_nachher.bgm_name = "bgm/alt.ogg";
+        alt_vorher.bgm_volume = "40";
+        alt_nachher.bgm_volume = "50";
+        alt_vorher.bgm_pitch = alt_nachher.bgm_pitch = "100";
+        MapPropsChanges geaendert = map_props_apply(mit_zusatz, alt_vorher, alt_nachher, leer);
+        const JsonValue* alt = mit_zusatz.find("bgm");
+        check("Kartenmusik: unbekannte Zusatzschluessel bleiben erhalten",
+              geaendert.changed && alt && alt->find("fade") &&
+                  alt->find("volume")->number() == 50);
+
+        JsonValue kein_objekt = json_parse(R"({"name":"dorf","bgm":"kaputt"})");
+        check("Kartenmusik: vorhandenes Nicht-Objekt wird nicht ueberschrieben",
+              !map_props_check(kein_objekt, vorher, nachher).ok);
     }
 
     std::printf("EDITOR-ARBEITSABLAUF: %d Prüfungen, %d Fehler\n", checks, failures);

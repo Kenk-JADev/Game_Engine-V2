@@ -8,8 +8,10 @@
 #include "editor/blocked_form.h"
 #include "editor/json.h"
 #include "editor/terrain_preview.h"
+#include "editor/text_validation.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cerrno>
 #include <cmath>
 #include <cstdint>
@@ -25,6 +27,10 @@ struct MapPropsForm {
     std::string name, width, height, seed, amplitude;
     std::string fog_far, fog_color, panorama_color, weather_intensity;
     std::string note, blocked;
+    // Etappe 21: Kartenmusik (XP-Mapinfo) - Name der Datei, Lautstaerke
+    // 0..100 und Pitch 50..150. Leerer Name = kein Eintrag in der Karte.
+    std::string bgm_name, bgm_volume, bgm_pitch;
+    std::string bgs_name, bgs_volume, bgs_pitch;
     bool mountains = false;
     bool fog_on = false;
     int weather_type = 0;
@@ -38,7 +44,17 @@ struct MapPropsChanges {
     bool name = false;
     bool terrain = false;
     bool atmosphere = false;
+    bool audio = false;      // Etappe 21: bgm/bgs geaendert
 };
+
+// Leerraum am Rand weg (eigene Fassung, damit diese Kopfdatei nicht die
+// ganze Datenbank-Formularlogik mitzieht).
+inline std::string map_props_trim(const std::string& text) {
+    size_t first = 0, last = text.size();
+    while (first < last && std::isspace(static_cast<unsigned char>(text[first]))) ++first;
+    while (last > first && std::isspace(static_cast<unsigned char>(text[last - 1]))) --last;
+    return text.substr(first, last - first);
+}
 
 // Hexfarbe "BFD8EC" oder "0xBFD8EC" -> 0x00BFD8EC (0 bei Unsinn).
 inline std::uint32_t parse_hex_color(const std::string& s) {
@@ -182,6 +198,46 @@ inline MapPropsCheck map_props_check(const JsonValue& root, const MapPropsForm& 
     }
     if (before.note != after.note && (!root.is_obj() || !preview_unique(root, "note")))
         fail("note", "Die Kartennotiz ist mehrfach vorhanden und kann hier nicht bearbeitet werden.");
+
+    // Etappe 21: Kartenmusik (XP-Mapinfo). Geprueft werden nur geaenderte
+    // Felder; Lautstaerke 0..100 und Pitch 50..150 wie in XP.
+    auto kartenmusik = [&](const char* feld, const std::string& vorher, const std::string& nachher,
+                           const std::string& laut_vorher, const std::string& laut_nachher,
+                           const std::string& pitch_vorher, const std::string& pitch_nachher) {
+        const bool name_neu = vorher != nachher;
+        const bool laut_neu = laut_vorher != laut_nachher;
+        const bool pitch_neu = pitch_vorher != pitch_nachher;
+        if (!name_neu && !laut_neu && !pitch_neu) return true;
+        if (!member(feld, "name", feld)) return false;
+        if (!name_neu && map_props_trim(nachher).empty()) return true;   // Eintrag wird entfernt
+        if (name_neu) {
+            const std::string sauber = map_props_trim(nachher);
+            if (!sauber.empty() && !editor_single_line(sauber))
+                return fail(feld, "Ungültiger Name oder Steuerzeichen in der Datei.");
+        }
+        auto grenze = [&](const char* schluessel, const std::string& text, double low, double high) {
+            if (map_props_trim(text).empty()) return true;
+            double wert = 0.0;
+            if (!map_props_number(text, wert) || wert < low || wert > high ||
+                std::floor(wert) != wert) {
+                check.ok = false;
+                check.field = feld;
+                check.error = std::string("Bitte eine ganze Zahl zwischen ") +
+                              placement_num_text(low) + " und " + placement_num_text(high) +
+                              " eingeben.";
+                return false;
+            }
+            if (!member(feld, schluessel, feld)) return false;
+            return true;
+        };
+        if (!grenze("volume", laut_nachher, 0, 100)) return false;
+        if (!grenze("pitch", pitch_nachher, 50, 150)) return false;
+        return true;
+    };
+    if (!kartenmusik("bgm", before.bgm_name, after.bgm_name, before.bgm_volume,
+                     after.bgm_volume, before.bgm_pitch, after.bgm_pitch)) return check;
+    if (!kartenmusik("bgs", before.bgs_name, after.bgs_name, before.bgs_volume,
+                     after.bgs_volume, before.bgs_pitch, after.bgs_pitch)) return check;
     return check;
 }
 
@@ -259,6 +315,36 @@ inline MapPropsChanges map_props_apply(JsonValue& root, const MapPropsForm& befo
         root.set("note", JsonValue::make_str(after.note));
         changes.changed = true;
     }
+
+    // Etappe 21: Kartenmusik. Leerer Name loescht den Eintrag; sonst steht
+    // immer das ganze Objekt (Name, Lautstaerke, Pitch) in der Karte.
+    auto musik_setzen = [&](const char* feld, const std::string& name,
+                            const std::string& laut, const std::string& pitch) {
+        const std::string sauber = map_props_trim(name);
+        if (sauber.empty()) {
+            for (auto it = root.obj.begin(); it != root.obj.end(); ++it) {
+                if (it->first == feld) { root.obj.erase(it); break; }
+            }
+        } else {
+            // Unbekannte Zusatzschluessel des Eintrags bleiben erhalten.
+            JsonValue obj = JsonValue::make_obj();
+            if (const JsonValue* alt = root.find(feld))
+                if (alt->is_obj()) obj = *alt;
+            obj.set("name", JsonValue::make_str(sauber));
+            obj.set("volume", JsonValue::make_num(
+                map_props_trim(laut).empty() ? 100.0 : map_props_value(laut), true));
+            obj.set("pitch", JsonValue::make_num(
+                map_props_trim(pitch).empty() ? 100.0 : map_props_value(pitch), true));
+            root.set(feld, std::move(obj));
+        }
+        changes.audio = changes.changed = true;
+    };
+    if (before.bgm_name != after.bgm_name || before.bgm_volume != after.bgm_volume ||
+        before.bgm_pitch != after.bgm_pitch)
+        musik_setzen("bgm", after.bgm_name, after.bgm_volume, after.bgm_pitch);
+    if (before.bgs_name != after.bgs_name || before.bgs_volume != after.bgs_volume ||
+        before.bgs_pitch != after.bgs_pitch)
+        musik_setzen("bgs", after.bgs_name, after.bgs_volume, after.bgs_pitch);
 
     if (blocked.changed) {
         if (!blocked.value.arr.empty()) root.set("blocked", blocked.value);

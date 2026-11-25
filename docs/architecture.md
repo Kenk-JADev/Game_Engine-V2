@@ -1994,7 +1994,10 @@ Audio.bgm_play('Audio/BGM/dorf', 80, 120)          # RGSS-Aufruf, Pitch 120 %
   `Weather.load_map`: genanntes BGM/BGS startet, eine Karte ohne Eintrag lässt
   die laufende Musik weiterlaufen (XP startet dann ebenfalls nichts), und
   dieselbe Datei mit gleichen Werten wird **nicht** neu gestartet. MapCheck
-  `pruefe_ton` prüft Objekt, Namen, OGG/MP3-Warnung und die Grenzen.
+  `pruefe_ton` prüft Objekt, Namen, MP3-Warnung und die Grenzen. Gepflegt wird
+  das im Editor über F2 „Karten-Eigenschaften" → Gruppe „Ton (Kartenmusik)"
+  (`MapPropsForm.bgm_*`/`bgs_*`, `map_props_check`/`map_props_apply`); ein
+  leerer Name löscht den Eintrag.
 - **Tests:** `tools/wav_test.cpp` (18 Checks), `tools/audio_files_test.rb`
   (Datei-Weg, Pitch-Klemmung, Fade über Zeit) und `tools/map_audio_test.rb`
   (Kartenmusik).
