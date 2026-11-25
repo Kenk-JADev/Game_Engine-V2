@@ -28,17 +28,18 @@ Register → `CMD_TYPES` → Interpreter → `ISSUE_CMD_TYPES` → `docs/befehle
       Farbwahl weiß/rot/grün/blau/gelb (XP-Farbtöne), Stärke 0..255, kurzer
       Alpha-Verlauf; im selben Modul wie F1, `frames: 0` = ein Frame
 - [x] **F3 — Wackeln (XP 225):** `{"cmd":"shake","power":4,"speed":5,"frames":40}`;
-      Kamera-Offset in der UI-Schicht (oder dokumentiert als „ohne Kamera-Wackeln“,
-      falls der Renderer das nicht hergibt) — **erst prüfen**, dann bauen
-- [x] **F4 — Bilder (XP 231–235):** `$game_screen.pictures` bekommt Wirkung:
-      Bild zeigen/bewegen/drehen/färben/löschen als **Textur-Overlay** in der
-      UI-Schicht. Voraussetzung: Bild-Lader für die UI (heute kann `Bitmap`
-      keine Dateien laden — siehe `game/engine/graphics.rb` Kopf). Erst den
-      Lader in `src/gfx/ui.cpp` + `src/ruby/vm.cpp` bauen, dann die Befehle
-      (`picture_show/move/rotate/tone/erase`)
-- [ ] **F5 — Ergebnis-Codes 601–603:** `if_shop_result`/`if_battle_result`-artige
-      Zweige für Wahl, Kampf und Shop (XP: „Wenn Kampf gewonnen/verloren/geflohen“)
-- [ ] **F6 — Menü öffnen (XP 351):** `{"cmd":"menu"}` über `$game_temp.menu_calling`
+      umgesetzt als **Kamera-Versatz** (`Rune::Camera.shake`, in `camera.cpp`
+      beim Bildaufbau auf Auge/Ziel addiert) — Picking bleibt unberührt,
+      sinusförmiger Verlauf statt XP-Zufallssprünge
+- [x] **F4 — Bilder (XP 231–235):** `show_picture`/`move_picture`/
+      `rotate_picture`/`tint_picture`/`erase_picture`; Bildlader
+      (`image_loader.rb`, PNG/BMP) meldet Pixel über `Rune::Gfx.image`, der
+      Bild-Durchgang in `ui.cpp` zeichnet sie über der Welt und unter Fenstern.
+      Reste: kein JPEG, Blend 1/2 zeichnen wie 0, Tint multipliziert
+- [x] **F5 — Ergebnis-Codes 601–603:** `{"cmd":"if_battle_result","result":"sieg",
+      "then":[],"else":[]}` — ein Befehl mit `result` (sieg/flucht/niederlage)
+      statt drei Codes; ohne Kampf gilt der Sonst-Zweig
+- [x] **F6 — Menü öffnen (XP 351):** `{"cmd":"menu"}` über `$game_temp.menu_calling`
       (die Calling-Flags aus 20d existieren schon)
 - [x] **F7 — Tests:** `tools/screen_fx_test.rb` (Tone/Flash-Verlauf, Klemmen,
       Reihenfolge mehrerer Effekte), `tools/picture_test.rb` (Bilder über
@@ -48,9 +49,12 @@ Register → `CMD_TYPES` → Interpreter → `ISSUE_CMD_TYPES` → `docs/befehle
 
 ## 2. Bekannte Eigenheiten
 
-- Die UI-Schicht (`UI.*`) zeichnet nur Primitive (`Rune::Gfx.rect/text`) — ein
-  Bild-Lader fehlt noch; `Bitmap` in `graphics.rb` ist ein Merker ohne Dateien
-  (Kopfkommentar dort lesen, bevor F4 beginnt).
+- Die UI-Schicht zeichnet Primitive (`Rune::Gfx.rect/text`) und seit 20f auch
+  Bilder (`Rune::Gfx.image/picture`). `Bitmap` in `graphics.rb` bleibt ein
+  Merker ohne Dateien — Bilddateien laufen ausschließlich über
+  `ImageLoader` (PNG/BMP; JPEG bewusst nicht).
+- Bilder werden **nach Nummer** gezeichnet (1 unten, 50 oben) und liegen unter
+  HUD, Meldungen und Fenstern — wie XP.
 - Ein Interpreter-Rahmen pro Update: Dauer-Effekte (`frames`) laufen deshalb
   über `ScreenFx.update(dt)` im Engine-Takt, nicht im Interpreter.
 - XP-Frames sind 40/s (`Graphics.frame_rate`), Sekunden also `frames / 40.0`.
