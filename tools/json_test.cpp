@@ -1602,7 +1602,8 @@ void event_form_tests(const std::string& wurzel) {
         R"({"cmd":"screen_tone","r":-34,"g":0,"b":68,"frames":60})",
         R"({"cmd":"flash","color":"weiss","strength":200,"frames":20})",
         R"({"cmd":"menu"})",
-        R"({"cmd":"if_battle_result","result":"sieg","then":[],"else":[]})"
+        R"({"cmd":"if_battle_result","result":"sieg","then":[],"else":[]})",
+        R"({"cmd":"shake","power":5,"speed":5,"frames":40})"
     };
     check("Beispiel für jeden Befehlstyp vorhanden", samples.size() == ET_COUNT);
     for (size_t i = 0; i < samples.size(); ++i) {
@@ -1641,6 +1642,7 @@ void event_form_tests(const std::string& wurzel) {
             case ET_SCREEN_TONE: changed.name = "10,0,0,0"; break;
             case ET_FLASH: changed.name = "rot"; break;
             case ET_IF_BATTLE_RESULT: changed.name = "flucht"; break;
+            case ET_SHAKE: changed.val1 = "7"; break;
             default: changed.name = "neuer_name"; break;
         }
         const EventEdit patched = event_command_prepare(&c, f, changed);

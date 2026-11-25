@@ -1895,7 +1895,7 @@ im Frame des Tastendrucks (`Rune::Input.pressed?`, wie XP `Input.trigger?`;
 ohne Eingabeschicht — kopfloser Test — falsch). Beide haben `then`/`else`
 wie die übrigen Wenn-Befehle und werden im F6-Baum rekursiv geprüft; MapCheck
 prüft den Namen (Actor gegen `database.json`, Taste auf Existenz).
-Register: **55 Typen**. **Tests:** `tools/bedingungen_test.rb` (34 Checks).
+Register: **56 Typen**. **Tests:** `tools/bedingungen_test.rb` (34 Checks).
 
 ### Variable-Operationen (XP 122)
 
@@ -1943,6 +1943,20 @@ MapCheck prüft `amount` (Pflicht, ≠ 0), den Actor-Namen gegen
 `database.json` und den Stufenbereich. **Tests:** `tools/actor_wert_test.rb`
 (24 Checks), `json_test` 778 Checks.
 
+### Bildschirmwackeln (XP 225)
+
+```json
+{"cmd":"shake","power":5,"speed":5,"frames":40}
+```
+
+`ScreenFx.shake` verschiebt die Kamera über `Rune::Camera.shake = [x, y]`
+(Meter entlang Kamera-Rechts/Hoch, in `src/gfx/camera.cpp` beim Bildaufbau
+addiert) — Picking und Spielerposition bleiben unberührt. Amplitude aus
+Stärke und Tempo, Abbau linear über die Frames, sinusförmiger Verlauf.
+Bewusste Abweichung: XP ruckelt in Zufallssprüngen, Rune3D schwingt weich.
+Im Formular stehen Stärke/Tempo/Dauer in den drei Zahlenfeldern (1–9, 1–9,
+Frames), MapCheck prüft die Grenzen und warnt bei fehlender Dauer.
+
 ### Kampfergebnis abfragen (XP 601–603)
 
 ```json
@@ -1988,8 +2002,8 @@ legen positive Kanäle einen Farb-Schleier auf, negative einen dunklen Schleier
 im Gegenanteil, `gray` einen grauen Schleier. Der **Verlauf** ist XP-gleich.
 Das Formular zeigt die vier Kanäle als `r,g,b,grau` in einem Feld (je −255..255)
 und `frames` getrennt; der Blitz moderiert die Farbe wie `fade`.
-**Tests:** `tools/screen_fx_test.rb` (30 Checks), `json_test` prüft Lesen,
-Null-Kanäle, Grenzen und Fehlerfälle (814 Checks).
+**Tests:** `tools/screen_fx_test.rb` (36 Checks; Ton, Blitz, Wackeln),
+`json_test` prüft Lesen, Null-Kanäle, Grenzen und Fehlerfälle (823 Checks).
 
 ### Namenseingabe (XP 303)
 

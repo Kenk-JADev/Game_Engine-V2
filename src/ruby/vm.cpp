@@ -531,6 +531,29 @@ VALUE rune_camera_yaw(VALUE) {
     return DBL2NUM(app().camera ? app().camera->yaw : 0.0);
 }
 
+// Bildschirmwackeln (Etappe 20f, XP 225): Versatz [x, y] in Metern entlang
+// der Kamera-Rechts-/Hochachse; nil schaltet es ab. Der Versatz wirkt nur im
+// Bildaufbau (camera.cpp), Picking und Spielerposition bleiben unberührt.
+VALUE rune_camera_shake_set(VALUE, VALUE v) {
+    if (!app().camera) return v;
+    if (NIL_P(v)) {
+        app().camera->shake_x = 0.0f;
+        app().camera->shake_y = 0.0f;
+        return Qnil;
+    }
+    if (!RB_TYPE_P(v, T_ARRAY) || RARRAY_LEN(v) != 2)
+        rb_raise(rb_eArgError, "Kamera-Wackeln braucht [x, y] in Metern");
+    app().camera->shake_x = static_cast<float>(NUM2DBL(rb_ary_entry(v, 0)));
+    app().camera->shake_y = static_cast<float>(NUM2DBL(rb_ary_entry(v, 1)));
+    return v;
+}
+
+VALUE rune_camera_shake(VALUE) {
+    const float x = app().camera ? app().camera->shake_x : 0.0f;
+    const float y = app().camera ? app().camera->shake_y : 0.0f;
+    return rb_ary_new_from_args(2, DBL2NUM(x), DBL2NUM(y));
+}
+
 // Bildschirmpixel -> Weltstrahl. Rückgabe: [ox, oy, oz, dx, dy, dz]
 VALUE rune_camera_ray(VALUE, VALUE sx, VALUE sy) {
     if (!app().camera || !app().window) return rb_ary_new();
@@ -955,6 +978,8 @@ void register_bindings() {
     rb_define_module_function(mCam, "yaw", RUBY_METHOD_FUNC(rune_camera_yaw), 0);
     rb_define_module_function(mCam, "yaw=", RUBY_METHOD_FUNC(rune_camera_yaw_set), 1);
     rb_define_module_function(mCam, "ray", RUBY_METHOD_FUNC(rune_camera_ray), 2);
+    rb_define_module_function(mCam, "shake", RUBY_METHOD_FUNC(rune_camera_shake), 0);
+    rb_define_module_function(mCam, "shake=", RUBY_METHOD_FUNC(rune_camera_shake_set), 1);
 
     VALUE mIn = rb_define_module_under(mRune, "Input");
     rb_define_module_function(mIn, "down?", RUBY_METHOD_FUNC(rune_input_down), 1);

@@ -31,6 +31,14 @@ module Rune
     def self.height = 720
   end
 
+  # Kamera-Attrappe: das Wackeln setzt nur den Versatz, gezeichnet wird in C++.
+  module Camera
+    @shake = [0.0, 0.0]
+    class << self
+      attr_accessor :shake
+    end
+  end
+
   # Graphics.frame_rate = 40 (XP) statt der Engine-40 aus graphics.rb
   module Gfx
     @rects = []
@@ -174,7 +182,8 @@ puts '== Interpreter =='
 ScreenFx.reset
 i = Interpreter.new
 i.start([{ 'cmd' => 'screen_tone', 'r' => -34, 'b' => 68, 'frames' => 0 },
-         { 'cmd' => 'flash', 'color' => 'gelb', 'strength' => 128, 'frames' => 8 }])
+         { 'cmd' => 'flash', 'color' => 'gelb', 'strength' => 128, 'frames' => 8 },
+         { 'cmd' => 'shake', 'power' => 4, 'speed' => 2, 'frames' => 8 }])
 3.times { i.update(0.016) }
 check('screen_tone erreicht das Modul') do
   ScreenFx.tone_aktuell == { r: -34, g: 0, b: 68, gray: 0 }
@@ -182,6 +191,10 @@ end
 check('flash erreicht das Modul') do
   ScreenFx.flash_aktuell && ScreenFx.flash_aktuell[:farbe] == 'gelb' &&
     ScreenFx.flash_aktuell[:strength] == 128
+end
+check('shake erreicht das Modul') do
+  ScreenFx.shake_aktuell && ScreenFx.shake_aktuell[:power] == 4 &&
+    ScreenFx.shake_aktuell[:speed] == 2
 end
 ScreenFx.reset
 
@@ -238,7 +251,27 @@ check('Stärke über 255 -> Fehler') do
   hat?(MapCheck.scan(karte_mit([{ 'cmd' => 'flash', 'strength' => 300 }]), **OPTS),
        "'strength' muss eine Zahl von 0 bis 255 sein", MapCheck::FEHLER)
 end
-check('alle 55 Befehlstypen im Register der Prüfung') { MapCheck::CMD_TYPES.size == 55 }
+check('gültiges Wackeln: keine Funde') do
+  MapCheck.scan(karte_mit([{ 'cmd' => 'shake', 'power' => 5, 'speed' => 5,
+                             'frames' => 40 }]), **OPTS).empty?
+end
+check('Wackel-Stärke 0 -> Fehler') do
+  hat?(MapCheck.scan(karte_mit([{ 'cmd' => 'shake', 'power' => 0, 'frames' => 10 }]), **OPTS),
+       "'power' muss eine ganze Zahl von 1 bis 9 sein", MapCheck::FEHLER)
+end
+check('Wackel-Tempo 1.5 -> Fehler') do
+  hat?(MapCheck.scan(karte_mit([{ 'cmd' => 'shake', 'speed' => 1.5, 'frames' => 10 }]), **OPTS),
+       "'speed' muss eine ganze Zahl von 1 bis 9 sein", MapCheck::FEHLER)
+end
+check('Wackeln ohne Dauer -> Warnung') do
+  hat?(MapCheck.scan(karte_mit([{ 'cmd' => 'shake', 'power' => 5 }]), **OPTS),
+       "'frames' fehlt", MapCheck::WARNUNG)
+end
+check('Wackeln ohne Werte -> Warnung') do
+  hat?(MapCheck.scan(karte_mit([{ 'cmd' => 'shake' }]), **OPTS),
+       'shake ohne Werte', MapCheck::WARNUNG)
+end
+check('alle 56 Befehlstypen im Register der Prüfung') { MapCheck::CMD_TYPES.size == 56 }
 
 puts($fail.zero? ? 'ALLE CHECKS GRUEN' : "#{$fail} CHECK(S) FEHLGESCHLAGEN")
 exit($fail.zero? ? 0 : 1)

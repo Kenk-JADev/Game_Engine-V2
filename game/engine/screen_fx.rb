@@ -1,6 +1,7 @@
 #encoding: utf-8
 # ============================================================================
-#  Bildschirm-Effekte (Etappe 20f, RPG Maker XP 223 "Tone" und 224 "Flash").
+#  Bildschirm-Effekte (Etappe 20f, RPG Maker XP 223 "Tone", 224 "Flash" und
+#  225 "Shake").
 #
 #  XP führt beides in $game_screen (Game_Screen#start_tone_change /
 #  start_flash) und zeichnet es in Scene_Map über der Welt. Rune3D hat keinen
@@ -9,6 +10,7 @@
 #
 #    ScreenFx.tone(r: -34, g: 0, b: 68, gray: 0, frames: 60)
 #    ScreenFx.flash('weiss', strength: 255, frames: 20)
+#    ScreenFx.shake(power: 5, speed: 5, frames: 40)
 #    ScreenFx.update(dt)   # im Engine-Takt, XP-Frames zu 40/s
 #    ScreenFx.draw         # einmal pro Frame, über Welt und UI
 #
@@ -20,6 +22,9 @@
 #      Farbkanäle selbst (echtes Ton-Mapping bräuchte einen Shader).
 #    - gray > 0 legt einen grauen Schleier darüber; echtes Entsättigen kann die
 #      Rect-Schicht nicht.
+#    - Wackeln verschiebt die Kamera (Rune::Camera.shake) sinusförmig mit
+#      abnehmender Stärke; XP ruckelt dagegen in zufälligen Sprüngen. Stärke
+#      und Speed bestimmen die Amplitude, die Dauer den Abbau.
 #  Der Verlauf (Ein-/Ausblenden über frames) ist dagegen XP-gleich.
 # ============================================================================
 
@@ -31,6 +36,8 @@ module ScreenFx
   STANDARD_FARBE = 'weiss'
   MAX_TONE = 255      # XP: -255..255 je Kanal
   MAX_STAERKE = 255   # XP: Flash-Stärke 0..255
+  MIN_SHAKE = 1       # XP: Stärke/Geschwindigkeit 1..9
+  MAX_SHAKE = 9
 
   @tone = nil          # { r:, g:, b:, gray: } aktuell
   @tone_von = nil      # Ausgangswert des laufenden Übergangs
@@ -38,11 +45,13 @@ module ScreenFx
   @tone_rest = 0.0     # Sekunden
   @tone_dauer = 0.0
   @flash = nil         # { farbe:, strength:, dauer:, rest: }
+  @shake = nil         # { power:, speed:, dauer:, rest:, phase:, x:, y: }
 
   class << self
     # Leser mit eigenem Namen: `tone`/`flash` sind die Setter (XP-Stil).
     def tone_aktuell = @tone
     def flash_aktuell = @flash
+    def shake_aktuell = @shake
 
     def frame_rate
       defined?(Graphics) && Graphics.respond_to?(:frame_rate) ? Graphics.frame_rate.to_f : 40.0
@@ -89,6 +98,22 @@ module ScreenFx
       true
     end
 
+    # Bildschirmwackeln (XP 225): power/speed 1..9, Dauer in Frames.
+    # Rückgabe false, wenn ein Wert außerhalb 1..9 bzw. frames negativ ist.
+    def shake(power: 5, speed: 5, frames: 40)
+      staerke = power.to_i
+      tempo = speed.to_i
+      return false unless staerke.between?(MIN_SHAKE, MAX_SHAKE) &&
+                          tempo.between?(MIN_SHAKE, MAX_SHAKE) && frames.to_i >= 0
+
+      dauer = dauer_sekunden(frames)
+      dauer = 1.0 / frame_rate if dauer.zero?
+      @shake = { power: staerke, speed: tempo, dauer: dauer, rest: dauer,
+                 phase: 0.0, x: 0.0, y: 0.0 }
+      Rune::Log.info("ScreenFx: Wackeln power=#{staerke} speed=#{tempo} (#{frames} Frames)")
+      true
+    end
+
     def update(dt)
       if @tone_ziel && @tone_rest.positive?
         @tone_rest = [@tone_rest - dt, 0.0].max
@@ -105,6 +130,23 @@ module ScreenFx
       end
       @flash[:rest] -= dt if @flash
       @flash = nil if @flash && @flash[:rest] <= 0.0
+
+      if @shake
+        @shake[:rest] = [@shake[:rest] - dt, 0.0].max
+        if @shake[:rest].zero?
+          @shake = nil
+          setze_kamera_wackeln(0.0, 0.0)
+        else
+          # Amplitude aus Stärke und Tempo (XP rechnet ähnlich in Pixeln),
+          # Abbau linear über die Restzeit, sinusförmiger Verlauf.
+          restanteil = @shake[:rest] / @shake[:dauer]
+          amplitude = @shake[:power] * (@shake[:speed] + 1) / 1000.0 * restanteil
+          @shake[:phase] += (@shake[:speed] + 1) * 0.9 * (dt * frame_rate)
+          @shake[:x] = amplitude * Math.sin(@shake[:phase])
+          @shake[:y] = amplitude * Math.cos(@shake[:phase]) * 0.5
+          setze_kamera_wackeln(@shake[:x], @shake[:y])
+        end
+      end
     end
 
     # Alles zurücksetzen (neues Spiel, F5) - XP: $game_screen = Game_Screen.new.
@@ -115,10 +157,12 @@ module ScreenFx
       @tone_rest = 0.0
       @tone_dauer = 0.0
       @flash = nil
+      @shake = nil
+      setze_kamera_wackeln(0.0, 0.0)
     end
 
     def aktiv?
-      !@tone.nil? || !@flash.nil?
+      !@tone.nil? || !@flash.nil? || !@shake.nil?
     end
 
     # Aktuelle Deckkraft des Blitzes (0..1) - für Tests und Skripte.
@@ -167,6 +211,14 @@ module ScreenFx
       if gray.positive?
         Rune::Gfx.rect(0, 0, w, h, 0x808080, gray / MAX_TONE.to_f * 0.40)
       end
+    end
+
+    # Kamera-Versatz setzen, wenn die Engine ihn anbietet (kopflose Tests
+    # ersetzen Rune::Camera durch eine Attrappe).
+    def setze_kamera_wackeln(x, y)
+      return unless defined?(Rune::Camera) && Rune::Camera.respond_to?(:shake=)
+
+      Rune::Camera.shake = [x, y]
     end
 
     def dauer_sekunden(frames)

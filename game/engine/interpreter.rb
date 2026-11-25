@@ -61,6 +61,7 @@
 #    {"cmd":"name_input","actor":"arik","max":8,"cancel":true}  (Name, 20e; XP 303)
 #    {"cmd":"screen_tone","r":-34,"g":0,"b":68,"gray":0,"frames":60} (20f; XP 223)
 #    {"cmd":"flash","color":"weiss","strength":255,"frames":20}       (20f; XP 224)
+#    {"cmd":"shake","power":5,"speed":5,"frames":40}         (Wackeln, 20f; XP 225)
 #    {"cmd":"menu"}                                        (Menü öffnen, 20f; XP 351)
 #    {"cmd":"if_battle_result","result":"sieg","then":[],"else":[]}   (20f; XP 601-603)
 #    {"cmd":"if_actor","name":"arik","then":[],"else":[]}   (Wenn Actor, 20d)
@@ -374,6 +375,9 @@ class Interpreter
         else
           Rune::Log.warn('Interpreter: menu ohne $game_temp (Kopfloser Lauf?)')
         end
+      when 'shake'   # Etappe 20f (XP 225): Bildschirmwackeln über die Kamera
+        ScreenFx.shake(power: cmd['power'] || 5, speed: cmd['speed'] || 5,
+                       frames: cmd['frames'] || 40)
       when 'screen_tone'   # Etappe 20f (XP 223): Bildschirmton, frames = Übergang
         ScreenFx.tone(r: cmd['r'], g: cmd['g'], b: cmd['b'],
                       gray: cmd['gray'], frames: cmd['frames'])

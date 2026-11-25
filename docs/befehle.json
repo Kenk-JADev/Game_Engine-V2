@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "stand": "Etappe 20f (Runde 32): 55 Befehle",
+  "stand": "Etappe 20f (Runde 32): 56 Befehle",
   "zweck": "Quellen-Register der Event-Befehlstypen. Vier Stellen im Baum müssen zu dieser Liste passen: CMD_TYPES (game/engine/mapcheck.rb), die Ausführung (game/engine/interpreter.rb), ISSUE_CMD_TYPES (src/editor/editor_main.cpp) und EvType/EV_TYPES (src/editor/event_form.h). Ein neuer Befehl ist erst fertig, wenn er hier UND in allen vier Stellen steht; tools/befehle_test.rb meldet die Lücke vor dem Commit.",
   "reihenfolge": "Die Reihenfolge ist die des Registers; die vier Stellen halten dieselbe Reihenfolge ein, damit Diffs lesbar bleiben.",
   "bereiche": [
@@ -599,6 +599,17 @@
       ],
       "optional": [],
       "beschreibung": "Verzweigt nach dem Ergebnis des letzten Kampfs: sieg, flucht oder niederlage (XP 601/602/603). Ohne Kampf gilt der Sonst-Zweig."
+    },
+    {
+      "typ": "shake",
+      "bereich": "Bild",
+      "pflicht": [],
+      "optional": [
+        "power",
+        "speed",
+        "frames"
+      ],
+      "beschreibung": "Schuettelt die Kamera (XP 225): Staerke und Tempo 1..9, Dauer in Frames (40/s); ohne Angaben 5/5/40."
     }
   ]
 }

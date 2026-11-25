@@ -79,7 +79,7 @@ module MapCheck
     actor_hp actor_sp actor_exp actor_level
     party_member shop name_input
     screen_tone flash
-    menu if_battle_result
+    menu if_battle_result shake
   ].freeze
 
   TRIGGER   = %w[action touch auto parallel].freeze
@@ -1178,6 +1178,22 @@ module MapCheck
         end
         if typ == 'actor_level' && c['amount'].is_a?(Numeric) && c['amount'].to_i.abs > 99
           melde(WARNUNG, w, "'amount' übersteigt den Stufenbereich")
+        end
+      when 'shake'
+        # Etappe 20f (XP 225): Stärke und Tempo 1..9, Dauer in Frames.
+        %w[power speed].each do |k|
+          if c.key?(k)
+            wert = c[k]
+            melde(FEHLER, w, "'#{k}' muss eine ganze Zahl von 1 bis 9 sein") unless
+              wert.is_a?(Numeric) && wert.to_i == wert && wert.between?(1, 9)
+          end
+        end
+        melde(FEHLER, w, "'frames' muss eine Zahl >= 0 sein") if c.key?('frames') &&
+          !(zahl?(c['frames']) && c['frames'].to_f >= 0)
+        melde(WARNUNG, w, 'shake ohne Werte - es wackelt mit 5/5 über 40 Frames') unless
+          c.key?('power') || c.key?('speed') || c.key?('frames')
+        if !c.key?('frames') && (c.key?('power') || c.key?('speed'))
+          melde(WARNUNG, w, "'frames' fehlt - es wackelt über 40 Frames")
         end
       when 'screen_tone'
         # Etappe 20f (XP 223): Ton je Kanal -255..255, frames = Übergangsdauer.

@@ -1,7 +1,7 @@
 # Etappe 20f — Checkliste (Bildschirm-Ebenen)
 
 Diese Checkliste ist die Abhakliste für Etappe 20f. Stand: **Runde 32 —
-Ton, Blitz, Menü-Befehl und Ergebniszweige fertig (F1/F2/F5/F6, Register 55), Wackeln/Bilder offen**.
+Ton, Blitz, Wackeln, Menü-Befehl und Ergebniszweige fertig (F1/F2/F3/F5/F6, Register 56) — offen nur noch F4 (Bilder 231–235, braucht den UI-Bildlader)**.
 
 Legende: `[x]` erledigt und committet · `[~]` erledigt, CI offen · `[ ]` offen
 
@@ -28,7 +28,7 @@ Register → `CMD_TYPES` → Interpreter → `ISSUE_CMD_TYPES` → `docs/befehle
 - [x] **F2 — Blitz (XP 224):** `{"cmd":"flash","color":"weiss","strength":255,"frames":20}`;
       Farbwahl weiß/rot/grün/blau/gelb (XP-Farbtöne), Stärke 0..255, kurzer
       Alpha-Verlauf; im selben Modul wie F1, `frames: 0` = ein Frame
-- [ ] **F3 — Wackeln (XP 225):** `{"cmd":"shake","power":4,"speed":5,"frames":40}`;
+- [x] **F3 — Wackeln (XP 225):** `{"cmd":"shake","power":4,"speed":5,"frames":40}`;
       Kamera-Offset in der UI-Schicht (oder dokumentiert als „ohne Kamera-Wackeln“,
       falls der Renderer das nicht hergibt) — **erst prüfen**, dann bauen
 - [ ] **F4 — Bilder (XP 231–235):** `$game_screen.pictures` bekommt Wirkung:

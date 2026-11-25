@@ -1216,7 +1216,7 @@ const char* const ISSUE_CMD_TYPES[] = {
     "button_input", "text_options", "common_event",
     "if_gold", "if_item", "if_script", "if_actor", "if_button",
     "save_access", "menu_access", "encounter_access", "timer",
-    "actor_hp", "actor_sp", "actor_exp", "actor_level", "party_member", "shop", "name_input", "screen_tone", "flash", "menu", "if_battle_result"
+    "actor_hp", "actor_sp", "actor_exp", "actor_level", "party_member", "shop", "name_input", "screen_tone", "flash", "menu", "if_battle_result", "shake"
 };
 const int ISSUE_CMD_TYPE_COUNT =
     static_cast<int>(sizeof(ISSUE_CMD_TYPES) / sizeof(ISSUE_CMD_TYPES[0]));
@@ -7213,7 +7213,9 @@ const wchar_t* const EV_TYPE_LABELS[ET_COUNT] = {
     // Etappe 20f: Menü öffnen (XP 351).
     L"[System] Menü öffnen",
     // Etappe 20f: Ergebnis-Abfrage (XP 601–603).
-    L"[Kampf] Wenn Ergebnis"
+    L"[Kampf] Wenn Ergebnis",
+    // Etappe 20f: Bildschirmwackeln (XP 225).
+    L"[Bild] Wackeln"
 };
 const wchar_t* const EV_TRIGGERS[4] = { L"action", L"touch", L"auto", L"parallel" };
 const wchar_t* const EV_OPS[6] = { L"==", L"!=", L"<", L"<=", L">", L">=" };
@@ -7448,6 +7450,10 @@ std::string ev_cmd_label(const JsonValue& c) {
                ev_num_str(ev_num_of(c, "amount"), 0);
     }
     if (type == "menu") return "Menü öffnen";
+    if (type == "shake")
+        return "Bildschirmwackeln " + ev_num_str(ev_num_of(c, "power", 5.0), 0) + "/" +
+               ev_num_str(ev_num_of(c, "speed", 5.0), 0) + " (" +
+               ev_num_str(ev_num_of(c, "frames", 40.0), 0) + " Frames)";
     if (type == "if_battle_result")
         return "Wenn Kampf " + ev_str_of(c, "result", "sieg");
     if (type == "screen_tone") {
@@ -7787,7 +7793,7 @@ void ev_cmd_visibility() {
                           t == ET_ACTOR_HP || t == ET_ACTOR_SP || t == ET_ACTOR_EXP ||
                           t == ET_ACTOR_LEVEL || t == ET_PARTY_MEMBER || t == ET_SHOP ||
                           t == ET_NAME_INPUT || t == ET_SCREEN_TONE || t == ET_FLASH ||
-                          t == ET_MENU || t == ET_IF_BATTLE_RESULT ||
+                          t == ET_MENU || t == ET_IF_BATTLE_RESULT || t == ET_SHAKE ||
                           t == ET_SAVE_ACCESS || t == ET_MENU_ACCESS ||
                           t == ET_ENCOUNTER_ACCESS;
     show(g_ev.lbl_text, is_text || has_hint);
@@ -7918,6 +7924,13 @@ void ev_cmd_visibility() {
     }
     if (t == ET_MENU) SetWindowTextW(g_ev.lbl_text,
         L"Öffnet das Spielmenü (XP 351) - wie $game_temp.menu_calling aus einem Script.");
+    if (t == ET_SHAKE) {
+        SetWindowTextW(g_ev.lbl_val1, L"Stärke (1-9)");
+        SetWindowTextW(g_ev.lbl_val2, L"Tempo (1-9)");
+        SetWindowTextW(g_ev.lbl_val3, L"Dauer (Frames)");
+        SetWindowTextW(g_ev.lbl_text,
+                       L"Schüttelt die Kamera mit abnehmender Stärke (XP 225).");
+    }
     if (t == ET_SCREEN_TONE) {
         SetWindowTextW(g_ev.lbl_name, L"Farbton r,g,b,grau (-255..255)");
         SetWindowTextW(g_ev.lbl_val1, L"Dauer (Frames)");

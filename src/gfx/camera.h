@@ -39,6 +39,13 @@ public:
     // > 0: Kamera wurde über ein niedriges Hindernis gehoben (Zaun, Brunnen).
     float collision_lift = 0.0f;
 
+    // Bildschirmwackeln (Etappe 20f, XP 225): Versatz in Metern entlang der
+    // Kamera-Rechts- und -Hochachse. Wird nur beim Bildaufbau addiert, damit
+    // Picking und Spielerposition unberührt bleiben; ScreenFx setzt die Werte
+    // pro Frame aus Stärke/Speed/Dauer.
+    float shake_x = 0.0f;
+    float shake_y = 0.0f;
+
     // Blickrichtung (auch für den Kamera-Kollisions-Check in main.cpp).
     math::Vec3 forward() const;
 

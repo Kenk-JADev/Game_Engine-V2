@@ -45,7 +45,7 @@ enum EvType {
     ET_IF_GOLD, ET_IF_ITEM, ET_IF_SCRIPT, ET_IF_ACTOR, ET_IF_BUTTON,
     ET_SAVE_ACCESS, ET_MENU_ACCESS, ET_ENCOUNTER_ACCESS,
     ET_TIMER, ET_ACTOR_HP, ET_ACTOR_SP, ET_ACTOR_EXP, ET_ACTOR_LEVEL,
-    ET_PARTY_MEMBER, ET_SHOP, ET_NAME_INPUT, ET_SCREEN_TONE, ET_FLASH, ET_MENU, ET_IF_BATTLE_RESULT, ET_COUNT
+    ET_PARTY_MEMBER, ET_SHOP, ET_NAME_INPUT, ET_SCREEN_TONE, ET_FLASH, ET_MENU, ET_IF_BATTLE_RESULT, ET_SHAKE, ET_COUNT
 };
 inline constexpr const char* const EV_TYPES[ET_COUNT] = {
     "text", "choices", "log", "wait", "switch", "toggle_switch", "variable",
@@ -57,7 +57,7 @@ inline constexpr const char* const EV_TYPES[ET_COUNT] = {
     "if_gold", "if_item", "if_script", "if_actor", "if_button",
     "save_access", "menu_access", "encounter_access", "timer",
     "actor_hp", "actor_sp", "actor_exp", "actor_level", "party_member", "shop", "name_input", "screen_tone", "flash",
-    "menu", "if_battle_result"
+    "menu", "if_battle_result", "shake"
 };
 inline constexpr const char* const EVENT_TRIGGERS[] = {"action", "touch", "auto", "parallel"};
 inline constexpr const char* const EVENT_OPS[] = {"==", "!=", "<", "<=", ">", ">="};
@@ -88,6 +88,7 @@ inline bool event_command_uses_field(int type, size_t field) {
             type == ET_PARTY_MEMBER || type == ET_NAME_INPUT || type == ET_SCREEN_TONE ||
             type == ET_FLASH || type == ET_IF_BATTLE_RESULT;
         case 1: return type == ET_WAIT || type == ET_VARIABLE || type == ET_IF_VARIABLE ||
+            type == ET_SHAKE ||
             type == ET_TELEPORT || type == ET_MOVE_PLAYER || type == ET_SOUND || type == ET_EFFECT ||
             type == ET_GOLD || type == ET_HEAL || type == ET_WEATHER || type == ET_SAVE_GAME ||
             type == ET_LOAD_GAME || type == ET_FADE || type == ET_MOVE_ROUTE || type == ET_INPUT_NUMBER ||
@@ -96,9 +97,10 @@ inline bool event_command_uses_field(int type, size_t field) {
             type == ET_ACTOR_EXP || type == ET_ACTOR_LEVEL || type == ET_PARTY_MEMBER ||
             type == ET_NAME_INPUT || type == ET_SCREEN_TONE || type == ET_FLASH;
         case 2: return type == ET_TELEPORT || type == ET_MOVE_PLAYER || type == ET_FLASH ||
+            type == ET_SHAKE ||
             type == ET_EFFECT || type == ET_ITEM || type == ET_MOVE_ROUTE || type == ET_INPUT_NUMBER ||
             type == ET_BATTLE || type == ET_TEXT_OPTIONS;
-        case 3: return type == ET_TELEPORT || type == ET_MOVE_ROUTE;
+        case 3: return type == ET_TELEPORT || type == ET_MOVE_ROUTE || type == ET_SHAKE;
         case 4: return type == ET_TEXT || type == ET_LOG || type == ET_CHOICES || type == ET_MOVE_ROUTE ||
             type == ET_SHOP || type == ET_VARIABLE ||
             type == ET_BUTTON_INPUT || type == ET_IF_SCRIPT;
@@ -691,6 +693,13 @@ inline EventCommandForm event_command_form_read(const JsonValue& c) {
             f.text = event_unique(c, "goods") ? event_goods_view(c.find("goods")) : "[mehrfach vorhanden]";
             break;
         case ET_IF_BATTLE_RESULT: f.name = text("result", "sieg"); break;
+        case ET_SHAKE:
+            // Etappe 20f (XP 225): Stärke, Tempo (je 1..9) und Dauer - die
+            // drei Zahlenfelder reichen, das Namensfeld bleibt frei.
+            f.val1 = num("power", "5");
+            f.val2 = num("speed", "5");
+            f.val3 = num("frames", "40");
+            break;
         case ET_SCREEN_TONE: {
             // Etappe 20f (XP 223): vier Kanäle in einem Feld, frames separat.
             auto kanal = [&](const char* key) {
@@ -1153,6 +1162,13 @@ inline EventEdit event_command_prepare(const JsonValue* existing, const EventCom
             }
             break;
         }
+        case ET_SHAKE:
+            // Etappe 20f (XP 225): power/speed 1..9, frames >= 0.
+            ok = v1("power", true, "5", true, true, 1, 9);
+            if (ok) ok = v2("speed", true, "5", true, true, 1, 9);
+            if (ok) ok = num("frames", "cmd_val3", before.val3, after.val3, true, "40",
+                             true, true, 0, unlimited);
+            break;
         case ET_SCREEN_TONE: {
             // Etappe 20f (XP 223): "r,g,b,grau" plus Dauer in Frames.
             if (fresh || before.name != after.name) {
