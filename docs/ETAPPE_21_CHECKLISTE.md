@@ -70,14 +70,24 @@ Dateizugriffe laufen über die **sichere Assets-Brücke**
   `fade_ms` + `AudioFiles.update(dt)` (nicht blockierend, Engine-Takt),
   pro Frame `Rune::Sound.volume(name, vol)`; danach Stopp und Kanal frei.
   `Audio.bgm_fade`/`bgs_fade` rechnen RGSS-Millisekunden in Sekunden um.
-- [~] **T6 — Tests:** `tools/audio_test.rb` prüft den WAV-Parser an
+- [x] **T6 — Tests:** `tools/audio_test.rb` prüft den WAV-Parser an
   eingebetteten Bytes (8/16 Bit, mono/stereo, kaputte Header, zu lang),
   Pitch-/Fade-Rechnung als reine Funktionen und die Befehle über den
   Interpreter (mit `Rune::Sound`-Attrappe). `json_test` bekommt die vier
   Beispiele und je einen Grenzfall (Lautstärke 101, Pitch 20, `seconds` < 0).
-- [ ] **T7 — Doku:** `architecture.md` (Abschnitt „Ton“), `XP_VERGLEICH.md`
+  Umgesetzt: `tools/wav_test.cpp` (18), `tools/ogg_test.cpp` (11),
+  `tools/audio_files_test.rb` (Fade/OGG), `tools/map_audio_test.rb` (12),
+  `tools/event_test.rb` (+6 Ton-Befehle) und `json_test` (+10 Grenzfälle,
+  860 Checks); ein eigener `tools/audio_test.rb` wurde bewusst nicht
+  angelegt, weil die WAV-/OGG-Prüfungen portabel in C++ liegen (CI ohne Ruby
+  schneller) und die Ruby-Seite in `audio_files_test` steckt.
+- [x] **T7 — Doku:** `architecture.md` (Abschnitt „Ton“), `XP_VERGLEICH.md`
   (241–246 von ⚠️/❌ auf ✅), `LOGIK_PRUEFUNG.md` (neuer AD-Eintrag),
   `HANDOFF` (Commit-Tabelle, nächste Etappe).
+  Umgesetzt: Abschnitt „Ton aus Dateien" in `architecture.md` (WAV, OGG,
+  Fade, Befehle, Kartenmusik), 241–246 in `XP_VERGLEICH.md` auf ✅/⚠️,
+  `LOGIK_PRUEFUNG.md` (AD.18 neu geschrieben, AD.19, Audit-Tabelle),
+  `HANDOFF` mit Commit-Tabelle 21-1 … 21-7.
 
 ## 2. Stand (Runde 34)
 
@@ -96,7 +106,8 @@ Ein neuer `loop`/`play` auf denselben Klang bricht einen laufenden Fade ab.
 Befehle (T4): `play_bgm`/`fadeout_bgm`/`play_bgs`/`fadeout_bgs` in Register,
 `CMD_TYPES`, `ISSUE_CMD_TYPES`, `EV_TYPES`, Interpreter, MapCheck und
 F6-Formular; `Audio.bgm_play` ersetzt eine laufende Musik (XP 241);
-`json_test` hat je Typ ein Beispiel (850 Checks), `tools/event_test.rb` prüft
+`json_test` hat je Typ ein Beispiel und zehn Grenzfälle zu den Ton-Befehlen
+(860 Checks), `tools/event_test.rb` prüft
 Weiterreichen und Klemmung der Ton-Befehle (6 Checks).
 
 Kartenmusik (T3, Runde 37): `map_audio.rb` startet `bgm`/`bgs` beim
@@ -109,9 +120,10 @@ dekodieren Vorbis nach mono/16 Bit/22050 Hz; `sound::load_audio` erkennt das
 Format selbst, `tools/ogg_test.cpp` prüft Dekodieren, Stereo→Mono, Resampling
 und Fehlerfälle.
 
-Offen: T3-Rest (F2-Formular für Karten-BGM), Doku-Feinschliff (T7) und der
-Rest von T6 (eigener Zuschnitt eines `audio_test.rb` bzw. weitere
-Grenzfälle).
+**Etappe 21 ist damit fertig** — T1 bis T7 sind abgehakt, alle CI-Jobs grün
+(Windows-Build inklusive). Bewusst offen geblieben (nicht Teil der Etappe):
+MP3 (kein Dekoder), `me_play` (XP 249) und `se_stop` (251), BGS merken/
+wiederherstellen (247/248).
 
 ## 3. Bekannte Eigenheiten
 

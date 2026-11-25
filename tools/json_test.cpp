@@ -1734,6 +1734,52 @@ void event_form_tests(const std::string& wurzel) {
     check("Schwarz ist gültige Farbe und Ersetzen extremer Farbe wird bestätigt", edit.ok && edit.replaces_invalid && edit.value.find("color")->number() == 0);
     cmd_after = cmd_before; cmd_after.val2 = "XX";
     check("ungültige Hex-Farbe wird nicht zu Standardfarbe", !event_command_prepare(&huge_color, cmd_before, cmd_after).ok);
+    // Etappe 21: Grenzfälle der Ton-Befehle 241/242/245/246 (T6).
+    {
+        const JsonValue musik = json_parse(
+            R"({"cmd":"play_bgm","name":"bgm/dorf.ogg","volume":100,"pitch":100})");
+        EventCommandForm mb = event_command_form_read(musik), ma = mb;
+        check("play_bgm: Lautstärke 100 bleibt gültig",
+              event_command_prepare(&musik, mb, ma).ok);
+        ma = mb; ma.val1 = "101";
+        check("play_bgm: Lautstärke 101 wird abgelehnt",
+              !event_command_prepare(&musik, mb, ma).ok);
+        ma = mb; ma.val2 = "20";
+        check("play_bgm: Pitch 20 wird abgelehnt", !event_command_prepare(&musik, mb, ma).ok);
+        ma = mb; ma.val1 = "0"; ma.val2 = "150";
+        const EventEdit rand = event_command_prepare(&musik, mb, ma);
+        check("play_bgm: Lautstärke 0 und Pitch 150 sind erlaubt",
+              rand.ok && rand.value.find("volume") && rand.value.find("volume")->number() == 0 &&
+                  rand.value.find("pitch") && rand.value.find("pitch")->number() == 150);
+        ma = mb; ma.name = "";
+        check("play_bgm: ohne Namen kein Ton", !event_command_prepare(&musik, mb, ma).ok);
+
+        const JsonValue bgs = json_parse(R"({"cmd":"play_bgs","name":"bgs/regen.ogg","volume":50})");
+        EventCommandForm bb = event_command_form_read(bgs), ba = bb;
+        check("play_bgs: fehlender Pitch zeigt den Default 100", bb.val2 == "100");
+        ba.val2 = "151";
+        check("play_bgs: Pitch 151 wird abgelehnt", !event_command_prepare(&bgs, bb, ba).ok);
+
+        const JsonValue fade = json_parse(R"({"cmd":"fadeout_bgm","seconds":2})");
+        EventCommandForm fb = event_command_form_read(fade), fa = fb;
+        fa.val1 = "-1";
+        check("fadeout_bgm: negative Dauer wird abgelehnt",
+              !event_command_prepare(&fade, fb, fa).ok);
+        fa.val1 = "0";
+        check("fadeout_bgm: 0 Sekunden (sofort) ist erlaubt",
+              event_command_prepare(&fade, fb, fa).ok);
+        fa.val1 = "0.25";
+        const EventEdit fedit = event_command_prepare(&fade, fb, fa);
+        check("fadeout_bgm: Nachkommastellen werden übernommen",
+              fedit.ok && fedit.value.find("seconds") &&
+                  std::fabs(fedit.value.find("seconds")->number() - 0.25) < 1e-9);
+
+        const JsonValue bgsfade = json_parse(R"({"cmd":"fadeout_bgs","seconds":1})");
+        EventCommandForm fbb = event_command_form_read(bgsfade), fba = fbb;
+        fba.val1 = "601";
+        check("fadeout_bgs: mehr als 600 Sekunden wird abgelehnt",
+              !event_command_prepare(&bgsfade, fbb, fba).ok);
+    }
     const JsonValue malformed_list = json_parse(R"({"cmd":"text","lines":["a",{"extra":7},"b"]})");
     cmd_before = event_command_form_read(malformed_list); cmd_after = cmd_before; cmd_after.text = "neu";
     check("Ersetzen nicht darstellbarer Textliste erfordert Warnung", event_command_prepare(&malformed_list, cmd_before, cmd_after).replaces_invalid);
