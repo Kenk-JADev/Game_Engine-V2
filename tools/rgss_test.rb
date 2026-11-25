@@ -506,7 +506,9 @@ end
 AudioFiles.aktiv = false
 
 puts '== Etappe 22: bgm_memorize/bgm_restore, playing_bgm =='
-RGSS.reset!
+# Frisches GameSystem statt RGSS.reset!: reset! laesst $game_system stehen,
+# der Merker soll hier aber leer starten.
+$game_system = RGSS::GameSystem.new
 Rune::Sound::CALLS.clear
 $game_system.bgm_play({ 'name' => 'dorf', 'volume' => 70, 'pitch' => 120 })
 check('playing_bgm liefert den Eintrag') { $game_system.playing_bgm['name'] == 'dorf' }
@@ -528,7 +530,7 @@ check('leerer Name stoppt ebenfalls') do
   $game_system.playing_bgm.nil?
 end
 
-RGSS.reset!
+$game_system = RGSS::GameSystem.new
 $game_system.bgs_play({ 'name' => 'regen', 'volume' => 40 })
 $game_system.bgs_memorize
 $game_system.bgs_play({ 'name' => 'wind', 'volume' => 100 })
@@ -538,7 +540,7 @@ check('bgs_memorize/bgs_restore') do
     Rune::Sound::CALLS.last == [:loop, 'regen', 0.4]
 end
 check('bgs_restore ohne Merker stoppt') do
-  RGSS.reset!
+  $game_system = RGSS::GameSystem.new
   Rune::Sound::CALLS.clear
   $game_system.bgs_restore
   $game_system.playing_bgs.nil?
