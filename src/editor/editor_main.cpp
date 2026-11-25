@@ -8026,7 +8026,7 @@ void ev_cmd_visibility() {
     // Etappe 23: Musik sichern/merken (XP 243/244/247/248), ohne Felder.
     if (t == ET_SAVE_BGM) SetWindowTextW(g_ev.lbl_text,
         L"Merkt die laufende Musik ($game_system.bgm_memorize, XP 243); "
-        L"„Musik zurückholen" spielt sie später wieder.");
+        L"„Musik zurückholen“ spielt sie später wieder.");
     if (t == ET_RESUME_BGM) SetWindowTextW(g_ev.lbl_text,
         L"Spielt die gemerkte Musik wieder (XP 244); ohne Merker stoppt sie.");
     if (t == ET_MEMORIZE_AUDIO) SetWindowTextW(g_ev.lbl_text,
