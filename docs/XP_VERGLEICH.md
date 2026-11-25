@@ -14,10 +14,10 @@ Rune3D (Stand nach 19y) steht — mit Blick darauf, was sich sinngemäß in 3D
 
 ---
 
-## 1. Event-Befehle — 92 XP-Befehle, 26 in Rune3D
+## 1. Event-Befehle — 92 XP-Befehle, 27 in Rune3D
 
 XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
-**48 Befehlstypen**. Bilanz: **37 ✅ · 6 ⚠️ · 49 ❌**.
+**49 Befehlstypen**. Bilanz: **37 ✅ · 7 ⚠️ · 48 ❌**.
 
 ### A. Nachricht & Ablaufsteuerung (101–119)
 
@@ -50,7 +50,7 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 | Items ändern | 126 | `item` | ✅ |
 | Waffen ändern | 127 | — | ❌ (keine Waffen in der DB) |
 | Rüstungen ändern | 128 | — | ❌ (keine Rüstungen in der DB) |
-| Party-Mitglied hinzufügen/entfernen | 129 | — | ❌ |
+| Party-Mitglied hinzufügen/entfernen | 129 | `party_member` (R29) mit `name` + `mode` add/remove | ⚠️ Aufnehmen/Entfernen wie XP; bewusst anders: das letzte Mitglied bleibt (XP erlaubt ein leeres Team) |
 | Windowskin | 131 | — | ❌ |
 | Kampf-BGM | 132 | — | ❌ |
 | Kampf-Ende-ME | 133 | — | ❌ |

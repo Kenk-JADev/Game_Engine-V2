@@ -257,7 +257,7 @@ check('if_button ohne Taste -> Fehler') do
   hat?(MapCheck.scan(karte_mit([{ 'cmd' => 'if_button', 'then' => [], 'else' => [] }]), **OPTS),
        "'name' fehlt oder ist leer", MapCheck::FEHLER)
 end
-check('alle 48 Befehlstypen im Register der Prüfung') { MapCheck::CMD_TYPES.size == 48 }
+check('alle 49 Befehlstypen im Register der Prüfung') { MapCheck::CMD_TYPES.size == 49 }
 
 puts($fail.zero? ? 'ALLE CHECKS GRUEN' : "#{$fail} CHECK(S) FEHLGESCHLAGEN")
 exit($fail.zero? ? 0 : 1)

@@ -77,6 +77,7 @@ module MapCheck
     save_access menu_access encounter_access
     timer
     actor_hp actor_sp actor_exp actor_level
+    party_member
   ].freeze
 
   TRIGGER   = %w[action touch auto parallel].freeze
@@ -94,6 +95,8 @@ module MapCheck
   # eigene Liste, weil mapcheck.rb vor common_events.rb geladen wird).
   COMMON_TRIGGER = %w[none autorun parallel].freeze
   TIMER_MODI = %w[start stop].freeze     # Etappe 20d (XP 124)
+  # Etappe 20d: Mitglieder aendern (XP 129) - XP kennt nur add/remove.
+  PARTY_MODI = %w[add remove].freeze
   # Etappe 20d: Operationen von `variable` (XP 122) - dieselbe Liste wie
   # EVENT_VAR_OPS im Editor (sync_test vergleicht beide).
   VARIABLE_OPS = %w[set add sub mul div mod].freeze
@@ -1155,6 +1158,24 @@ module MapCheck
         end
         if typ == 'actor_level' && c['amount'].is_a?(Numeric) && c['amount'].to_i.abs > 99
           melde(WARNUNG, w, "'amount' übersteigt den Stufenbereich")
+        end
+      when 'party_member'
+        # Etappe 20d: Mitglied aufnehmen/entfernen (XP 129). `name` ist der
+        # Actor (ID oder Name aus database.json), `mode` add/remove.
+        modus = c.key?('mode') ? c['mode'].to_s.strip.downcase : 'add'
+        modus = 'add' if modus.empty?
+        unless PARTY_MODI.include?(modus)
+          melde(FEHLER, w, "unbekannter party_member-Modus '#{modus}' (add/remove)")
+        end
+        ziel = c['name'].to_s.strip
+        if ziel.empty?
+          melde(FEHLER, w, "'name' fehlt oder ist leer")
+        else
+          namen = (Database.database['actors'] || []).filter_map do |h|
+            h.is_a?(Hash) ? [h['id'].to_s, (h['name'] || h['id']).to_s] : nil
+          end
+          bekannt = namen.any? { |id, name| ziel.casecmp?(id) || ziel.casecmp?(name) }
+          melde(WARNUNG, w, "Actor '#{ziel}' nicht in database.json") unless bekannt
         end
       when 'timer'
         # Etappe 20d: Timer steuern (XP 124).

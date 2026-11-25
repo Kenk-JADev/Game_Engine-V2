@@ -2,19 +2,19 @@
 
 Diese Checkliste ist die Abhakliste für Etappe 20d. Sie steht im Repo, damit
 jede Sitzung (Mensch oder KI) den Stand ohne Rätselraten sieht: Was ist fertig,
-was fehlt, und woran erkennt man „fertig". Stand: **Runde 28**.
+was fehlt, und woran erkennt man „fertig". Stand: **Runde 29 — Etappe 20d
+abgeschlossen**.
 
 Legende: `[x]` erledigt und committet · `[~]` erledigt, CI offen · `[ ]` offen
 
-**Kurzfassung Stand (Runde 28, alle Commits CI-grün):** Die Pakete
-Bedingungen/Sperren (111 Gold/Item/Script/Actor/Taste + 134/135/136), Timer
-(124) mit Anzeige, `$game_temp`-Calling-Flags, Wert-Befehle (311/312/315/316)
-und Variable-Operationen (122) sind **fertig**. Registerstand **48 Typen**.
+**Kurzfassung Stand (Runde 29, alle Commits CI-grün):** Alle sechs Pakete
+sind **fertig** — Bedingungen/Sperren (111 Gold/Item/Script/Actor/Taste +
+134/135/136), Timer (124) mit Anzeige, `$game_temp`-Calling-Flags,
+Wert-Befehle (311/312/315/316), Variable-Operationen/Quellen (122) und
+Mitglieder ändern (129) samt Mitglieder-Modell. Registerstand **49 Typen**.
 
-**Es fehlt noch ein Paket:** `party_member` (129). Es braucht zuerst ein
-Mitglieder-Modell (`Party.setup` nimmt heute alle Datenbank-Helden ins Team,
-`snapshot`/`restore!` kennen keine Mitgliederliste) — sonst entstehen
-inkonsistente Spielstände. Details in Abschnitt 3.
+**20d ist damit abgeschlossen.** Was bewusst offen bleibt, steht in
+Abschnitt 3 unter „Nicht in 20d" (kein offener Haken mehr).
 
 ## 0. Definition of Done für JEDEN neuen Befehlstyp
 
@@ -41,9 +41,9 @@ Ein Befehl gilt erst als fertig, wenn **alle** Punkte stimmen:
 
 ## 1. Registerstand
 
-- [x] **48 Befehlstypen** statt 35 (35 + acht Bedingungen/Sperren + Timer
-      + vier Wert-Befehle)
-- [ ] Ziel am Ende von 20d: alle geplanten Typen eingetragen (siehe 3.)
+- [x] **49 Befehlstypen** statt 35 (35 + acht Bedingungen/Sperren + Timer
+      + vier Wert-Befehle + Variable-Quellen + Mitglieder)
+- [x] Ziel am Ende von 20d: alle geplanten Typen eingetragen (siehe 3.)
 
 ## 2. Fertig in Runde 28
 
@@ -69,12 +69,12 @@ Ein Befehl gilt erst als fertig, wenn **alle** Punkte stimmen:
       Wenn-Typen (`op_feld`-Lambda)
 - [x] Zweige der neuen Wenn-Typen im F6-Baum einfügbar/bearbeitbar und im
       Editor-Issue-Scan rekursiv geprüft (`event_cmd_has_branches`)
-- [x] Tests: `bedingungen_test.rb` (26), `timer_test.rb` (20),
-      `temp_flags_test.rb` (14), `actor_wert_test.rb` (24),
-      `variable_ops_test.rb` (36), `bedingungen_test.rb` 34, `json_test` 769,
-      `sync_test` grün,
+- [x] Tests: `bedingungen_test.rb` (34), `timer_test.rb` (20),
+      `temp_flags_test.rb` (17), `actor_wert_test.rb` (24),
+      `variable_ops_test.rb` (36), `party_member_test.rb` (29),
+      `json_test` 778, `sync_test` 46 grün,
       `mapcheck_test` 105 `ok`
-- [x] Doku nachgezogen (42 Typen, Bilanz 34 ✅ · 9 ⚠️ · 49 ❌)
+- [x] Doku nachgezogen (49 Typen, Bilanz 37 ✅ · 7 ⚠️ · 48 ❌)
 
 ## 3. Offen in 20d
 
@@ -89,19 +89,27 @@ Ein Befehl gilt erst als fertig, wenn **alle** Punkte stimmen:
 - [x] **Bedingungsquellen Actor/Button** (XP 111): `if_actor` (Team-Mitglied)
       und `if_button` (Taste im Druckframe); Timer/Enemy/Character/Weapon/
       Armor bleiben bewusst offen (keine Daten bzw. kein Zeitgeber als Seite)
-- [ ] **`party_member`** (XP 129) — Mitglied hinzufügen/entfernen. **Achtung:**
-      dafür fehlt das Modell (Party.setup nimmt alle Datenbank-Helden ins Team,
-      `snapshot`/`restore!` kennen keine Mitgliederliste) — erst Mitgliederliste
-      + Spielstand + Menü/Battle prüfen, sonst inkonsistente Spielstände
-- [ ] **Werte-Befehle erweitern:** Operand „Variable" (XP erlaubt statt
-      Konstante `variable[x]`) und Ziel „ganze Party" bei `actor_exp` prüfen
+- [x] **`party_member`** (XP 129) — `Party` hat jetzt `@katalog` (alle
+      Datenbank-Helden) + `@actors` (Mitglieder, Reihenfolge = Beitritt),
+      `member_add`/`member_remove`/`member?`; `snapshot` führt die Mitglieder
+      (`actors`), `restore!` baut `@actors` daraus neu auf (alte Saves ohne
+      `actors` behalten das Team). Befehl `party_member` mit `name` + `mode`
+      add/remove, MapCheck prüft Modus und Actor, Formular moderiert den Modus
+      (wie `fade`). Das **letzte Mitglied bleibt** (XP erlaubt ein leeres Team;
+      Kampf/Menü/Spielstand bräuchten dafür eigene Regeln) — MapCheck und
+      Interpreter melden den Versuch. `if_actor` fragt jetzt die Mitgliederliste
+      statt „alle Datenbank-Helden". Test: `tools/party_member_test.rb` (29)
+- [x] **Werte-Befehle:** Ziel „ganze Party" ist über `target: "alle"` (und
+      leeres Ziel) abgedeckt
+- [ ] **Nicht in 20d:** Operand „Variable" bei den Wert-Befehlen (XP erlaubt
+      `variable[x]` statt Konstante) — braucht einen zweiten Operanden-Typ im
+      Formular; als Roadmap-Punkt weitergeführt
 - [x] **`player_transferring`:** Startposition `player_new_x/y` (Weltkoordinaten,
       `0/0` = bisherige Stelle) und `player_new_direction` (2/4/6/8 → Yaw-Tabelle
       `RICHTUNG_YAW`) werden angewendet; Test in `temp_flags_test.rb`
-- [ ] MapCheck-Regeln für alle neuen Typen, Register/Doku/Zählungen wie in 0.
-- [x] Abschlussrunde: Bilanz neu (48 Typen, 37 ✅ · 6 ⚠️ · 49 ❌), `HANDOFF`
-      mit Runden-Nr., CI grün. **20d bleibt offen** wegen der drei Punkte oben
-      (Variable-Quellen, `party_member`, Reste aus Abschnitt 3).
+- [x] MapCheck-Regeln für alle neuen Typen, Register/Doku/Zählungen wie in 0.
+- [x] Abschlussrunde: Bilanz neu (49 Typen, 37 ✅ · 7 ⚠️ · 48 ❌), `HANDOFF`
+      mit Runden-Nr., CI grün. **20d ist abgeschlossen.**
 
 ## 4. Bekannte Eigenheiten (nicht nochmal darüber stolpern)
 

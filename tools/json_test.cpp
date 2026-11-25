@@ -1595,9 +1595,10 @@ void event_form_tests(const std::string& wurzel) {
         R"({"cmd":"actor_hp","target":"alle","amount":-20})",
         R"({"cmd":"actor_sp","amount":10})",
         R"({"cmd":"actor_exp","target":"arik","amount":50})",
-        R"({"cmd":"actor_level","amount":1})"
+        R"({"cmd":"actor_level","amount":1})",
+        R"({"cmd":"party_member","name":"arik","mode":"add"})"
     };
-    check("Beispiel für jeden der 48 Befehlstypen vorhanden", samples.size() == ET_COUNT);
+    check("Beispiel für jeden Befehlstyp vorhanden", samples.size() == ET_COUNT);
     for (size_t i = 0; i < samples.size(); ++i) {
         JsonValue c = json_parse(samples[i]); c.set("extra_meta", json_parse(R"({"n":9007199254740993})"));
         const EventCommandForm f = event_command_form_read(c);
@@ -3061,6 +3062,31 @@ int main(int argc, char** argv) {
                   zurueck.find("terrain")->find("heights") != nullptr);
             check("Roundtrip ist idempotent", json_write(zurueck) == out);
         }
+    }
+
+    std::printf("== Event-Befehl: Mitglieder ändern (20d, XP 129) ==\n");
+    {
+        using namespace rune::editor;
+        JsonValue pm = json_parse(R"({"cmd":"party_member","name":"arik","mode":"remove"})");
+        EventCommandForm pmf = event_command_form_read(pm);
+        check("party_member liest Actor und Modus",
+              pmf.type == ET_PARTY_MEMBER && pmf.name == "arik" && pmf.val1 == "remove");
+        JsonValue ohne_mode = json_parse(R"({"cmd":"party_member","name":"mira"})");
+        const EventCommandForm ohne_f = event_command_form_read(ohne_mode);
+        check("party_member ohne mode zeigt add", ohne_f.val1 == "add");
+        const EventEdit ohne_e = event_command_prepare(&ohne_mode, ohne_f, ohne_f);
+        check("party_member ohne mode bleibt unverändert",
+              ohne_e.ok && !ohne_e.changed && json_write(ohne_e.value) == json_write(ohne_mode));
+        EventCommandForm gross = pmf; gross.val1 = "REMOVE";
+        const EventEdit e1 = event_command_prepare(&pm, pmf, gross);
+        check("party_member-Modus wird kleingeschrieben",
+              e1.ok && e1.value.find("mode") && e1.value.find("mode")->str == "remove");
+        EventCommandForm falsch = pmf; falsch.val1 = "manchmal";
+        const EventEdit e2 = event_command_prepare(&pm, pmf, falsch);
+        check("unbekannter party_member-Modus wird abgelehnt", !e2.ok && e2.field == "cmd_val1");
+        EventCommandForm leer = pmf; leer.name = "";
+        const EventEdit e3 = event_command_prepare(&pm, pmf, leer);
+        check("party_member ohne Actor wird abgelehnt", !e3.ok && e3.field == "cmd_name");
     }
 
     std::printf("== JSON: Projekt-Systemdaten ==\n");

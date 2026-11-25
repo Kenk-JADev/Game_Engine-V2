@@ -1216,7 +1216,7 @@ const char* const ISSUE_CMD_TYPES[] = {
     "button_input", "text_options", "common_event",
     "if_gold", "if_item", "if_script", "if_actor", "if_button",
     "save_access", "menu_access", "encounter_access", "timer",
-    "actor_hp", "actor_sp", "actor_exp", "actor_level"
+    "actor_hp", "actor_sp", "actor_exp", "actor_level", "party_member"
 };
 const int ISSUE_CMD_TYPE_COUNT =
     static_cast<int>(sizeof(ISSUE_CMD_TYPES) / sizeof(ISSUE_CMD_TYPES[0]));
@@ -7201,7 +7201,9 @@ const wchar_t* const EV_TYPE_LABELS[ET_COUNT] = {
     L"[System] Zufallskämpfe erlauben",
     L"[System] Timer",
     L"[Party] HP ändern", L"[Party] SP ändern", L"[Party] EXP ändern",
-    L"[Party] Stufe ändern"
+    L"[Party] Stufe ändern",
+    // Etappe 20d: Mitgliederliste ändern (XP 129).
+    L"[Party] Mitglieder ändern"
 };
 const wchar_t* const EV_TRIGGERS[4] = { L"action", L"touch", L"auto", L"parallel" };
 const wchar_t* const EV_OPS[6] = { L"==", L"!=", L"<", L"<=", L">", L">=" };
@@ -7434,6 +7436,11 @@ std::string ev_cmd_label(const JsonValue& c) {
                                                     : "Stufe";
         return was + " " + (ziel.empty() ? std::string("alle") : ziel) + " " +
                ev_num_str(ev_num_of(c, "amount"), 0);
+    }
+    if (type == "party_member") {
+        const std::string modus = ev_str_of(c, "mode", "add");
+        return std::string(modus == "remove" ? "Mitglied entfernen: " : "Mitglied aufnehmen: ") +
+               ev_str_of(c, "name");
     }
     if (type == "timer") {
         const std::string modus = ev_str_of(c, "mode", "start");
@@ -7743,7 +7750,7 @@ void ev_cmd_visibility() {
                           t == ET_IF_ACTOR || t == ET_IF_BUTTON ||
                           t == ET_VARIABLE ||
                           t == ET_ACTOR_HP || t == ET_ACTOR_SP || t == ET_ACTOR_EXP ||
-                          t == ET_ACTOR_LEVEL ||
+                          t == ET_ACTOR_LEVEL || t == ET_PARTY_MEMBER ||
                           t == ET_SAVE_ACCESS || t == ET_MENU_ACCESS ||
                           t == ET_ENCOUNTER_ACCESS;
     show(g_ev.lbl_text, is_text || has_hint);
@@ -7865,6 +7872,13 @@ void ev_cmd_visibility() {
         SetWindowTextW(g_ev.lbl_name, L"Taste (z. B. e, space, f1)");
         SetWindowTextW(g_ev.lbl_text,
                        L"Zweigt im Frame des Tastendrucks; Name wie bei der Tasteneingabe (XP 111).");
+    }
+    if (t == ET_PARTY_MEMBER) {
+        SetWindowTextW(g_ev.lbl_name, L"Actor (ID oder Name)");
+        SetWindowTextW(g_ev.lbl_val1, L"Modus (add/remove)");
+        SetWindowTextW(g_ev.lbl_text,
+                       L"add nimmt den Helden ins Team, remove entfernt ihn (das letzte Mitglied bleibt). "
+                       L"Team-Mitglieder steuern Kampf, Menü und Wenn-Actor (XP 129).");
     }
     if (t == ET_TIMER) { SetWindowTextW(g_ev.lbl_name, L"Modus (start/stop)");
                          SetWindowTextW(g_ev.lbl_val1, L"Sekunden");

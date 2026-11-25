@@ -325,6 +325,8 @@ class Interpreter
         Party.change_exp(cmd['target'], cmd['amount'])
       when 'actor_level'  # Etappe 20d: Stufe ändern (XP 316)
         Party.change_level(cmd['target'], cmd['amount'])
+      when 'party_member'   # Etappe 20d (XP 129): {"cmd":"party_member","name":"arik","mode":"add"}
+        mitglied(cmd)
       when 'heal'   # {"cmd":"heal"} = voll, {"cmd":"heal","amount":30}
         Party.heal_all(cmd.key?('amount') ? cmd['amount'].to_i : 0)
       when 'weather'   # {"cmd":"weather","name":"schnee","intensity":1.5} (Etappe 17h)
@@ -663,8 +665,38 @@ class Interpreter
     rechner.call(cmd, aktueller_wert)
   end
 
-  # Etappe 20d: "Wenn Actor" - XP fragt $game_party.actors, Rune3D hat alle
-  # Datenbank-Helden im Team (Party.setup), darum genügt die Existenz.
+  # Etappe 20d (XP 129, Kommando "Mitglieder ändern"): add/remove. XP kennt
+  # nur add/remove; alles andere landet im Issue-Backlog, damit ein Tippfehler
+  # im Karteneditor nicht still das Team umbaut.
+  def mitglied(cmd)
+    modus = cmd.key?('mode') ? cmd['mode'].to_s.strip.downcase : 'add'
+    modus = 'add' if modus.empty?
+    name = cmd['name'].to_s.strip
+    if name.empty?
+      Rune::Log.warn("Interpreter: party_member ohne name")
+      Issues.report('Interpreter', 'party_member ohne name')
+      return
+    end
+    ergebnis = case modus
+               when 'add'    then Party.member_add(name)
+               when 'remove' then Party.member_remove(name)
+               else
+                 Rune::Log.warn("Interpreter: party_member-Modus '#{modus}' unbekannt")
+                 Issues.report('Interpreter', "party_member-Modus '#{modus}' unbekannt")
+                 return
+               end
+    case ergebnis
+    when :unbekannt
+      Rune::Log.warn("Interpreter: party_member '#{name}' nicht in der Datenbank")
+      Issues.report('Interpreter', "party_member '#{name}' nicht in der Datenbank")
+    when :letzter
+      Rune::Log.warn("Interpreter: party_member '#{name}' ist das letzte Mitglied")
+      Issues.report('Interpreter', "party_member: '#{name}' ist das letzte Mitglied und bleibt")
+    end
+  end
+
+  # Etappe 20d: "Wenn Actor" - XP fragt $game_party.actors, also die
+  # Mitgliederliste (Party.actors, seit party_member veraenderbar).
   def actor_im_team?(name)
     id = name.to_s.strip
     return false if id.empty?

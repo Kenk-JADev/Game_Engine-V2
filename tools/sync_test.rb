@@ -107,6 +107,12 @@ check('Quellen-Combo in editor_main.cpp nennt dieselben Quellen') do
   liste = main[/EV_SOURCES\[5\] = \{([^}]*)\}/, 1].to_s
   liste.scan(/L"([^"]+)"/).flatten == MapCheck::VARIABLE_QUELLEN
 end
+check('party_member-Modi (C++-Moderation) == MapCheck::PARTY_MODI') do
+  form = File.read(File.join(ROOT, 'src', 'editor', 'event_form.h'), encoding: 'utf-8')
+  # Die Moderation in event_form.h prüft genau diese beiden Wörter.
+  form.include?('modus != "add" && modus != "remove"') &&
+    MapCheck::PARTY_MODI == %w[add remove]
+end
 check('Combos in editor_main.cpp nennen dieselben Variable-Operationen') do
   main = File.read(File.join(ROOT, 'src', 'editor', 'editor_main.cpp'), encoding: 'utf-8')
   liste = main[/EV_VAR_OPS\[6\] = \{([^}]*)\}/, 1].to_s

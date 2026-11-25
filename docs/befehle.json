@@ -527,6 +527,17 @@
         "target"
       ],
       "beschreibung": "Aendert die Stufe (XP 316); Aufstieg ueber den normalen Level-Up, Abstieg senkt nur die Stufe."
+    },
+    {
+      "typ": "party_member",
+      "bereich": "Party",
+      "pflicht": [
+        "name"
+      ],
+      "optional": [
+        "mode"
+      ],
+      "beschreibung": "Nimmt einen Helden ins Team auf oder entfernt ihn (XP 129); das letzte Mitglied bleibt, damit Kampf und Menue immer einen Helden haben."
     }
   ]
 }

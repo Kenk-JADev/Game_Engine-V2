@@ -1895,7 +1895,7 @@ im Frame des Tastendrucks (`Rune::Input.pressed?`, wie XP `Input.trigger?`;
 ohne Eingabeschicht — kopfloser Test — falsch). Beide haben `then`/`else`
 wie die übrigen Wenn-Befehle und werden im F6-Baum rekursiv geprüft; MapCheck
 prüft den Namen (Actor gegen `database.json`, Taste auf Existenz).
-Register: **48 Typen**. **Tests:** `tools/bedingungen_test.rb` (34 Checks).
+Register: **49 Typen**. **Tests:** `tools/bedingungen_test.rb` (34 Checks).
 
 ### Variable-Operationen (XP 122)
 
@@ -1916,11 +1916,11 @@ verlangt eine bewusste Wahl, MapCheck warnt.
 (`ev_op_combo_mode`, Umschalten nur bei Bedarf) und das Quellen-Combo; das
 Zahlenfeld 2 gehört nicht mehr dazu. **Tests:** `tools/variable_ops_test.rb`
 (36 Checks), `json_test` prüft Altform-Umstellung, gemischte Daten und die
-Quellen (769 Checks).
+Quellen (778 Checks).
 
 ### Werte ändern: HP, SP, EXP, Stufe (XP 311/312/315/316)
 
-Vier Befehle (Register **46 Typen**, Bereich „Party" in `docs/befehle.json`):
+Vier Befehle (Bereich „Party" in `docs/befehle.json`):
 
 ```json
 {"cmd":"actor_hp",   "target":"alle", "amount":-20}
@@ -1941,7 +1941,34 @@ Vier Befehle (Register **46 Typen**, Bereich „Party" in `docs/befehle.json`):
 
 MapCheck prüft `amount` (Pflicht, ≠ 0), den Actor-Namen gegen
 `database.json` und den Stufenbereich. **Tests:** `tools/actor_wert_test.rb`
-(24 Checks), `json_test` 753 Checks.
+(24 Checks), `json_test` 778 Checks.
+
+### Mitglieder ändern (XP 129)
+
+`Party` trennt seit 20d zwei Listen: `@katalog` (alle Helden aus
+`database.json`) und `@actors` (die **Mitglieder**). `Party.actors`,
+`Party.find`, das Menü, der Kampf und `if_actor` arbeiten auf der
+Mitgliederliste; `Party.member_add`/`member_remove`/`member?` ändern sie.
+
+```json
+{"cmd":"party_member","name":"arik","mode":"add"}
+{"cmd":"party_member","name":"mira","mode":"remove"}
+```
+
+- `name` ist die Actor-ID oder der Anzeigename; `mode` fehlt/leer → `add`
+  (wie bei `fade`/`timer` wird der Modus kleingeschrieben und im Formular
+  moderiert).
+- Ein neues Mitglied hängt **hinten** an (XP-Reihenfolge). Ein unbekannter
+  Held, ein unbekannter Modus und der Versuch, das **letzte** Mitglied zu
+  entfernen, landen im Log und im Issue-Backlog; das Team bleibt dann stehen.
+- `snapshot['actors']` ist die Mitgliederliste; `restore!` baut `@actors`
+  daraus in gespeicherter Reihenfolge neu auf und übernimmt danach die Werte.
+  Alte Spielstände ohne `actors` behalten das Team aus `Party.setup`.
+
+MapCheck prüft `mode` (`add`/`remove`), die Pflicht `name` und den Actor
+gegen `database.json`; `sync_test` vergleicht die C++-Moderation mit
+`MapCheck::PARTY_MODI`. **Tests:** `tools/party_member_test.rb` (29 Checks),
+`json_test` prüft Lesen, Default, Kleinschreibung und die beiden Fehlerfälle.
 
 ## Professionalisierung: Sync-Test + README (Etappe 19j)
 

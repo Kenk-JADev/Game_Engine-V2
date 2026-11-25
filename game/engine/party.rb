@@ -117,7 +117,10 @@ class Party
   # Aus der Datenbank (Hash) neu aufsetzen; HP/MP starten voll.
   def self.setup(db)
     db ||= {}
-    @actors = (db['actors'] || []).filter_map do |h|
+    # Etappe 20d (XP 129): @katalog haelt alle Datenbank-Helden, @actors nur
+    # die Mitglieder. Ohne party_member-Befehl sind das zunaechst alle - wie
+    # in XP, wo Game_Party#setup_members alle Helden einfaengt.
+    @katalog = (db['actors'] || []).filter_map do |h|
       next unless h.is_a?(Hash)
       id = h['id'].to_s
       next if id.empty?
@@ -147,6 +150,7 @@ class Party
     end
     @gold = (db['gold'] || 0).to_i
     @steps = 0   # F3: XP Game_Party#steps - zählt die Schritte des Helden
+    @actors = @katalog.dup
     Rune::Log.info("Party: #{@actors.size} Helden, #{@items.size} Item-Sorten, " \
                    "#{@gold} Gold")
     @actors
@@ -155,6 +159,37 @@ class Party
   # F3 (XP Game_Party): Heldenliste und Schrittzähler.
   def self.actors
     @actors ||= []
+  end
+
+  # Etappe 20d (XP 129, Game_Party#add_actor/remove_actor): Mitgliederliste
+  # aendern. Rueckgabe sagt, was passiert ist:
+  #   :ok           - geaendert
+  #   :unbekannt    - kein Held mit dieser ID in der Datenbank
+  #   :mitglied     - war schon im Team (XP ignoriert das still)
+  #   :kein_mitglied- war nicht im Team
+  #   :letzter      - das letzte Mitglied darf nicht gehen (sonst steht Kampf,
+  #                   Menue und Spielstand ohne Held da; XP erlaubt das zwar,
+  #                   Rune3D braucht mindestens einen)
+  def self.member_add(id)
+    held = (@katalog || []).find { |a| a.id == id.to_s }
+    return :unbekannt if held.nil?
+    return :mitglied if @actors.include?(held)
+    @actors << held
+    Rune::Log.info("Party: #{held.name} tritt bei (#{@actors.size} Mitglieder)")
+    :ok
+  end
+
+  def self.member_remove(id)
+    held = (@actors || []).find { |a| a.id == id.to_s }
+    return :kein_mitglied if held.nil?
+    return :letzter if @actors.size <= 1
+    @actors.delete(held)
+    Rune::Log.info("Party: #{held.name} verlaesst das Team (#{@actors.size} Mitglieder)")
+    :ok
+  end
+
+  def self.member?(id)
+    (@actors || []).any? { |a| a.id == id.to_s }
   end
 
   def self.steps
@@ -435,6 +470,14 @@ class Party
         hash[id.to_s] = Array(liste).map(&:to_s).reject(&:empty?).uniq
       end
     end
+    # Mitgliederliste zuerst (XP 129): der Spielstand fuehrt nur die Helden im
+    # Team; @actors ist danach genau diese Liste (Reihenfolge wie gespeichert).
+    # Alte Spielstaende ohne 'actors' und leere Listen lassen das Team stehen.
+    geladen = Array(snap['actors']).filter_map do |h|
+      next unless h.is_a?(Hash)
+      (@katalog || []).find { |a| a.id == h['id'].to_s }
+    end
+    @actors = geladen.uniq unless geladen.empty?
     (snap['actors'] || []).each do |h|
       a = find(h['id'])
       next unless a
