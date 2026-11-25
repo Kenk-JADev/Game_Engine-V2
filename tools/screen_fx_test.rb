@@ -238,7 +238,7 @@ check('Stärke über 255 -> Fehler') do
   hat?(MapCheck.scan(karte_mit([{ 'cmd' => 'flash', 'strength' => 300 }]), **OPTS),
        "'strength' muss eine Zahl von 0 bis 255 sein", MapCheck::FEHLER)
 end
-check('alle 54 Befehlstypen im Register der Prüfung') { MapCheck::CMD_TYPES.size == 54 }
+check('alle 55 Befehlstypen im Register der Prüfung') { MapCheck::CMD_TYPES.size == 55 }
 
 puts($fail.zero? ? 'ALLE CHECKS GRUEN' : "#{$fail} CHECK(S) FEHLGESCHLAGEN")
 exit($fail.zero? ? 0 : 1)

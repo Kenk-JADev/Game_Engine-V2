@@ -590,6 +590,13 @@
       "pflicht": [],
       "optional": [],
       "beschreibung": "Oeffnet das Spielmenue aus einem Event heraus (XP 351); laeuft ueber $game_temp.menu_calling wie ein Script."
+    },
+    {
+      "typ": "if_battle_result",
+      "bereich": "Bedingung",
+      "pflicht": ["result"],
+      "optional": [],
+      "beschreibung": "Verzweigt nach dem Ergebnis des letzten Kampfs: sieg, flucht oder niederlage (XP 601/602/603). Ohne Kampf gilt der Sonst-Zweig."
     }
   ]
 }

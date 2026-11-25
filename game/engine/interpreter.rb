@@ -62,6 +62,7 @@
 #    {"cmd":"screen_tone","r":-34,"g":0,"b":68,"gray":0,"frames":60} (20f; XP 223)
 #    {"cmd":"flash","color":"weiss","strength":255,"frames":20}       (20f; XP 224)
 #    {"cmd":"menu"}                                        (Menü öffnen, 20f; XP 351)
+#    {"cmd":"if_battle_result","result":"sieg","then":[],"else":[]}   (20f; XP 601-603)
 #    {"cmd":"if_actor","name":"arik","then":[],"else":[]}   (Wenn Actor, 20d)
 #    {"cmd":"if_button","name":"e","then":[],"else":[]}     (Wenn Taste, 20d)
 #    {"cmd":"actor_hp","target":"alle","amount":-20}    (Werte ändern, 20d)
@@ -265,6 +266,11 @@ class Interpreter
         @stack.push(list: branch ? (cmd['then'] || []) : (cmd['else'] || []), index: 0)
       when 'if_button'  # Etappe 20d: Wenn Taste gedrückt (XP 111, Quelle Button)
         branch = taste_gedrueckt?(cmd['name'])
+        @stack.push(list: branch ? (cmd['then'] || []) : (cmd['else'] || []), index: 0)
+      when 'if_battle_result'  # Etappe 20f (XP 601-603): Ergebnis des letzten
+                               # Kampfs (Battle.result: :sieg/:flucht/:niederlage).
+        ergebnis = defined?(Battle) && Battle ? Battle.result : nil
+        branch = !cmd['result'].to_s.empty? && ergebnis.to_s == cmd['result'].to_s
         @stack.push(list: branch ? (cmd['then'] || []) : (cmd['else'] || []), index: 0)
       when 'if_script' # Etappe 20d: Wenn Script (XP 111, Quelle Script)
         @stack.push(list: script_zutreffend?(cmd) ? (cmd['then'] || []) : (cmd['else'] || []),

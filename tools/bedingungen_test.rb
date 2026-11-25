@@ -257,7 +257,73 @@ check('if_button ohne Taste -> Fehler') do
   hat?(MapCheck.scan(karte_mit([{ 'cmd' => 'if_button', 'then' => [], 'else' => [] }]), **OPTS),
        "'name' fehlt oder ist leer", MapCheck::FEHLER)
 end
-check('alle 54 Befehlstypen im Register der Prüfung') { MapCheck::CMD_TYPES.size == 54 }
+# Etappe 20f (XP 601-603): Wenn Kampfergebnis. Der Test setzt das Ergebnis
+# direkt am Battle-Modul, damit kein Kampf laufen muss.
+# Party kommt hier nur als Stummel aus state.rb - add_gold nachziehen.
+unless Party.respond_to?(:add_gold)
+  module Party
+    @gold = 0
+    class << self
+      attr_accessor :gold
+    end
+    def self.add_gold(n) = self.gold = gold.to_i + n.to_i
+  end
+end
+
+module Battle
+  @result = nil
+  class << self
+    attr_accessor :result
+  end
+end
+
+def ergebnis_lauf(wert, ziel)
+  Battle.result = wert
+  treffer = []
+  i = Interpreter.new
+  i.start([{ 'cmd' => 'if_battle_result', 'result' => ziel,
+             'then' => [{ 'cmd' => 'gold', 'amount' => 1 }],
+             'else' => [{ 'cmd' => 'gold', 'amount' => 2 }] }])
+  3.times { i.update(0.016) }
+  Party.gold
+end
+
+check('if_battle_result: Sieg nimmt den Dann-Zweig (XP 601)') do
+  Party.gold = 0
+  ergebnis_lauf(:sieg, 'sieg') == 1
+end
+check('if_battle_result: Flucht nimmt den Sonst-Zweig (XP 602)') do
+  Party.gold = 0
+  ergebnis_lauf(:flucht, 'sieg') == 2
+end
+check('if_battle_result: Niederlage trifft niederlage (XP 603)') do
+  Party.gold = 0
+  ergebnis_lauf(:niederlage, 'niederlage') == 1
+end
+check('if_battle_result: ohne Kampf gilt der Sonst-Zweig') do
+  Battle.result = nil
+  Party.gold = 0
+  i = Interpreter.new
+  i.start([{ 'cmd' => 'if_battle_result', 'result' => 'sieg',
+             'then' => [{ 'cmd' => 'gold', 'amount' => 1 }], 'else' => [] }])
+  3.times { i.update(0.016) }
+  Party.gold.zero?
+end
+check('gültiges Kampfergebnis ohne Fehler') do
+  MapCheck.scan(karte_mit([{ 'cmd' => 'if_battle_result', 'result' => 'flucht',
+                             'then' => [], 'else' => [] }]), **OPTS)
+          .none? { |f| f.severity == MapCheck::FEHLER }
+end
+check('unbekanntes Kampfergebnis -> Fehler') do
+  hat?(MapCheck.scan(karte_mit([{ 'cmd' => 'if_battle_result', 'result' => 'sieg?',
+                                  'then' => [], 'else' => [] }]), **OPTS),
+       'unbekanntes Kampfergebnis', MapCheck::FEHLER)
+end
+check('if_battle_result ohne Zweige -> Warnung') do
+  hat?(MapCheck.scan(karte_mit([{ 'cmd' => 'if_battle_result', 'result' => 'sieg' }]), **OPTS),
+       "'then' fehlt/keine Liste", MapCheck::WARNUNG)
+end
+check('alle 55 Befehlstypen im Register der Prüfung') { MapCheck::CMD_TYPES.size == 55 }
 
 puts($fail.zero? ? 'ALLE CHECKS GRUEN' : "#{$fail} CHECK(S) FEHLGESCHLAGEN")
 exit($fail.zero? ? 0 : 1)

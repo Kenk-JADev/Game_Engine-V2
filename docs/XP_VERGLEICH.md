@@ -14,10 +14,10 @@ Rune3D (Stand nach 19y) steht — mit Blick darauf, was sich sinngemäß in 3D
 
 ---
 
-## 1. Event-Befehle — 92 XP-Befehle, 32 in Rune3D
+## 1. Event-Befehle — 92 XP-Befehle, 33 in Rune3D
 
 XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
-**54 Befehlstypen**. Bilanz: **40 ✅ · 9 ⚠️ · 43 ❌**.
+**55 Befehlstypen**. Bilanz: **41 ✅ · 9 ⚠️ · 42 ❌**.
 
 ### A. Nachricht & Ablaufsteuerung (101–119)
 
@@ -131,7 +131,7 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 | Game Over | 353 | `gameover`-Flag | ✅ |
 | Zum Titelbildschirm | 354 | `to_title` | ✅ |
 | Script | 355 | `script` | ✅ |
-| Wenn Sieg / Flucht / Niederlage | 601–603 | — | ❌ (`battle` hat `can_lose`, aber keine Befehlszweige) |
+| Wenn Sieg / Flucht / Niederlage | 601–603 | `if_battle_result` (R32) | ✅ ein Befehl mit `result`: sieg/flucht/niederlage, Zweige wie `if_gold`; ohne Kampf gilt sonst |
 
 **Rune3D-Befehle ohne XP-Entsprechung:** `log`, `toggle_switch`, `effect`
 (Partikel), `move_player` (relativ) — sinnvolle Eigenheiten, bleiben.
@@ -194,7 +194,7 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 | Wache (Guard) | ✅ | ❌ |
 | Animationen je Aktion | Animation1/Animation2 pro Battler | ❌ |
 | Battleback, BGM/ME | ✅ | ❌ |
-| Ergebniszweige 601–603 | Sieg/Flucht/Niederlage als Befehlszweige | ❌ (nur `can_lose`) |
+| Ergebniszweige 601–603 | Sieg/Flucht/Niederlage als Befehlszweige | ✅ `if_battle_result` (ein Befehl statt drei Codes) |
 | Flucht, Game Over, Items | ✅ | ✅ (gezielte Items, KO/Wiederbelebung) |
 
 ---
@@ -261,7 +261,7 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 | **20c Event-Befehle Welle 1 (Ablauf)** | ~~`loop`/`break`/`label`/`jump`/`exit_event`/`erase_event`/`button_input`/`text_options`~~ ✅, ~~**Common Events**~~ ✅ (Runde 27, 35 Befehlstypen: Datenhaltung, Aufruf 117, Trigger, MapCheck, RGSS) — offen: eigener Editor-Reiter für Common Events (F9/F6) | Struktur, die fast jedes XP-Projekt braucht |
 | **20d Event-Befehle Welle 2 (Daten)** | ~~erweiterte Bedingungen `if_gold`/`if_item`/`if_script`~~ ✅, ~~134/135/136 als Befehle (`save_access`/`menu_access`/`encounter_access`)~~ ✅ (R28, 46 Befehlstypen; Timer samt Anzeige, HP/SP/EXP/Stufe erledigt) — offen: `party_member`, ~~`$game_temp`-Calling-Flags auswerten~~ ✅ (R28, LOGIK E.3) | Verdoppelt die Aussagekraft von Variablen/Schaltern; XP-Scripts, die Szenen über `$game_temp` starten, funktionieren dann |
 | **20e Shop & Name** | ~~Befehl 302 + Shop-Fenster (kaufen/verkaufen/Preis)~~ ✅, ~~303 Namenseingabe~~ ✅ (R30; Umlaute offen) | XP-typisch, eigenständig nutzbar |
-| **20f Bildschirm-Ebenen** | ~~Tone 223~~ ✅, ~~Flash 224~~ ✅ (R32) — offen: Wackeln 225, Pictures 231–235 (UI-Bildlader), Ergebniszweige 601–603 | Macht die „Bildschirm“-Gruppe echt |
+| **20f Bildschirm-Ebenen** | ~~Tone 223~~ ✅, ~~Flash 224~~ ✅ (R32) — offen: Wackeln 225, Pictures 231–235 (UI-Bildlader), Wackeln 225 | Macht die „Bildschirm“-Gruppe echt |
 | **20g Darstellung** | Figuren-Billboards, Ballons, Kampf-/Event-Animationen (207/337) | Sichtbarster XP-Optik-Unterschied |
 | **20h Editor & DX** | Dialoge F6/F9 XP-orientiert (Screenshots), Undo/Redo über Splats/NPCs/Events | Bedienung wie im Vorbild |
 | **20i Ton (Audit „20x“)** | Datei-Lader (WAV/OGG) in `src/core/sound.cpp`, Karten-BGM aus der Karten-JSON, Event-Befehle 241/242/245/246, Pitch pro Aufruf, `bgm_fade` über Zeit (N) | RGSS-`Audio.*` ist vorhanden, aber ohne Datei-Lader substanzlos; XP-Skripte spielen sonst wortlos nichts |

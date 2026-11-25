@@ -434,7 +434,7 @@ check('battle ohne name -> Fehler') do
        "'name' fehlt oder ist leer", MapCheck::FEHLER)
 end
 check('alle 53 Befehlstypen sind bekannt') do
-  MapCheck::CMD_TYPES.size == 54 &&
+  MapCheck::CMD_TYPES.size == 55 &&
     MapCheck.scan(karte_mit({ 'cmd' => 'heal' }), **OPTS).empty? &&
     MapCheck.scan(karte_mit({ 'cmd' => 'move_player', 'x' => 1.0, 'z' => 1.0 }), **OPTS).empty? &&
     MapCheck.scan(karte_mit({ 'cmd' => 'toggle_switch', 'name' => 's' }), **OPTS).empty? &&

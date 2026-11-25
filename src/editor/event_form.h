@@ -45,7 +45,7 @@ enum EvType {
     ET_IF_GOLD, ET_IF_ITEM, ET_IF_SCRIPT, ET_IF_ACTOR, ET_IF_BUTTON,
     ET_SAVE_ACCESS, ET_MENU_ACCESS, ET_ENCOUNTER_ACCESS,
     ET_TIMER, ET_ACTOR_HP, ET_ACTOR_SP, ET_ACTOR_EXP, ET_ACTOR_LEVEL,
-    ET_PARTY_MEMBER, ET_SHOP, ET_NAME_INPUT, ET_SCREEN_TONE, ET_FLASH, ET_MENU, ET_COUNT
+    ET_PARTY_MEMBER, ET_SHOP, ET_NAME_INPUT, ET_SCREEN_TONE, ET_FLASH, ET_MENU, ET_IF_BATTLE_RESULT, ET_COUNT
 };
 inline constexpr const char* const EV_TYPES[ET_COUNT] = {
     "text", "choices", "log", "wait", "switch", "toggle_switch", "variable",
@@ -57,7 +57,7 @@ inline constexpr const char* const EV_TYPES[ET_COUNT] = {
     "if_gold", "if_item", "if_script", "if_actor", "if_button",
     "save_access", "menu_access", "encounter_access", "timer",
     "actor_hp", "actor_sp", "actor_exp", "actor_level", "party_member", "shop", "name_input", "screen_tone", "flash",
-    "menu"
+    "menu", "if_battle_result"
 };
 inline constexpr const char* const EVENT_TRIGGERS[] = {"action", "touch", "auto", "parallel"};
 inline constexpr const char* const EVENT_OPS[] = {"==", "!=", "<", "<=", ">", ">="};
@@ -86,7 +86,7 @@ inline bool event_command_uses_field(int type, size_t field) {
             type == ET_IF_ACTOR || type == ET_IF_BUTTON ||
             type == ET_ACTOR_HP || type == ET_ACTOR_SP || type == ET_ACTOR_EXP || type == ET_ACTOR_LEVEL ||
             type == ET_PARTY_MEMBER || type == ET_NAME_INPUT || type == ET_SCREEN_TONE ||
-            type == ET_FLASH;
+            type == ET_FLASH || type == ET_IF_BATTLE_RESULT;
         case 1: return type == ET_WAIT || type == ET_VARIABLE || type == ET_IF_VARIABLE ||
             type == ET_TELEPORT || type == ET_MOVE_PLAYER || type == ET_SOUND || type == ET_EFFECT ||
             type == ET_GOLD || type == ET_HEAL || type == ET_WEATHER || type == ET_SAVE_GAME ||
@@ -690,6 +690,7 @@ inline EventCommandForm event_command_form_read(const JsonValue& c) {
         case ET_SHOP:
             f.text = event_unique(c, "goods") ? event_goods_view(c.find("goods")) : "[mehrfach vorhanden]";
             break;
+        case ET_IF_BATTLE_RESULT: f.name = text("result", "sieg"); break;
         case ET_SCREEN_TONE: {
             // Etappe 20f (XP 223): vier Kanäle in einem Feld, frames separat.
             auto kanal = [&](const char* key) {
@@ -1138,6 +1139,18 @@ inline EventEdit event_command_prepare(const JsonValue* existing, const EventCom
                 else ok = text("direction", "cmd_name", before.name, direction, false, false, true);
             }
             if (ok) ok = v1("seconds", false, "0.5", false, true, 0, unlimited);
+            break;
+        }
+        case ET_IF_BATTLE_RESULT: {
+            // Etappe 20f (XP 601-603): Ergebnis des letzten Kampfs.
+            if (fresh || before.name != after.name) {
+                std::string ergebnis = after.name.empty() && fresh ? "sieg" : after.name;
+                std::transform(ergebnis.begin(), ergebnis.end(), ergebnis.begin(),
+                               [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                if (ergebnis != "sieg" && ergebnis != "flucht" && ergebnis != "niederlage")
+                    ok = fail("cmd_name", "Ergebnis muss sieg, flucht oder niederlage sein.");
+                else ok = text("result", "cmd_name", before.name, ergebnis, false, false, true);
+            }
             break;
         }
         case ET_SCREEN_TONE: {

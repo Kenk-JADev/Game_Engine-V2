@@ -1895,7 +1895,7 @@ im Frame des Tastendrucks (`Rune::Input.pressed?`, wie XP `Input.trigger?`;
 ohne Eingabeschicht — kopfloser Test — falsch). Beide haben `then`/`else`
 wie die übrigen Wenn-Befehle und werden im F6-Baum rekursiv geprüft; MapCheck
 prüft den Namen (Actor gegen `database.json`, Taste auf Existenz).
-Register: **54 Typen**. **Tests:** `tools/bedingungen_test.rb` (34 Checks).
+Register: **55 Typen**. **Tests:** `tools/bedingungen_test.rb` (34 Checks).
 
 ### Variable-Operationen (XP 122)
 
@@ -1942,6 +1942,21 @@ Vier Befehle (Bereich „Party" in `docs/befehle.json`):
 MapCheck prüft `amount` (Pflicht, ≠ 0), den Actor-Namen gegen
 `database.json` und den Stufenbereich. **Tests:** `tools/actor_wert_test.rb`
 (24 Checks), `json_test` 778 Checks.
+
+### Kampfergebnis abfragen (XP 601–603)
+
+```json
+{"cmd":"if_battle_result","result":"sieg","then":[],"else":[]}
+```
+
+`Battle#ende` setzt `@result` (`:sieg`, `:flucht`, `:niederlage`); der Befehl
+vergleicht ihn mit `result` und schiebt den passenden Zweig auf den Stapel.
+Ohne gelaufenen Kampf (`Battle.result == nil`) gilt der Sonst-Zweig — so
+verhält sich auch XP, wenn kein Kampf stattfand. Ein Befehl mit `result`
+ersetzt die XP-Codes 601/602/603 (drei Zweige, ein Formularfeld).
+MapCheck prüft die Zweige und das Ergebnis (`ERGEBNISSE`).
+**Tests:** `tools/bedingungen_test.rb` (41 Checks, 7 für das Kampfergebnis),
+`json_test` (820 Checks).
 
 ### Menü öffnen (XP 351)
 

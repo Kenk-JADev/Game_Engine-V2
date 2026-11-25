@@ -79,7 +79,7 @@ module MapCheck
     actor_hp actor_sp actor_exp actor_level
     party_member shop name_input
     screen_tone flash
-    menu
+    menu if_battle_result
   ].freeze
 
   TRIGGER   = %w[action touch auto parallel].freeze
@@ -100,6 +100,10 @@ module MapCheck
   # Etappe 20d: Mitglieder aendern (XP 129) - XP kennt nur add/remove.
   PARTY_MODI = %w[add remove].freeze
   # Etappe 20f: XP-Blitzfarben (Game_Screen#start_flash kennt nur diese).
+  # Ergebnisfälle für `if_battle_result` (XP 601-603) - dieselben Symbole,
+  # die Battle#ende setzt.
+  ERGEBNISSE = %w[sieg flucht niederlage].freeze
+
   FLASH_FARBEN = %w[weiss rot gruen blau gelb].freeze
   # Etappe 20d: Operationen von `variable` (XP 122) - dieselbe Liste wie
   # EVENT_VAR_OPS im Editor (sync_test vergleicht beide).
@@ -1124,6 +1128,18 @@ module MapCheck
           ziel = c['name'].to_s.strip
           bekannt = namen.any? { |id, name| ziel.casecmp?(id) || ziel.casecmp?(name) }
           melde(WARNUNG, w, "Actor '#{ziel}' nicht in database.json") unless bekannt
+        end
+      when 'if_battle_result'
+        # Etappe 20f (XP 601-603): Zweige wie bei den übrigen Wenn-Befehlen,
+        # dazu ein bekanntes Ergebnis.
+        %w[then else].each do |k|
+          melde(WARNUNG, w, "'#{k}' fehlt/keine Liste") unless c[k].is_a?(Array)
+        end
+        pruefe_befehle(c['then'], "#{w} (Dann)")   if c['then'].is_a?(Array)
+        pruefe_befehle(c['else'], "#{w} (Sonst)")  if c['else'].is_a?(Array)
+        ergebnis = c['result'].to_s.strip
+        unless ERGEBNISSE.include?(ergebnis)
+          melde(FEHLER, w, "unbekanntes Kampfergebnis '#{ergebnis}' (sieg/flucht/niederlage)")
         end
       when 'if_gold', 'if_item', 'if_script'
         # Etappe 20d: weitere Bedingungsquellen (XP 111). Zweige wie bei den

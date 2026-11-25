@@ -14,9 +14,11 @@ namespace rune::editor {
 // rekursiv geprüft. Bis Z8 fehlte hier `if_self_switch` - Fehler in seinen
 // Zweigen erschienen im Editor-Backlog (F10) nicht, obwohl MapCheck sie fand.
 // Etappe 20d: if_gold/if_item/if_script bringen dieselben Zweige mit.
+// Etappe 20f: if_battle_result (XP 601-603) ebenso.
 inline bool event_cmd_has_branches(const std::string& cmd) {
     return cmd == "if_switch" || cmd == "if_variable" || cmd == "if_self_switch" ||
-           cmd == "if_gold" || cmd == "if_item" || cmd == "if_script";
+           cmd == "if_gold" || cmd == "if_item" || cmd == "if_script" ||
+           cmd == "if_battle_result";
 }
 
 // Kommandos, die einen Self-Switch-Buchstaben tragen (A-D).

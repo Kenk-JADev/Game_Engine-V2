@@ -1216,7 +1216,7 @@ const char* const ISSUE_CMD_TYPES[] = {
     "button_input", "text_options", "common_event",
     "if_gold", "if_item", "if_script", "if_actor", "if_button",
     "save_access", "menu_access", "encounter_access", "timer",
-    "actor_hp", "actor_sp", "actor_exp", "actor_level", "party_member", "shop", "name_input", "screen_tone", "flash", "menu"
+    "actor_hp", "actor_sp", "actor_exp", "actor_level", "party_member", "shop", "name_input", "screen_tone", "flash", "menu", "if_battle_result"
 };
 const int ISSUE_CMD_TYPE_COUNT =
     static_cast<int>(sizeof(ISSUE_CMD_TYPES) / sizeof(ISSUE_CMD_TYPES[0]));
@@ -7211,7 +7211,9 @@ const wchar_t* const EV_TYPE_LABELS[ET_COUNT] = {
     // Etappe 20f: Bildschirmton und Blitz (XP 223/224).
     L"[Bild] Bildschirmton", L"[Bild] Blitz",
     // Etappe 20f: Menü öffnen (XP 351).
-    L"[System] Menü öffnen"
+    L"[System] Menü öffnen",
+    // Etappe 20f: Ergebnis-Abfrage (XP 601–603).
+    L"[Kampf] Wenn Ergebnis"
 };
 const wchar_t* const EV_TRIGGERS[4] = { L"action", L"touch", L"auto", L"parallel" };
 const wchar_t* const EV_OPS[6] = { L"==", L"!=", L"<", L"<=", L">", L">=" };
@@ -7446,6 +7448,8 @@ std::string ev_cmd_label(const JsonValue& c) {
                ev_num_str(ev_num_of(c, "amount"), 0);
     }
     if (type == "menu") return "Menü öffnen";
+    if (type == "if_battle_result")
+        return "Wenn Kampf " + ev_str_of(c, "result", "sieg");
     if (type == "screen_tone") {
         auto zahl = [&](const char* key) {
             const JsonValue* v = c.find(key);
@@ -7783,7 +7787,7 @@ void ev_cmd_visibility() {
                           t == ET_ACTOR_HP || t == ET_ACTOR_SP || t == ET_ACTOR_EXP ||
                           t == ET_ACTOR_LEVEL || t == ET_PARTY_MEMBER || t == ET_SHOP ||
                           t == ET_NAME_INPUT || t == ET_SCREEN_TONE || t == ET_FLASH ||
-                          t == ET_MENU ||
+                          t == ET_MENU || t == ET_IF_BATTLE_RESULT ||
                           t == ET_SAVE_ACCESS || t == ET_MENU_ACCESS ||
                           t == ET_ENCOUNTER_ACCESS;
     show(g_ev.lbl_text, is_text || has_hint);
@@ -7905,6 +7909,12 @@ void ev_cmd_visibility() {
         SetWindowTextW(g_ev.lbl_name, L"Taste (z. B. e, space, f1)");
         SetWindowTextW(g_ev.lbl_text,
                        L"Zweigt im Frame des Tastendrucks; Name wie bei der Tasteneingabe (XP 111).");
+    }
+    if (t == ET_IF_BATTLE_RESULT) {
+        SetWindowTextW(g_ev.lbl_name, L"Ergebnis (sieg/flucht/niederlage)");
+        SetWindowTextW(g_ev.lbl_text,
+                       L"Zweigt nach dem Ergebnis des letzten Kampfs (XP 601–603). "
+                       L"Ohne Kampf gilt sonst.");
     }
     if (t == ET_MENU) SetWindowTextW(g_ev.lbl_text,
         L"Öffnet das Spielmenü (XP 351) - wie $game_temp.menu_calling aus einem Script.");
