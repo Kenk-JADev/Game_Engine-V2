@@ -6,7 +6,7 @@
 #  Engine-Attrappen: Rune::Sound merkt sich geladene Klänge und Stimmen,
 #  Rune::Assets liefert eine eingebettete WAV-Datei für genau einen Pfad.
 #  Geprüft wird: Kandidatenreihenfolge, Laden/Anmelden, play/loop/stop,
-#  Pitch-Klemmung, OGG-Weg (T2), MP3-Warnung, fehlende Datei, Cache, reset und der
+#  Pitch-Klemmung, OGG-Weg (T2), MP3-Weg (22/T4), fehlende Datei, Cache, reset und der
 #  Fade über Zeit (XP 242/246, nicht blockierend).
 # ============================================================================
 
@@ -69,7 +69,9 @@ WAV = Base64.decode64(
 Rune::Assets.dateien = {
   'audio/bgm/dorf.wav' => WAV,
   'audio/se/tuer.wav' => WAV,
-  'audio/bgm/wald.ogg' => 'OggS...'
+  'audio/bgm/wald.ogg' => 'OggS...',
+  'audio/bgs/regen.wav' => WAV,
+  'audio/me/fanfare.wav' => WAV
 }
 
 $fail = 0
@@ -91,6 +93,10 @@ check('Endung wird ersetzt, nicht verdoppelt') do
   AudioFiles.kandidaten('dorf.wav').none? { |p| p.end_with?('.wav.wav') }
 end
 check('leerer Name -> keine Kandidaten') { AudioFiles.kandidaten('').empty? }
+check('BGS und ME haben eigene Ordner (Etappe 22)') do
+  AudioFiles.kandidaten('regen').include?('audio/bgs/regen.wav') &&
+    AudioFiles.kandidaten('fanfare').include?('audio/me/fanfare.wav')
+end
 
 puts '== Laden und Abspielen =='
 Rune::Sound.reset!
@@ -131,9 +137,9 @@ check('OGG wird an die Engine gereicht (Etappe 21, T2)') do
     Rune::Sound.geladen.key?('datei:audio/bgm/wald.ogg') &&
     Rune::Sound.stimmen.last.first == :play
 end
-check('MP3 wird abgelehnt und gewarnt') do
+check('MP3 geht an die Engine (Etappe 22, T4 - minimp3)') do
   Rune::Assets.dateien['audio/bgm/alt.mp3'] = 'ID3...'
-  AudioFiles.play('alt') == false && !Rune::Sound.geladen.key?('datei:audio/bgm/alt.mp3')
+  AudioFiles.play('alt') && Rune::Sound.geladen.key?('datei:audio/bgm/alt.mp3')
 end
 check('stop ohne geladenen Klang -> false') { AudioFiles.stop('nichts') == false }
 check('reset leert den Cache') do

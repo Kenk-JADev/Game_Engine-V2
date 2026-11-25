@@ -22,7 +22,7 @@
 
 **Etappe 21 (Ton aus Dateien) ist abgeschlossen** — Abhakliste in `docs/ETAPPE_21_CHECKLISTE.md` (T1 WAV, T2 OGG, T3 Karten-BGM/BGS inkl. F2-Formular, T4 Befehle 241/242/245/246, T5 Pitch + Fade über Zeit, T6 Tests, T7 Doku), Register **65 Typen**, alle CI-Jobs grün.
 
-**Nächste Etappe: offen** — Kandidaten aus `docs/XP_VERGLEICH.md` (Audio-Teil): MP3-Decoder, `me_play` (249), `se_stop` (251), BGS merken/wiederherstellen (247/248) sowie die restlichen ⚠️/❌-Zeilen der Bilanz (49 ✅ · 7 ⚠️ · 36 ❌). Vor dem Start eine neue Checkliste unter `docs/` anlegen und im Handoff verlinken.
+**Nächste Etappe: 22 (Ton-Reste: ME, SE-Stop, Merken, MP3)** — Plan und Abhakliste in `docs/ETAPPE_22_CHECKLISTE.md` (T1 SE-Stop/ME, T2 `bgm_memorize`/`bgm_restore` + `playing_bgm`, T3 Kampf-Musik, T4 MP3 via minimp3, T5 Tests, T6 Doku). Danach bleiben aus `docs/XP_VERGLEICH.md` die restlichen ⚠️/❌-Zeilen (Bilanz 49 ✅ · 7 ⚠️ · 36 ❌).
 
 **20e Teil 2: Namenseingabe (XP 303) — 20e ist damit abgeschlossen.** Neues Modul `game/engine/name_input.rb` (`start`/`buchstabe`/`backspace`/`leeren`/`bestaetigen`/`abbruch`, `max` 1..16, Default 8, Esc nur bei `cancel`), `Party.held`/`Party.rename` (auch Nicht-Mitglieder, gleiche Actor-Objekte wie im Team), Spielstand fuehrt jetzt `actors[].name` mit; `UI.name_input` (Cursor, Zaehler, Tasten A-Z/0-9/Leertaste/Backspace/Enter/Esc, nur Enter bestaetigt weil "e" ein Buchstabe ist), Befehl `name_input {actor, max, cancel}` blockiert ueber `@name_wait`, MapCheck-Regeln, Formular ET_NAME_INPUT, Register **51 Typen**; `tools/name_input_test.rb` 28 Checks, `json_test` 798. Offen (bewusst): Umlaute (Input liest Ein-Zeichen-ASCII), Bestand im Laden, Namen von Nicht-Mitgliedern im Spielstand.
 

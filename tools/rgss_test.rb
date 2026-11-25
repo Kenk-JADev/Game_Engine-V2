@@ -59,6 +59,34 @@ module Rune
     def self.stop(name) = (CALLS << [:stop, name])
   end
 
+  # Etappe 22: Attrappe des Ton-Dateiladers. Standardmaessig "inaktiv"
+  # (alle Aufrufe liefern false), damit die prozeduralen Tests darunter
+  # unveraendert den Rune-Sound-Weg pruefen. Fuer die Datei-Tests wird
+  # aktiv = true gesetzt.
+  module AudioFiles
+    CALLS = []
+    @aktiv = false
+    class << self
+      attr_accessor :aktiv
+    end
+    def self.play(name, volume: 1.0, pitch: 100)
+      CALLS << [:play, name, volume, pitch]
+      @aktiv
+    end
+    def self.loop(name, volume: 1.0, pitch: 100)
+      CALLS << [:loop, name, volume, pitch]
+      @aktiv
+    end
+    def self.stop(name)
+      CALLS << [:stop, name]
+      @aktiv
+    end
+    def self.fade_ms(name, ms)
+      CALLS << [:fade_ms, name, ms]
+      @aktiv
+    end
+  end
+
   module Input
     @pressed = []
     @down = []
@@ -439,6 +467,95 @@ check('me_play ohne Lautstärke = 1.0') { Rune::Sound::CALLS.last == [:play, 'fa
 Audio.bgs_play('wind', 40)
 Audio.bgs_stop
 check('bgs Play/Stop') { Rune::Sound::CALLS.last == [:stop, 'wind'] }
+
+puts '== Etappe 22: se_stop/me_stop, ME auf dem BGM-Kanal =='
+Rune::Sound::CALLS.clear
+Audio.se_play('klick')
+check('se_play merkt den SE') { Rune::Sound::CALLS.last == [:play, 'klick', 1.0] }
+Audio.se_stop
+check('se_stop stoppt den laufenden SE') { Rune::Sound::CALLS.include?([:stop, 'klick']) }
+Rune::Sound::CALLS.clear
+Audio.se_stop
+check('se_stop ohne SE ist still') { Rune::Sound::CALLS.empty? }
+
+Rune::Sound::CALLS.clear
+Audio.bgm_play('musik')
+Audio.me_play('fanfare')
+check('ME verstummt die BGM') { Rune::Sound::CALLS.include?([:stop, 'musik']) }
+check('ME laeuft danach allein (keine BGM-Fortsetzung)') do
+  Rune::Sound::CALLS.last == [:play, 'fanfare', 1.0] &&
+    Audio.instance_variable_get(:@bgm).nil?
+end
+Rune::Sound::CALLS.clear
+Audio.me_stop
+check('me_stop stoppt das ME') { Rune::Sound::CALLS.include?([:stop, 'fanfare']) }
+
+AudioFiles.aktiv = true
+AudioFiles::CALLS.clear
+Audio.se_play('audio/se/klick')
+Audio.se_stop
+check('se_stop nimmt auch Datei-Klaenge') do
+  AudioFiles::CALLS.include?([:stop, 'audio/se/klick'])
+end
+AudioFiles::CALLS.clear
+Audio.me_play('audio/me/fanfare')
+Audio.me_stop
+check('me_stop nimmt Datei-Klaenge') do
+  AudioFiles::CALLS.include?([:stop, 'audio/me/fanfare'])
+end
+AudioFiles.aktiv = false
+
+puts '== Etappe 22: bgm_memorize/bgm_restore, playing_bgm =='
+RGSS.reset!
+Rune::Sound::CALLS.clear
+$game_system.bgm_play({ 'name' => 'dorf', 'volume' => 70, 'pitch' => 120 })
+check('playing_bgm liefert den Eintrag') { $game_system.playing_bgm['name'] == 'dorf' }
+$game_system.bgm_memorize
+$game_system.bgm_play({ 'name' => 'kampf', 'volume' => 100, 'pitch' => 100 })
+$game_system.bgm_restore
+check('bgm_restore spielt den gemerkten Titel (Volume/Pitch bleiben)') do
+  $game_system.playing_bgm == { 'name' => 'dorf', 'volume' => 70, 'pitch' => 120 } &&
+    Rune::Sound::CALLS.last == [:loop, 'dorf', 0.7]
+end
+check('bgm_play(nil) stoppt und leert playing_bgm') do
+  Rune::Sound::CALLS.clear
+  $game_system.bgm_play(nil)
+  $game_system.playing_bgm.nil? && Rune::Sound::CALLS.include?([:stop, 'dorf'])
+end
+check('leerer Name stoppt ebenfalls') do
+  $game_system.bgm_play({ 'name' => 'dorf', 'volume' => 100, 'pitch' => 100 })
+  $game_system.bgm_play({ 'name' => '  ', 'volume' => 100, 'pitch' => 100 })
+  $game_system.playing_bgm.nil?
+end
+
+RGSS.reset!
+$game_system.bgs_play({ 'name' => 'regen', 'volume' => 40 })
+$game_system.bgs_memorize
+$game_system.bgs_play({ 'name' => 'wind', 'volume' => 100 })
+$game_system.bgs_restore
+check('bgs_memorize/bgs_restore') do
+  $game_system.playing_bgs['name'] == 'regen' &&
+    Rune::Sound::CALLS.last == [:loop, 'regen', 0.4]
+end
+check('bgs_restore ohne Merker stoppt') do
+  RGSS.reset!
+  Rune::Sound::CALLS.clear
+  $game_system.bgs_restore
+  $game_system.playing_bgs.nil?
+end
+
+check('bgm_fade rechnet Sekunden -> Millisekunden (XP: * 1000)') do
+  AudioFiles::CALLS.clear
+  Audio.bgm_play('musik')
+  $game_system.bgm_play({ 'name' => 'musik', 'volume' => 100, 'pitch' => 100 })
+  $game_system.bgm_fade(1.5)
+  AudioFiles::CALLS.include?([:fade_ms, 'musik', 1500.0]) &&
+    $game_system.playing_bgm.nil?
+end
+check('me_play mit leerem Namen stoppt das ME') do
+  $game_system.me_play({ 'name' => '', 'volume' => 100, 'pitch' => 100 })
+  true
+end
 
 puts '== load_data / save_data (JSON) =='
 Dir.mktmpdir('rune_rgss') do |tmp|

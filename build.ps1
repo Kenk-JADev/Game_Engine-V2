@@ -273,7 +273,7 @@ if ($WarpTest) {
         "$ProjectRoot\tools\embedded_texture_test.cpp",
         "$ProjectRoot\src\app.cpp", "$ProjectRoot\src\ruby\vm.cpp",
         "$ProjectRoot\src\core\log.cpp", "$ProjectRoot\src\core\sound.cpp",
-        "$ProjectRoot\src\core\stb_vorbis.cpp",
+        "$ProjectRoot\src\core\stb_vorbis.cpp", "$ProjectRoot\src\core\minimp3.cpp",
         "$ProjectRoot\src\core\window.cpp", "$ProjectRoot\src\gfx\camera.cpp",
         "$ProjectRoot\src\gfx\renderer.cpp", "$ProjectRoot\src\gfx\ui.cpp",
         "$ProjectRoot\src\world\physics.cpp", "$ProjectRoot\src\world\terrain.cpp",
@@ -433,6 +433,18 @@ if ($Test) {
     if ($LASTEXITCODE -ne 0) { throw 'ogg_test.exe konnte nicht gebaut werden' }
     & $OggTestExe
     if ($LASTEXITCODE -ne 0) { throw 'OGG-Test fehlgeschlagen' }
+
+    Write-Step 'MP3-Leser prüfen (Etappe 22, T4) ...'
+    $Mp3TestExe = Join-Path $BuildDir 'mp3_test.exe'
+    $Mp3TestFlags = @(
+        '-std=c++20', '-O1', '-Wall', '-Wextra', '-Werror',
+        "-I$ProjectRoot\src", "$ProjectRoot\src\core\minimp3.cpp",
+        "$ProjectRoot\tools\mp3_test.cpp", '-o', $Mp3TestExe
+    )
+    & $Gcc @Mp3TestFlags
+    if ($LASTEXITCODE -ne 0) { throw 'mp3_test.exe konnte nicht gebaut werden' }
+    & $Mp3TestExe
+    if ($LASTEXITCODE -ne 0) { throw 'MP3-Test fehlgeschlagen' }
 
     Write-Step 'Materialdokument und Windows-Dateihandles prüfen ...'
     $MaterialTestExe = Join-Path $BuildDir 'material_test.exe'

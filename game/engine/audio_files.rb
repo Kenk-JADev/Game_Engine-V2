@@ -19,9 +19,12 @@
 #    <pfad>                     wie angegeben
 #    audio/<pfad>               Projektordner „audio“
 #    audio/bgm/<pfad>           XP-Ordner für Musik
+#    audio/bgs/<pfad>           XP-Ordner für Klangteppiche
 #    audio/se/<pfad>            XP-Ordner für Geräusche
-#  Endungen: .wav wird geladen; .ogg/.mp3 melden eine Warnung (noch kein
-#  Decoder) und fallen auf den prozeduralen Klang zurück, wenn es einen gibt.
+#    audio/me/<pfad>            XP-Ordner für Musik-Effekte
+#  Endungen (Etappe 22): .wav, .ogg und .mp3 liest die Engine selbst
+#  (WAV/OGG seit Etappe 21, MP3 über minimp3). Alles andere fällt auf den
+#  prozeduralen Klang zurück, wenn es einen gibt.
 #
 #  Bewusst schlank: kein Streaming, keine Mehrfach-Loops pro Datei — die
 #  Engine mischt bis zu 12 Stimmen und ersetzt Loops gleichen Namens.
@@ -29,7 +32,8 @@
 
 module AudioFiles
   ENDUNGEN = %w[.wav .ogg .mp3].freeze
-  UNTERORDNER = ['', 'audio/', 'audio/bgm/', 'audio/se/'].freeze
+  # Etappe 22: auch BGS (Klangteppich) und ME (Musik-Effekt) wie in XP.
+  UNTERORDNER = ['', 'audio/', 'audio/bgm/', 'audio/bgs/', 'audio/se/', 'audio/me/'].freeze
   MAX_BYTES = 8 * 1024 * 1024      # 8 MB je Datei (60 s WAV sind ~2,6 MB)
 
   @geladen = {}        # Pfad -> Klangname (nur erfolgreiche Ladungen)
@@ -65,20 +69,13 @@ module AudioFiles
         bytes = lese(pfad)
         next if bytes.nil?
 
-        # Etappe 21/T2: OGG Vorbis dekodiert die Engine (stb_vorbis); MP3
-        # bleibt draussen (kein Dekoder, XP nutzt es ohnehin nicht).
-        if pfad.downcase.end_with?('.mp3')
-          warn(pfad, 'MP3 kann nicht dekodiert werden (WAV oder OGG verwenden)')
-          next
-        end
-
         klang = "datei:#{pfad}"
         unless defined?(Rune::Sound) && Rune::Sound.respond_to?(:load)
           warn(pfad, 'Engine ohne Sound-Lader (kopfloser Lauf?)')
           return nil
         end
         unless Rune::Sound.load(klang, bytes, pitch.to_i.clamp(50, 150))
-          warn(pfad, 'Format nicht unterstützt (WAV erwartet)')
+          warn(pfad, 'Format nicht unterstützt (WAV, OGG oder MP3 erwartet)')
           next
         end
         @geladen[pfad] = klang

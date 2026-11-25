@@ -340,11 +340,34 @@ module Battle
     @selected_skill = nil
     @phase = @actors.any?(&:alive?) ? :command : :execute
     $game_temp.in_battle = true if $game_temp
+    musik_start
     Rune::Log.info("Battle: Kampf gegen Truppe '#{troop['name'] || troop_id}' " \
                    "(#{@enemies.size} Gegner, #{@actors.size} Helden)")
     log("Kampf beginnt: #{troop['name'] || troop_id}!")
     Rune::Sound.play('landung', 0.8) if defined?(Rune::Sound)
     true
+  end
+
+  # ------------------------------------------------------------- Kampf-Musik
+  # XP (Scene_Battle): vor dem Kampf die Kartenmusik merken und battle_bgm
+  # spielen, danach bgm_restore und - nur nach einem Sieg - battle_end_me.
+  # Reihenfolge wie im XP-Defaultscript: erst das ME, dann die Musik zurueck
+  # (das ME verstummt den Kampf-Titel, die wiederhergestellte Kartenmusik
+  # laeuft darunter weiter). Ohne $game_system (kopfhafte Tests) still.
+  def self.musik_start
+    return unless defined?($game_system) && $game_system
+    return unless defined?(Audio) && $game_system.respond_to?(:bgm_play)
+
+    $game_system.bgm_memorize
+    $game_system.bgm_play($game_system.battle_bgm)
+  end
+
+  def self.musik_ende(sieg: false)
+    return unless defined?($game_system) && $game_system
+    return unless defined?(Audio) && $game_system.respond_to?(:bgm_restore)
+
+    $game_system.me_play($game_system.battle_end_me) if sieg
+    $game_system.bgm_restore
   end
 
   # Kampf beenden (ohne Wertung), etwa beim Kartenwechsel.
@@ -361,6 +384,7 @@ module Battle
     @selected_skill = nil
     $game_temp.in_battle = false if $game_temp
     release_simulation
+    musik_ende
     Rune::Log.info('Battle: Kampf abgebrochen')
   end
 
@@ -949,6 +973,7 @@ module Battle
     if result == :niederlage && !ohne_gameover && $game_temp
       $game_temp.gameover = true
     end
+    musik_ende(sieg: result == :sieg)
     Rune::Log.info("Battle: Kampf beendet (#{result})")
   end
 

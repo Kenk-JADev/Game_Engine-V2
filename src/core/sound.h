@@ -4,7 +4,8 @@
 // Frame die aktiven Stimmen in die freien waveOut-Puffer.
 //
 // Seit Etappe 21 gibt es zusätzlich einen Datei-Lader (`load_audio`, WAV und
-// OGG Vorbis); alles andere kommt weiterhin prozedural aus Ruby (register_sound).
+// OGG Vorbis), seit Etappe 22 auch MP3 (minimp3); alles andere kommt
+// weiterhin prozedural aus Ruby (register_sound).
 
 #include <cstdint>
 #include <string>
@@ -20,7 +21,7 @@ void shutdown();
 // PCM anmelden (16 Bit signed mono). rate != 44100 wird linear resampelt.
 void register_sound(const std::string& name, int rate, const int16_t* samples, size_t count);
 
-// Datei-Bytes (WAV oder OGG Vorbis) laden und unter `name` anmelden
+// Datei-Bytes (WAV, OGG Vorbis oder MP3) laden und unter `name` anmelden
 // (Etappe 21, XP-BGM/SE). Das Format wird an den ersten Bytes erkannt.
 // `pitch` in Prozent (50..150) verändert die Abspielgeschwindigkeit wie in XP.
 // Rückgabe false bei unbekanntem Format; der Grund steht im Log.

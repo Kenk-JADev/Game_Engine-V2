@@ -114,5 +114,14 @@ check('reset vergisst die laufende Musik ohne zu stoppen') do
   MapAudio.bgm.nil? && MapAudio.bgs.nil? && Audio::CALLS.empty?
 end
 
+check('vergiss(:bgm) vergisst nur die Musik (ME-Fall)') do
+  MapAudio.reset
+  MapAudio.enter({ 'bgm' => { 'name' => 'bgm/dorf.wav' },
+                   'bgs' => { 'name' => 'bgs/regen.wav' } })
+  Audio::CALLS.clear
+  MapAudio.vergiss(:bgm)
+  MapAudio.bgm.nil? && !MapAudio.bgs.nil? && Audio::CALLS.empty?
+end
+
 puts($fail.zero? ? 'ALLE CHECKS GRUEN' : "#{$fail} CHECK(S) FEHLGESCHLAGEN")
 exit($fail.zero? ? 0 : 1)

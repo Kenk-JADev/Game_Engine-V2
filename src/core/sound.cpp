@@ -2,6 +2,7 @@
 #include "core/log.h"
 #include "core/wav.h"   // Etappe 21: portabler WAV-Leser
 #include "core/ogg.h"   // Etappe 21: OGG Vorbis (stb_vorbis, mitgeliefert)
+#include "core/mp3.h"   // Etappe 22: MP3 (minimp3, mitgeliefert)
 
 #include <atomic>
 #include <cstring>
@@ -110,11 +111,16 @@ bool load_audio(const std::string& name, const unsigned char* bytes, size_t size
     }
     wav::Clip clip;
     std::string fehler;
-    // Etappe 21: OGG Vorbis (XP-Standard) und WAV teilen sich den Weg; die
-    // Kennung entscheidet, nicht die Dateiendung.
-    const bool ogg_datei = ogg::ist_ogg(bytes, size);
-    const bool gelesen = ogg_datei ? ogg::parse(bytes, size, clip, &fehler)
-                                   : wav::parse(bytes, size, clip, &fehler);
+    // Etappe 21/22: OGG Vorbis (XP-Standard), MP3 und WAV teilen sich den
+    // Weg; die Kennung entscheidet, nicht die Dateiendung.
+    bool gelesen = false;
+    if (ogg::ist_ogg(bytes, size)) {
+        gelesen = ogg::parse(bytes, size, clip, &fehler);
+    } else if (mp3::ist_mp3(bytes, size)) {
+        gelesen = mp3::parse(bytes, size, clip, &fehler);
+    } else {
+        gelesen = wav::parse(bytes, size, clip, &fehler);
+    }
     if (!gelesen) {
         log_warn("Sound: '" + name + "': " + fehler);
         return false;

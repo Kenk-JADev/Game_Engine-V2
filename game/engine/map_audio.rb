@@ -44,6 +44,12 @@ module MapAudio
       @bgs = nil
     end
 
+    # Etappe 22: nur eine Spur vergessen - ein ME verstummt die BGM, der
+    # Klangteppich (BGS) laeuft weiter.
+    def vergiss(spur)
+      spur == :bgs ? (@bgs = nil) : (@bgm = nil)
+    end
+
     private
 
     # Eintrag einer Karte lesen: nil, wenn nichts Sinnvolles dasteht.

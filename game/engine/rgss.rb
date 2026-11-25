@@ -78,6 +78,11 @@ module RGSS
       @battle_bgm         = { 'name' => '', 'volume' => 100, 'pitch' => 100 }
       @battle_end_me      = { 'name' => '', 'volume' => 100, 'pitch' => 100 }
       @menu_bgm           = { 'name' => '', 'volume' => 100, 'pitch' => 100 }
+      # Etappe 22 (T2): fluechtig wie in XP - Speicherstand enthaelt sie nicht.
+      @playing_bgm        = nil
+      @playing_bgs        = nil
+      @memorized_bgm      = nil
+      @memorized_bgs      = nil
     end
 
     # Timer in Frames (XP zählt 60er-Frames); Rune3D tickt in Sekunden.
@@ -101,20 +106,77 @@ module RGSS
     end
 
     # Audio-Delegation: Argument ist XP-gewohnt Hash/RPG::AudioFile-ähnlich
-    # oder ein nackter Name.
-    def bgm_play(audio) = Audio.bgm_play(*audio_args(audio))
-    def bgm_stop        = Audio.bgm_stop
-    def bgm_fade(time)  = Audio.bgm_fade(time)
-    def bgs_play(audio) = Audio.bgs_play(*audio_args(audio))
-    def bgs_stop        = Audio.bgs_stop
-    def bgs_fade(time)  = Audio.bgs_fade(time)
-    def me_play(audio)  = Audio.me_play(*audio_args(audio))
+    # oder ein nackter Name. Seit Etappe 22 (T2) wie im XP-Defaultscript:
+    #   - nil bzw. leerer Name stoppt (bgm_play(nil) = bgm_stop),
+    #   - bgm_fade/bgs_fade erwarten SEKUNDEN (XP: time * 1000 an RGSS),
+    #   - bgm_memorize/bgm_restore (XP 247/248) merken und spielen wieder,
+    #   - playing_bgm/playing_bgs liefern den zuletzt gesetzten Eintrag.
+    def bgm_play(audio)
+      if leer?(audio)
+        @playing_bgm = nil
+        return Audio.bgm_stop
+      end
+      @playing_bgm = audio
+      Audio.bgm_play(*audio_args(audio))
+    end
+
+    def bgm_stop = Audio.bgm_stop
+
+    def bgm_fade(time)
+      @playing_bgm = nil
+      Audio.bgm_fade(time.to_f * 1000.0)
+    end
+
+    def bgm_memorize = (@memorized_bgm = @playing_bgm)
+    def bgm_restore  = bgm_play(@memorized_bgm)
+    def playing_bgm  = @playing_bgm
+
+    def bgs_play(audio)
+      if leer?(audio)
+        @playing_bgs = nil
+        return Audio.bgs_stop
+      end
+      @playing_bgs = audio
+      Audio.bgs_play(*audio_args(audio))
+    end
+
+    def bgs_stop = Audio.bgs_stop
+
+    def bgs_fade(time)
+      @playing_bgs = nil
+      Audio.bgs_fade(time.to_f * 1000.0)
+    end
+
+    def bgs_memorize = (@memorized_bgs = @playing_bgs)
+    def bgs_restore  = bgs_play(@memorized_bgs)
+    def playing_bgs  = @playing_bgs
+
+    def me_play(audio)
+      if leer?(audio)
+        return Audio.me_stop
+      end
+      Audio.me_play(*audio_args(audio))
+    end
+
     def se_play(audio)  = Audio.se_play(*audio_args(audio))
     def se_stop         = Audio.se_stop
+    def me_stop         = Audio.me_stop
 
     def rgss_version = VERSION
 
     private
+
+    # XP: kein AudioFile oder ein leerer Name bedeutet "stoppen".
+    def leer?(audio)
+      return true if audio.nil?
+
+      h = audio.respond_to?(:to_h) ? audio.to_h : audio
+      return audio.to_s.strip.empty? if h.is_a?(String) || h.is_a?(Symbol)
+      return true unless h.respond_to?(:[])
+
+      name = h[:name] || h['name']
+      name.to_s.strip.empty?
+    end
 
     def audio_args(audio)
       return [audio] if audio.is_a?(String) || audio.is_a?(Symbol)
@@ -824,12 +886,21 @@ end
 #  MILLISEKUNDEN (das XP-Defaultscript ruft time * 1000), wir intern in
 #  Sekunden. Ohne Datei bleibt es beim sofortigen Stopp (prozedurale Loops
 #  kennen keinen Fade).
+#  Etappe 22 (T1): se_stop und me_stop stoppen wirklich; ein ME verstummt die
+#  laufende Musik (XP: ME und BGM teilen den Kanal) und setzt sie NICHT
+#  automatisch fort - das XP-Defaultscript spielt sie bei Bedarf neu.
 # ============================================================================
 module Audio
   @bgm = nil
   @bgm_datei = nil
   @bgs = nil
   @bgs_datei = nil
+  # Etappe 22: zuletzt gestartete Einmal-Sounds (Namen, wie sie gespielt
+  # wurden) - se_stop/me_stop brauchen sie, weil die Engine Stimmen nur über
+  # den Namen stoppt. Begrenzt, damit lange Spielsitzungen nicht wachsen.
+  MAX_EINMAL = 24
+  @se = []
+  @me = []
 
   # XP 241: eine neue Musik ersetzt die alte - die alte Datei wird gestoppt,
   # nicht nur "vergessen" (sonst liefen zwei Loops übereinander).
@@ -900,20 +971,58 @@ module Audio
     bgs_stop
   end
 
+  # XP 249: ein ME liegt auf dem BGM-Kanal - die laufende Musik verstummt.
+  # Automatisch fortgesetzt wird sie nicht (das macht das Script).
   def self.me_play(filename, volume = 100, pitch = 100)
-    return if defined?(AudioFiles) && AudioFiles.play(filename, volume: lautstaerke(volume), pitch: pitch)
+    bgm_stop if @bgm || @bgm_datei
+    MapAudio.vergiss(:bgm) if defined?(MapAudio)  # Karte denkt sonst, ihre Musik laeuft noch
+    @me.clear
+    merke(@me, datei: filename, prozedural: basisname(filename))
+    if defined?(AudioFiles) && AudioFiles.play(filename, volume: lautstaerke(volume), pitch: pitch)
+      return
+    end
 
     Rune::Sound.play(basisname(filename), lautstaerke(volume))
   end
 
   def self.se_play(filename, volume = 100, pitch = 100)
-    return if defined?(AudioFiles) && AudioFiles.play(filename, volume: lautstaerke(volume), pitch: pitch)
+    merke(@se, datei: filename, prozedural: basisname(filename))
+    if defined?(AudioFiles) && AudioFiles.play(filename, volume: lautstaerke(volume), pitch: pitch)
+      return
+    end
 
     Rune::Sound.play(basisname(filename), lautstaerke(volume))
   end
 
-  # Einmal-Sounds lassen sich nicht einzeln beenden; se_stop ist ein No-Op.
-  def self.se_stop; end
+  # XP 251: alle Einmal-Sounds stoppen. Datei-Klänge laufen über AudioFiles
+  # (Name = Aufrufname), prozedurale über Rune::Sound (Basisname).
+  def self.se_stop
+    stoppe_liste(@se)
+  end
+
+  def self.me_stop
+    stoppe_liste(@me)
+  end
+
+  def self.stoppe_liste(liste)
+    liste.each do |eintrag|
+      datei, prozedural = eintrag
+      gestoppt = defined?(AudioFiles) && datei && AudioFiles.stop(datei)
+      next if gestoppt
+
+      Rune::Sound.stop(prozedural) if defined?(Rune::Sound) && Rune::Sound.respond_to?(:stop)
+    end
+    liste.clear
+  end
+  private_class_method :stoppe_liste
+
+  # Merkt sich einen Einmal-Sound als [Dateiname, prozeduraler Name].
+  def self.merke(liste, datei:, prozedural:)
+    liste << [datei.to_s, prozedural]
+    liste.shift while liste.size > MAX_EINMAL
+    liste
+  end
+  private_class_method :merke
 
   def self.basisname(filename)
     File.basename(filename.to_s).sub(/\.[^.]*/, '')

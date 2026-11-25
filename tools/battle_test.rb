@@ -59,6 +59,10 @@ module Rune
     end
   end
 
+  # Etappe 22: Platzhalter - Battle.musik_start/ende pruefen nur, ob es den
+  # Audio-Namensraum gibt; gespielt wird ueber die $game_system-Attrappe.
+  module Audio; end
+
   module Window
     def self.width = 1280
     def self.height = 720
@@ -308,6 +312,42 @@ check('Battler.damage clamped auf 0') do
   ziel.damage(99999)
   ziel.hp.zero? && ziel.dead?
 end
+
+puts '== Etappe 22: Kampf-Musik =='
+class FakeGameSystem
+  attr_reader :calls
+  attr_accessor :battle_bgm, :battle_end_me
+
+  def initialize
+    @battle_bgm = { 'name' => 'kampf' }
+    @battle_end_me = { 'name' => 'sieg_me' }
+    @calls = []
+  end
+
+  def bgm_memorize = (@calls << :memorize)
+  def bgm_play(audio) = (@calls << [:bgm_play, audio['name']])
+  def bgm_restore = (@calls << :restore)
+  def me_play(audio) = (@calls << [:me_play, audio['name']])
+end
+
+$game_system = FakeGameSystem.new
+Battle.start('waldweg')
+check('Kampfstart: Kartenmusik merken, dann battle_bgm') do
+  $game_system.calls.first(2) == [:memorize, [:bgm_play, 'kampf']]
+end
+Battle.ende(:sieg)
+check('Sieg: erst battle_end_me, dann Musik zurueck') do
+  $game_system.calls.last(2) == [[:me_play, 'sieg_me'], :restore] && !Battle.active?
+end
+
+$game_system = FakeGameSystem.new
+Battle.start('waldweg')
+Battle.abort!
+check('Abbruch: Musik zurueck, kein ME') do
+  $game_system.calls.last == :restore &&
+    $game_system.calls.none? { |c| c.is_a?(Array) && c[0] == :me_play }
+end
+$game_system = nil
 
 puts '== Interpreter: battle blockiert =='
 srand(7)

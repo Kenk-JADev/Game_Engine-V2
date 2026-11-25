@@ -103,6 +103,12 @@ jobs:
             src/core/stb_vorbis.cpp tools/ogg_test.cpp -o ogg_test
           ./ogg_test
 
+      - name: MP3-Leser portabel prüfen (Etappe 22, T4)
+        run: |
+          g++ -std=c++20 -O2 -Wall -Wextra -Werror -Isrc \
+            src/core/minimp3.cpp tools/mp3_test.cpp -o mp3_test
+          ./mp3_test
+
       - name: Materialdokument portabel prüfen
         run: |
           g++ -std=c++20 -O2 -Wall -Wextra -Werror \
