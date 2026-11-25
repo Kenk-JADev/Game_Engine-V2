@@ -1616,7 +1616,10 @@ void event_form_tests(const std::string& wurzel) {
         R"({"cmd":"save_bgm"})",
         R"({"cmd":"resume_bgm"})",
         R"({"cmd":"memorize_audio"})",
-        R"({"cmd":"restore_audio"})"
+        R"({"cmd":"restore_audio"})",
+        R"({"cmd":"state","actor":"alle","name":"gift","mode":"add","turns":3})",
+        R"({"cmd":"actor_param","actor":"arik","param":"max_hp","amount":10})",
+        R"({"cmd":"actor_name","actor":"arik","name":"Arik der Kuehne"})"
     };
     check("Beispiel für jeden Befehlstyp vorhanden", samples.size() == ET_COUNT);
     for (size_t i = 0; i < samples.size(); ++i) {

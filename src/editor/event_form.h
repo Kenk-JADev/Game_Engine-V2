@@ -48,7 +48,9 @@ enum EvType {
     ET_PARTY_MEMBER, ET_SHOP, ET_NAME_INPUT, ET_SCREEN_TONE, ET_FLASH, ET_MENU, ET_IF_BATTLE_RESULT, ET_SHAKE, ET_SHOW_PICTURE, ET_MOVE_PICTURE, ET_ROTATE_PICTURE,
     ET_TINT_PICTURE, ET_ERASE_PICTURE,
     ET_PLAY_BGM, ET_FADEOUT_BGM, ET_PLAY_BGS, ET_FADEOUT_BGS,
-    ET_SAVE_BGM, ET_RESUME_BGM, ET_MEMORIZE_AUDIO, ET_RESTORE_AUDIO, ET_COUNT
+    ET_SAVE_BGM, ET_RESUME_BGM, ET_MEMORIZE_AUDIO, ET_RESTORE_AUDIO,
+    // Etappe 24: Zustand und Werte von Helden (XP 313/317/320).
+    ET_STATE, ET_ACTOR_PARAM, ET_ACTOR_NAME, ET_COUNT
 };
 inline constexpr const char* const EV_TYPES[ET_COUNT] = {
     "text", "choices", "log", "wait", "switch", "toggle_switch", "variable",
@@ -63,7 +65,8 @@ inline constexpr const char* const EV_TYPES[ET_COUNT] = {
     "menu", "if_battle_result", "shake",
     "show_picture", "move_picture", "rotate_picture", "tint_picture", "erase_picture",
     "play_bgm", "fadeout_bgm", "play_bgs", "fadeout_bgs",
-    "save_bgm", "resume_bgm", "memorize_audio", "restore_audio"
+    "save_bgm", "resume_bgm", "memorize_audio", "restore_audio",
+    "state", "actor_param", "actor_name"
 };
 inline constexpr const char* const EVENT_TRIGGERS[] = {"action", "touch", "auto", "parallel"};
 inline constexpr const char* const EVENT_OPS[] = {"==", "!=", "<", "<=", ">", ">="};
@@ -95,7 +98,8 @@ inline bool event_command_uses_field(int type, size_t field) {
             type == ET_FLASH || type == ET_IF_BATTLE_RESULT ||
             type == ET_SHOW_PICTURE || type == ET_MOVE_PICTURE || type == ET_TINT_PICTURE ||
             type == ET_PLAY_BGM || type == ET_PLAY_BGS ||
-            type == ET_FADEOUT_BGM || type == ET_FADEOUT_BGS;
+            type == ET_FADEOUT_BGM || type == ET_FADEOUT_BGS ||
+            type == ET_STATE || type == ET_ACTOR_PARAM || type == ET_ACTOR_NAME;
         case 1: return type == ET_WAIT || type == ET_VARIABLE || type == ET_IF_VARIABLE ||
             type == ET_SHAKE || type == ET_SHOW_PICTURE || type == ET_MOVE_PICTURE ||
             type == ET_ROTATE_PICTURE || type == ET_TINT_PICTURE || type == ET_ERASE_PICTURE ||
@@ -106,13 +110,15 @@ inline bool event_command_uses_field(int type, size_t field) {
             type == ET_TIMER || type == ET_ACTOR_HP || type == ET_ACTOR_SP ||
             type == ET_ACTOR_EXP || type == ET_ACTOR_LEVEL || type == ET_PARTY_MEMBER ||
             type == ET_NAME_INPUT || type == ET_SCREEN_TONE || type == ET_FLASH ||
-            type == ET_PLAY_BGM || type == ET_PLAY_BGS;
+            type == ET_PLAY_BGM || type == ET_PLAY_BGS ||
+            type == ET_STATE || type == ET_ACTOR_PARAM || type == ET_ACTOR_NAME;
         case 2: return type == ET_TELEPORT || type == ET_MOVE_PLAYER || type == ET_FLASH ||
             type == ET_SHAKE || type == ET_SHOW_PICTURE || type == ET_MOVE_PICTURE ||
             type == ET_ROTATE_PICTURE || type == ET_TINT_PICTURE ||
             type == ET_EFFECT || type == ET_ITEM || type == ET_MOVE_ROUTE || type == ET_INPUT_NUMBER ||
             type == ET_BATTLE || type == ET_TEXT_OPTIONS ||
-            type == ET_PLAY_BGM || type == ET_PLAY_BGS;
+            type == ET_PLAY_BGM || type == ET_PLAY_BGS ||
+            type == ET_STATE || type == ET_ACTOR_PARAM;
         case 3: return type == ET_TELEPORT || type == ET_MOVE_ROUTE || type == ET_SHAKE ||
             type == ET_SHOW_PICTURE || type == ET_MOVE_PICTURE;
         case 4: return type == ET_TEXT || type == ET_LOG || type == ET_CHOICES || type == ET_MOVE_ROUTE ||
@@ -835,6 +841,17 @@ inline EventCommandForm event_command_form_read(const JsonValue& c) {
         case ET_FADEOUT_BGM: case ET_FADEOUT_BGS: f.val1 = num("seconds", "1"); break;
         case ET_ACTOR_HP: case ET_ACTOR_SP: case ET_ACTOR_EXP: case ET_ACTOR_LEVEL:
             f.name = text("target", "alle"); f.val1 = num("amount", "0"); break;
+        case ET_STATE:
+            // Etappe 24 (XP 313): Zustand, Ziel, Modus.
+            f.name = text("name"); f.val1 = text("actor", "alle");
+            f.val2 = text("mode", "add"); break;
+        case ET_ACTOR_PARAM:
+            // Etappe 24 (XP 317): Parameter, Ziel, Menge.
+            f.name = text("param"); f.val1 = text("actor", "alle");
+            f.val2 = num("amount", "0"); break;
+        case ET_ACTOR_NAME:
+            // Etappe 24 (XP 320): Held, neuer Name.
+            f.name = text("actor"); f.val1 = text("name"); break;
         case ET_TEXT_OPTIONS:
             f.name = text("position", "unten");
             f.flag = flag("frame", 0);
@@ -902,6 +919,10 @@ inline std::vector<const char*> event_command_keys(int type) {
         case ET_FADEOUT_BGM: case ET_FADEOUT_BGS: return {"seconds"};
         case ET_ACTOR_HP: case ET_ACTOR_SP: case ET_ACTOR_EXP: case ET_ACTOR_LEVEL:
             return {"target", "amount"};
+        // Etappe 24: 'turns' steht nur von Hand in der JSON (optional).
+        case ET_STATE: return {"name", "actor", "mode", "turns"};
+        case ET_ACTOR_PARAM: return {"param", "actor", "amount"};
+        case ET_ACTOR_NAME: return {"actor", "name"};
         default: return {};
     }
 }
@@ -1477,6 +1498,33 @@ inline EventEdit event_command_prepare(const JsonValue* existing, const EventCom
             // Etappe 20d: Ziel "alle" oder ein Actor, Menge vorzeichenbehaftet.
             ok = text("target", "cmd_name", before.name, after.name, true, false, false);
             if (ok) ok = v1("amount", false, "0", true, true, -9999999, 9999999);
+            break;
+        }
+        case ET_STATE: {
+            // Etappe 24 (XP 313): Zustand (Name), Ziel, add/remove.
+            ok = name();
+            if (ok) ok = text("actor", "cmd_val1", before.val1, after.val1, true, false, false);
+            if (ok && (fresh || before.val2 != after.val2)) {
+                std::string modus = after.val2.empty() && fresh ? "add" : after.val2;
+                std::transform(modus.begin(), modus.end(), modus.begin(),
+                               [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+                if (modus != "add" && modus != "remove")
+                    ok = fail("cmd_val2", "Modus muss 'add' oder 'remove' sein.");
+                else ok = text("mode", "cmd_val2", before.val2, modus, false, false, true);
+            }
+            break;
+        }
+        case ET_ACTOR_PARAM: {
+            // Etappe 24 (XP 317): Parameter (Name), Ziel, Menge vorzeichenbehaftet.
+            ok = name();
+            if (ok) ok = text("actor", "cmd_val1", before.val1, after.val1, true, false, false);
+            if (ok) ok = v2("amount", false, "0", true, true, -9999999, 9999999);
+            break;
+        }
+        case ET_ACTOR_NAME: {
+            // Etappe 24 (XP 320): genau ein Held, neuer Name in Wert 1.
+            ok = name("actor") &&
+                 text("name", "cmd_val1", before.val1, after.val1, false, false, true);
             break;
         }
         case ET_TIMER: {

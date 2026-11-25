@@ -83,6 +83,7 @@ module MapCheck
     tint_picture erase_picture
     play_bgm fadeout_bgm play_bgs fadeout_bgs
     save_bgm resume_bgm memorize_audio restore_audio
+    state actor_param actor_name
   ].freeze
 
   TRIGGER   = %w[action touch auto parallel].freeze
@@ -106,6 +107,9 @@ module MapCheck
   TON_PITCH = (50..150).freeze
   # Etappe 20d: Mitglieder aendern (XP 129) - XP kennt nur add/remove.
   PARTY_MODI = %w[add remove].freeze
+  # Etappe 24 (XP 317): änderbare Parameter - muss zu Party::PARAMETER passen
+  # (tools/zustand_test.rb vergleicht beide Listen).
+  PARAMETER = %w[max_hp max_mp atk def spi agi].freeze
   # Etappe 20f: XP-Blitzfarben (Game_Screen#start_flash kennt nur diese).
   # Ergebnisfälle für `if_battle_result` (XP 601-603) - dieselben Symbole,
   # die Battle#ende setzt.
@@ -1076,6 +1080,51 @@ module MapCheck
         # Etappe 23: felderlos - Musik sichern bzw. den Merker zurueckholen
         # (XP 243/244/247/248). Der Merker selbst lebt in $game_system.
         nil
+      when 'state'
+        # Etappe 24 (XP 313): Zustand hinzufügen/entfernen. `name` ist der
+        # Zustand aus database.json 'states' (ID oder Name), `mode` add/remove,
+        # `turns` optional die Dauer in Runden.
+        modus = c.key?('mode') ? c['mode'].to_s.strip.downcase : 'add'
+        modus = 'add' if modus.empty?
+        unless PARTY_MODI.include?(modus)
+          melde(FEHLER, w, "unbekannter state-Modus '#{modus}' (add/remove)")
+        end
+        zustand = c['name'].to_s.strip
+        if zustand.empty?
+          melde(FEHLER, w, "'name' (Zustand) fehlt oder ist leer")
+        else
+          liste = (Database.database['states'] || []).grep(Hash)
+          bekannt = liste.any? do |h|
+            zustand.casecmp?(h['id'].to_s) || zustand.casecmp?((h['name'] || '').to_s)
+          end
+          melde(WARNUNG, w, "Zustand '#{zustand}' nicht in database.json") unless bekannt
+        end
+        if c.key?('turns') && !(zahl?(c['turns']) && c['turns'].to_i.positive?)
+          melde(FEHLER, w, "'turns' muss eine Zahl > 0 sein")
+        end
+        pruefe_actor_ziel(c, w)
+      when 'actor_param'
+        # Etappe 24 (XP 317): max_hp/max_mp/atk/def/spi/agi ändern.
+        parameter = c['param'].to_s.strip.downcase
+        if parameter.empty?
+          melde(FEHLER, w, "'param' fehlt (z. B. max_hp, atk)")
+        elsif !PARAMETER.include?(parameter)
+          melde(FEHLER, w, "unbekannter Parameter '#{parameter}' (#{PARAMETER.join('/')})")
+        end
+        melde(FEHLER, w, "'amount' fehlt oder ist keine Zahl") unless zahl?(c['amount'])
+        if c['amount'].is_a?(Numeric) && c['amount'].to_i.zero?
+          melde(WARNUNG, w, "'amount' ist 0 - der Befehl bewirkt nichts")
+        end
+        pruefe_actor_ziel(c, w)
+      when 'actor_name'
+        # Etappe 24 (XP 320): genau einen Helden umbenennen.
+        melde(FEHLER, w, "'name' fehlt oder ist leer") unless text?(c['name'])
+        ziel = c['actor'].to_s.strip
+        if ziel.empty? || ziel.casecmp?('alle')
+          melde(FEHLER, w, "'actor' muss genau einen Helden nennen")
+        else
+          pruefe_actor_ziel(c, w)
+        end
       when 'item'
         melde(FEHLER, w, "'name' fehlt oder ist leer") unless text?(c['name'])
         if c.key?('count') && !(zahl?(c['count']) && c['count'] != 0)
@@ -1477,6 +1526,19 @@ module MapCheck
             (c['branches'].is_a?(Array) && c['branches'].any? { |z| enthaelt_ausgang?(z) })
         end
       end
+    end
+
+    # Etappe 24: Ziel eines Helden-Befehls (Schlüssel 'actor', optional
+    # "alle") gegen database.json prüfen - gleiche Regel wie bei 311/312.
+    def pruefe_actor_ziel(c, w)
+      ziel = c.key?('actor') ? c['actor'].to_s.strip : ''
+      return if ziel.empty? || ziel.casecmp?('alle')
+
+      namen = (Database.database['actors'] || []).filter_map do |h|
+        h.is_a?(Hash) ? [h['id'].to_s, (h['name'] || h['id']).to_s] : nil
+      end
+      bekannt = namen.any? { |id, name| ziel.casecmp?(id) || ziel.casecmp?(name) }
+      melde(WARNUNG, w, "Actor '#{ziel}' nicht in database.json") unless bekannt
     end
 
     # Teleport/Bewegung kann eine Zielkarte nennen (Kartenwechsel); wenn eine

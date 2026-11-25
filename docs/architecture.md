@@ -1941,7 +1941,45 @@ Vier Befehle (Bereich „Party" in `docs/befehle.json`):
 
 MapCheck prüft `amount` (Pflicht, ≠ 0), den Actor-Namen gegen
 `database.json` und den Stufenbereich. **Tests:** `tools/actor_wert_test.rb`
-(24 Checks), `json_test` 778 Checks.
+(24 Checks), `json_test` 882 Checks.
+
+### Zustand, Parameter und Name (Etappe 24, XP 313/317/320)
+
+Drei Befehle schließen den Helden-Block; alle drei nennen das Ziel im
+Schlüssel `actor` (`alle` oder ein Held):
+
+```json
+{"cmd":"state",      "actor":"alle", "name":"Gift", "mode":"add", "turns":3}
+{"cmd":"actor_param","actor":"arik", "param":"max_hp", "amount":20}
+{"cmd":"actor_name", "actor":"arik", "name":"Arik der Kühne"}
+```
+
+- **`state`** (XP 313) setzt oder entfernt (`mode` add/remove) einen Zustand aus
+  `database.json` → `states` (ID **oder** Name, Groß-/Kleinschreibung egal).
+  `turns` ist optional; ohne Angabe bleibt die Dauer offen (`null`) und der
+  Kampf setzt die Datenbank-Dauer ein. Ein erneutes `add` frischt die Dauer
+  auf, kürzt sie aber nie. Mehr als **8** Zustände lehnt die Engine ab
+  (`Party::MAX_STATES`, XP: `Game_Battler`).
+- Zustände hängen jetzt am `Party::Actor` (`states = [{ id:, turns: }]`) —
+  nicht mehr nur am Kampf-Battler. Sie stehen im Spielstand (`Party.snapshot`),
+  erscheinen über `Actor#state?`/`#state_names` und wandern bei
+  `Battle.start` in die Battler; `Battle.sync_actors!` schreibt sie zurück,
+  damit im Kampf abgelaufene Zustände auch aus Menü und Spielstand
+  verschwinden. Vollständiges Heilen (`heal`, XP 314 `recover_all`) entfernt
+  sie; eine Teilheilung um `amount` (Rune3D-Zusatz) lässt sie stehen.
+- **`actor_param`** (XP 317) ändert `max_hp`, `max_mp`, `atk`, `def`, `spi`
+  oder `agi` vorzeichenbehaftet (`Party::PARAMETER`). Maxima fallen nicht
+  unter 1, die übrigen Werte nicht unter 0; sinkt `max_hp`/`max_mp` unter den
+  aktuellen Wert, werden HP/MP gekappt.
+- **`actor_name`** (XP 320) benennt **genau einen** Helden über
+  `Party.rename` um (`alle` ist ein Fehler); der Name steht in Menü, Kampf und
+  Spielstand.
+
+MapCheck prüft Pflichtfelder, den Modus (`add`/`remove`), `turns > 0`, den
+Parameter gegen `MapCheck::PARAMETER` (muss zu `Party::PARAMETER` passen) und
+das Actor-Ziel gegen `database.json`; unbekannte Zustände und Namen sind
+Warnungen, fehlende Pflichtfelder Fehler. **Tests:** `tools/zustand_test.rb`
+(42 Checks, inkl. Spielstand und Kampf-Übergabe), `json_test` 882 Checks.
 
 ### Ton aus Dateien (Etappe 21, WAV)
 

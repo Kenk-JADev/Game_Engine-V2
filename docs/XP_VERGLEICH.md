@@ -17,7 +17,7 @@ Rune3D (Stand nach 19y) steht — mit Blick darauf, was sich sinngemäß in 3D
 ## 1. Event-Befehle — 92 XP-Befehle, 39 in Rune3D
 
 XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
-**69 Befehlstypen**. Bilanz: **53 ✅ · 7 ⚠️ · 33 ❌**.
+**72 Befehlstypen**. Bilanz: **56 ✅ · 6 ⚠️ · 31 ❌**.
 
 ### A. Nachricht & Ablaufsteuerung (101–119)
 
@@ -106,14 +106,14 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 | Namenseingabe | 303 | `name_input` (R30) mit NameInput-Fenster (`UI.name_input`) | ⚠️ A-Z/a-z/0-9/Leerzeichen, `max` 1–16 (Default 8), Esc nur bei `cancel`; Umlaute fehlen (Tasten lesen Ein-Zeichen-Namen) |
 | HP ändern | 311 | `actor_hp` (R28) + `heal` | ✅ Ziel `alle` oder ein Actor, vorzeichenbehaftet (negativ = Schaden), geklemmt auf 0..Max |
 | SP ändern | 312 | `actor_sp` (R28) | ✅ wie `actor_hp`, Rune3D nennt das Feld `mp` (XP: SP) |
-| Zustand ändern | 313 | — | ⚠️ Kampf kennt Zustände (20a), der Event-Befehl fehlt (20d) |
+| Zustand ändern | 313 | `state` (R42) | ✅ Ziel `alle`/Held, Zustand per ID oder Name, `mode` add/remove, `turns` optional; Zustände hängen am Helden (Spielstand, Menü) und wandern in den Kampf |
 | Alles wiederherstellen | 314 | `heal` ohne Betrag | ✅ |
 | EXP ändern | 315 | `actor_exp` (R28) | ✅ läuft über `Party.set_exp`, Stufenaufstiege inklusive |
 | Level ändern | 316 | `actor_level` (R28) | ✅ Aufstieg über `level_up!` (Wachstum wie im Kampf), Abstieg senkt nur die Stufe (keine Klassentabellen) |
-| Parameter ändern | 317 | — | ❌ |
+| Parameter ändern | 317 | `actor_param` (R42) | ✅ max_hp/max_mp/atk/def/spi/agi vorzeichenbehaftet, HP/MP werden bei sinkendem Maximum gekappt (XP kennt nur drei Parameter) |
 | Skills ändern | 318 | — | ⚠️ `learn_skill`/`skills` per Script (20a), Event-Befehl fehlt (20d) |
 | Ausrüstung ändern | 319 | — | ❌ |
-| Name ändern | 320 | — | ❌ |
+| Name ändern | 320 | `actor_name` (R42) | ✅ genau ein Held, neuer Name in Menü, Kampf und Spielstand |
 | Klasse ändern | 321 | — | ❌ |
 | Grafik ändern | 322 | — | ❌ |
 | Gegner HP/SP/Zustand/Heilen | 331–334 | — | ❌ |
@@ -139,7 +139,7 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 
 ---
 
-## 2. Datenbank — XP: 13 Sammlungen, Rune3D: 4
+## 2. Datenbank — XP: 13 Sammlungen, Rune3D: 4 vollständig (+3 teilweise)
 
 | XP (`$data_*`) | Rune3D (F9, `database.json`) | Status |
 |---|---|---|
@@ -151,10 +151,10 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 | Armors | — | ❌ |
 | Enemies | Gegner (12 Felder) | ✅ |
 | Troops | Truppen (4 Felder) | ✅ |
-| States | — | ❌ |
+| States | Datenbank `states` (20a) | ⚠️ Datenbank + Kampf + Event-Befehl (R42), F9-Reiter fehlt |
 | Animations | — | ❌ |
 | Tilesets | eigener Tileset-Editor (F7) | ⚠️ andere Mechanik (3D-Splat) |
-| Common Events | — | ❌ |
+| Common Events | `common_events` + `common_event`-Befehl (20c) | ⚠️ Datenbank + Laufzeit, F9-Reiter fehlt |
 | System | `system.json` | ⚠️ Teilmenge |
 
 ---
@@ -230,7 +230,8 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 | `$game_system/$game_switches/$game_variables/$game_self_switches` | ✅ | ✅ |
 | `$game_party/$game_player/$game_map/$game_screen/$game_temp` | ✅ (Screen-Tone/Flash/Shake/Pictures ohne Wirkung; **Calling-Flags von `$game_temp` seit R28 wirksam**: battle/menu/save_calling, player_transferring, to_title) | ⚠️ |
 | `$data_actors/$data_items/$data_system` | ✅ (String-IDs, JSON statt Marshal) | ⚠️ bewusst anders |
-| `$data_classes/$data_skills/$data_weapons/$data_armors/$data_enemies/$data_troops/$data_states/$data_animations/$data_tilesets/$data_common_events` | — | ❌ |
+| `$data_skills/$data_states/$data_common_events` | ✅ (Hash über die IDs, 20a/20c) | ⚠️ bewusst anders: Zugriff über `$data_states['gift']` statt Index 1 |
+| `$data_classes/$data_weapons/$data_armors/$data_animations/$data_tilesets` | — | ❌ |
 | `Graphics/Input/Audio`, `Sprite/Window/Viewport/Bitmap` | ✅ | ⚠️ kein Bitmap-Dateiladen, kein freeze/transition, Audio ohne Pitch |
 | `$scene` + Szenen | ✅ (Scripts können Szenen stellen) | ⚠️ Engine-Takt statt eigener Hauptschleife |
 | Tilemap/Plane | — | ❌ bewusst (3D-Terrain ersetzt Kachel-Ebenen) |

@@ -25,8 +25,20 @@
 
 class Party
   Actor = Struct.new(:id, :name, :klass, :level, :max_hp, :max_mp, :hp, :mp,
-                     :atk, :def, :spi, :agi, :exp, keyword_init: true) do
+                     :atk, :def, :spi, :agi, :exp, :states, keyword_init: true) do
+    # Etappe 24 (XP 313): Zustände hängen wie im Kampf am Helden
+    # ([{ id:, turns: }]); außerhalb des Kampfes läuft `turns` nicht ab.
+    def initialize(**felder)
+      super
+      self.states ||= []
+    end
+
     def damaged? = hp < max_hp
+
+    # XP: Game_Actor#state?(id) bzw. #states - für Scripts und Menü.
+    def state?(id) = states.any? { |s| s[:id] == id.to_s }
+
+    def state_names = Party.state_names(self)
 
     # XP-Route für Scripts: `$game_party.actors[0].exp += 50` (RGSS) bzw.
     # `actor.exp = 50` löst denselben Stufenaufstieg aus wie Party.gain_exp.
@@ -381,13 +393,17 @@ class Party
     @gold
   end
 
-  # amount <= 0 heilt vollständig, sonst um amount.
+  # amount <= 0 heilt vollständig, sonst um amount. Vollständig heilen ist
+  # XP 314 (recover_all): es entfernt auch alle Zustände - eine Teilheilung um
+  # `amount` lässt sie stehen (Rune3D-Zusatz, XP kennt nur "alles").
   def self.heal_all(amount = 0)
+    voll = !amount.to_i.positive?
     @actors.each do |a|
-      a.hp = amount.to_i.positive? ? [a.hp + amount.to_i, a.max_hp].min : a.max_hp
-      a.mp = amount.to_i.positive? ? [a.mp + amount.to_i, a.max_mp].min : a.max_mp
+      a.hp = voll ? a.max_hp : [a.hp + amount.to_i, a.max_hp].min
+      a.mp = voll ? a.max_mp : [a.mp + amount.to_i, a.max_mp].min
+      states(a).clear if voll
     end
-    Rune::Log.info("Party: geheilt (#{amount.to_i.positive? ? "+#{amount.to_i}" : 'voll'})")
+    Rune::Log.info("Party: geheilt (#{voll ? 'voll' : "+#{amount.to_i}"})")
     true
   end
 
@@ -463,6 +479,123 @@ class Party
     actors.size
   end
 
+  # ------------------------------------------- Zustände (Etappe 24, XP 313)
+  # XP hält Zustände am Game_Battler und damit auch am Game_Actor außerhalb
+  # des Kampfes. Rune3D speichert dieselbe Struktur wie der Kampf
+  # ([{ id:, turns: }], höchstens 8) direkt am Party::Actor; die Definitionen
+  # stehen in database.json unter "states" (Felder id, name, kind, power,
+  # turns - siehe 20a/Kampf).
+  MAX_STATES = 8
+
+  # Ziel-Schreibweise wie bei ziel_actors: nil/""/"alle" = ganze Party.
+  # Der Zustand darf als ID oder als Name angegeben werden (Groß-/
+  # Kleinschreibung egal); Rückgabe ist die Definition oder nil.
+  def self.state_def(zustand)
+    key = zustand.to_s.strip
+    return nil if key.empty?
+
+    liste = (defined?(::Database) && ::Database.respond_to?(:database) &&
+             ::Database.database.is_a?(Hash) ? ::Database.database['states'] : nil) || []
+    liste.find { |h| h.is_a?(Hash) && h['id'].to_s.casecmp?(key) } ||
+      liste.find { |h| h.is_a?(Hash) && h['name'].to_s.casecmp?(key) }
+  end
+
+  # Anzeige "Gift(2) Schutz" - die Dauer nur, wenn sie gesetzt ist.
+  def self.state_names(actor)
+    (actor&.states || []).filter_map do |s|
+      defi = state_def(s[:id])
+      next "#{s[:id]}(#{s[:turns]})" if defi.nil? && s[:turns]
+
+      name = defi ? (defi['name'] || s[:id]).to_s : s[:id].to_s
+      s[:turns] ? "#{name}(#{s[:turns]})" : name
+    end
+  end
+
+  def self.states(actor)
+    actor&.states ||= []
+  end
+
+  # Zustand hinzufügen oder entfernen (XP 313). Rückgabe:
+  #   Anzahl geänderter Helden   - :ok
+  #   :unbekannt                 - kein Zustand mit dieser ID/diesem Namen
+  #   :voll                      - alle Ziele hatten schon 8 Zustände
+  # Bei "add" wird ein vorhandener Zustand aufgefrischt (Dauer wie im Kampf
+  # verlängert) - XP macht dasselbe über add_state.
+  def self.change_state(ziel, zustand, mode: 'add', turns: nil)
+    defi = state_def(zustand)
+    return :unbekannt if defi.nil?
+
+    id = defi['id'].to_s
+    dauer = turns.nil? ? nil : [turns.to_i, 1].max
+    entfernen = mode.to_s.strip.casecmp?('remove')
+    actors = ziel_actors(ziel)
+    return 0 if actors.empty?
+
+    geaendert = 0
+    voll = false
+    actors.each do |a|
+      liste = states(a)
+      if entfernen
+        vorher = liste.size
+        liste.reject! { |s| s[:id] == id }
+        geaendert += 1 if liste.size != vorher
+        next
+      end
+      vorhanden = liste.find { |s| s[:id] == id }
+      if vorhanden
+        neu = dauer || (defi['turns'] || 0).to_i
+        vorhanden[:turns] = [vorhanden[:turns].to_i, neu].max if neu.positive?
+        geaendert += 1
+      elsif liste.size >= MAX_STATES
+        voll = true
+        Rune::Log.warn("Party: #{a.name} hat schon #{MAX_STATES} Zustände")
+      else
+        liste << { id: id, turns: dauer }
+        geaendert += 1
+        Rune::Log.info("Party: #{a.name} erhält Zustand #{defi['name'] || id}")
+      end
+    end
+    return :voll if geaendert.zero? && voll
+
+    geaendert
+  end
+
+  # XP 314 (recover_all) entfernt alle Zustände - heal_all nutzt das beim
+  # vollständigen Heilen.
+  def self.clear_states(ziel = 'alle')
+    actors = ziel_actors(ziel)
+    actors.each { |a| states(a).clear }
+    actors.size
+  end
+
+  # ------------------------------------ Parameter ändern (Etappe 24, XP 317)
+  # XP 317 ändert max_hp/max_mp/atk (XP kennt nur drei Parameter); Rune3D
+  # bietet die volle Liste, weil Datenbank, Kampf und Menü alle sechs Werte
+  # führen. Vorzeichenbehaftet wie bei 311/312.
+  PARAMETER = %w[max_hp max_mp atk def spi agi].freeze
+
+  def self.change_param(ziel, parameter, amount)
+    wert = parameter.to_s.strip.downcase
+    return :unbekannt unless PARAMETER.include?(wert)
+
+    actors = ziel_actors(ziel)
+    return 0 if actors.empty?
+
+    delta = amount.to_i
+    untergrenze = wert.start_with?('max_') ? 1 : 0
+    actors.each do |a|
+      alt = a[wert].to_i
+      neu = [[alt + delta, untergrenze].max, 9_999_999].min
+      a[wert] = neu
+      # Sinkt das Maximum unter die aktuellen HP/MP, wird gekappt (XP kappt
+      # beim Ändern von maxhp ebenso über den Setter).
+      a.hp = [a.hp, a.max_hp].min if wert == 'max_hp'
+      a.mp = [a.mp, a.max_mp].min if wert == 'max_mp'
+      Rune::Log.info("Party: #{a.name} #{wert} #{alt} -> #{neu}")
+    end
+    actors.size
+  end
+
   # ------------------------------------------------------- Speichern/Laden
 
   def self.snapshot
@@ -478,7 +611,10 @@ class Party
         { 'id' => a.id, 'name' => a.name,
           'level' => a.level, 'hp' => a.hp, 'mp' => a.mp, 'exp' => a.exp,
           'max_hp' => a.max_hp, 'max_mp' => a.max_mp,
-          'atk' => a.atk, 'def' => a.def, 'spi' => a.spi, 'agi' => a.agi }
+          'atk' => a.atk, 'def' => a.def, 'spi' => a.spi, 'agi' => a.agi,
+          # Etappe 24 (XP 313): Zustände gehören in den Spielstand; `turns`
+          # bleibt erhalten und läuft erst im Kampf ab.
+          'states' => states(a).map { |s| { 'id' => s[:id], 'turns' => s[:turns] } } }
       end
     }
   end
@@ -521,6 +657,14 @@ class Party
       end
       a.hp = [[(h['hp'] || a.hp).to_i, a.max_hp].min, 0].max
       a.mp = [[(h['mp'] || a.mp).to_i, a.max_mp].min, 0].max
+      # Zustände (Etappe 24): alte Spielstände ohne 'states' setzen den Helden
+      # auf die Datenbank-Startwerte zurück - dort stehen keine Zustände.
+      a.states = Array(h['states']).filter_map do |eintrag|
+        next unless eintrag.is_a?(Hash)
+        id = eintrag['id'].to_s
+        next if id.empty?
+        { id: id, turns: eintrag['turns'].nil? ? nil : eintrag['turns'].to_i }
+      end.first(MAX_STATES)
     end
     Rune::Log.info("Party wiederhergestellt: #{@gold} Gold, #{@items.size} Item-Sorten")
     true

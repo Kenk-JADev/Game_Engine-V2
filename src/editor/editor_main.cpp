@@ -1219,7 +1219,8 @@ const char* const ISSUE_CMD_TYPES[] = {
     "actor_hp", "actor_sp", "actor_exp", "actor_level", "party_member", "shop", "name_input", "screen_tone", "flash", "menu", "if_battle_result", "shake",
     "show_picture", "move_picture", "rotate_picture", "tint_picture", "erase_picture",
     "play_bgm", "fadeout_bgm", "play_bgs", "fadeout_bgs",
-    "save_bgm", "resume_bgm", "memorize_audio", "restore_audio"
+    "save_bgm", "resume_bgm", "memorize_audio", "restore_audio",
+    "state", "actor_param", "actor_name"
 };
 const int ISSUE_CMD_TYPE_COUNT =
     static_cast<int>(sizeof(ISSUE_CMD_TYPES) / sizeof(ISSUE_CMD_TYPES[0]));
@@ -7280,7 +7281,9 @@ const wchar_t* const EV_TYPE_LABELS[ET_COUNT] = {
     L"[Ton] Hintergrundklang", L"[Ton] Hintergrundklang ausblenden",
     // Etappe 23: Musik sichern/merken (XP 243/244/247/248).
     L"[Ton] Musik merken", L"[Ton] Musik zurückholen",
-    L"[Ton] Musik + Hintergrundklang merken", L"[Ton] Musik + Hintergrundklang zurückholen"
+    L"[Ton] Musik + Hintergrundklang merken", L"[Ton] Musik + Hintergrundklang zurückholen",
+    // Etappe 24: Helden-Zustand und Werte (XP 313/317/320).
+    L"[Party] Zustand ändern", L"[Party] Parameter ändern", L"[Party] Held umbenennen"
 };
 const wchar_t* const EV_TRIGGERS[4] = { L"action", L"touch", L"auto", L"parallel" };
 const wchar_t* const EV_OPS[6] = { L"==", L"!=", L"<", L"<=", L">", L">=" };
@@ -7456,6 +7459,21 @@ std::string ev_cmd_label(const JsonValue& c) {
     if (type == "resume_bgm") return "Musik zurückholen";
     if (type == "memorize_audio") return "Musik + Hintergrundklang merken";
     if (type == "restore_audio") return "Musik + Hintergrundklang zurückholen";
+    // Etappe 24: Zustand/Werte von Helden (XP 313/317/320).
+    if (type == "state") {
+        const std::string ziel = ev_str_of(c, "actor", "alle");
+        const std::string modus = ev_str_of(c, "mode", "add");
+        return std::string(modus == "remove" ? "Zustand entfernen: " : "Zustand: ") +
+               ev_str_of(c, "name") + " (" + (ziel.empty() ? std::string("alle") : ziel) + ")";
+    }
+    if (type == "actor_param") {
+        const std::string ziel = ev_str_of(c, "actor", "alle");
+        return "Parameter " + ev_str_of(c, "param") + " " +
+               (ziel.empty() ? std::string("alle") : ziel) + " " +
+               ev_num_str(ev_num_of(c, "amount"), 0);
+    }
+    if (type == "actor_name")
+        return "Held " + ev_str_of(c, "actor") + " heißt jetzt " + ev_str_of(c, "name");
     if (type == "effect") {
         return "Effekt \"" + ev_str_of(c, "name", "burst") + "\"";
     }
@@ -7894,7 +7912,8 @@ void ev_cmd_visibility() {
                           t == ET_SAVE_ACCESS || t == ET_MENU_ACCESS ||
                           t == ET_ENCOUNTER_ACCESS ||
                           t == ET_SAVE_BGM || t == ET_RESUME_BGM ||
-                          t == ET_MEMORIZE_AUDIO || t == ET_RESTORE_AUDIO;
+                          t == ET_MEMORIZE_AUDIO || t == ET_RESTORE_AUDIO ||
+                          t == ET_STATE || t == ET_ACTOR_PARAM || t == ET_ACTOR_NAME;
     show(g_ev.lbl_text, is_text || has_hint);
     show(g_ev.ed_ce_text, is_text);
 
@@ -8033,6 +8052,29 @@ void ev_cmd_visibility() {
         L"Merkt Musik und Hintergrundklang gleichzeitig (XP 247).");
     if (t == ET_RESTORE_AUDIO) SetWindowTextW(g_ev.lbl_text,
         L"Holt Musik und Hintergrundklang aus dem Merker zurück (XP 248).");
+    if (t == ET_STATE) {
+        SetWindowTextW(g_ev.lbl_name, L"Zustand (ID oder Name)");
+        SetWindowTextW(g_ev.lbl_val1, L"Ziel (alle oder Held)");
+        SetWindowTextW(g_ev.lbl_val2, L"Modus (add/remove)");
+        SetWindowTextW(g_ev.lbl_text,
+                       L"Setzt oder entfernt einen Zustand aus database.json 'states' (XP 313). "
+                       L"Dauer in Kampfrunden optional per JSON-Feld 'turns'.");
+    }
+    if (t == ET_ACTOR_PARAM) {
+        SetWindowTextW(g_ev.lbl_name, L"Parameter (max_hp/max_mp/atk/def/spi/agi)");
+        SetWindowTextW(g_ev.lbl_val1, L"Ziel (alle oder Held)");
+        SetWindowTextW(g_ev.lbl_val2, L"Menge (+/-)");
+        SetWindowTextW(g_ev.lbl_text,
+                       L"Ändert den Parameter um die Menge (XP 317). HP und MP werden "
+                       L"gekappt, wenn das Maximum unter den aktuellen Wert sinkt.");
+    }
+    if (t == ET_ACTOR_NAME) {
+        SetWindowTextW(g_ev.lbl_name, L"Held (ID oder Name)");
+        SetWindowTextW(g_ev.lbl_val1, L"Neuer Name");
+        SetWindowTextW(g_ev.lbl_text,
+                       L"Benennt genau einen Helden um (XP 320); der Name steht danach in "
+                       L"Menü, Kampf und Spielstand.");
+    }
     if (t == ET_SHOW_PICTURE) {
         SetWindowTextW(g_ev.lbl_name, L"Bilddatei (PNG/BMP im Projekt)");
         SetWindowTextW(g_ev.lbl_val1, L"Bildnummer (1-50)");

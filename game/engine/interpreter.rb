@@ -81,6 +81,9 @@
 #    {"cmd":"if_button","name":"e","then":[],"else":[]}     (Wenn Taste, 20d)
 #    {"cmd":"actor_hp","target":"alle","amount":-20}    (Werte ändern, 20d)
 #    {"cmd":"actor_sp"/"actor_exp"/"actor_level",...}   (XP 311/312/315/316)
+#    {"cmd":"state","actor":"alle","name":"gift","mode":"add"}   (24; XP 313)
+#    {"cmd":"actor_param","actor":"arik","param":"max_hp","amount":10} (24; XP 317)
+#    {"cmd":"actor_name","actor":"arik","name":"Arik der Kühne"}   (24; XP 320)
 #    {"cmd":"script","name":"projekt_script"}  |  {"cmd":"script","code":"..."}
 # ============================================================================
 
@@ -381,6 +384,12 @@ class Interpreter
         Party.change_exp(cmd['target'], cmd['amount'])
       when 'actor_level'  # Etappe 20d: Stufe ändern (XP 316)
         Party.change_level(cmd['target'], cmd['amount'])
+      when 'state'  # Etappe 24: Zustand ändern (XP 313)
+        zustand_befehl(cmd)
+      when 'actor_param'  # Etappe 24: Parameter ändern (XP 317)
+        parameter_befehl(cmd)
+      when 'actor_name'   # Etappe 24: Held umbenennen (XP 320)
+        namens_befehl(cmd)
       when 'party_member'   # Etappe 20d (XP 129): {"cmd":"party_member","name":"arik","mode":"add"}
         mitglied(cmd)
       when 'name_input'   # Etappe 20e (XP 303): Held umbenennen
@@ -823,6 +832,74 @@ class Interpreter
       return nil
     end
     rechner.call(cmd, aktueller_wert)
+  end
+
+  # Etappe 24 (XP 313): Zustand hinzufügen oder entfernen. Ziel ist wie bei
+  # 311/312/315/316 "alle" oder ein Held; der Zustand darf ID oder Name sein.
+  # Unbekannte Zustände und ein voller Zustandsblock landen als Warnung im Log
+  # und im Issue-Backlog - so bleibt ein Tippfehler im Editor sichtbar.
+  def zustand_befehl(cmd)
+    zustand = cmd['name'].to_s.strip
+    if zustand.empty?
+      Rune::Log.warn('Interpreter: state ohne name')
+      Issues.report('Interpreter', 'state ohne name')
+      return
+    end
+    modus = cmd.key?('mode') ? cmd['mode'].to_s.strip.downcase : 'add'
+    modus = 'add' if modus.empty?
+    unless %w[add remove].include?(modus)
+      Rune::Log.warn("Interpreter: state-Modus '#{modus}' unbekannt")
+      Issues.report('Interpreter', "state-Modus '#{modus}' unbekannt")
+      return
+    end
+    turns = cmd.key?('turns') ? cmd['turns'].to_i : nil
+    ergebnis = Party.change_state(cmd['actor'], zustand, mode: modus, turns: turns)
+    case ergebnis
+    when :unbekannt
+      Rune::Log.warn("Interpreter: Zustand '#{zustand}' nicht in database.json")
+      Issues.report('Interpreter', "state '#{zustand}' nicht in database.json")
+    when :voll
+      Rune::Log.warn("Interpreter: Zustand '#{zustand}' passt nicht mehr (max. 8)")
+      Issues.report('Interpreter', "state '#{zustand}': alle Ziele haben schon 8 Zustände")
+    end
+  end
+
+  # Etappe 24 (XP 317): max_hp/max_mp/atk/def/spi/agi um `amount` ändern.
+  def parameter_befehl(cmd)
+    parameter = cmd['param'].to_s.strip
+    if parameter.empty?
+      Rune::Log.warn('Interpreter: actor_param ohne param')
+      Issues.report('Interpreter', 'actor_param ohne param')
+      return
+    end
+    ergebnis = Party.change_param(cmd['actor'], parameter, cmd['amount'])
+    return unless ergebnis == :unbekannt
+
+    Rune::Log.warn("Interpreter: actor_param '#{parameter}' unbekannt")
+    Issues.report('Interpreter',
+                  "actor_param '#{parameter}' unbekannt (erlaubt: #{Party::PARAMETER.join(', ')})")
+  end
+
+  # Etappe 24 (XP 320): einen Helden umbenennen. XP kennt nur einzelne Helden -
+  # "alle" ist hier deshalb ein Fehler und keine Sammelaktion.
+  def namens_befehl(cmd)
+    ziel = cmd['actor'].to_s.strip
+    neuer = cmd['name'].to_s.strip
+    if neuer.empty?
+      Rune::Log.warn('Interpreter: actor_name ohne name')
+      Issues.report('Interpreter', 'actor_name ohne name')
+      return
+    end
+    if ziel.empty? || ziel.casecmp?('alle')
+      Rune::Log.warn('Interpreter: actor_name braucht genau einen Helden')
+      Issues.report('Interpreter', 'actor_name braucht genau einen Helden')
+      return
+    end
+    held = Party.ziel_actors(ziel).first
+    if held.nil? || Party.rename(held.id, neuer).nil?
+      Rune::Log.warn("Interpreter: actor_name '#{ziel}' nicht in der Party")
+      Issues.report('Interpreter', "actor_name '#{ziel}' nicht in der Party")
+    end
   end
 
   # Etappe 20d (XP 129, Kommando "Mitglieder ändern"): add/remove. XP kennt

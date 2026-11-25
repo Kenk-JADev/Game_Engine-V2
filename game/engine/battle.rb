@@ -310,9 +310,14 @@ module Battle
     end
 
     actors = Party.actors.map do |a|
-      Battler.new(id: a.id, name: a.name, hp: a.hp, mp: a.mp,
-                  max_hp: a.max_hp, max_mp: a.max_mp, atk: a.atk,
-                  def_: a.def, spi: a.spi, agi: a.agi, actor: true, defi: a)
+      b = Battler.new(id: a.id, name: a.name, hp: a.hp, mp: a.mp,
+                      max_hp: a.max_hp, max_mp: a.max_mp, atk: a.atk,
+                      def_: a.def, spi: a.spi, agi: a.agi, actor: true, defi: a)
+      # Etappe 24 (XP 313): Zustände aus der Party übernehmen - ein per Event
+      # gegebener Zustand wirkt damit auch im Kampf. Ohne `turns` gilt die
+      # Datenbank-Dauer (Battler.add_state).
+      Array(a.states).each { |s| b.add_state(s[:id], s[:turns]) }
+      b
     end
     if actors.empty?
       Rune::Log.warn('Battle: keine Helden in der Party - Kampf abgesagt')
@@ -985,6 +990,9 @@ module Battle
       next unless pa.respond_to?(:hp=)
       pa.hp = a.hp
       pa.mp = a.mp if pa.respond_to?(:mp=)
+      # Zustände zurück in die Party (Etappe 24): im Kampf abgelaufene
+      # verschwinden damit auch aus Menü und Spielstand.
+      pa.states = a.states.map { |s| { id: s[:id], turns: s[:turns] } } if pa.respond_to?(:states=)
     end
   end
 

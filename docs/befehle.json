@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "stand": "Etappe 23 (Runde 41): 69 Befehle",
+  "stand": "Etappe 24 (Runde 42): 72 Befehle",
   "zweck": "Quellen-Register der Event-Befehlstypen. Vier Stellen im Baum müssen zu dieser Liste passen: CMD_TYPES (game/engine/mapcheck.rb), die Ausführung (game/engine/interpreter.rb), ISSUE_CMD_TYPES (src/editor/editor_main.cpp) und EvType/EV_TYPES (src/editor/event_form.h). Ein neuer Befehl ist erst fertig, wenn er hier UND in allen vier Stellen steht; tools/befehle_test.rb meldet die Lücke vor dem Commit.",
   "reihenfolge": "Die Reihenfolge ist die des Registers; die vier Stellen halten dieselbe Reihenfolge ein, damit Diffs lesbar bleiben.",
   "bereiche": [
@@ -751,6 +751,41 @@
       "pflicht": [],
       "optional": [],
       "beschreibung": "Holt Musik und Hintergrundklang aus dem Merker zurueck (XP 248); ohne Merker stoppen beide."
+    },
+    {
+      "typ": "state",
+      "bereich": "Party",
+      "pflicht": [
+        "name"
+      ],
+      "optional": [
+        "actor",
+        "mode",
+        "turns"
+      ],
+      "beschreibung": "Setzt oder entfernt einen Zustand (XP 313); 'name' ist ID oder Name aus der Datenbank, 'actor' wahlweise ein Held oder 'alle', 'mode' add/remove, 'turns' optional die Dauer in Kampfrunden."
+    },
+    {
+      "typ": "actor_param",
+      "bereich": "Party",
+      "pflicht": [
+        "param",
+        "amount"
+      ],
+      "optional": [
+        "actor"
+      ],
+      "beschreibung": "Aendert einen Parameter (XP 317): max_hp, max_mp, atk, def, spi oder agi, vorzeichenbehaftet; Ziel 'alle' oder ein Held, HP/MP werden bei sinkendem Maximum gekappt."
+    },
+    {
+      "typ": "actor_name",
+      "bereich": "Party",
+      "pflicht": [
+        "actor",
+        "name"
+      ],
+      "optional": [],
+      "beschreibung": "Benennt genau einen Helden um (XP 320); der neue Name steht anschliessend in Menue, Kampf und Spielstand."
     }
   ]
 }
