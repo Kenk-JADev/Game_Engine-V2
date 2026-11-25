@@ -827,10 +827,17 @@ end
 # ============================================================================
 module Audio
   @bgm = nil
+  @bgm_datei = nil
   @bgs = nil
+  @bgs_datei = nil
 
+  # XP 241: eine neue Musik ersetzt die alte - die alte Datei wird gestoppt,
+  # nicht nur "vergessen" (sonst liefen zwei Loops übereinander).
   def self.bgm_play(filename, volume = 100, pitch = 100)
+    alt = @bgm_datei
     @bgm = basisname(filename)
+    @bgm_datei = filename.to_s
+    AudioFiles.stop(alt) if defined?(AudioFiles) && alt && alt != @bgm_datei
     if defined?(AudioFiles) && AudioFiles.loop(filename, volume: lautstaerke(volume), pitch: pitch)
       return
     end
@@ -840,18 +847,21 @@ module Audio
 
   def self.bgm_stop
     if defined?(AudioFiles)
+      AudioFiles.stop(@bgm_datei) if @bgm_datei
       AudioFiles.stop(@bgm) if @bgm
       AudioFiles.stop("audio/bgm/#{@bgm}") if @bgm
     end
     Rune::Sound.stop(@bgm) if @bgm
     @bgm = nil
+    @bgm_datei = nil
   end
 
   # Ausblenden über `time` MILLISEKUNDEN (RGSS-Vertrag, XP-Befehl 242 liefert
   # Sekunden und ruft bgm_fade(time * 1000)). Ohne Datei oder bei time <= 0
   # wird sofort gestoppt.
   def self.bgm_fade(time)
-    if defined?(AudioFiles) && @bgm && AudioFiles.fade_ms(@bgm, time)
+    ziel = @bgm_datei || @bgm
+    if defined?(AudioFiles) && ziel && AudioFiles.fade_ms(ziel, time)
       return
     end
 
@@ -859,7 +869,10 @@ module Audio
   end
 
   def self.bgs_play(filename, volume = 100, pitch = 100)
+    alt = @bgs_datei
     @bgs = basisname(filename)
+    @bgs_datei = filename.to_s
+    AudioFiles.stop(alt) if defined?(AudioFiles) && alt && alt != @bgs_datei
     if defined?(AudioFiles) && AudioFiles.loop(filename, volume: lautstaerke(volume), pitch: pitch)
       return
     end
@@ -868,14 +881,19 @@ module Audio
   end
 
   def self.bgs_stop
+    if defined?(AudioFiles) && @bgs_datei
+      AudioFiles.stop(@bgs_datei)
+    end
     AudioFiles.stop(@bgs) if defined?(AudioFiles) && @bgs
     Rune::Sound.stop(@bgs) if @bgs
     @bgs = nil
+    @bgs_datei = nil
   end
 
   # Wie bgm_fade: `time` in Millisekunden (XP-Befehl 246).
   def self.bgs_fade(time)
-    if defined?(AudioFiles) && @bgs && AudioFiles.fade_ms(@bgs, time)
+    ziel = @bgs_datei || @bgs
+    if defined?(AudioFiles) && ziel && AudioFiles.fade_ms(ziel, time)
       return
     end
 

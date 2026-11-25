@@ -1967,8 +1967,22 @@ Audio.bgm_play('Audio/BGM/dorf', 80, 120)          # RGSS-Aufruf, Pitch 120 %
   (noch kein Decoder).
 - `Audio.bgm_play`/`bgs_play`/`se_play`/`me_play` versuchen zuerst eine Datei
   und fallen sonst auf den prozeduralen Klang zurück — alte Projekte klingen
-  weiter.
-- **Tests:** `tools/wav_test.cpp` (18 Checks) und `tools/audio_files_test.rb`.
+  weiter. Eine neue Musik **ersetzt** die laufende (`AudioFiles.stop` auf die
+  vorige Datei), wie XP 241.
+- **Fade über Zeit:** `sound::set_volume(name, vol)`/`volume_of(name)`,
+  erreichbar als `Rune::Sound.volume(name, vol = nil)`. `AudioFiles.fade`
+  (Sekunden) / `fade_ms` (RGSS-Millisekunden) merken sich Dauer, Rest und
+  Startlautstärke; `AudioFiles.update(dt)` rechnet pro Frame herunter (aufrufen
+  in `game/main.rb` nach `Pictures.update`) und stoppt am Ende. `Audio.bgm_fade`
+  und `bgs_fade` liefern Millisekunden und blockieren nicht.
+- **Event-Befehle** (XP 241/242/245/246):
+  `{"cmd":"play_bgm","name":"bgm/dorf.wav","volume":100,"pitch":100}`,
+  `{"cmd":"fadeout_bgm","seconds":2}`,
+  `{"cmd":"play_bgs","name":"bgs/regen.wav","volume":80}`,
+  `{"cmd":"fadeout_bgs","seconds":1}` — MapCheck prüft Name, Lautstärke 0–100,
+  Pitch 50–150 und `seconds >= 0`; das F6-Formular nutzt Name + Wert 1/2.
+- **Tests:** `tools/wav_test.cpp` (18 Checks) und `tools/audio_files_test.rb`
+  (Datei-Weg, Pitch-Klemmung, Fade über Zeit).
 
 ### Bildschirm-Bilder (XP 231–235)
 

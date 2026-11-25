@@ -1217,7 +1217,8 @@ const char* const ISSUE_CMD_TYPES[] = {
     "if_gold", "if_item", "if_script", "if_actor", "if_button",
     "save_access", "menu_access", "encounter_access", "timer",
     "actor_hp", "actor_sp", "actor_exp", "actor_level", "party_member", "shop", "name_input", "screen_tone", "flash", "menu", "if_battle_result", "shake",
-    "show_picture", "move_picture", "rotate_picture", "tint_picture", "erase_picture"
+    "show_picture", "move_picture", "rotate_picture", "tint_picture", "erase_picture",
+    "play_bgm", "fadeout_bgm", "play_bgs", "fadeout_bgs"
 };
 const int ISSUE_CMD_TYPE_COUNT =
     static_cast<int>(sizeof(ISSUE_CMD_TYPES) / sizeof(ISSUE_CMD_TYPES[0]));
@@ -7219,7 +7220,10 @@ const wchar_t* const EV_TYPE_LABELS[ET_COUNT] = {
     L"[Bild] Wackeln",
     // Etappe 20f: Bildschirm-Bilder (XP 231–235).
     L"[Bild] Bild zeigen", L"[Bild] Bild bewegen", L"[Bild] Bild drehen",
-    L"[Bild] Bild tönen", L"[Bild] Bild löschen"
+    L"[Bild] Bild tönen", L"[Bild] Bild löschen",
+    // Etappe 21: Musik und Hintergrundklang aus Dateien (XP 241/242/245/246).
+    L"[Ton] Musik abspielen", L"[Ton] Musik ausblenden",
+    L"[Ton] Hintergrundklang", L"[Ton] Hintergrundklang ausblenden"
 };
 const wchar_t* const EV_TRIGGERS[4] = { L"action", L"touch", L"auto", L"parallel" };
 const wchar_t* const EV_OPS[6] = { L"==", L"!=", L"<", L"<=", L">", L">=" };
@@ -7378,6 +7382,17 @@ std::string ev_cmd_label(const JsonValue& c) {
     if (type == "sound") {
         return "Sound \"" + ev_str_of(c, "name") + "\" " +
                ev_num_str(ev_num_of(c, "volume", 1.0), 2);
+    }
+    // Etappe 21: BGM/BGS aus Dateien (XP 241/242/245/246).
+    if (type == "play_bgm" || type == "play_bgs") {
+        return std::string(type == "play_bgm" ? "Musik \"" : "Hintergrundklang \"") +
+               ev_str_of(c, "name") + "\" (" +
+               ev_num_str(ev_num_of(c, "volume", 100.0), 0) + " %, Pitch " +
+               ev_num_str(ev_num_of(c, "pitch", 100.0), 0) + " %)";
+    }
+    if (type == "fadeout_bgm" || type == "fadeout_bgs") {
+        return std::string(type == "fadeout_bgm" ? "Musik ausblenden (" : "Hintergrundklang ausblenden (") +
+               ev_num_str(ev_num_of(c, "seconds", 1.0), 2) + " s)";
     }
     if (type == "effect") {
         return "Effekt \"" + ev_str_of(c, "name", "burst") + "\"";

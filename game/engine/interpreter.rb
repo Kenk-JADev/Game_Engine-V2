@@ -67,6 +67,10 @@
 #    {"cmd":"rotate_picture","number":1,"speed":5}
 #    {"cmd":"tint_picture","number":1,"r":-60,"frames":20}
 #    {"cmd":"erase_picture","number":1}                      (Bilder, 20f; XP 231-235)
+#    {"cmd":"play_bgm","name":"bgm/dorf.wav","volume":100,"pitch":100}  (21; XP 241)
+#    {"cmd":"fadeout_bgm","seconds":2}                   (BGM ausblenden, 21; XP 242)
+#    {"cmd":"play_bgs","name":"bgs/regen.wav","volume":80}          (21; XP 245)
+#    {"cmd":"fadeout_bgs","seconds":1}                   (BGS ausblenden, 21; XP 246)
 #    {"cmd":"menu"}                                        (Menü öffnen, 20f; XP 351)
 #    {"cmd":"if_battle_result","result":"sieg","then":[],"else":[]}   (20f; XP 601-603)
 #    {"cmd":"if_actor","name":"arik","then":[],"else":[]}   (Wenn Actor, 20d)
@@ -289,6 +293,14 @@ class Interpreter
         zugriff_setzen(cmd, :encounter_disabled)
       when 'timer'  # Etappe 20d: Timer steuern (XP 124)
         timer_steuern(cmd)
+      when 'play_bgm'     # Etappe 21: Musik starten (XP 241)
+        ton_abspielen(cmd, :bgm)
+      when 'fadeout_bgm'  # Etappe 21: Musik ausblenden (XP 242)
+        ton_ausblenden(cmd, :bgm)
+      when 'play_bgs'     # Etappe 21: Hintergrundklang starten (XP 245)
+        ton_abspielen(cmd, :bgs)
+      when 'fadeout_bgs'  # Etappe 21: Hintergrundklang ausblenden (XP 246)
+        ton_ausblenden(cmd, :bgs)
       when 'teleport'
         Rune::Player.teleport(cmd['x'].to_f, Game.gy(cmd['x'].to_f, cmd['z'].to_f) + 0.2,
                               cmd['z'].to_f)
@@ -662,6 +674,49 @@ class Interpreter
       return false
     end
     vgl.call(a, b)
+  end
+
+  # Etappe 21: BGM/BGS starten (XP 241/245). Lautstärke 0..100 wie RGSS,
+  # Pitch 50..150 %. Eine vorhandene Datei hat Vorrang (AudioFiles); ohne
+  # Datei bleibt der prozedurale Klang - das macht Audio.* schon selbst.
+  def ton_abspielen(cmd, spur)
+    name = cmd['name'].to_s.strip
+    if name.empty?
+      Rune::Log.warn('Interpreter: Ton-Befehl ohne Namen ignoriert')
+      Issues.report('Interpreter', 'Ton-Befehl ohne Namen ignoriert')
+      return false
+    end
+    laut = (cmd['volume'].nil? ? 100.0 : cmd['volume'].to_f).clamp(0.0, 100.0)
+    pitch = (cmd['pitch'].nil? ? 100.0 : cmd['pitch'].to_f).clamp(50.0, 150.0).round
+    if defined?(Audio) && Audio.respond_to?(spur == :bgm ? :bgm_play : :bgs_play)
+      if spur == :bgm
+        Audio.bgm_play(name, laut, pitch)
+      else
+        Audio.bgs_play(name, laut, pitch)
+      end
+      return true
+    end
+    if defined?(Rune::Sound) && Rune::Sound.respond_to?(:loop)
+      Rune::Sound.loop(name, laut / 100.0)
+      return true
+    end
+    Rune::Log.warn('Interpreter: Ton-Schicht fehlt, Befehl ignoriert')
+    false
+  end
+
+  # Etappe 21: BGM/BGS ausblenden (XP 242/246). Dauer in Sekunden (0 = sofort);
+  # gerechnet wird im Engine-Takt (AudioFiles.update), nicht im Interpreter.
+  # Audio.bgm_fade/bgs_fade erwarten wie RGSS Millisekunden.
+  def ton_ausblenden(cmd, spur)
+    sekunden = (cmd['seconds'].nil? ? 1.0 : cmd['seconds'].to_f).clamp(0.0, 600.0)
+    methode = spur == :bgm ? :bgm_fade : :bgs_fade
+    if defined?(Audio) && Audio.respond_to?(methode)
+      Audio.public_send(methode, sekunden * 1000.0)
+      return true
+    end
+    Rune::Log.warn('Interpreter: Ton-Schicht fehlt, Fade ignoriert')
+    Issues.report('Interpreter', 'Ton-Schicht fehlt, Fade ignoriert')
+    false
   end
 
   # Etappe 20d: Timer (XP 124). "start" setzt die Restzeit (Sekunden), "stop"

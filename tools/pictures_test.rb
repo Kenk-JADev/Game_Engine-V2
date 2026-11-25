@@ -291,7 +291,7 @@ check('erase_picture ohne Nummer -> Fehler') do
   hat?(MapCheck.scan(karte_mit([{ 'cmd' => 'erase_picture' }]), **OPTS),
        "'number' fehlt oder ist keine Zahl", MapCheck::FEHLER)
 end
-check('alle 61 Befehlstypen im Register der Prüfung') { MapCheck::CMD_TYPES.size == 61 }
+check('alle 65 Befehlstypen im Register der Prüfung') { MapCheck::CMD_TYPES.size == 65 }
 
 puts($fail.zero? ? 'ALLE CHECKS GRUEN' : "#{$fail} CHECK(S) FEHLGESCHLAGEN")
 exit($fail.zero? ? 0 : 1)

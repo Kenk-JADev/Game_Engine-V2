@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "stand": "Etappe 20f (Runde 33): 61 Befehle",
+  "stand": "Etappe 21 (Runde 35): 65 Befehle",
   "zweck": "Quellen-Register der Event-Befehlstypen. Vier Stellen im Baum müssen zu dieser Liste passen: CMD_TYPES (game/engine/mapcheck.rb), die Ausführung (game/engine/interpreter.rb), ISSUE_CMD_TYPES (src/editor/editor_main.cpp) und EvType/EV_TYPES (src/editor/event_form.h). Ein neuer Befehl ist erst fertig, wenn er hier UND in allen vier Stellen steht; tools/befehle_test.rb meldet die Lücke vor dem Commit.",
   "reihenfolge": "Die Reihenfolge ist die des Registers; die vier Stellen halten dieselbe Reihenfolge ein, damit Diffs lesbar bleiben.",
   "bereiche": [
@@ -681,6 +681,48 @@
       ],
       "optional": [],
       "beschreibung": "Loescht ein angezeigtes Bild (XP 235)."
+    },
+    {
+      "typ": "play_bgm",
+      "bereich": "Ton",
+      "pflicht": [
+        "name"
+      ],
+      "optional": [
+        "volume",
+        "pitch"
+      ],
+      "beschreibung": "Spielt Musik aus einer Datei (XP 241) als Schleife; volume 0..100, pitch 50..150. Eine laufende Musik wird ersetzt."
+    },
+    {
+      "typ": "fadeout_bgm",
+      "bereich": "Ton",
+      "pflicht": [],
+      "optional": [
+        "seconds"
+      ],
+      "beschreibung": "Blendet die laufende Musik ueber seconds aus (XP 242), ohne den Interpreter zu blockieren; 0 stoppt sofort."
+    },
+    {
+      "typ": "play_bgs",
+      "bereich": "Ton",
+      "pflicht": [
+        "name"
+      ],
+      "optional": [
+        "volume",
+        "pitch"
+      ],
+      "beschreibung": "Spielt einen Hintergrundklang aus einer Datei (XP 245) als Schleife; volume 0..100, pitch 50..150."
+    },
+    {
+      "typ": "fadeout_bgs",
+      "bereich": "Ton",
+      "pflicht": [],
+      "optional": [
+        "seconds"
+      ],
+      "beschreibung": "Blendet den laufenden Hintergrundklang ueber seconds aus (XP 246); 0 stoppt sofort."
     }
   ]
 }

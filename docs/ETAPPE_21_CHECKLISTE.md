@@ -1,7 +1,8 @@
 # Etappe 21 — Checkliste (Ton: Dateien statt Prozedur-Sounds)
 
-Diese Checkliste ist die Abhakliste für Etappe 21. Stand: **Runde 35 — T1
-(WAV-Lader) und T5 (Pitch + Fade über Zeit) sind fertig**.
+Diese Checkliste ist die Abhakliste für Etappe 21. Stand: **Runde 36 — T1
+(WAV-Lader), T4 (Befehle 241/242/245/246) und T5 (Pitch + Fade über Zeit)
+sind fertig**.
 
 Legende: `[x]` erledigt und committet · `[~]` erledigt, CI offen · `[ ]` offen
 
@@ -43,12 +44,16 @@ Dateizugriffe laufen über die **sichere Assets-Brücke**
   (Datei + Lautstärke + Pitch). Beim Kartenwechsel startet das BGM, beim
   Verlassen stoppt es (`Audio.bgm_play`/`bgm_stop`), `bgs` läuft wie XP
   weiter. MapCheck: Dateiendung, Lautstärke 0–100, Pitch 50–150.
-- [ ] **T4 — Event-Befehle 241/242/245/246:**
+- [x] **T4 — Event-Befehle 241/242/245/246:**
   `{"cmd":"play_bgm","name":"bgm/dorf.ogg","volume":100,"pitch":100}`,
   `{"cmd":"fadeout_bgm","seconds":2}`,
   `{"cmd":"play_bgs","name":"bgs/regen.ogg","volume":80}`,
   `{"cmd":"fadeout_bgs","seconds":1}`. Register/Formular/MapCheck wie immer;
   `bgm_fade` läuft über einen eigenen Takt (nicht im Interpreter blockierend).
+  Umgesetzt: 65 Typen in `CMD_TYPES`/Register/`ISSUE_CMD_TYPES`/`EV_TYPES`,
+  `ton_abspielen`/`ton_ausblenden` im Interpreter, MapCheck (Name, Lautstärke
+  0–100, Pitch 50–150, `seconds >= 0`), F6-Felder Name + Wert 1/2 und je ein
+  `json_test`-Beispiel pro Typ.
 - [x] **T5 — Pitch und `bgm_fade` über Zeit:** Resampling-Faktor aus Pitch
   (50–150 %) über `wav.h::rate_fuer_pitch`; Fade über `AudioFiles.fade`/
   `fade_ms` + `AudioFiles.update(dt)` (nicht blockierend, Engine-Takt),
@@ -77,9 +82,14 @@ Fade über Zeit (Teil von T5): `sound::set_volume`/`volume_of`,
 `Audio.bgm_fade`/`bgs_fade` (RGSS-Millisekunden, ohne Datei sofortiger Stopp).
 Ein neuer `loop`/`play` auf denselben Klang bricht einen laufenden Fade ab.
 
-Offen: T2 (OGG), T3 (Karten-BGM/BGS), T4 (Befehle 241/242/245/246 im Register),
-Doku-Feinschliff (T7) sowie die gemeinsam mit T4 fälligen `json_test`-Fälle
-für die Befehle (T6-Rest).
+Befehle (T4): `play_bgm`/`fadeout_bgm`/`play_bgs`/`fadeout_bgs` in Register,
+`CMD_TYPES`, `ISSUE_CMD_TYPES`, `EV_TYPES`, Interpreter, MapCheck und
+F6-Formular; `Audio.bgm_play` ersetzt eine laufende Musik (XP 241);
+`json_test` hat je Typ ein Beispiel (850 Checks), `tools/event_test.rb` prüft
+Weiterreichen und Klemmung der Ton-Befehle (6 Checks).
+
+Offen: T2 (OGG), T3 (Karten-BGM/BGS), Doku-Feinschliff (T7) und der Rest von
+T6 (eigener Zuschnitt eines `audio_test.rb` bzw. weitere Grenzfälle).
 
 ## 3. Bekannte Eigenheiten
 

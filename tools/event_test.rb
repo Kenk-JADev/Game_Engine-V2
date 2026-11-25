@@ -202,5 +202,51 @@ $interp.start([{ 'cmd' => 'sound', 'name' => 'jingle', 'volume' => 0.9 }])
 drain
 check("Sound-Kommando spielt 'jingle'") { Rune::Sound::PLAYED.include?('jingle') }
 
+# --- Ton-Befehle 241/242/245/246 (Etappe 21) --------------------------------
+# Audio-Attrappe erst hier: der Interpreter sucht `Audio` zur Laufzeit.
+module Audio
+  CALLS = []
+  def self.bgm_play(name, volume = 100, pitch = 100) = (CALLS << [:bgm_play, name, volume, pitch])
+  def self.bgs_play(name, volume = 100, pitch = 100) = (CALLS << [:bgs_play, name, volume, pitch])
+  def self.bgm_fade(time) = (CALLS << [:bgm_fade, time])
+  def self.bgs_fade(time) = (CALLS << [:bgs_fade, time])
+end
+
+Audio::CALLS.clear
+$interp = Interpreter.new
+$interp.start([
+                { 'cmd' => 'play_bgm', 'name' => 'bgm/dorf.wav', 'volume' => 80, 'pitch' => 120 },
+                { 'cmd' => 'play_bgs', 'name' => 'bgs/regen.wav' },
+                { 'cmd' => 'fadeout_bgm', 'seconds' => 2 },
+                { 'cmd' => 'fadeout_bgs', 'seconds' => 0.5 }
+              ])
+drain
+check('play_bgm reicht Name, Lautstärke und Pitch weiter') do
+  Audio::CALLS[0] == [:bgm_play, 'bgm/dorf.wav', 80.0, 120]
+end
+check('play_bgs ohne Angaben nutzt die XP-Defaults') do
+  Audio::CALLS[1] == [:bgs_play, 'bgs/regen.wav', 100.0, 100]
+end
+check('fadeout_bgm rechnet Sekunden in RGSS-Millisekunden') do
+  Audio::CALLS[2] == [:bgm_fade, 2000.0]
+end
+check('fadeout_bgs rechnet Sekunden in Millisekunden') do
+  Audio::CALLS[3] == [:bgs_fade, 500.0]
+end
+check('Lautstärke und Pitch werden auf die XP-Grenzen geklemmt') do
+  Audio::CALLS.clear
+  $interp = Interpreter.new
+  $interp.start([{ 'cmd' => 'play_bgm', 'name' => 'x', 'volume' => 250, 'pitch' => 20 }])
+  drain
+  Audio::CALLS.first == [:bgm_play, 'x', 100.0, 50]
+end
+check('play_bgm ohne Namen startet nichts') do
+  Audio::CALLS.clear
+  $interp = Interpreter.new
+  $interp.start([{ 'cmd' => 'play_bgm', 'name' => '   ' }])
+  drain
+  Audio::CALLS.empty?
+end
+
 puts($fail.zero? ? 'EVENT-TEST OK (0 Fehler)' : "EVENT-TEST FEHLGESCHLAGEN (#{$fail} Fehler)")
 exit($fail.zero? ? 0 : 1)

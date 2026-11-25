@@ -46,7 +46,8 @@ enum EvType {
     ET_SAVE_ACCESS, ET_MENU_ACCESS, ET_ENCOUNTER_ACCESS,
     ET_TIMER, ET_ACTOR_HP, ET_ACTOR_SP, ET_ACTOR_EXP, ET_ACTOR_LEVEL,
     ET_PARTY_MEMBER, ET_SHOP, ET_NAME_INPUT, ET_SCREEN_TONE, ET_FLASH, ET_MENU, ET_IF_BATTLE_RESULT, ET_SHAKE, ET_SHOW_PICTURE, ET_MOVE_PICTURE, ET_ROTATE_PICTURE,
-    ET_TINT_PICTURE, ET_ERASE_PICTURE, ET_COUNT
+    ET_TINT_PICTURE, ET_ERASE_PICTURE,
+    ET_PLAY_BGM, ET_FADEOUT_BGM, ET_PLAY_BGS, ET_FADEOUT_BGS, ET_COUNT
 };
 inline constexpr const char* const EV_TYPES[ET_COUNT] = {
     "text", "choices", "log", "wait", "switch", "toggle_switch", "variable",
@@ -59,7 +60,8 @@ inline constexpr const char* const EV_TYPES[ET_COUNT] = {
     "save_access", "menu_access", "encounter_access", "timer",
     "actor_hp", "actor_sp", "actor_exp", "actor_level", "party_member", "shop", "name_input", "screen_tone", "flash",
     "menu", "if_battle_result", "shake",
-    "show_picture", "move_picture", "rotate_picture", "tint_picture", "erase_picture"
+    "show_picture", "move_picture", "rotate_picture", "tint_picture", "erase_picture",
+    "play_bgm", "fadeout_bgm", "play_bgs", "fadeout_bgs"
 };
 inline constexpr const char* const EVENT_TRIGGERS[] = {"action", "touch", "auto", "parallel"};
 inline constexpr const char* const EVENT_OPS[] = {"==", "!=", "<", "<=", ">", ">="};
@@ -89,7 +91,9 @@ inline bool event_command_uses_field(int type, size_t field) {
             type == ET_ACTOR_HP || type == ET_ACTOR_SP || type == ET_ACTOR_EXP || type == ET_ACTOR_LEVEL ||
             type == ET_PARTY_MEMBER || type == ET_NAME_INPUT || type == ET_SCREEN_TONE ||
             type == ET_FLASH || type == ET_IF_BATTLE_RESULT ||
-            type == ET_SHOW_PICTURE || type == ET_MOVE_PICTURE || type == ET_TINT_PICTURE;
+            type == ET_SHOW_PICTURE || type == ET_MOVE_PICTURE || type == ET_TINT_PICTURE ||
+            type == ET_PLAY_BGM || type == ET_PLAY_BGS ||
+            type == ET_FADEOUT_BGM || type == ET_FADEOUT_BGS;
         case 1: return type == ET_WAIT || type == ET_VARIABLE || type == ET_IF_VARIABLE ||
             type == ET_SHAKE || type == ET_SHOW_PICTURE || type == ET_MOVE_PICTURE ||
             type == ET_ROTATE_PICTURE || type == ET_TINT_PICTURE || type == ET_ERASE_PICTURE ||
@@ -99,12 +103,14 @@ inline bool event_command_uses_field(int type, size_t field) {
             type == ET_CHOICES || type == ET_IF_GOLD || type == ET_IF_ITEM ||
             type == ET_TIMER || type == ET_ACTOR_HP || type == ET_ACTOR_SP ||
             type == ET_ACTOR_EXP || type == ET_ACTOR_LEVEL || type == ET_PARTY_MEMBER ||
-            type == ET_NAME_INPUT || type == ET_SCREEN_TONE || type == ET_FLASH;
+            type == ET_NAME_INPUT || type == ET_SCREEN_TONE || type == ET_FLASH ||
+            type == ET_PLAY_BGM || type == ET_PLAY_BGS;
         case 2: return type == ET_TELEPORT || type == ET_MOVE_PLAYER || type == ET_FLASH ||
             type == ET_SHAKE || type == ET_SHOW_PICTURE || type == ET_MOVE_PICTURE ||
             type == ET_ROTATE_PICTURE || type == ET_TINT_PICTURE ||
             type == ET_EFFECT || type == ET_ITEM || type == ET_MOVE_ROUTE || type == ET_INPUT_NUMBER ||
-            type == ET_BATTLE || type == ET_TEXT_OPTIONS;
+            type == ET_BATTLE || type == ET_TEXT_OPTIONS ||
+            type == ET_PLAY_BGM || type == ET_PLAY_BGS;
         case 3: return type == ET_TELEPORT || type == ET_MOVE_ROUTE || type == ET_SHAKE ||
             type == ET_SHOW_PICTURE || type == ET_MOVE_PICTURE;
         case 4: return type == ET_TEXT || type == ET_LOG || type == ET_CHOICES || type == ET_MOVE_ROUTE ||
@@ -821,6 +827,10 @@ inline EventCommandForm event_command_form_read(const JsonValue& c) {
             f.flag = flag("allowed", 0); break;
         case ET_IF_ACTOR: case ET_IF_BUTTON: f.name = text("name"); break;
         case ET_TIMER: f.name = text("mode", "start"); f.val1 = num("seconds", "0"); break;
+        // Etappe 21: BGM/BGS (XP 241/245) - Lautstärke 0..100, Pitch 50..150 %.
+        case ET_PLAY_BGM: case ET_PLAY_BGS:
+            f.val1 = num("volume", "100"); f.val2 = num("pitch", "100"); break;
+        case ET_FADEOUT_BGM: case ET_FADEOUT_BGS: f.val1 = num("seconds", "1"); break;
         case ET_ACTOR_HP: case ET_ACTOR_SP: case ET_ACTOR_EXP: case ET_ACTOR_LEVEL:
             f.name = text("target", "alle"); f.val1 = num("amount", "0"); break;
         case ET_TEXT_OPTIONS:
@@ -883,6 +893,8 @@ inline std::vector<const char*> event_command_keys(int type) {
         case ET_IF_ACTOR: case ET_IF_BUTTON: return {"name", "then", "else"};
         case ET_SAVE_ACCESS: case ET_MENU_ACCESS: case ET_ENCOUNTER_ACCESS: return {"allowed"};
         case ET_TIMER: return {"mode", "seconds"};
+        case ET_PLAY_BGM: case ET_PLAY_BGS: return {"name", "volume", "pitch"};
+        case ET_FADEOUT_BGM: case ET_FADEOUT_BGS: return {"seconds"};
         case ET_ACTOR_HP: case ET_ACTOR_SP: case ET_ACTOR_EXP: case ET_ACTOR_LEVEL:
             return {"target", "amount"};
         default: return {};
@@ -1472,6 +1484,17 @@ inline EventEdit event_command_prepare(const JsonValue* existing, const EventCom
             if (ok) ok = v1("seconds", false, "0", false, true, 0, unlimited);
             break;
         }
+        case ET_PLAY_BGM: case ET_PLAY_BGS: {
+            // Etappe 21: Datei + Lautstärke (0..100) + Pitch (50..150 %).
+            ok = name();
+            if (ok) ok = v1("volume", true, "100", true, true, 0, 100);
+            if (ok) ok = v2("pitch", true, "100", true, true, 50, 150);
+            break;
+        }
+        case ET_FADEOUT_BGM: case ET_FADEOUT_BGS:
+            // Etappe 21: Ausblenddauer in Sekunden, 0 = sofort.
+            ok = v1("seconds", true, "1", false, true, 0, 600);
+            break;
         case ET_BUTTON_INPUT:
             ok = name() && list("keys", "cmd_text", before.text, after.text, true);
             break;

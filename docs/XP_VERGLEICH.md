@@ -17,7 +17,7 @@ Rune3D (Stand nach 19y) steht — mit Blick darauf, was sich sinngemäß in 3D
 ## 1. Event-Befehle — 92 XP-Befehle, 39 in Rune3D
 
 XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
-**61 Befehlstypen**. Bilanz: **47 ✅ · 8 ⚠️ · 37 ❌**.
+**65 Befehlstypen**. Bilanz: **49 ✅ · 7 ⚠️ · 36 ❌**.
 
 ### A. Nachricht & Ablaufsteuerung (101–119)
 
@@ -88,9 +88,9 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 
 | XP | Code | Rune3D | Status |
 |---|---|---|---|
-| BGM abspielen | 241 | `Audio.bgm_play` → `AudioFiles` (WAV) mit Rückfall auf den prozeduralen Loop | ⚠️ Datei-Lader + Pitch (R34), aber noch kein Karten-BGM und kein `play_bgm`-Befehl (T3/T4 offen) |
-| BGM ausblenden | 242 | `bgm_fade` stoppt sofort | ⚠️ Dauer-Fade fehlt (T5) |
-| BGS abspielen/ausblenden | 245/246 | `Audio.bgs_play`/`bgs_stop` → `AudioFiles` | ⚠️ Datei-Lader da, Fade/Befehl offen (T4) |
+| BGM abspielen | 241 | `play_bgm` (R35) → `Audio.bgm_play` → `AudioFiles` (WAV) mit Rückfall auf den prozeduralen Loop | ✅ Datei + Lautstärke 0–100 + Pitch 50–150 %, neue Musik ersetzt die alte; Karten-BGM aus der Karte fehlt noch (T3) |
+| BGM ausblenden | 242 | `fadeout_bgm` (R35) → `AudioFiles.fade_ms` im Engine-Takt | ✅ Dauer in Sekunden, 0 = sofort, nicht blockierend |
+| BGS abspielen/ausblenden | 245/246 | `play_bgs`/`fadeout_bgs` (R35) → `Audio.bgs_play`/`AudioFiles.fade_ms` | ✅ wie BGM; BGS merken/wiederherstellen (247/248) bleibt offen |
 | BGS merken/wiederherstellen | 247/248 | — | ❌ |
 | ME abspielen | 249 | — | ❌ |
 | SE abspielen | 250 | `sound` | ✅ (7 prozedurale Sounds) |

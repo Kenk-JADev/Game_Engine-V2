@@ -81,6 +81,7 @@ module MapCheck
     screen_tone flash
     menu if_battle_result shake show_picture move_picture rotate_picture
     tint_picture erase_picture
+    play_bgm fadeout_bgm play_bgs fadeout_bgs
   ].freeze
 
   TRIGGER   = %w[action touch auto parallel].freeze
@@ -98,6 +99,10 @@ module MapCheck
   # eigene Liste, weil mapcheck.rb vor common_events.rb geladen wird).
   COMMON_TRIGGER = %w[none autorun parallel].freeze
   TIMER_MODI = %w[start stop].freeze     # Etappe 20d (XP 124)
+  # Etappe 21: Grenzen der Ton-Befehle 241/242/245/246 wie in XP
+  # (Lautstärke 0..100, Pitch 50..150 %, Fade-Dauer in Sekunden).
+  TON_LAUTSTAERKE = (0..100).freeze
+  TON_PITCH = (50..150).freeze
   # Etappe 20d: Mitglieder aendern (XP 129) - XP kennt nur add/remove.
   PARTY_MODI = %w[add remove].freeze
   # Etappe 20f: XP-Blitzfarben (Game_Screen#start_flash kennt nur diese).
@@ -1046,6 +1051,24 @@ module MapCheck
         end
       when 'sound'
         melde(FEHLER, w, "'name' fehlt oder ist leer") unless text?(c['name'])
+      when 'play_bgm', 'play_bgs'
+        # Etappe 21: BGM/BGS aus Dateien (XP 241/245).
+        if !text?(c['name'])
+          melde(FEHLER, w, "'name' fehlt oder ist leer")
+        elsif c['name'].to_s.downcase.end_with?('.ogg', '.mp3')
+          melde(WARNUNG, w, 'OGG/MP3 kann noch nicht dekodiert werden (WAV verwenden)')
+        end
+        if c.key?('volume') && !(zahl?(c['volume']) && TON_LAUTSTAERKE.cover?(c['volume']))
+          melde(FEHLER, w, "'volume' muss zwischen 0 und 100 liegen")
+        end
+        if c.key?('pitch') && !(zahl?(c['pitch']) && TON_PITCH.cover?(c['pitch']))
+          melde(FEHLER, w, "'pitch' muss zwischen 50 und 150 liegen")
+        end
+      when 'fadeout_bgm', 'fadeout_bgs'
+        # Etappe 21: BGM/BGS ausblenden (XP 242/246); 0 Sekunden = sofort.
+        if c.key?('seconds') && !(zahl?(c['seconds']) && c['seconds'] >= 0)
+          melde(FEHLER, w, "'seconds' muss eine Zahl >= 0 sein")
+        end
       when 'item'
         melde(FEHLER, w, "'name' fehlt oder ist leer") unless text?(c['name'])
         if c.key?('count') && !(zahl?(c['count']) && c['count'] != 0)

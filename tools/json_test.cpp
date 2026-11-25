@@ -1608,7 +1608,11 @@ void event_form_tests(const std::string& wurzel) {
         R"({"cmd":"move_picture","number":1,"x":100,"y":80,"frames":20})",
         R"({"cmd":"rotate_picture","number":1,"speed":5})",
         R"({"cmd":"tint_picture","number":1,"r":-60,"frames":20})",
-        R"({"cmd":"erase_picture","number":1})"
+        R"({"cmd":"erase_picture","number":1})",
+        R"({"cmd":"play_bgm","name":"bgm/dorf.wav","volume":100,"pitch":100})",
+        R"({"cmd":"fadeout_bgm","seconds":2})",
+        R"({"cmd":"play_bgs","name":"bgs/regen.wav","volume":80})",
+        R"({"cmd":"fadeout_bgs","seconds":1})"
     };
     check("Beispiel für jeden Befehlstyp vorhanden", samples.size() == ET_COUNT);
     for (size_t i = 0; i < samples.size(); ++i) {
@@ -1650,6 +1654,8 @@ void event_form_tests(const std::string& wurzel) {
             case ET_SHAKE: changed.val1 = "7"; break;
             case ET_SHOW_PICTURE: case ET_MOVE_PICTURE: case ET_ROTATE_PICTURE:
             case ET_TINT_PICTURE: case ET_ERASE_PICTURE: changed.val1 = "2"; break;
+            case ET_PLAY_BGM: case ET_PLAY_BGS: changed.val1 = "90"; break;
+            case ET_FADEOUT_BGM: case ET_FADEOUT_BGS: changed.val1 = "0.5"; break;
             default: changed.name = "neuer_name"; break;
         }
         const EventEdit patched = event_command_prepare(&c, f, changed);
