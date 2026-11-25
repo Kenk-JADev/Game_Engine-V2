@@ -131,6 +131,20 @@ bool has(const std::string& name) {
     return it != g_sounds.end() && !it->second.empty();
 }
 
+void set_volume(const std::string& name, float volume) {
+    const float v = volume < 0.0f ? 0.0f : (volume > 1.0f ? 1.0f : volume);
+    for (int i = 0; i < g_voice_count; ++i) {
+        if (g_voices[i].name == name) g_voices[i].vol = v;
+    }
+}
+
+float volume_of(const std::string& name) {
+    for (int i = 0; i < g_voice_count; ++i) {
+        if (g_voices[i].name == name) return g_voices[i].vol;
+    }
+    return 0.0f;
+}
+
 void play(const std::string& name, float volume) {
     auto it = g_sounds.find(name);
     if (it == g_sounds.end() || it->second.empty()) return;

@@ -1,7 +1,7 @@
 # Etappe 21 — Checkliste (Ton: Dateien statt Prozedur-Sounds)
 
-Diese Checkliste ist die Abhakliste für Etappe 21. Stand: **Runde 34 — T1 und
-der Pitch aus T5 sind fertig (WAV-Dateien klingen, CI grün)**.
+Diese Checkliste ist die Abhakliste für Etappe 21. Stand: **Runde 35 — T1
+(WAV-Lader) und T5 (Pitch + Fade über Zeit) sind fertig**.
 
 Legende: `[x]` erledigt und committet · `[~]` erledigt, CI offen · `[ ]` offen
 
@@ -49,9 +49,11 @@ Dateizugriffe laufen über die **sichere Assets-Brücke**
   `{"cmd":"play_bgs","name":"bgs/regen.ogg","volume":80}`,
   `{"cmd":"fadeout_bgs","seconds":1}`. Register/Formular/MapCheck wie immer;
   `bgm_fade` läuft über einen eigenen Takt (nicht im Interpreter blockierend).
-- [~] **T5 — Pitch und `bgm_fade` über Zeit:** Resampling-Faktor aus Pitch
-  (50–150 %), Fade dauert `seconds` und blendet die Lautstärke in
-  `Sound.update()` herunter; danach ist der Kanal frei.
+- [x] **T5 — Pitch und `bgm_fade` über Zeit:** Resampling-Faktor aus Pitch
+  (50–150 %) über `wav.h::rate_fuer_pitch`; Fade über `AudioFiles.fade`/
+  `fade_ms` + `AudioFiles.update(dt)` (nicht blockierend, Engine-Takt),
+  pro Frame `Rune::Sound.volume(name, vol)`; danach Stopp und Kanal frei.
+  `Audio.bgm_fade`/`bgs_fade` rechnen RGSS-Millisekunden in Sekunden um.
 - [~] **T6 — Tests:** `tools/audio_test.rb` prüft den WAV-Parser an
   eingebetteten Bytes (8/16 Bit, mono/stereo, kaputte Header, zu lang),
   Pitch-/Fade-Rechnung als reine Funktionen und die Befehle über den
@@ -69,8 +71,15 @@ Umgesetzt: `src/core/wav.h` (portabel) + `sound.cpp::load_wav` +
 prozeduralen Klänge, Pitch 50–150 % über Resampling, CI- und
 `build.ps1`-Prüfung des WAV-Tests.
 
+Fade über Zeit (Teil von T5): `sound::set_volume`/`volume_of`,
+`Rune::Sound.volume(name, vol = nil)`, `AudioFiles.fade`/`fade_ms`/`update`/
+`fade_aktiv?`/`stoppe_klang`, `AudioFiles.update(dt)` in `game/main.rb`, echte
+`Audio.bgm_fade`/`bgs_fade` (RGSS-Millisekunden, ohne Datei sofortiger Stopp).
+Ein neuer `loop`/`play` auf denselben Klang bricht einen laufenden Fade ab.
+
 Offen: T2 (OGG), T3 (Karten-BGM/BGS), T4 (Befehle 241/242/245/246 im Register),
-Fade über Zeit (Teil von T5), Doku-Feinschliff (T7).
+Doku-Feinschliff (T7) sowie die gemeinsam mit T4 fälligen `json_test`-Fälle
+für die Befehle (T6-Rest).
 
 ## 3. Bekannte Eigenheiten
 
@@ -81,7 +90,13 @@ Fade über Zeit (Teil von T5), Doku-Feinschliff (T7).
 - `Audio.bgm_play` übergibt heute nur den Basisnamen — T3/T4 müssen den
   Dateipfad mitgeben, damit der Lader die Datei findet.
 - `bgm_fade` blockiert in XP nicht; die Dauer läuft im Engine-Takt
-  (`Graphics.frame_rate`, 40/s), nicht im Interpreter.
+  (`Graphics.frame_rate`, 40/s), nicht im Interpreter — deshalb
+  `AudioFiles.update(dt)` im Frame und nicht im Event-Befehl.
+- `Audio.bgm_fade(time)` erwartet wie RGSS **Millisekunden** (das
+  XP-Defaultscript ruft `time * 1000`); die Editor-Befehle 242/246 liefern
+  Sekunden. Ein Fade auf einen prozeduralen Klang bleibt ein sofortiger Stopp.
+- Nach einem Fade bleibt `@bgm`/`@bgs` gesetzt (XP räumt den Slot erst beim
+  nächsten `bgm_play`/`bgm_stop`); der Klang selbst ist gestoppt.
 
 ## 3. Reihenfolge
 

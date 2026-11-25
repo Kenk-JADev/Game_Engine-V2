@@ -6,7 +6,8 @@
 #  Engine-Attrappen: Rune::Sound merkt sich geladene Klänge und Stimmen,
 #  Rune::Assets liefert eine eingebettete WAV-Datei für genau einen Pfad.
 #  Geprüft wird: Kandidatenreihenfolge, Laden/Anmelden, play/loop/stop,
-#  Pitch-Klemmung, OGG-Warnung, fehlende Datei, Cache und reset.
+#  Pitch-Klemmung, OGG-Warnung, fehlende Datei, Cache, reset und der
+#  Fade über Zeit (XP 242/246, nicht blockierend).
 # ============================================================================
 
 require 'base64'
@@ -31,7 +32,16 @@ module Rune
     def self.play(name, vol) = (@stimmen << [:play, name, vol])
     def self.loop(name, vol) = (@stimmen << [:loop, name, vol])
     def self.stop(name) = (@stimmen << [:stop, name])
-    def self.reset! = (@geladen = {}; @stimmen = [])
+    # Etappe 21: Fade setzt die Lautstärke laufender Stimmen.
+    def self.volume(name, vol = nil)
+      @lautstaerke ||= {}
+      return @lautstaerke[name] || 0.0 if vol.nil?
+
+      @lautstaerke[name] = vol
+      @stimmen << [:volume, name, vol]
+      vol
+    end
+    def self.reset! = (@geladen = {}; @stimmen = []; @lautstaerke = {})
   end
   # Assets-Attrappe: nur diese Pfade existieren.
   module Assets
@@ -123,6 +133,48 @@ check('stop ohne geladenen Klang -> false') { AudioFiles.stop('nichts') == false
 check('reset leert den Cache') do
   AudioFiles.reset
   !AudioFiles.geladen?('tuer')
+end
+
+puts '== Fade über Zeit (XP 242/246) =='
+AudioFiles.reset
+Rune::Sound.reset!
+check('fade ohne laufenden Klang -> false') { AudioFiles.fade('tuer', seconds: 1) == false }
+check('fade mit seconds: 0 stoppt sofort') do
+  AudioFiles.loop('tuer', volume: 0.8) &&
+    AudioFiles.fade('tuer', seconds: 0) &&
+    Rune::Sound.stimmen.last == [:stop, 'datei:audio/se/tuer.wav']
+end
+check('fade_ms rechnet Millisekunden in Sekunden') do
+  AudioFiles.loop('dorf', volume: 0.8) &&
+    AudioFiles.fade_ms('dorf', 1000) &&
+    AudioFiles.fade_aktiv?('dorf')
+end
+check('nach der Hälfte ist die Lautstärke etwa halbiert') do
+  AudioFiles.update(0.5)
+  laut = Rune::Sound.volume('datei:audio/bgm/dorf.wav')
+  (laut - 0.4).abs < 0.05
+end
+check('Fade läuft weiter, solange Zeit übrig ist') do
+  AudioFiles.fade_aktiv?('dorf') && Rune::Sound.stimmen.none? { |s| s.first == :stop }
+end
+check('am Ende wird gestoppt und der Fade geräumt') do
+  AudioFiles.update(0.6)
+  Rune::Sound.stimmen.last == [:stop, 'datei:audio/bgm/dorf.wav'] &&
+    !AudioFiles.fade_aktiv?('dorf')
+end
+check('neues loop bricht einen laufenden Fade ab') do
+  AudioFiles.loop('dorf', volume: 0.5) && AudioFiles.fade('dorf', seconds: 2) &&
+    AudioFiles.loop('dorf', volume: 0.5) && !AudioFiles.fade_aktiv?('dorf')
+end
+check('stop räumt einen laufenden Fade') do
+  AudioFiles.fade('dorf', seconds: 2) && AudioFiles.stop('dorf') &&
+    !AudioFiles.fade_aktiv?('dorf')
+end
+check('reset räumt laufende Fades') do
+  AudioFiles.loop('dorf', volume: 0.7)
+  AudioFiles.fade('dorf', seconds: 2)
+  AudioFiles.reset
+  !AudioFiles.fade_aktiv?('dorf')
 end
 
 puts($fail.zero? ? 'ALLE CHECKS GRUEN' : "#{$fail} CHECK(S) FEHLGESCHLAGEN")

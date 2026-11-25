@@ -820,7 +820,10 @@ end
 #       mit Pitch (50..150 %) wie in XP.
 #    2. Sonst fällt es auf den prozeduralen Klang zurück (Rune::Sound.loop/
 #       play mit dem Basisnamen), damit alte Projekte weiterklingen.
-#  Fade über Zeit ist noch nicht umgesetzt (sofortiger Stopp, T5 offen).
+#  bgm_fade/bgs_fade blenden über die angegebene Zeit aus - RGSS rechnet in
+#  MILLISEKUNDEN (das XP-Defaultscript ruft time * 1000), wir intern in
+#  Sekunden. Ohne Datei bleibt es beim sofortigen Stopp (prozedurale Loops
+#  kennen keinen Fade).
 # ============================================================================
 module Audio
   @bgm = nil
@@ -844,8 +847,14 @@ module Audio
     @bgm = nil
   end
 
-  # fading gibt es in der Sound-Schicht nicht -> sofort stoppen (Doku).
-  def self.bgm_fade(_time)
+  # Ausblenden über `time` MILLISEKUNDEN (RGSS-Vertrag, XP-Befehl 242 liefert
+  # Sekunden und ruft bgm_fade(time * 1000)). Ohne Datei oder bei time <= 0
+  # wird sofort gestoppt.
+  def self.bgm_fade(time)
+    if defined?(AudioFiles) && @bgm && AudioFiles.fade_ms(@bgm, time)
+      return
+    end
+
     bgm_stop
   end
 
@@ -864,7 +873,12 @@ module Audio
     @bgs = nil
   end
 
-  def self.bgs_fade(_time)
+  # Wie bgm_fade: `time` in Millisekunden (XP-Befehl 246).
+  def self.bgs_fade(time)
+    if defined?(AudioFiles) && @bgs && AudioFiles.fade_ms(@bgs, time)
+      return
+    end
+
     bgs_stop
   end
 

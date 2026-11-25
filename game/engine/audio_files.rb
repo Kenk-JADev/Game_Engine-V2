@@ -10,7 +10,10 @@
 #
 #    AudioFiles.play('audio/se/tuer.wav', volume: 0.8)
 #    AudioFiles.loop('audio/bgm/dorf.wav', volume: 0.6, pitch: 100)
+#    AudioFiles.fade('dorf', seconds: 2)      # ausblenden über 2 s (XP 242/246)
+#    AudioFiles.fade_ms('dorf', 800)          # dasselbe in RGSS-Millisekunden
 #    AudioFiles.stop('audio/bgm/dorf.wav')
+#    AudioFiles.update(dt)                    # einmal pro Frame (Fade-Takt)
 #
 #  Gesucht wird in dieser Reihenfolge (erste vorhandene Datei gewinnt):
 #    <pfad>                     wie angegeben
@@ -30,6 +33,8 @@ module AudioFiles
   MAX_BYTES = 8 * 1024 * 1024      # 8 MB je Datei (60 s WAV sind ~2,6 MB)
 
   @geladen = {}        # Pfad -> Klangname (nur erfolgreiche Ladungen)
+  @lautstaerke = {}    # Klangname -> zuletzt gesetzte Lautstärke (0..1)
+  @fades = {}          # Klangname -> { dauer:, rest:, von: }
   @zuletzt = {}        # Aufrufname -> aufgelöster Pfad (für stop)
   @gemeldet = {}       # Pfad -> true (Warnung nur einmal)
 
@@ -86,7 +91,11 @@ module AudioFiles
       treffer = aufloesen(name, pitch: pitch)
       return false if treffer.nil?
 
-      Rune::Sound.play(treffer[1], volume.to_f.clamp(0.0, 1.0))
+      laut = volume.to_f.clamp(0.0, 1.0)
+      # Ein neuer Start bricht einen noch laufenden Fade dieses Klangs ab.
+      @fades.delete(treffer[1])
+      @lautstaerke[treffer[1]] = laut
+      Rune::Sound.play(treffer[1], laut)
       true
     end
 
@@ -95,8 +104,57 @@ module AudioFiles
       treffer = aufloesen(name, pitch: pitch)
       return false if treffer.nil?
 
-      Rune::Sound.loop(treffer[1], volume.to_f.clamp(0.0, 1.0))
+      laut = volume.to_f.clamp(0.0, 1.0)
+      @fades.delete(treffer[1])
+      @lautstaerke[treffer[1]] = laut
+      Rune::Sound.loop(treffer[1], laut)
       true
+    end
+
+    # Über `sekunden` auf 0 ausblenden und danach stoppen (XP 242/246).
+    # Nicht blockierend: `update(dt)` rechnet den Rest herunter.
+    # Rückgabe false, wenn dazu keine Datei läuft.
+    def fade(name, seconds: 1.0)
+      treffer = aufloesen(name)
+      return false if treffer.nil?
+
+      klang = treffer[1]
+      return false unless @lautstaerke.key?(klang)
+
+      dauer = seconds.to_f
+      if dauer <= 0.0
+        stoppe_klang(klang)
+        return true
+      end
+      @fades[klang] = { dauer: dauer, rest: dauer, von: @lautstaerke[klang] }
+      true
+    end
+
+    # Wie fade, aber in MILLISEKUNDEN - das ist die Einheit von RGSS
+    # (Audio.bgm_fade(time), XP-Befehle 242/246 liefern Sekunden und rufen
+    # bgm_fade(time * 1000)). 0 oder negativ stoppt sofort.
+    def fade_ms(name, ms)
+      fade(name, seconds: ms.to_f / 1000.0)
+    end
+
+    # Einmal pro Frame: laufende Fades weiterrechnen (nicht blockierend).
+    def update(dt)
+      return if @fades.empty?
+
+      @fades.keys.each do |klang|
+        fade = @fades[klang]
+        fade[:rest] = [fade[:rest] - dt, 0.0].max
+        anteil = fade[:dauer].positive? ? fade[:rest] / fade[:dauer] : 0.0
+        Rune::Sound.volume(klang, fade[:von] * anteil) if
+          defined?(Rune::Sound) && Rune::Sound.respond_to?(:volume)
+        stoppe_klang(klang) if fade[:rest].zero?
+      end
+    end
+
+    # Läuft für diesen Namen gerade ein Fade? (Tests/Skripte)
+    def fade_aktiv?(name)
+      treffer = aufloesen(name)
+      treffer ? @fades.key?(treffer[1]) : false
     end
 
     def stop(name)
@@ -104,7 +162,7 @@ module AudioFiles
       klang = pfad ? @geladen[pfad] : nil
       return false if klang.nil?
 
-      Rune::Sound.stop(klang) if defined?(Rune::Sound) && Rune::Sound.respond_to?(:stop)
+      stoppe_klang(klang)
       true
     end
 
@@ -119,7 +177,16 @@ module AudioFiles
     def reset
       @geladen.clear
       @zuletzt.clear
+      @lautstaerke.clear
+      @fades.clear
       @gemeldet.clear
+    end
+
+    # Stimme(n) eines Klangnamens stoppen und Fade/Lautstärke vergessen.
+    def stoppe_klang(klang)
+      Rune::Sound.stop(klang) if defined?(Rune::Sound) && Rune::Sound.respond_to?(:stop)
+      @lautstaerke.delete(klang)
+      @fades.delete(klang)
     end
 
     private

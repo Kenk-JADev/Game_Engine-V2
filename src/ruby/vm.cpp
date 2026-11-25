@@ -978,6 +978,15 @@ VALUE rune_sound_has(VALUE, VALUE name) {
     return core::sound::has(to_std(name)) ? Qtrue : Qfalse;
 }
 
+// Etappe 21: Lautstärke laufender Stimmen setzen (BGM-Fade über Zeit).
+VALUE rune_sound_volume(int argc, VALUE* argv, VALUE) {
+    VALUE name, volume = Qnil;
+    rb_scan_args(argc, argv, "11", &name, &volume);
+    if (NIL_P(volume)) return DBL2NUM(core::sound::volume_of(to_std(name)));
+    core::sound::set_volume(to_std(name), static_cast<float>(NUM2DBL(volume)));
+    return volume;
+}
+
 VALUE rune_sound_play(int argc, VALUE* argv, VALUE) {
     VALUE name, volume = Qnil;
     rb_scan_args(argc, argv, "11", &name, &volume);
@@ -1063,6 +1072,7 @@ void register_bindings() {
     rb_define_module_function(mSound, "register", RUBY_METHOD_FUNC(rune_sound_register), 3);
     rb_define_module_function(mSound, "load", RUBY_METHOD_FUNC(rune_sound_load), -1);
     rb_define_module_function(mSound, "known?", RUBY_METHOD_FUNC(rune_sound_has), 1);
+    rb_define_module_function(mSound, "volume", RUBY_METHOD_FUNC(rune_sound_volume), -1);
     rb_define_module_function(mSound, "play", RUBY_METHOD_FUNC(rune_sound_play), -1);
     rb_define_module_function(mSound, "loop", RUBY_METHOD_FUNC(rune_sound_loop), -1);
     rb_define_module_function(mSound, "stop", RUBY_METHOD_FUNC(rune_sound_stop), 1);

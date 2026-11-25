@@ -1126,6 +1126,8 @@ end
     ScreenFx.update(dt) if defined?(ScreenFx)
     # Etappe 20f: Bilder bewegen/drehen/tönen (XP 231-235).
     Pictures.update(dt) if defined?(Pictures)
+    # Etappe 21: BGM/BGS-Fades laufen im Engine-Takt (nicht blockierend).
+    AudioFiles.update(dt) if defined?(AudioFiles)
     Rune::Log.info("Spielzeit #{@time.to_i}s") if (@time - dt).to_i != @time.to_i && @time.to_i % 30 == 0
 
     if Rune::Input.pressed?(:f2)

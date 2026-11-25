@@ -39,6 +39,13 @@ void loop(const std::string& name, float volume);
 // Alle Stimmen eines Namens stoppen (auch Loops).
 void stop(const std::string& name);
 
+// Lautstärke laufender Stimmen eines Namens ändern (Etappe 21, BGM-Fade).
+// 0..1; unbekannte Namen sind harmlos.
+void set_volume(const std::string& name, float volume);
+
+// Aktuelle Lautstärke eines Namens (0, wenn keine Stimme läuft) - für Tests/Skripte.
+float volume_of(const std::string& name);
+
 // Einmal pro Frame aufrufen: füllt freigewordene Puffer neu.
 void update();
 
