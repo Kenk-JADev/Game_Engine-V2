@@ -208,10 +208,10 @@ check('C++-Moderation prüft add/remove wie MapCheck::PARTY_MODI') do
 end
 check('EV_TYPES (C++) nennt party_member an der Registerstelle') do
   form = File.read(File.join(Rune::ROOT, 'src', 'editor', 'event_form.h'), encoding: 'utf-8')
-  form.include?('"actor_level", "party_member", "shop", "name_input"') &&
-    MapCheck::CMD_TYPES[-3..] == %w[party_member shop name_input]
+  form.include?('"party_member", "shop", "name_input"') &&
+    MapCheck::CMD_TYPES.each_cons(3).include?(%w[party_member shop name_input])
 end
-check('alle 51 Befehlstypen im Register der Prüfung') { MapCheck::CMD_TYPES.size == 51 }
+check('alle 53 Befehlstypen im Register der Prüfung') { MapCheck::CMD_TYPES.size == 53 }
 
 puts($fail.zero? ? 'ALLE CHECKS GRUEN' : "#{$fail} CHECK(S) FEHLGESCHLAGEN")
 exit($fail.zero? ? 0 : 1)

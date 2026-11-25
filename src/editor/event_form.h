@@ -45,7 +45,7 @@ enum EvType {
     ET_IF_GOLD, ET_IF_ITEM, ET_IF_SCRIPT, ET_IF_ACTOR, ET_IF_BUTTON,
     ET_SAVE_ACCESS, ET_MENU_ACCESS, ET_ENCOUNTER_ACCESS,
     ET_TIMER, ET_ACTOR_HP, ET_ACTOR_SP, ET_ACTOR_EXP, ET_ACTOR_LEVEL,
-    ET_PARTY_MEMBER, ET_SHOP, ET_NAME_INPUT, ET_COUNT
+    ET_PARTY_MEMBER, ET_SHOP, ET_NAME_INPUT, ET_SCREEN_TONE, ET_FLASH, ET_COUNT
 };
 inline constexpr const char* const EV_TYPES[ET_COUNT] = {
     "text", "choices", "log", "wait", "switch", "toggle_switch", "variable",
@@ -56,7 +56,7 @@ inline constexpr const char* const EV_TYPES[ET_COUNT] = {
     "button_input", "text_options", "common_event",
     "if_gold", "if_item", "if_script", "if_actor", "if_button",
     "save_access", "menu_access", "encounter_access", "timer",
-    "actor_hp", "actor_sp", "actor_exp", "actor_level", "party_member", "shop", "name_input"
+    "actor_hp", "actor_sp", "actor_exp", "actor_level", "party_member", "shop", "name_input", "screen_tone", "flash"
 };
 inline constexpr const char* const EVENT_TRIGGERS[] = {"action", "touch", "auto", "parallel"};
 inline constexpr const char* const EVENT_OPS[] = {"==", "!=", "<", "<=", ">", ">="};
@@ -84,7 +84,8 @@ inline bool event_command_uses_field(int type, size_t field) {
             type == ET_COMMON_EVENT || type == ET_IF_ITEM ||
             type == ET_IF_ACTOR || type == ET_IF_BUTTON ||
             type == ET_ACTOR_HP || type == ET_ACTOR_SP || type == ET_ACTOR_EXP || type == ET_ACTOR_LEVEL ||
-            type == ET_PARTY_MEMBER || type == ET_NAME_INPUT;
+            type == ET_PARTY_MEMBER || type == ET_NAME_INPUT || type == ET_SCREEN_TONE ||
+            type == ET_FLASH;
         case 1: return type == ET_WAIT || type == ET_VARIABLE || type == ET_IF_VARIABLE ||
             type == ET_TELEPORT || type == ET_MOVE_PLAYER || type == ET_SOUND || type == ET_EFFECT ||
             type == ET_GOLD || type == ET_HEAL || type == ET_WEATHER || type == ET_SAVE_GAME ||
@@ -92,8 +93,8 @@ inline bool event_command_uses_field(int type, size_t field) {
             type == ET_CHOICES || type == ET_IF_GOLD || type == ET_IF_ITEM ||
             type == ET_TIMER || type == ET_ACTOR_HP || type == ET_ACTOR_SP ||
             type == ET_ACTOR_EXP || type == ET_ACTOR_LEVEL || type == ET_PARTY_MEMBER ||
-            type == ET_NAME_INPUT;
-        case 2: return type == ET_TELEPORT || type == ET_MOVE_PLAYER ||
+            type == ET_NAME_INPUT || type == ET_SCREEN_TONE || type == ET_FLASH;
+        case 2: return type == ET_TELEPORT || type == ET_MOVE_PLAYER || type == ET_FLASH ||
             type == ET_EFFECT || type == ET_ITEM || type == ET_MOVE_ROUTE || type == ET_INPUT_NUMBER ||
             type == ET_BATTLE || type == ET_TEXT_OPTIONS;
         case 3: return type == ET_TELEPORT || type == ET_MOVE_ROUTE;
@@ -688,6 +689,17 @@ inline EventCommandForm event_command_form_read(const JsonValue& c) {
         case ET_SHOP:
             f.text = event_unique(c, "goods") ? event_goods_view(c.find("goods")) : "[mehrfach vorhanden]";
             break;
+        case ET_SCREEN_TONE: {
+            // Etappe 20f (XP 223): vier Kanäle in einem Feld, frames separat.
+            auto kanal = [&](const char* key) {
+                return event_unique(c, key) ? event_number_view(c.find(key), "0") : "[mehrfach vorhanden]";
+            };
+            f.name = kanal("r") + "," + kanal("g") + "," + kanal("b") + "," + kanal("gray");
+            f.val1 = num("frames", "0");
+            break;
+        }
+        case ET_FLASH: f.name = text("color", "weiss"); f.val1 = num("strength", "255");
+                        f.val2 = num("frames", "20"); break;
         case ET_NAME_INPUT:
             // Etappe 20e (XP 303): Held, maximale Laenge, Esc erlaubt.
             f.name = text("actor");
@@ -803,6 +815,8 @@ inline std::vector<const char*> event_command_keys(int type) {
         case ET_PARTY_MEMBER: return {"name", "mode"};
         case ET_SHOP: return {"goods"};
         case ET_NAME_INPUT: return {"actor", "max", "cancel"};
+        case ET_SCREEN_TONE: return {"r", "g", "b", "gray", "frames"};
+        case ET_FLASH: return {"color", "strength", "frames"};
         case ET_MOVE_ROUTE: return {"target", "steps", "speed", "wait", "code", "repeat"};
         case ET_INPUT_NUMBER: return {"name", "digits", "initial", "cancel"};
         case ET_BATTLE: return {"name", "can_escape", "can_lose"};
@@ -1123,6 +1137,56 @@ inline EventEdit event_command_prepare(const JsonValue* existing, const EventCom
                 else ok = text("direction", "cmd_name", before.name, direction, false, false, true);
             }
             if (ok) ok = v1("seconds", false, "0.5", false, true, 0, unlimited);
+            break;
+        }
+        case ET_SCREEN_TONE: {
+            // Etappe 20f (XP 223): "r,g,b,grau" plus Dauer in Frames.
+            if (fresh || before.name != after.name) {
+                if (!unique("r", "cmd_name") || !unique("g", "cmd_name") ||
+                    !unique("b", "cmd_name") || !unique("gray", "cmd_name")) break;
+                std::vector<std::string> teile;
+                std::string rest = after.name;
+                size_t pos = 0;
+                while ((pos = rest.find(',')) != std::string::npos) {
+                    teile.push_back(rest.substr(0, pos));
+                    rest = rest.substr(pos + 1);
+                }
+                teile.push_back(rest);
+                if (teile.size() != 4) {
+                    ok = fail("cmd_name", "Bitte vier Zahlen r,g,b,grau eingeben (je -255..255).");
+                    break;
+                }
+                const char* const schluessel[4] = {"r", "g", "b", "gray"};
+                bool weitermachen = true;
+                for (size_t i = 0; i < 4 && weitermachen; ++i) {
+                    JsonValue zahl;
+                    if (!event_number_parse(database_trim(teile[i]), true, false, zahl) ||
+                        zahl.number() < -255 || zahl.number() > 255) {
+                        ok = fail("cmd_name", "Bitte vier Zahlen r,g,b,grau eingeben (je -255..255).");
+                        weitermachen = false;
+                        break;
+                    }
+                    if (zahl.number() == 0) event_erase(r.value, schluessel[i]);
+                    else r.value.set(schluessel[i], std::move(zahl));
+                }
+                if (!weitermachen) break;
+            }
+            ok = v1("frames", true, "0", true, true, 0, unlimited);
+            break;
+        }
+        case ET_FLASH: {
+            // Etappe 20f (XP 224): moderiert wie fade, dazu Stärke und Dauer.
+            if (fresh || before.name != after.name) {
+                std::string farbe = after.name.empty() && fresh ? "weiss" : after.name;
+                std::transform(farbe.begin(), farbe.end(), farbe.begin(),
+                               [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+                if (farbe != "weiss" && farbe != "rot" && farbe != "gruen" &&
+                    farbe != "blau" && farbe != "gelb")
+                    ok = fail("cmd_name", "Farbe muss weiss, rot, gruen, blau oder gelb sein.");
+                else ok = text("color", "cmd_name", before.name, farbe, false, false, true);
+            }
+            if (ok) ok = v1("strength", true, "255", true, true, 0, 255);
+            if (ok) ok = v2("frames", true, "20", true, true, 0, unlimited);
             break;
         }
         case ET_NAME_INPUT: {

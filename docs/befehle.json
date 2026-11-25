@@ -559,6 +559,30 @@
         "cancel"
       ],
       "beschreibung": "Laesst den Spieler den Namen eines Helden eintippen (XP 303); max begrenzt die Laenge (1-16, Default 8), cancel erlaubt Esc."
+    },
+    {
+      "typ": "screen_tone",
+      "bereich": "Bild",
+      "pflicht": [],
+      "optional": [
+        "r",
+        "g",
+        "b",
+        "gray",
+        "frames"
+      ],
+      "beschreibung": "Legt einen Bildschirmton ueber die Szene und blendet ihn ueber frames (XP 223) hin; r/g/b/gray je -255..255, ohne Angabe 0."
+    },
+    {
+      "typ": "flash",
+      "bereich": "Bild",
+      "pflicht": [],
+      "optional": [
+        "color",
+        "strength",
+        "frames"
+      ],
+      "beschreibung": "Blitzt den Bildschirm in weiss/rot/gruen/blau/gelb (XP 224); strength 0..255, frames ist die Abklingzeit, Default 20."
     }
   ]
 }

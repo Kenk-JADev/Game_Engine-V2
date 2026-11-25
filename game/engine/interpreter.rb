@@ -59,6 +59,8 @@
 #    {"cmd":"timer","mode":"start","seconds":120}       (Timer, 20d; XP 124)
 #    {"cmd":"shop","goods":[{"item":"heiltrank","price":20}]}   (Laden, 20e; XP 302)
 #    {"cmd":"name_input","actor":"arik","max":8,"cancel":true}  (Name, 20e; XP 303)
+#    {"cmd":"screen_tone","r":-34,"g":0,"b":68,"gray":0,"frames":60} (20f; XP 223)
+#    {"cmd":"flash","color":"weiss","strength":255,"frames":20}       (20f; XP 224)
 #    {"cmd":"if_actor","name":"arik","then":[],"else":[]}   (Wenn Actor, 20d)
 #    {"cmd":"if_button","name":"e","then":[],"else":[]}     (Wenn Taste, 20d)
 #    {"cmd":"actor_hp","target":"alle","amount":-20}    (Werte ändern, 20d)
@@ -356,6 +358,13 @@ class Interpreter
         Party.heal_all(cmd.key?('amount') ? cmd['amount'].to_i : 0)
       when 'weather'   # {"cmd":"weather","name":"schnee","intensity":1.5} (Etappe 17h)
         Weather.set(cmd['name'] || 'kein', (cmd['intensity'] || 1.0).to_f)
+      when 'screen_tone'   # Etappe 20f (XP 223): Bildschirmton, frames = Übergang
+        ScreenFx.tone(r: cmd['r'], g: cmd['g'], b: cmd['b'],
+                      gray: cmd['gray'], frames: cmd['frames'])
+      when 'flash'   # Etappe 20f (XP 224): Blitz (weiss/rot/gruen/blau/gelb)
+        ScreenFx.flash(cmd['color'] || cmd['name'],
+                       strength: cmd['strength'] || ScreenFx::MAX_STAERKE,
+                       frames: cmd['frames'] || 20)
       when 'fade'   # {"cmd":"fade","direction":"aus","seconds":0.5} (Etappe 19d)
         Fade.start(cmd['direction'] || 'aus', cmd['seconds'] || 0.5)
       when 'input_number'   # Zahleneingabe (Etappe 19i, RPG Maker XP)

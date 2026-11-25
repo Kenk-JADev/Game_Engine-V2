@@ -14,10 +14,10 @@ Rune3D (Stand nach 19y) steht — mit Blick darauf, was sich sinngemäß in 3D
 
 ---
 
-## 1. Event-Befehle — 92 XP-Befehle, 29 in Rune3D
+## 1. Event-Befehle — 92 XP-Befehle, 31 in Rune3D
 
 XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
-**51 Befehlstypen**. Bilanz: **38 ✅ · 8 ⚠️ · 46 ❌**.
+**53 Befehlstypen**. Bilanz: **39 ✅ · 9 ⚠️ · 44 ❌**.
 
 ### A. Nachricht & Ablaufsteuerung (101–119)
 
@@ -78,8 +78,8 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 | XP | Code | Rune3D | Status |
 |---|---|---|---|
 | Übergang vorbereiten/ausführen | 221/222 | `fade` | ✅ |
-| Bildschirmton (Tone) | 223 | `$game_screen.tone` | ⚠️ Zustand da, kein Effekt im Renderer |
-| Bildschirmblitz | 224 | `$game_screen.flash_color` | ⚠️ ohne Effekt |
+| Bildschirmton (Tone) | 223 | `screen_tone` (R32) → `ScreenFx`-Overlay | ⚠️ Verlauf über `frames` wie XP, aber als Farb-/Dunkel-Schleier genähert (kein Shader-Kanalmapping) |
+| Bildschirmblitz | 224 | `flash` (R32) → `ScreenFx`-Overlay | ✅ weiss/rot/grün/blau/gelb, Stärke 0–255, Abklingen über `frames` |
 | Bildschirmwackeln | 225 | `$game_screen.shake` | ⚠️ ohne Effekt |
 | Bilder zeigen/bewegen/drehen/färben/löschen | 231–235 | `$game_screen.pictures` | ❌ nur Platzhalter-Hash |
 | Wettereffekte | 236 | `weather` | ✅ (Regen/Schnee, 3D-Partikel) |
@@ -261,7 +261,7 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 | **20c Event-Befehle Welle 1 (Ablauf)** | ~~`loop`/`break`/`label`/`jump`/`exit_event`/`erase_event`/`button_input`/`text_options`~~ ✅, ~~**Common Events**~~ ✅ (Runde 27, 35 Befehlstypen: Datenhaltung, Aufruf 117, Trigger, MapCheck, RGSS) — offen: eigener Editor-Reiter für Common Events (F9/F6) | Struktur, die fast jedes XP-Projekt braucht |
 | **20d Event-Befehle Welle 2 (Daten)** | ~~erweiterte Bedingungen `if_gold`/`if_item`/`if_script`~~ ✅, ~~134/135/136 als Befehle (`save_access`/`menu_access`/`encounter_access`)~~ ✅ (R28, 46 Befehlstypen; Timer samt Anzeige, HP/SP/EXP/Stufe erledigt) — offen: `party_member`, ~~`$game_temp`-Calling-Flags auswerten~~ ✅ (R28, LOGIK E.3) | Verdoppelt die Aussagekraft von Variablen/Schaltern; XP-Scripts, die Szenen über `$game_temp` starten, funktionieren dann |
 | **20e Shop & Name** | ~~Befehl 302 + Shop-Fenster (kaufen/verkaufen/Preis)~~ ✅, ~~303 Namenseingabe~~ ✅ (R30; Umlaute offen) | XP-typisch, eigenständig nutzbar |
-| **20f Bildschirm-Ebenen** | Pictures 231–235 als Overlay, Flash/Shake/Tone als PostFX, Ergebniszweige 601–603, Befehl 351 (Menü) | Macht die „Bildschirm“-Gruppe echt |
+| **20f Bildschirm-Ebenen** | ~~Tone 223~~ ✅, ~~Flash 224~~ ✅ (R32) — offen: Wackeln 225, Pictures 231–235 (UI-Bildlader), Ergebniszweige 601–603, Befehl 351 (Menü) | Macht die „Bildschirm“-Gruppe echt |
 | **20g Darstellung** | Figuren-Billboards, Ballons, Kampf-/Event-Animationen (207/337) | Sichtbarster XP-Optik-Unterschied |
 | **20h Editor & DX** | Dialoge F6/F9 XP-orientiert (Screenshots), Undo/Redo über Splats/NPCs/Events | Bedienung wie im Vorbild |
 | **20i Ton (Audit „20x“)** | Datei-Lader (WAV/OGG) in `src/core/sound.cpp`, Karten-BGM aus der Karten-JSON, Event-Befehle 241/242/245/246, Pitch pro Aufruf, `bgm_fade` über Zeit (N) | RGSS-`Audio.*` ist vorhanden, aber ohne Datei-Lader substanzlos; XP-Skripte spielen sonst wortlos nichts |

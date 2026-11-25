@@ -78,6 +78,7 @@ module MapCheck
     timer
     actor_hp actor_sp actor_exp actor_level
     party_member shop name_input
+    screen_tone flash
   ].freeze
 
   TRIGGER   = %w[action touch auto parallel].freeze
@@ -97,6 +98,8 @@ module MapCheck
   TIMER_MODI = %w[start stop].freeze     # Etappe 20d (XP 124)
   # Etappe 20d: Mitglieder aendern (XP 129) - XP kennt nur add/remove.
   PARTY_MODI = %w[add remove].freeze
+  # Etappe 20f: XP-Blitzfarben (Game_Screen#start_flash kennt nur diese).
+  FLASH_FARBEN = %w[weiss rot gruen blau gelb].freeze
   # Etappe 20d: Operationen von `variable` (XP 122) - dieselbe Liste wie
   # EVENT_VAR_OPS im Editor (sync_test vergleicht beide).
   VARIABLE_OPS = %w[set add sub mul div mod].freeze
@@ -1158,6 +1161,36 @@ module MapCheck
         end
         if typ == 'actor_level' && c['amount'].is_a?(Numeric) && c['amount'].to_i.abs > 99
           melde(WARNUNG, w, "'amount' übersteigt den Stufenbereich")
+        end
+      when 'screen_tone'
+        # Etappe 20f (XP 223): Ton je Kanal -255..255, frames = Übergangsdauer.
+        %w[r g b gray].each do |kanal|
+          next unless c.key?(kanal)
+          wert = c[kanal]
+          if !zahl?(wert)
+            melde(FEHLER, w, "'#{kanal}' ist keine Zahl")
+          elsif !wert.to_i.between?(-255, 255)
+            melde(FEHLER, w, "'#{kanal}' muss zwischen -255 und 255 liegen")
+          end
+        end
+        if c.key?('frames') && !(zahl?(c['frames']) && c['frames'].to_i >= 0)
+          melde(FEHLER, w, "'frames' muss eine Zahl >= 0 sein")
+        end
+        if %w[r g b gray].none? { |k| c.key?(k) } && !c.key?('frames')
+          melde(WARNUNG, w, 'screen_tone ohne Werte ändert nichts')
+        end
+      when 'flash'
+        # Etappe 20f (XP 224): Farbe, Stärke 0..255, Dauer in Frames.
+        if c.key?('color') && !FLASH_FARBEN.include?(c['color'].to_s.strip.downcase)
+          melde(FEHLER, w, "unbekannte Blitzfarbe '#{c['color']}' " \
+                           "(#{FLASH_FARBEN.join('/')})")
+        end
+        if c.key?('strength') &&
+           !(zahl?(c['strength']) && c['strength'].to_i.between?(0, 255))
+          melde(FEHLER, w, "'strength' muss eine Zahl von 0 bis 255 sein")
+        end
+        if c.key?('frames') && !(zahl?(c['frames']) && c['frames'].to_i >= 0)
+          melde(FEHLER, w, "'frames' muss eine Zahl >= 0 sein")
         end
       when 'name_input'
         # Etappe 20e (XP 303): Held umbenennen. `actor` ist Pflicht,

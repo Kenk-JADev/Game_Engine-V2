@@ -1,7 +1,7 @@
 # Etappe 20f — Checkliste (Bildschirm-Ebenen)
 
-Diese Checkliste ist die Abhakliste für Etappe 20f. Stand: **Runde 31 —
-geplant, noch nichts umgesetzt**.
+Diese Checkliste ist die Abhakliste für Etappe 20f. Stand: **Runde 32 —
+Ton und Blitz fertig (F1/F2, Register 53), Wackeln/Bilder/Ergebniszweige offen**.
 
 Legende: `[x]` erledigt und committet · `[~]` erledigt, CI offen · `[ ]` offen
 
@@ -21,13 +21,13 @@ Register → `CMD_TYPES` → Interpreter → `ISSUE_CMD_TYPES` → `docs/befehle
 
 ## 1. Plan in Scheiben
 
-- [ ] **F1 — Bildschirmton (XP 223):** `{"cmd":"screen_tone","r":-34,"g":0,"b":68,"gray":0,"frames":60}`;
+- [x] **F1 — Bildschirmton (XP 223):** `{"cmd":"screen_tone","r":-34,"g":0,"b":68,"gray":0,"frames":60}`;
       Overlay-Farbe über der Welt (`UI.screen_tone`), Werte −255..255 (XP-Farbton),
       `frames` = Übergangsdauer in XP-Frames (40/s), Dauer 0 = sofort; Modul
-      `ScreenFx` mit `tone`, `update(dt)`, `draw`
-- [ ] **F2 — Blitz (XP 224):** `{"cmd":"flash","color":"weiss","strength":255,"frames":20}`;
+      `ScreenFx` mit `tone`, `update(dt)`, `draw` (Overlay über Welt und UI)
+- [x] **F2 — Blitz (XP 224):** `{"cmd":"flash","color":"weiss","strength":255,"frames":20}`;
       Farbwahl weiß/rot/grün/blau/gelb (XP-Farbtöne), Stärke 0..255, kurzer
-      Alpha-Verlauf; im selben Modul wie F1
+      Alpha-Verlauf; im selben Modul wie F1, `frames: 0` = ein Frame
 - [ ] **F3 — Wackeln (XP 225):** `{"cmd":"shake","power":4,"speed":5,"frames":40}`;
       Kamera-Offset in der UI-Schicht (oder dokumentiert als „ohne Kamera-Wackeln“,
       falls der Renderer das nicht hergibt) — **erst prüfen**, dann bauen
@@ -41,10 +41,10 @@ Register → `CMD_TYPES` → Interpreter → `ISSUE_CMD_TYPES` → `docs/befehle
       Zweige für Wahl, Kampf und Shop (XP: „Wenn Kampf gewonnen/verloren/geflohen“)
 - [ ] **F6 — Menü öffnen (XP 351):** `{"cmd":"menu"}` über `$game_temp.menu_calling`
       (die Calling-Flags aus 20d existieren schon)
-- [ ] **F7 — Tests:** `tools/screen_fx_test.rb` (Tone/Flash-Verlauf, Klemmen,
+- [~] **F7 — Tests:** `tools/screen_fx_test.rb` (Tone/Flash-Verlauf, Klemmen,
       Reihenfolge mehrerer Effekte), `tools/picture_test.rb` (Bilder über
       `$game_screen.pictures`), je Beispiel in `json_test`, `sync_test` grün
-- [ ] **F8 — Doku:** `architecture.md`, `XP_VERGLEICH.md` (223/224/225/231–235,
+- [~] **F8 — Doku:** `architecture.md`, `XP_VERGLEICH.md` (223/224/225/231–235,
       351, 601–603), `LOGIK_PRUEFUNG.md` (AD.13), `HANDOFF`
 
 ## 2. Bekannte Eigenheiten

@@ -12,6 +12,7 @@ require 'temp_actions' unless defined?(TempActions)
 # Etappe 20e: Laden (XP 302) - gleiche Begründung wie oben.
 require 'shop' unless defined?(Shop)
 require 'name_input' unless defined?(NameInput)
+require 'screen_fx' unless defined?(ScreenFx)
 
 module Game
   # ---------------------------------------------------------------- Aufbau
@@ -1118,6 +1119,9 @@ end
     end
 
     @time += dt
+    # Etappe 20f: Bildschirmton/Blitz laufen weiter, auch während Menü, Laden
+    # oder Textfenster offen sind (XP: $game_screen#update in jedem Frame).
+    ScreenFx.update(dt) if defined?(ScreenFx)
     Rune::Log.info("Spielzeit #{@time.to_i}s") if (@time - dt).to_i != @time.to_i && @time.to_i % 30 == 0
 
     if Rune::Input.pressed?(:f2)
@@ -1583,6 +1587,8 @@ end
     # Etappe 20e: Laden-Fenster zeichnen (Eingaben macht update).
     UI.shop(Shop, input: false) if defined?(Shop) && Shop.active?
     UI.name_input(NameInput, input: false) if defined?(NameInput) && NameInput.active?
+    # Etappe 20f: Ton/Blitz über Welt und UI (vor der Bildschirmblende).
+    ScreenFx.draw if defined?(ScreenFx)
     Battle.draw if defined?(Battle) && (Battle.active? || @interpreter.busy_battle?)
     UI.text(16, 54, "> #{@prompt}  (E)") if @prompt && !@interpreter.running?
     draw_hover_label if zeige

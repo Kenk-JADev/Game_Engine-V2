@@ -286,7 +286,7 @@ check('UI.name_input übernimmt mit Enter und schließt') do
 end
 Rune::Input.setze!([])
 
-check('alle 51 Befehlstypen im Register der Prüfung') { MapCheck::CMD_TYPES.size == 51 }
+check('alle 53 Befehlstypen im Register der Prüfung') { MapCheck::CMD_TYPES.size == 53 }
 
 puts($fail.zero? ? 'ALLE CHECKS GRUEN' : "#{$fail} CHECK(S) FEHLGESCHLAGEN")
 exit($fail.zero? ? 0 : 1)

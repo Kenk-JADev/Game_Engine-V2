@@ -1598,7 +1598,9 @@ void event_form_tests(const std::string& wurzel) {
         R"({"cmd":"actor_level","amount":1})",
         R"({"cmd":"party_member","name":"arik","mode":"add"})",
         R"({"cmd":"shop","goods":[{"item":"heiltrank","price":20},{"item":"apfel"}]})",
-        R"({"cmd":"name_input","actor":"arik","max":6,"cancel":false})"
+        R"({"cmd":"name_input","actor":"arik","max":6,"cancel":false})",
+        R"({"cmd":"screen_tone","r":-34,"g":0,"b":68,"frames":60})",
+        R"({"cmd":"flash","color":"weiss","strength":200,"frames":20})"
     };
     check("Beispiel für jeden Befehlstyp vorhanden", samples.size() == ET_COUNT);
     for (size_t i = 0; i < samples.size(); ++i) {
@@ -1634,6 +1636,8 @@ void event_form_tests(const std::string& wurzel) {
             case ET_IF_GOLD: case ET_IF_ITEM: changed.val1 = "7"; break;
             case ET_TIMER: changed.val1 = "30"; break;
             case ET_SHOP: changed.text = "apfel:5"; break;
+            case ET_SCREEN_TONE: changed.name = "10,0,0,0"; break;
+            case ET_FLASH: changed.name = "rot"; break;
             default: changed.name = "neuer_name"; break;
         }
         const EventEdit patched = event_command_prepare(&c, f, changed);
@@ -3065,6 +3069,53 @@ int main(int argc, char** argv) {
                   zurueck.find("terrain")->find("heights") != nullptr);
             check("Roundtrip ist idempotent", json_write(zurueck) == out);
         }
+    }
+
+    std::printf("== Event-Befehle: Bildschirmton/Blitz (20f, XP 223/224) ==\n");
+    {
+        using namespace rune::editor;
+        JsonValue ton = json_parse(R"({"cmd":"screen_tone","r":-34,"g":0,"b":68,"frames":60})");
+        const EventCommandForm tf = event_command_form_read(ton);
+        check("screen_tone liest die Kanäle als Feld",
+              tf.type == ET_SCREEN_TONE && tf.name == "-34,0,68,0" && tf.val1 == "60");
+        const EventEdit unveraendert = event_command_prepare(&ton, tf, tf);
+        check("screen_tone ohne Änderung bleibt unverändert",
+              unveraendert.ok && !unveraendert.changed &&
+              json_write(unveraendert.value) == json_write(ton));
+        EventCommandForm neuer_ton = tf; neuer_ton.name = "10,20,30,40";
+        const EventEdit e1 = event_command_prepare(&ton, tf, neuer_ton);
+        check("screen_tone schreibt alle vier Kanäle",
+              e1.ok && e1.value.find("r") && e1.value.find("r")->number() == 10 &&
+              e1.value.find("b") && e1.value.find("b")->number() == 30 &&
+              e1.value.find("gray") && e1.value.find("gray")->number() == 40 &&
+              e1.value.find("frames") && e1.value.find("frames")->number() == 60);
+        EventCommandForm nullen = tf; nullen.name = "0,0,0,0";
+        const EventEdit e2 = event_command_prepare(&ton, tf, nullen);
+        check("screen_tone lässt Null-Kanäle weg",
+              e2.ok && e2.value.find("r") == nullptr && e2.value.find("b") == nullptr &&
+              e2.value.find("gray") == nullptr);
+        EventCommandForm zu_gross = tf; zu_gross.name = "300,0,0,0";
+        const EventEdit e3 = event_command_prepare(&ton, tf, zu_gross);
+        check("screen_tone lehnt Kanäle außerhalb ±255 ab",
+              !e3.ok && e3.field == "cmd_name");
+        EventCommandForm drei = tf; drei.name = "1,2,3";
+        const EventEdit e4 = event_command_prepare(&ton, tf, drei);
+        check("screen_tone verlangt vier Zahlen", !e4.ok && e4.field == "cmd_name");
+
+        JsonValue blitz = json_parse(R"({"cmd":"flash","color":"weiss","strength":200,"frames":20})");
+        const EventCommandForm bf = event_command_form_read(blitz);
+        check("flash liest Farbe, Stärke und Dauer",
+              bf.type == ET_FLASH && bf.name == "weiss" && bf.val1 == "200" && bf.val2 == "20");
+        EventCommandForm andere = bf; andere.name = "ROT";
+        const EventEdit e5 = event_command_prepare(&blitz, bf, andere);
+        check("flash schreibt die Farbe kleingeschrieben",
+              e5.ok && e5.value.find("color") && e5.value.find("color")->str == "rot");
+        EventCommandForm unbekannt = bf; unbekannt.name = "lila";
+        const EventEdit e6 = event_command_prepare(&blitz, bf, unbekannt);
+        check("flash lehnt unbekannte Farben ab", !e6.ok && e6.field == "cmd_name");
+        EventCommandForm zu_stark = bf; zu_stark.val1 = "300";
+        const EventEdit e7 = event_command_prepare(&blitz, bf, zu_stark);
+        check("flash lehnt Stärke > 255 ab", !e7.ok && e7.field == "cmd_val1");
     }
 
     std::printf("== Event-Befehl: Name eingeben (20e, XP 303) ==\n");

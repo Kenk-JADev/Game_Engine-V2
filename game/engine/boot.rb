@@ -31,6 +31,7 @@ require 'passage'    # Etappe 19k.3: Passierbarkeit (Block-Zonen + Hindernisse)
 require 'party'
 require 'shop'       # Etappe 20e: Laden (XP 302)
 require 'name_input' # Etappe 20e: Namenseingabe (XP 303)
+require 'screen_fx' # Etappe 20f: Bildschirmton und Blitz (XP 223/224)
 require 'battle'     # Etappe 19i: Kampf-Grundgerüst (XP Scene_Battle)
 require 'event'
 require 'npc'

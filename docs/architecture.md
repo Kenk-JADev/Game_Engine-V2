@@ -1895,7 +1895,7 @@ im Frame des Tastendrucks (`Rune::Input.pressed?`, wie XP `Input.trigger?`;
 ohne Eingabeschicht — kopfloser Test — falsch). Beide haben `then`/`else`
 wie die übrigen Wenn-Befehle und werden im F6-Baum rekursiv geprüft; MapCheck
 prüft den Namen (Actor gegen `database.json`, Taste auf Existenz).
-Register: **51 Typen**. **Tests:** `tools/bedingungen_test.rb` (34 Checks).
+Register: **53 Typen**. **Tests:** `tools/bedingungen_test.rb` (34 Checks).
 
 ### Variable-Operationen (XP 122)
 
@@ -1942,6 +1942,27 @@ Vier Befehle (Bereich „Party" in `docs/befehle.json`):
 MapCheck prüft `amount` (Pflicht, ≠ 0), den Actor-Namen gegen
 `database.json` und den Stufenbereich. **Tests:** `tools/actor_wert_test.rb`
 (24 Checks), `json_test` 778 Checks.
+
+### Bildschirmton und Blitz (XP 223/224)
+
+```json
+{"cmd":"screen_tone","r":-34,"g":0,"b":68,"gray":0,"frames":60}
+{"cmd":"flash","color":"weiss","strength":255,"frames":20}
+```
+
+`ScreenFx` (`game/engine/screen_fx.rb`) hält den aktuellen Ton, einen laufenden
+Übergang und den Blitz. `update(dt)` rechnet in XP-Frames (`Graphics.frame_rate`
+= 40/s), `draw` legt Vollbild-Overlays über Welt und **UI** — wie XP, wo der Ton
+über allem liegt. `frames: 0` setzt sofort; der Blitz klingt über seine Frames
+von voller Stärke auf 0 ab.
+
+Bewusst genähert: Ein echtes Ton-Mapping bräuchte einen Shader. Stattdessen
+legen positive Kanäle einen Farb-Schleier auf, negative einen dunklen Schleier
+im Gegenanteil, `gray` einen grauen Schleier. Der **Verlauf** ist XP-gleich.
+Das Formular zeigt die vier Kanäle als `r,g,b,grau` in einem Feld (je −255..255)
+und `frames` getrennt; der Blitz moderiert die Farbe wie `fade`.
+**Tests:** `tools/screen_fx_test.rb` (30 Checks), `json_test` prüft Lesen,
+Null-Kanäle, Grenzen und Fehlerfälle (814 Checks).
 
 ### Namenseingabe (XP 303)
 
