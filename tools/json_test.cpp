@@ -1679,6 +1679,28 @@ void event_form_tests(const std::string& wurzel) {
     cmd_after = cmd_before; cmd_after.val1 = "42"; cmd_after.val2 = "falsch";
     edit = event_command_prepare(&var, cmd_before, cmd_after);
     check("ungültiger Befehl rollt alle Befehl-Felder zurück", !edit.ok && json_write(edit.value) == json_write(var));
+    // Etappe 20d: Quelle des Operanden (XP 122).
+    JsonValue quelle = json_parse(R"({"cmd":"variable","name":"x","op":"add","source":"item","src":"heiltrank"})");
+    EventCommandForm qb = event_command_form_read(quelle);
+    check("Quelle item wird gelesen", qb.source == 3 && qb.text == "heiltrank");
+    EventCommandForm qa = qb; qa.val1 = "2";
+    EventEdit qe = event_command_prepare(&quelle, qb, qa);
+    check("Quelle bleibt beim Ändern der Menge erhalten", qe.ok &&
+          qe.value.find("source") && qe.value.find("source")->str == "item" &&
+          qe.value.find("src") && qe.value.find("src")->str == "heiltrank");
+    EventCommandForm ohne_src = qb; ohne_src.text = "";
+    check("variable/item braucht einen Namen", !event_command_prepare(&quelle, qb, ohne_src).ok);
+    EventCommandForm als_const = qb; als_const.source = 0; als_const.text = "";
+    EventEdit ce = event_command_prepare(&quelle, qb, als_const);
+    check("Quelle const entfernt source und src", ce.ok && !ce.value.find("source") && !ce.value.find("src"));
+    EventCommandForm als_random = qb; als_random.source = 2;
+    EventEdit re = event_command_prepare(&quelle, qb, als_random);
+    check("Wechsel auf random entfernt src", re.ok &&
+          re.value.find("source")->str == "random" && !re.value.find("src"));
+    EventCommandForm als_self = als_random; als_self.source = 4;
+    EventEdit se = event_command_prepare(&quelle, als_random, als_self);
+    check("Quelle self schreibt nur source", se.ok && se.value.find("source")->str == "self" &&
+          !se.value.find("src"));
     const JsonValue huge_color = json_parse("{\"cmd\":\"effect\",\"name\":\"burst\",\"color\":" + std::string(400, '9') + "}");
     check("extreme Farbe wird ohne unsicheren Integer-Cast angezeigt", event_command_form_read(huge_color).val2 == "[ungültig]");
     cmd_before = event_command_form_read(huge_color); cmd_after = cmd_before; cmd_after.val2 = "000000";

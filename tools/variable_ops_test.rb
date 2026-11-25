@@ -89,6 +89,42 @@ check('Fehler stoppt das Event nicht') do
   GameState.variable('danach') == 1.0
 end
 
+puts '== Interpreter: Quellen (XP 122) =='
+GameState.reset!({})
+Party.setup({ 'gold' => 0, 'actors' => [], 'items' => [] })
+Party.add_item('heiltrank', 3)
+check('Quelle self liest den bisherigen Wert') do
+  rechne(4, { 'cmd' => 'variable', 'name' => 'x', 'op' => 'add', 'source' => 'self' }) == 8.0
+end
+check('Quelle variable liest eine andere Variable') do
+  GameState.reset!({})
+  GameState.set_variable('q', 6)
+  GameState.set_variable('x', 2)
+  i = Interpreter.new
+  i.start([{ 'cmd' => 'variable', 'name' => 'x', 'op' => 'mul', 'source' => 'variable', 'src' => 'q' }])
+  lauf(i)
+  GameState.variable('x') == 12.0
+end
+check('Quelle item liest die Inventarmenge') do
+  rechne(1, { 'cmd' => 'variable', 'name' => 'x', 'op' => 'set', 'source' => 'item',
+              'src' => 'heiltrank' }) == 3.0
+end
+check('Quelle random bleibt im Bereich 0..Grenze-1') do
+  werte = 120.times.map do
+    rechne(0, { 'cmd' => 'variable', 'name' => 'x', 'op' => 'set', 'source' => 'random', 'value' => 6 })
+  end
+  werte.all? { |w| w >= 0 && w < 6 } && werte.uniq.size > 1
+end
+check('random ohne Grenze laesst den Wert stehen') do
+  rechne(5, { 'cmd' => 'variable', 'name' => 'x', 'op' => 'set', 'source' => 'random', 'value' => 0 }) == 5.0
+end
+check('variable ohne src laesst den Wert stehen') do
+  rechne(5, { 'cmd' => 'variable', 'name' => 'x', 'op' => 'set', 'source' => 'variable' }) == 5.0
+end
+check('unbekannte Quelle laesst den Wert stehen') do
+  rechne(5, { 'cmd' => 'variable', 'name' => 'x', 'op' => 'set', 'source' => 'zauber' }) == 5.0
+end
+
 puts '== MapCheck =='
 OPTS = { prefabs: %w[haus], materials: %w[weg], scripts: [] }.freeze
 
@@ -134,6 +170,47 @@ end
 check('Befehl ohne Wirkung -> Warnung') do
   hat?(MapCheck.scan(karte_mit([{ 'cmd' => 'variable', 'name' => 'x' }]), **OPTS),
        'ohne Wirkung', MapCheck::WARNUNG)
+end
+
+puts '== MapCheck: Quellen =='
+check('gueltige Quellen: keine Funde') do
+  MapCheck.scan(karte_mit([
+                            { 'cmd' => 'variable', 'name' => 'x', 'op' => 'set', 'source' => 'random',
+                              'value' => 6 },
+                            { 'cmd' => 'variable', 'name' => 'y', 'op' => 'add', 'source' => 'item',
+                              'src' => 'heiltrank' },
+                            { 'cmd' => 'variable', 'name' => 'z', 'op' => 'add', 'source' => 'self' }
+                          ]), **OPTS).empty?
+end
+check('unbekannte Quelle -> Fehler') do
+  hat?(MapCheck.scan(karte_mit([{ 'cmd' => 'variable', 'name' => 'x', 'op' => 'set',
+                                  'source' => 'zauber' }]), **OPTS),
+       "unbekannte Variable-Quelle 'zauber'", MapCheck::FEHLER)
+end
+check('Quelle variable ohne src -> Fehler') do
+  hat?(MapCheck.scan(karte_mit([{ 'cmd' => 'variable', 'name' => 'x', 'op' => 'set',
+                                  'source' => 'variable' }]), **OPTS),
+       "'src' (Variable) fehlt", MapCheck::FEHLER)
+end
+check('Quelle item mit unbekanntem Item -> Warnung') do
+  hat?(MapCheck.scan(karte_mit([{ 'cmd' => 'variable', 'name' => 'x', 'op' => 'set',
+                                  'source' => 'item', 'src' => 'gibtsnicht' }]), **OPTS),
+       "Item 'gibtsnicht' nicht in database.json", MapCheck::WARNUNG)
+end
+check('random ohne Grenze -> Fehler') do
+  hat?(MapCheck.scan(karte_mit([{ 'cmd' => 'variable', 'name' => 'x', 'op' => 'set',
+                                  'source' => 'random', 'value' => 0 }]), **OPTS),
+       "random braucht 'value' >= 1", MapCheck::FEHLER)
+end
+check('src bei Quelle const -> Warnung') do
+  hat?(MapCheck.scan(karte_mit([{ 'cmd' => 'variable', 'name' => 'x', 'op' => 'set', 'value' => 1,
+                                  'source' => 'const', 'src' => 'q' }]), **OPTS),
+       "'src' wird bei Quelle 'const' ignoriert", MapCheck::WARNUNG)
+end
+check('C++-Quellenliste == MapCheck::VARIABLE_QUELLEN') do
+  datei = File.read(File.join(Rune::ROOT, 'src', 'editor', 'event_form.h'), encoding: 'utf-8')
+  datei[/EVENT_SOURCES\[\] = \{([^}]*)\}/, 1].to_s.scan(/"([^"]+)"/).flatten ==
+    MapCheck::VARIABLE_QUELLEN
 end
 
 puts '== Register =='

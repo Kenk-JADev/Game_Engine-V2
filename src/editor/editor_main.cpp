@@ -7079,6 +7079,7 @@ enum {
     IDEV_CE_TEXT  = 5034,
     IDEV_CE_OP    = 5035,
     IDEV_CE_BOOL  = 5036,
+    IDEV_CE_SOURCE = 5037,   // Etappe 20d: Quelle des Operanden (variable)
     IDEV_L_NAME   = 5040,
     IDEV_L_VAL1   = 5041,
     IDEV_L_VAL2   = 5042,
@@ -7130,6 +7131,7 @@ struct EventDlgState {
     HWND ed_ce_text = nullptr;
     HWND cb_ce_op = nullptr;
     HWND cb_ce_bool = nullptr;
+    HWND cb_ce_source = nullptr;   // Etappe 20d: const/variable/random/item/self
     HWND lbl_name = nullptr;
     HWND lbl_val1 = nullptr;
     HWND lbl_val2 = nullptr;
@@ -7207,6 +7209,8 @@ const wchar_t* const EV_OPS[6] = { L"==", L"!=", L"<", L"<=", L">", L">=" };
 // trägt je Befehlstyp ein anderes Vokabular; umgeschaltet wird in
 // ev_op_combo_mode() nur bei Bedarf, damit die Auswahl erhalten bleibt.
 const wchar_t* const EV_VAR_OPS[6] = { L"set", L"add", L"sub", L"mul", L"div", L"mod" };
+// Etappe 20d: Quellen des Operanden (XP 122) - Reihenfolge wie EVENT_SOURCES.
+const wchar_t* const EV_SOURCES[5] = { L"const", L"variable", L"random", L"item", L"self" };
 bool g_ev_var_ops_mode = false;
 
 void ev_op_combo_mode(bool var_ops) {
@@ -7727,6 +7731,7 @@ void ev_cmd_visibility() {
     show(g_ev.lbl_val3, has_val3);
     show(g_ev.ed_ce_val3, has_val3);
     show(g_ev.cb_ce_op, has_op);
+    show(g_ev.cb_ce_source, t == ET_VARIABLE);   // Etappe 20d
     show(g_ev.cb_ce_bool, has_bool);
     const bool has_hint = t == ET_INPUT_NUMBER || t == ET_BATTLE || t == ET_FADE ||
                           t == ET_EFFECT || t == ET_WEATHER || t == ET_ITEM ||
@@ -7839,10 +7844,10 @@ void ev_cmd_visibility() {
     if (t == ET_IF_SCRIPT) SetWindowTextW(g_ev.lbl_text, L"Ruby-Ausdruck; wahr, wenn das Ergebnis nicht nil/false ist.");
     if (t == ET_VARIABLE) {
         SetWindowTextW(g_ev.lbl_name, L"Variable");
-        SetWindowTextW(g_ev.lbl_val1, L"Wert");
+        SetWindowTextW(g_ev.lbl_val1, L"Wert/Grenze");
         SetWindowTextW(g_ev.lbl_text,
-                       L"Operation links (set/add/sub/mul/div/mod), rechts der Wert. "
-                       L"Alte Befehle mit \"add\" werden beim Übernehmen umgestellt (XP 122).");
+                       L"Quelle (Mitte) und Operation (links) - bei variable/item den Namen hier "
+                       L"eintragen; Alte Befehle mit \"add\" werden beim Übernehmen umgestellt (XP 122).");
     }
     if (t == ET_ACTOR_HP || t == ET_ACTOR_SP || t == ET_ACTOR_EXP || t == ET_ACTOR_LEVEL) {
         SetWindowTextW(g_ev.lbl_name, L"Ziel (alle oder Actor-Name)");
@@ -7921,6 +7926,8 @@ void ev_load_cmd_form() {
     SendMessageW(g_ev.cb_ce_type, CB_SETCURSEL, static_cast<WPARAM>(g_ev.command_before.type), 0);
     SendMessageW(g_ev.cb_ce_op, CB_SETCURSEL, static_cast<WPARAM>(g_ev.command_before.op), 0);
     SendMessageW(g_ev.cb_ce_bool, CB_SETCURSEL, static_cast<WPARAM>(g_ev.command_before.flag), 0);
+    SendMessageW(g_ev.cb_ce_source, CB_SETCURSEL,
+                 static_cast<WPARAM>(g_ev.command_before.source), 0);
     ev_install_field(g_ev.ed_ce_name, g_ev.command_before.name, g_ev.command_active, g_ev.command_editable[0]);
     ev_install_field(g_ev.ed_ce_val1, g_ev.command_before.val1, g_ev.command_active, g_ev.command_editable[1]);
     ev_install_field(g_ev.ed_ce_val2, g_ev.command_before.val2, g_ev.command_active, g_ev.command_editable[2]);
@@ -7973,6 +7980,7 @@ bool ev_current_command_form(EventCommandForm& form) {
     form.type = static_cast<int>(SendMessageW(g_ev.cb_ce_type, CB_GETCURSEL, 0, 0));
     form.op = static_cast<int>(SendMessageW(g_ev.cb_ce_op, CB_GETCURSEL, 0, 0));
     form.flag = static_cast<int>(SendMessageW(g_ev.cb_ce_bool, CB_GETCURSEL, 0, 0));
+    form.source = static_cast<int>(SendMessageW(g_ev.cb_ce_source, CB_GETCURSEL, 0, 0));
     return ev_read_field(g_ev.ed_ce_name, g_ev.command_editable[0], form.name) &&
            ev_read_field(g_ev.ed_ce_val1, g_ev.command_editable[1], form.val1) &&
            ev_read_field(g_ev.ed_ce_val2, g_ev.command_editable[2], form.val2) &&
@@ -8013,6 +8021,7 @@ void ev_error(const EventEdit& edit) {
     else if (edit.field == "cmd_text") focus = g_ev.ed_ce_text;
     else if (edit.field == "cmd_op") focus = g_ev.cb_ce_op;
     else if (edit.field == "cmd_flag") focus = g_ev.cb_ce_bool;
+    else if (edit.field == "cmd_source") focus = g_ev.cb_ce_source;
     if (focus && IsWindowEnabled(focus) && IsWindowVisible(focus)) {
         SetFocus(focus);
         // Bei Fehlern kann das Feld auch nach einer MessageBox außerhalb des
@@ -8649,6 +8658,13 @@ void open_event_editor() {
     SendMessageW(g_ev.cb_ce_bool, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"an"));
     SendMessageW(g_ev.cb_ce_bool, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"aus"));
     SendMessageW(g_ev.cb_ce_bool, CB_SETCURSEL, 0, 0);
+    // Etappe 20d: Quelle des Operanden (XP 122) - nur bei `variable` sichtbar.
+    g_ev.cb_ce_source = ev_control(L"ComboBox", nullptr, CBS_DROPDOWNLIST | WS_VSCROLL,
+                                   600, 550, 88, 180, IDEV_CE_SOURCE);
+    for (const wchar_t* q : EV_SOURCES) {
+        SendMessageW(g_ev.cb_ce_source, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(q));
+    }
+    SendMessageW(g_ev.cb_ce_source, CB_SETCURSEL, 0, 0);
 
     g_ev.lbl_text = ev_control(L"Static", L"Zeilen (eine pro Zeile)", 0,
                                316, 582, 620, 20, IDEV_L_TEXT);

@@ -99,6 +99,14 @@ end
 check('Variable-Operationen (C++ EVENT_VAR_OPS) == MapCheck::VARIABLE_OPS') do
   c_array('EVENT_VAR_OPS') == MapCheck::VARIABLE_OPS
 end
+check('Variable-Quellen (C++ EVENT_SOURCES) == MapCheck::VARIABLE_QUELLEN') do
+  c_array('EVENT_SOURCES') == MapCheck::VARIABLE_QUELLEN
+end
+check('Quellen-Combo in editor_main.cpp nennt dieselben Quellen') do
+  main = File.read(File.join(ROOT, 'src', 'editor', 'editor_main.cpp'), encoding: 'utf-8')
+  liste = main[/EV_SOURCES\[5\] = \{([^}]*)\}/, 1].to_s
+  liste.scan(/L"([^"]+)"/).flatten == MapCheck::VARIABLE_QUELLEN
+end
 check('Combos in editor_main.cpp nennen dieselben Variable-Operationen') do
   main = File.read(File.join(ROOT, 'src', 'editor', 'editor_main.cpp'), encoding: 'utf-8')
   liste = main[/EV_VAR_OPS\[6\] = \{([^}]*)\}/, 1].to_s

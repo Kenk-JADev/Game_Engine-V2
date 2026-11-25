@@ -62,6 +62,10 @@ inline constexpr const char* const EVENT_OPS[] = {"==", "!=", "<", "<=", ">", ">
 // Etappe 20d: Operationen für `variable` (XP 122) - eigener Combosatz, weil
 // `op` je Typ eine andere Bedeutung hat (Vergleich vs. Rechnung).
 inline constexpr const char* const EVENT_VAR_OPS[] = {"set", "add", "sub", "mul", "div", "mod"};
+// Etappe 20d: Quellen des Operanden für `variable` (XP 122). "const" ist der
+// Default, wenn `source` fehlt; "src" trägt den Namen bei variable/item.
+inline constexpr const char* const EVENT_SOURCES[] = {"const", "variable", "random", "item", "self"};
+inline constexpr size_t EVENT_SOURCES_COUNT = sizeof(EVENT_SOURCES) / sizeof(EVENT_SOURCES[0]);
 inline constexpr size_t EVENT_VAR_OPS_COUNT = sizeof(EVENT_VAR_OPS) / sizeof(EVENT_VAR_OPS[0]);
 inline constexpr size_t EVENT_OPS_COUNT = sizeof(EVENT_OPS) / sizeof(EVENT_OPS[0]);
 
@@ -91,6 +95,7 @@ inline bool event_command_uses_field(int type, size_t field) {
             type == ET_BATTLE || type == ET_TEXT_OPTIONS;
         case 3: return type == ET_TELEPORT || type == ET_MOVE_ROUTE;
         case 4: return type == ET_TEXT || type == ET_LOG || type == ET_CHOICES || type == ET_MOVE_ROUTE ||
+            type == ET_VARIABLE ||
             type == ET_BUTTON_INPUT || type == ET_IF_SCRIPT;
         default: return false;
     }
@@ -190,6 +195,7 @@ struct EventCommandForm {
     int type = ET_TEXT;
     std::string name, val1, val2, val3, text;
     int op = 0, flag = 0;
+    int source = 0;   // Etappe 20d: Quelle des Operanden (nur `variable`)
 };
 
 inline bool event_form_equal(const EventForm& a, const EventForm& b) {
@@ -202,7 +208,8 @@ inline bool event_page_form_equal(const EventPageForm& a, const EventPageForm& b
 }
 inline bool event_command_form_equal(const EventCommandForm& a, const EventCommandForm& b) {
     return a.type == b.type && a.name == b.name && a.val1 == b.val1 && a.val2 == b.val2 &&
-           a.val3 == b.val3 && a.text == b.text && a.op == b.op && a.flag == b.flag;
+           a.val3 == b.val3 && a.text == b.text && a.op == b.op && a.flag == b.flag &&
+           a.source == b.source;
 }
 
 struct EventEdit {
@@ -656,6 +663,10 @@ inline EventCommandForm event_command_form_read(const JsonValue& c) {
             const JsonValue* opv = event_unique(c, "op") ? c.find("op") : nullptr;
             const JsonValue* addv = event_unique(c, "add") ? c.find("add") : nullptr;
             const JsonValue* valv = event_unique(c, "value") ? c.find("value") : nullptr;
+            f.source = event_unique(c, "source")
+                           ? event_choice_view(c.find("source"), EVENT_SOURCES, EVENT_SOURCES_COUNT, 0)
+                           : 0;
+            f.text = text("src");
             const bool alt_add = addv && !addv->is_null();
             const bool alt_val = valv && !valv->is_null();
             if (opv && !opv->is_null()) f.op = event_choice_view(opv, EVENT_VAR_OPS, EVENT_VAR_OPS_COUNT, -1);
@@ -728,7 +739,7 @@ inline std::vector<const char*> event_command_keys(int type) {
         case ET_WAIT: return {"seconds"};
         case ET_SWITCH: return {"name", "value"};
         case ET_TOGGLE_SWITCH: return {"name"};
-        case ET_VARIABLE: return {"name", "op", "value"};
+        case ET_VARIABLE: return {"name", "op", "value", "source", "src"};
         case ET_IF_SWITCH: return {"name", "value", "then", "else"};
         case ET_IF_VARIABLE: return {"name", "value", "op", "then", "else"};
         case ET_SCRIPT: return {"name", "code"};
@@ -967,6 +978,24 @@ inline EventEdit event_command_prepare(const JsonValue* existing, const EventCom
                 after.op < static_cast<int>(EVENT_VAR_OPS_COUNT))
                 r.value.set("op", JsonValue::make_str(EVENT_VAR_OPS[after.op]));
             if (hatte_add && r.value.find("op")) event_erase(r.value, "add");
+            // Etappe 20d: Quelle des Operanden (XP 122). "const" ist der
+            // Default und wird nicht geschrieben; "src" nur bei variable/item.
+            if (after.source < 0 || after.source >= static_cast<int>(EVENT_SOURCES_COUNT)) {
+                ok = fail("cmd_source", "Bitte eine gültige Quelle wählen.");
+                break;
+            }
+            const std::string quelle = EVENT_SOURCES[after.source];
+            const bool braucht_src = quelle == std::string("variable") || quelle == std::string("item");
+            if (braucht_src) {
+                ok = text("src", "cmd_text", before.text, after.text, false, false, true);
+                if (!ok) break;
+            } else {
+                event_erase(r.value, "src");
+            }
+            if (fresh || before.source != after.source || r.value.find("source")) {
+                if (quelle == std::string("const")) event_erase(r.value, "source");
+                else r.value.set("source", JsonValue::make_str(quelle));
+            }
             break;
         }
         case ET_IF_VARIABLE:

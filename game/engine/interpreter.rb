@@ -431,7 +431,10 @@ class Interpreter
         Issues.report('Interpreter', "variable: Operation '#{op}' unbekannt")
         return false
       end
-      operand = (cmd['value'] || 0).to_f
+      operand = operand_fuer(cmd, v)
+      if operand.nil?
+        return false
+      end
       if %w[div mod].include?(op) && operand.zero?
         Rune::Log.warn("Interpreter: variable #{op} durch 0 bei '#{name}' ignoriert")
         Issues.report('Interpreter', "variable '#{name}': #{op} durch 0")
@@ -611,6 +614,53 @@ class Interpreter
       Rune::Log.info('Timer gestoppt') if modus == 'stop'
     end
     true
+  end
+
+  # Etappe 20d: Operand des variable-Befehls (XP 122, Quellen). Ohne `source`
+  # gilt "const" (der Wert aus `value`). Rückgabe nil = Quelle unbekannt oder
+  # unbrauchbar (dann bleibt die Variable stehen).
+  QUELLEN = {
+    'const' => ->(cmd, _v) { (cmd['value'] || 0).to_f },
+    'random' => lambda { |cmd, _v|
+      obergrenze = (cmd['value'] || 0).to_i
+      if obergrenze <= 0
+        Rune::Log.warn('Interpreter: variable random ohne Obergrenze')
+        Issues.report('Interpreter', 'variable random ohne Obergrenze (> 0)')
+        next nil
+      end
+      rand(obergrenze).to_f
+    },
+    'self' => ->(_cmd, v) { v },
+    'variable' => lambda { |cmd, _v|
+      quelle = cmd['src'].to_s.strip
+      if quelle.empty?
+        Rune::Log.warn('Interpreter: variable-Quelle ohne src')
+        Issues.report('Interpreter', 'variable-Quelle ohne src')
+        next nil
+      end
+      GameState.variable(quelle).to_f
+    },
+    'item' => lambda { |cmd, _v|
+      quelle = cmd['src'].to_s.strip
+      if quelle.empty? || !defined?(Party) || !Party.respond_to?(:item_count)
+        Rune::Log.warn('Interpreter: variable-Itemquelle ohne src')
+        Issues.report('Interpreter', 'variable-Itemquelle ohne src')
+        next nil
+      end
+      Party.item_count(quelle).to_f
+    }
+  }.freeze
+
+  def operand_fuer(cmd, aktueller_wert)
+    quelle = cmd.key?('source') ? cmd['source'].to_s.strip.downcase : 'const'
+    quelle = 'const' if quelle.empty?
+    rechner = QUELLEN[quelle]
+    if rechner.nil?
+      Rune::Log.warn("Interpreter: variable-Quelle '#{quelle}' unbekannt")
+      Issues.report('Interpreter', "variable-Quelle '#{quelle}' unbekannt")
+      return nil
+    end
+    rechner.call(cmd, aktueller_wert)
   end
 
   # Etappe 20d: "Wenn Actor" - XP fragt $game_party.actors, Rune3D hat alle

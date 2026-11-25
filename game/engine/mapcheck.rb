@@ -97,6 +97,9 @@ module MapCheck
   # Etappe 20d: Operationen von `variable` (XP 122) - dieselbe Liste wie
   # EVENT_VAR_OPS im Editor (sync_test vergleicht beide).
   VARIABLE_OPS = %w[set add sub mul div mod].freeze
+  # Etappe 20d: Quellen des Operanden (XP 122). "const" ist der Default, wenn
+  # `source` fehlt; "self" liest den bisherigen Variablenwert.
+  VARIABLE_QUELLEN = %w[const variable random item self].freeze
   TASTEN = (%w[e space enter escape up down left right shift ctrl alt tab
                backspace] + ('a'..'z').to_a + (1..12).map { |n| "f#{n}" }).freeze
   # Etappe 19g, XP-Vokabular seit 19h.2: muss zu Mover::SCHRITTE passen
@@ -341,13 +344,55 @@ module MapCheck
     # Etappe 20d: `variable` prüfen (XP 122). Neu ist `op` + `value`; die
     # Altform (`value`/`add` ohne op) bleibt gültig, wird aber angemahnt, weil
     # der Editor sie beim nächsten Übernehmen umstellt.
+    # Etappe 20d: Quelle des Operanden prüfen (XP 122).
+    def pruefe_variable_quelle(c, w)
+      # Ohne `source` gilt die Altform (value/add) - die prüft pruefe_variable.
+      return unless c.key?('source')
+      quelle = c['source'].to_s.strip.downcase
+      quelle = 'const' if quelle.empty?
+      unless VARIABLE_QUELLEN.include?(quelle)
+        melde(FEHLER, w, "unbekannte Variable-Quelle '#{quelle}' (#{VARIABLE_QUELLEN.join('/')})")
+        return
+      end
+      src = c.key?('src') ? c['src'].to_s.strip : ''
+      case quelle
+      when 'variable'
+        melde(FEHLER, w, "'src' (Variable) fehlt oder ist leer") if src.empty?
+      when 'item'
+        if src.empty?
+          melde(FEHLER, w, "'src' (Item) fehlt oder ist leer")
+        else
+          bekannt = (Database.database['items'] || []).any? do |h|
+            h.is_a?(Hash) && h['id'].to_s == src
+          end
+          melde(WARNUNG, w, "Item '#{src}' nicht in database.json") unless bekannt
+        end
+      when 'random'
+        if !zahl?(c['value']) || c['value'].to_f < 1
+          melde(FEHLER, w, "random braucht 'value' >= 1 (Obergrenze)")
+        end
+      when 'self'
+        # kein Zusatzfeld nötig (bisheriger Variablenwert)
+      when 'const'
+        # Der Wert wird unten bei der Operation geprüft (Altform ohne `op`
+        # hat kein `source` und wird gar nicht erst hier geprüft).
+      end
+      if !src.empty? && %w[const random self].include?(quelle)
+        melde(WARNUNG, w, "'src' wird bei Quelle '#{quelle}' ignoriert")
+      end
+    end
+
     def pruefe_variable(c, w)
+      pruefe_variable_quelle(c, w)
       op = c['op']
       if op
+        quelle = c.key?('source') ? c['source'].to_s.strip.downcase : 'const'
+        if quelle.empty? || quelle == 'const'
+          melde(WARNUNG, w, "'value' fehlt oder ist keine Zahl") unless zahl?(c['value'])
+        end
         unless VARIABLE_OPS.include?(op.to_s)
           melde(FEHLER, w, "unbekannte Variable-Operation '#{op}' (#{VARIABLE_OPS.join('/')})")
         end
-        melde(WARNUNG, w, "'value' fehlt oder ist keine Zahl") unless zahl?(c['value'])
         if %w[div mod].include?(op.to_s) && zahl?(c['value']) && c['value'].to_f.zero?
           melde(FEHLER, w, "#{op} durch 0")
         end

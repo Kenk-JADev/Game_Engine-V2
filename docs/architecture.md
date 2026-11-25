@@ -1868,6 +1868,25 @@ nicht als Absturz behandelt. `player_new_x/y/direction` bleiben offen
 
 **Tests:** `tools/temp_flags_test.rb` (14 Checks).
 
+#### Quellen des Operanden (XP 122, Fortsetzung)
+
+`source` bestimmt, woher der Operand kommt (`EVENT_SOURCES`/`MapCheck::VARIABLE_QUELLEN`,
+im Formular ein eigenes Combo zwischen Operation und Wert):
+
+| `source` | Operand |
+|---|---|
+| `const` (Default, wenn `source` fehlt) | `value` |
+| `variable` | Wert der Variable aus `src` |
+| `random` | Zufall `0..value-1` (ganze Zahl, `value` ≥ 1) |
+| `item` | `Party.item_count(src)` |
+| `self` | bisheriger Wert der Zielvariable (`op: "add", source: "self"` verdoppelt) |
+
+`src` gilt nur bei `variable`/`item`, sonst warnt MapCheck. Fehlende Grenzen
+(`random` ohne `value`), unbekannte Items oder Quellen landen im Log bzw.
+Issue-Backlog, der Wert bleibt dann stehen. Nicht umgesetzt: XP-Quellen
+Actor/Enemy/Character — Rune3D hat keine Gegner-/Charakterwerte als Datenbank
+und für Actor-Attribute bräuchte es ein zusätzliches Feldauswahl-Combo.
+
 ### Weitere Bedingungsquellen: Actor und Taste (XP 111)
 
 `{"cmd":"if_actor","name":"arik","then":[],"else":[]}` zweigt je nach
@@ -1894,9 +1913,10 @@ lässt sich nicht eindeutig abbilden: das Formular zeigt keine Operation und
 verlangt eine bewusste Wahl, MapCheck warnt.
 
 `variable` zeigt dafür das Operator-Combo mit dem Rechen-Vokabular
-(`ev_op_combo_mode`, Umschalten nur bei Bedarf); das Zahlenfeld 2 gehört nicht
-mehr dazu. **Tests:** `tools/variable_ops_test.rb` (22 Checks),
-`json_test` prüft Altform-Umstellung und gemischte Daten.
+(`ev_op_combo_mode`, Umschalten nur bei Bedarf) und das Quellen-Combo; das
+Zahlenfeld 2 gehört nicht mehr dazu. **Tests:** `tools/variable_ops_test.rb`
+(36 Checks), `json_test` prüft Altform-Umstellung, gemischte Daten und die
+Quellen (769 Checks).
 
 ### Werte ändern: HP, SP, EXP, Stufe (XP 311/312/315/316)
 

@@ -83,10 +83,12 @@
         "name"
       ],
       "optional": [
+        "op",
         "value",
-        "add"
+        "source",
+        "src"
       ],
-      "beschreibung": "Setzt eine Variable (value) oder erhöht sie (add); beide Felder dürfen gemeinsam auftreten."
+      "beschreibung": "Setzt oder rechnet eine Variable. op = set/add/sub/mul/div/mod (XP 122), Quelle des Operanden ueber source (const/variable/random/item/self) mit src als Name bei variable/item; die Altform value/add bleibt gueltig."
     },
     {
       "typ": "if_switch",
