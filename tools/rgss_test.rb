@@ -59,34 +59,6 @@ module Rune
     def self.stop(name) = (CALLS << [:stop, name])
   end
 
-  # Etappe 22: Attrappe des Ton-Dateiladers. Standardmaessig "inaktiv"
-  # (alle Aufrufe liefern false), damit die prozeduralen Tests darunter
-  # unveraendert den Rune-Sound-Weg pruefen. Fuer die Datei-Tests wird
-  # aktiv = true gesetzt.
-  module AudioFiles
-    CALLS = []
-    @aktiv = false
-    class << self
-      attr_accessor :aktiv
-    end
-    def self.play(name, volume: 1.0, pitch: 100)
-      CALLS << [:play, name, volume, pitch]
-      @aktiv
-    end
-    def self.loop(name, volume: 1.0, pitch: 100)
-      CALLS << [:loop, name, volume, pitch]
-      @aktiv
-    end
-    def self.stop(name)
-      CALLS << [:stop, name]
-      @aktiv
-    end
-    def self.fade_ms(name, ms)
-      CALLS << [:fade_ms, name, ms]
-      @aktiv
-    end
-  end
-
   module Input
     @pressed = []
     @down = []
@@ -125,6 +97,34 @@ module Game
   end
 
   def self.gy(_x, _z) = 0.0
+end
+
+# Etappe 22: Attrappe des Ton-Dateiladers. Standardmaessig "inaktiv"
+# (alle Aufrufe liefern false), damit die prozeduralen Tests darunter
+# unveraendert den Rune-Sound-Weg pruefen. Fuer die Datei-Tests wird
+# aktiv = true gesetzt.
+module AudioFiles
+  CALLS = []
+  @aktiv = false
+  class << self
+    attr_accessor :aktiv
+  end
+  def self.play(name, volume: 1.0, pitch: 100)
+    CALLS << [:play, name, volume, pitch]
+    @aktiv
+  end
+  def self.loop(name, volume: 1.0, pitch: 100)
+    CALLS << [:loop, name, volume, pitch]
+    @aktiv
+  end
+  def self.stop(name)
+    CALLS << [:stop, name]
+    @aktiv
+  end
+  def self.fade_ms(name, ms)
+    CALLS << [:fade_ms, name, ms]
+    @aktiv
+  end
 end
 
 $LOAD_PATH.unshift(File.join(Rune::ROOT, 'game', 'engine'))
