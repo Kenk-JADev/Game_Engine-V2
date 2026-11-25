@@ -104,6 +104,23 @@ bool terrain_pixel_is(rune::gfx::Renderer& renderer, const rune::world::AtlasInf
     return finish_and_sample(renderer, shot, color);
 }
 
+// Etappe 20f: Bild über Rune::Gfx.picture - der 2D-Bild-Durchgang muss eine
+// eigene Textur binden und den Vollbild-Quad deckend zeichnen. Unbekannte
+// Bildnamen dürfen nichts zeichnen (und nicht abstürzen).
+bool picture_frame(rune::gfx::Renderer& renderer, const std::string& shot, int color,
+                   bool& angelegt, int& gezeichnet) {
+    std::vector<std::uint8_t> pixels(8 * 8 * 4);
+    for (std::size_t i = 0; i < pixels.size(); i += 4) {
+        pixels[i] = 255; pixels[i + 1] = 0; pixels[i + 2] = 0; pixels[i + 3] = 255;
+    }
+    angelegt = renderer.ui().image("testbild", 8, 8, pixels.data(), pixels.size());
+    begin_test_frame(renderer);
+    renderer.ui().picture("testbild", 0, 0, 64, 64, 0xFFFFFF, 1.0f, 0.0f);
+    renderer.ui().picture("fehlt", 0, 0, 64, 64);   // unbekannt: wird übersprungen
+    gezeichnet = renderer.ui().picture_count();
+    return finish_and_sample(renderer, shot, color);
+}
+
 bool empty_terrain_frame(rune::gfx::Renderer& renderer, const std::string& shot) {
     begin_test_frame(renderer);
     return finish_and_sample(renderer, shot, 3);
@@ -225,6 +242,15 @@ int main() {
     check("Launcher: nur Basis bleibt, Atlas/Projekt freigegeben", renderer.texture_index("nur_a") < 0 &&
           renderer.texture_index("gras") == base && renderer.texture_resident_bytes() == green.size());
     check("Launcher-Basis wirklich grün gerendert", pixel_is(renderer, "gras", shot, 1));
+
+    // Etappe 20f: Bildschirm-Bilder (XP 231-235) über den 2D-Durchgang.
+    bool bild_angelegt = false;
+    int bilder = 0;
+    const bool bild_rot = picture_frame(renderer, shot, 0, bild_angelegt, bilder);
+    check("Bildtextur angelegt und Vollbild-Bild rot gerendert", bild_angelegt && bild_rot);
+    check("unbekannter Bildname wird übersprungen", bilder == 1);
+    check("Bild vergessen entfernt die Textur", renderer.ui().has_image("testbild") &&
+          (renderer.ui().forget_images(), !renderer.ui().has_image("testbild")));
     renderer.shutdown();
     DestroyWindow(window);
     check("eigenes Screenshot-Verzeichnis wieder entfernt", RemoveDirectoryW(dir.c_str()) != 0);
