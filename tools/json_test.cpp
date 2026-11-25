@@ -1612,7 +1612,11 @@ void event_form_tests(const std::string& wurzel) {
         R"({"cmd":"play_bgm","name":"bgm/dorf.wav","volume":100,"pitch":100})",
         R"({"cmd":"fadeout_bgm","seconds":2})",
         R"({"cmd":"play_bgs","name":"bgs/regen.wav","volume":80})",
-        R"({"cmd":"fadeout_bgs","seconds":1})"
+        R"({"cmd":"fadeout_bgs","seconds":1})",
+        R"({"cmd":"save_bgm"})",
+        R"({"cmd":"resume_bgm"})",
+        R"({"cmd":"memorize_audio"})",
+        R"({"cmd":"restore_audio"})"
     };
     check("Beispiel für jeden Befehlstyp vorhanden", samples.size() == ET_COUNT);
     for (size_t i = 0; i < samples.size(); ++i) {

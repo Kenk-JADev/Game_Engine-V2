@@ -323,7 +323,7 @@ check('if_battle_result ohne Zweige -> Warnung') do
   hat?(MapCheck.scan(karte_mit([{ 'cmd' => 'if_battle_result', 'result' => 'sieg' }]), **OPTS),
        "'then' fehlt/keine Liste", MapCheck::WARNUNG)
 end
-check('alle 65 Befehlstypen im Register der Prüfung') { MapCheck::CMD_TYPES.size == 65 }
+check('alle 69 Befehlstypen im Register der Prüfung') { MapCheck::CMD_TYPES.size == 69 }
 
 puts($fail.zero? ? 'ALLE CHECKS GRUEN' : "#{$fail} CHECK(S) FEHLGESCHLAGEN")
 exit($fail.zero? ? 0 : 1)

@@ -171,7 +171,7 @@ check('start ohne Sekunden -> Warnung') do
   hat?(MapCheck.scan(karte_mit([{ 'cmd' => 'timer', 'mode' => 'start' }]), **OPTS),
        'ohne Sekunden', MapCheck::WARNUNG)
 end
-check('alle 65 Befehlstypen im Register der Prüfung') { MapCheck::CMD_TYPES.size == 65 }
+check('alle 69 Befehlstypen im Register der Prüfung') { MapCheck::CMD_TYPES.size == 69 }
 
 puts($fail.zero? ? 'ALLE CHECKS GRUEN' : "#{$fail} CHECK(S) FEHLGESCHLAGEN")
 exit($fail.zero? ? 0 : 1)

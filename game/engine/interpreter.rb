@@ -71,6 +71,10 @@
 #    {"cmd":"fadeout_bgm","seconds":2}                   (BGM ausblenden, 21; XP 242)
 #    {"cmd":"play_bgs","name":"bgs/regen.wav","volume":80}          (21; XP 245)
 #    {"cmd":"fadeout_bgs","seconds":1}                   (BGS ausblenden, 21; XP 246)
+#    {"cmd":"save_bgm"}                (Musik merken, 23; XP 243)
+#    {"cmd":"resume_bgm"}              (Musik zurueckholen, 23; XP 244)
+#    {"cmd":"memorize_audio"}          (Musik + Hintergrundklang merken, 23; XP 247)
+#    {"cmd":"restore_audio"}           (beide zurueckholen, 23; XP 248)
 #    {"cmd":"menu"}                                        (Menü öffnen, 20f; XP 351)
 #    {"cmd":"if_battle_result","result":"sieg","then":[],"else":[]}   (20f; XP 601-603)
 #    {"cmd":"if_actor","name":"arik","then":[],"else":[]}   (Wenn Actor, 20d)
@@ -301,6 +305,10 @@ class Interpreter
         ton_abspielen(cmd, :bgs)
       when 'fadeout_bgs'  # Etappe 21: Hintergrundklang ausblenden (XP 246)
         ton_ausblenden(cmd, :bgs)
+      when 'save_bgm', 'resume_bgm', 'memorize_audio', 'restore_audio'
+        # Etappe 23: Musik sichern/zurueckholen (XP 243/244) und den Merker
+        # fuer Musik + Hintergrundklang setzen/auslesen (XP 247/248).
+        ton_merker(cmd)
       when 'teleport'
         Rune::Player.teleport(cmd['x'].to_f, Game.gy(cmd['x'].to_f, cmd['z'].to_f) + 0.2,
                               cmd['z'].to_f)
@@ -679,6 +687,22 @@ class Interpreter
   # Etappe 21: BGM/BGS starten (XP 241/245). Lautstärke 0..100 wie RGSS,
   # Pitch 50..150 %. Eine vorhandene Datei hat Vorrang (AudioFiles); ohne
   # Datei bleibt der prozedurale Klang - das macht Audio.* schon selbst.
+  # XP 243/244/247/248: Der Merker liegt in $game_system (Etappe 22) und ist
+  # fluechtig. Ohne RGSS-Schicht (kopfloser Lauf) bleibt der Befehl still.
+  def ton_merker(cmd)
+    return false unless defined?($game_system) && $game_system
+
+    methoden = case cmd['cmd']
+               when 'save_bgm'       then %i[bgm_memorize]
+               when 'resume_bgm'     then %i[bgm_restore]
+               when 'memorize_audio' then %i[bgm_memorize bgs_memorize]
+               when 'restore_audio'  then %i[bgm_restore bgs_restore]
+               else []
+               end
+    methoden.each { |m| $game_system.public_send(m) if $game_system.respond_to?(m) }
+    !methoden.empty?
+  end
+
   def ton_abspielen(cmd, spur)
     name = cmd['name'].to_s.strip
     if name.empty?

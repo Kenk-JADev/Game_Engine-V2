@@ -47,7 +47,8 @@ enum EvType {
     ET_TIMER, ET_ACTOR_HP, ET_ACTOR_SP, ET_ACTOR_EXP, ET_ACTOR_LEVEL,
     ET_PARTY_MEMBER, ET_SHOP, ET_NAME_INPUT, ET_SCREEN_TONE, ET_FLASH, ET_MENU, ET_IF_BATTLE_RESULT, ET_SHAKE, ET_SHOW_PICTURE, ET_MOVE_PICTURE, ET_ROTATE_PICTURE,
     ET_TINT_PICTURE, ET_ERASE_PICTURE,
-    ET_PLAY_BGM, ET_FADEOUT_BGM, ET_PLAY_BGS, ET_FADEOUT_BGS, ET_COUNT
+    ET_PLAY_BGM, ET_FADEOUT_BGM, ET_PLAY_BGS, ET_FADEOUT_BGS,
+    ET_SAVE_BGM, ET_RESUME_BGM, ET_MEMORIZE_AUDIO, ET_RESTORE_AUDIO, ET_COUNT
 };
 inline constexpr const char* const EV_TYPES[ET_COUNT] = {
     "text", "choices", "log", "wait", "switch", "toggle_switch", "variable",
@@ -61,7 +62,8 @@ inline constexpr const char* const EV_TYPES[ET_COUNT] = {
     "actor_hp", "actor_sp", "actor_exp", "actor_level", "party_member", "shop", "name_input", "screen_tone", "flash",
     "menu", "if_battle_result", "shake",
     "show_picture", "move_picture", "rotate_picture", "tint_picture", "erase_picture",
-    "play_bgm", "fadeout_bgm", "play_bgs", "fadeout_bgs"
+    "play_bgm", "fadeout_bgm", "play_bgs", "fadeout_bgs",
+    "save_bgm", "resume_bgm", "memorize_audio", "restore_audio"
 };
 inline constexpr const char* const EVENT_TRIGGERS[] = {"action", "touch", "auto", "parallel"};
 inline constexpr const char* const EVENT_OPS[] = {"==", "!=", "<", "<=", ">", ">="};
@@ -882,7 +884,10 @@ inline std::vector<const char*> event_command_keys(int type) {
         case ET_INPUT_NUMBER: return {"name", "digits", "initial", "cancel"};
         case ET_BATTLE: return {"name", "can_escape", "can_lose"};
         case ET_LOOP: return {"commands"};
-        case ET_BREAK: case ET_EXIT_EVENT: case ET_ERASE_EVENT: case ET_MENU: return {};
+        case ET_BREAK: case ET_EXIT_EVENT: case ET_ERASE_EVENT: case ET_MENU:
+        // Etappe 23: Musik sichern/merken (XP 243/244/247/248) traegt keine Felder.
+        case ET_SAVE_BGM: case ET_RESUME_BGM:
+        case ET_MEMORIZE_AUDIO: case ET_RESTORE_AUDIO: return {};
         case ET_LABEL: case ET_JUMP: return {"name"};
         case ET_BUTTON_INPUT: return {"name", "keys"};
         case ET_TEXT_OPTIONS: return {"position", "frame", "transparent"};
@@ -1443,6 +1448,9 @@ inline EventEdit event_command_prepare(const JsonValue* existing, const EventCom
         // marke/ziel der Sprünge sind Namen, Tasteneingabe eine Tastenliste.
         case ET_LOOP: case ET_BREAK: case ET_EXIT_EVENT: case ET_ERASE_EVENT:
         case ET_MENU:
+        // Etappe 23: Musik sichern/merken (XP 243/244/247/248) - keine Felder.
+        case ET_SAVE_BGM: case ET_RESUME_BGM:
+        case ET_MEMORIZE_AUDIO: case ET_RESTORE_AUDIO:
             break;
         case ET_LABEL: case ET_JUMP: case ET_COMMON_EVENT:
             ok = name();

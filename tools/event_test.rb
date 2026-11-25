@@ -248,5 +248,43 @@ check('play_bgm ohne Namen startet nichts') do
   Audio::CALLS.empty?
 end
 
+# --- Musik sichern/merken 243/244/247/248 (Etappe 23) -----------------------
+# XP ruft dafuer $game_system.bgm_memorize/bgm_restore/bgs_*; der Interpreter
+# haelt sich an dasselbe Ziel. Hier eine Attrappe statt der RGSS-Schicht.
+class TonMerkerAttrappe
+  attr_reader :calls
+
+  def initialize = (@calls = [])
+
+  def bgm_memorize = (@calls << :bgm_memorize)
+  def bgm_restore  = (@calls << :bgm_restore)
+  def bgs_memorize = (@calls << :bgs_memorize)
+  def bgs_restore  = (@calls << :bgs_restore)
+end
+
+$game_system = TonMerkerAttrappe.new
+$interp = Interpreter.new
+$interp.start([{ 'cmd' => 'save_bgm' }, { 'cmd' => 'resume_bgm' },
+              { 'cmd' => 'memorize_audio' }, { 'cmd' => 'restore_audio' }])
+drain
+check('save_bgm merkt die Musik (XP 243)') { $game_system.calls[0] == :bgm_memorize }
+check('resume_bgm holt sie zurueck (XP 244)') { $game_system.calls[1] == :bgm_restore }
+check('memorize_audio merkt Musik und Hintergrundklang (XP 247)') do
+  $game_system.calls[2, 2] == %i[bgm_memorize bgs_memorize]
+end
+check('restore_audio holt beide zurueck (XP 248)') do
+  $game_system.calls[4, 2] == %i[bgm_restore bgs_restore]
+end
+check('die vier Befehle laufen ohne Felder durch') { $game_system.calls.size == 6 }
+
+$game_system = nil
+check('ohne $game_system bleiben die Merker-Befehle still') do
+  $interp = Interpreter.new
+  $interp.start([{ 'cmd' => 'save_bgm' }, { 'cmd' => 'restore_audio' },
+                 { 'cmd' => 'text', 'lines' => ['weiter'] }])
+  drain
+  $interp.message == ['weiter']
+end
+
 puts($fail.zero? ? 'EVENT-TEST OK (0 Fehler)' : "EVENT-TEST FEHLGESCHLAGEN (#{$fail} Fehler)")
 exit($fail.zero? ? 0 : 1)

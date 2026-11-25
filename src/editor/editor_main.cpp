@@ -1218,7 +1218,8 @@ const char* const ISSUE_CMD_TYPES[] = {
     "save_access", "menu_access", "encounter_access", "timer",
     "actor_hp", "actor_sp", "actor_exp", "actor_level", "party_member", "shop", "name_input", "screen_tone", "flash", "menu", "if_battle_result", "shake",
     "show_picture", "move_picture", "rotate_picture", "tint_picture", "erase_picture",
-    "play_bgm", "fadeout_bgm", "play_bgs", "fadeout_bgs"
+    "play_bgm", "fadeout_bgm", "play_bgs", "fadeout_bgs",
+    "save_bgm", "resume_bgm", "memorize_audio", "restore_audio"
 };
 const int ISSUE_CMD_TYPE_COUNT =
     static_cast<int>(sizeof(ISSUE_CMD_TYPES) / sizeof(ISSUE_CMD_TYPES[0]));
@@ -7276,7 +7277,10 @@ const wchar_t* const EV_TYPE_LABELS[ET_COUNT] = {
     L"[Bild] Bild tönen", L"[Bild] Bild löschen",
     // Etappe 21: Musik und Hintergrundklang aus Dateien (XP 241/242/245/246).
     L"[Ton] Musik abspielen", L"[Ton] Musik ausblenden",
-    L"[Ton] Hintergrundklang", L"[Ton] Hintergrundklang ausblenden"
+    L"[Ton] Hintergrundklang", L"[Ton] Hintergrundklang ausblenden",
+    // Etappe 23: Musik sichern/merken (XP 243/244/247/248).
+    L"[Ton] Musik merken", L"[Ton] Musik zurückholen",
+    L"[Ton] Musik + Hintergrundklang merken", L"[Ton] Musik + Hintergrundklang zurückholen"
 };
 const wchar_t* const EV_TRIGGERS[4] = { L"action", L"touch", L"auto", L"parallel" };
 const wchar_t* const EV_OPS[6] = { L"==", L"!=", L"<", L"<=", L">", L">=" };
@@ -7447,6 +7451,11 @@ std::string ev_cmd_label(const JsonValue& c) {
         return std::string(type == "fadeout_bgm" ? "Musik ausblenden (" : "Hintergrundklang ausblenden (") +
                ev_num_str(ev_num_of(c, "seconds", 1.0), 2) + " s)";
     }
+    // Etappe 23: Musik sichern/merken (XP 243/244/247/248) - ohne Felder.
+    if (type == "save_bgm") return "Musik merken";
+    if (type == "resume_bgm") return "Musik zurückholen";
+    if (type == "memorize_audio") return "Musik + Hintergrundklang merken";
+    if (type == "restore_audio") return "Musik + Hintergrundklang zurückholen";
     if (type == "effect") {
         return "Effekt \"" + ev_str_of(c, "name", "burst") + "\"";
     }
@@ -7883,7 +7892,9 @@ void ev_cmd_visibility() {
                           t == ET_ROTATE_PICTURE || t == ET_TINT_PICTURE ||
                           t == ET_ERASE_PICTURE ||
                           t == ET_SAVE_ACCESS || t == ET_MENU_ACCESS ||
-                          t == ET_ENCOUNTER_ACCESS;
+                          t == ET_ENCOUNTER_ACCESS ||
+                          t == ET_SAVE_BGM || t == ET_RESUME_BGM ||
+                          t == ET_MEMORIZE_AUDIO || t == ET_RESTORE_AUDIO;
     show(g_ev.lbl_text, is_text || has_hint);
     show(g_ev.ed_ce_text, is_text);
 
@@ -8012,6 +8023,16 @@ void ev_cmd_visibility() {
     }
     if (t == ET_MENU) SetWindowTextW(g_ev.lbl_text,
         L"Öffnet das Spielmenü (XP 351) - wie $game_temp.menu_calling aus einem Script.");
+    // Etappe 23: Musik sichern/merken (XP 243/244/247/248), ohne Felder.
+    if (t == ET_SAVE_BGM) SetWindowTextW(g_ev.lbl_text,
+        L"Merkt die laufende Musik ($game_system.bgm_memorize, XP 243); "
+        L"„Musik zurückholen" spielt sie später wieder.");
+    if (t == ET_RESUME_BGM) SetWindowTextW(g_ev.lbl_text,
+        L"Spielt die gemerkte Musik wieder (XP 244); ohne Merker stoppt sie.");
+    if (t == ET_MEMORIZE_AUDIO) SetWindowTextW(g_ev.lbl_text,
+        L"Merkt Musik und Hintergrundklang gleichzeitig (XP 247).");
+    if (t == ET_RESTORE_AUDIO) SetWindowTextW(g_ev.lbl_text,
+        L"Holt Musik und Hintergrundklang aus dem Merker zurück (XP 248).");
     if (t == ET_SHOW_PICTURE) {
         SetWindowTextW(g_ev.lbl_name, L"Bilddatei (PNG/BMP im Projekt)");
         SetWindowTextW(g_ev.lbl_val1, L"Bildnummer (1-50)");

@@ -82,6 +82,7 @@ module MapCheck
     menu if_battle_result shake show_picture move_picture rotate_picture
     tint_picture erase_picture
     play_bgm fadeout_bgm play_bgs fadeout_bgs
+    save_bgm resume_bgm memorize_audio restore_audio
   ].freeze
 
   TRIGGER   = %w[action touch auto parallel].freeze
@@ -1071,6 +1072,10 @@ module MapCheck
         if c.key?('seconds') && !(zahl?(c['seconds']) && c['seconds'] >= 0)
           melde(FEHLER, w, "'seconds' muss eine Zahl >= 0 sein")
         end
+      when 'save_bgm', 'resume_bgm', 'memorize_audio', 'restore_audio'
+        # Etappe 23: felderlos - Musik sichern bzw. den Merker zurueckholen
+        # (XP 243/244/247/248). Der Merker selbst lebt in $game_system.
+        nil
       when 'item'
         melde(FEHLER, w, "'name' fehlt oder ist leer") unless text?(c['name'])
         if c.key?('count') && !(zahl?(c['count']) && c['count'] != 0)

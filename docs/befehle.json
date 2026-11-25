@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "stand": "Etappe 21 (Runde 35): 65 Befehle",
+  "stand": "Etappe 23 (Runde 41): 69 Befehle",
   "zweck": "Quellen-Register der Event-Befehlstypen. Vier Stellen im Baum müssen zu dieser Liste passen: CMD_TYPES (game/engine/mapcheck.rb), die Ausführung (game/engine/interpreter.rb), ISSUE_CMD_TYPES (src/editor/editor_main.cpp) und EvType/EV_TYPES (src/editor/event_form.h). Ein neuer Befehl ist erst fertig, wenn er hier UND in allen vier Stellen steht; tools/befehle_test.rb meldet die Lücke vor dem Commit.",
   "reihenfolge": "Die Reihenfolge ist die des Registers; die vier Stellen halten dieselbe Reihenfolge ein, damit Diffs lesbar bleiben.",
   "bereiche": [
@@ -723,6 +723,34 @@
         "seconds"
       ],
       "beschreibung": "Blendet den laufenden Hintergrundklang ueber seconds aus (XP 246); 0 stoppt sofort."
+    },
+    {
+      "typ": "save_bgm",
+      "bereich": "Ton",
+      "pflicht": [],
+      "optional": [],
+      "beschreibung": "Merkt die laufende Musik (XP 243, $game_system.bgm_memorize); resume_bgm holt sie zurueck. Der Merker ist fluechtig und ueberschreibt den vorigen."
+    },
+    {
+      "typ": "resume_bgm",
+      "bereich": "Ton",
+      "pflicht": [],
+      "optional": [],
+      "beschreibung": "Spielt die mit save_bgm gemerkte Musik wieder (XP 244); ohne Merker stoppt sie - ein ME bleibt verstummt."
+    },
+    {
+      "typ": "memorize_audio",
+      "bereich": "Ton",
+      "pflicht": [],
+      "optional": [],
+      "beschreibung": "Merkt Musik und Hintergrundklang gleichzeitig (XP 247); restore_audio holt beide zurueck."
+    },
+    {
+      "typ": "restore_audio",
+      "bereich": "Ton",
+      "pflicht": [],
+      "optional": [],
+      "beschreibung": "Holt Musik und Hintergrundklang aus dem Merker zurueck (XP 248); ohne Merker stoppen beide."
     }
   ]
 }
