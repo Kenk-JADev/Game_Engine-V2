@@ -59,10 +59,6 @@ module Rune
     end
   end
 
-  # Etappe 22: Platzhalter - Battle.musik_start/ende pruefen nur, ob es den
-  # Audio-Namensraum gibt; gespielt wird ueber die $game_system-Attrappe.
-  module Audio; end
-
   module Window
     def self.width = 1280
     def self.height = 720
@@ -99,6 +95,11 @@ module Game
 
   def self.gy(_x, _z) = 0.0
 end
+
+# Etappe 22: Platzhalter auf oberster Ebene - Battle.musik_start/ende pruefen
+# nur, ob es den Audio-Namensraum gibt; gespielt wird ueber $game_system
+# (Attrappe im Abschnitt "Kampf-Musik").
+module Audio; end
 
 # $game_temp-Attrappe (rgss.rb wird hier nicht geladen - Battle nutzt es
 # nur für in_battle/gameover).

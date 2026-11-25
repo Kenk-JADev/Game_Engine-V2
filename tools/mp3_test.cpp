@@ -188,8 +188,10 @@ int main() {
     wav::Clip kopf_clip;
     check("nur ID3-Kopf -> false", !mp3::parse(nur_kopf.data(), nur_kopf.size(), kopf_clip, &meldung));
 
-    std::printf(fehler == 0 ? "MP3-TEST OK (0 Fehler)\n"
-                            : "MP3-TEST FEHLGESCHLAGEN (%d Fehler)\n",
-                fehler);
+    if (fehler == 0) {
+        std::printf("MP3-TEST OK (0 Fehler)\n");
+    } else {
+        std::printf("MP3-TEST FEHLGESCHLAGEN (%d Fehler)\n", fehler);
+    }
     return fehler == 0 ? 0 : 1;
 }
