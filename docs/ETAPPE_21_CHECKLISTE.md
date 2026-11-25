@@ -1,0 +1,78 @@
+# Etappe 21 — Checkliste (Ton: Dateien statt Prozedur-Sounds)
+
+Diese Checkliste ist die Abhakliste für Etappe 21. Stand: **Runde 34 — geplant,
+noch nichts umgesetzt**.
+
+Legende: `[x]` erledigt und committet · `[~]` erledigt, CI offen · `[ ]` offen
+
+**Vorgänger:** Etappe 20f (Bildschirm-Ebenen) ist **abgeschlossen** — Ton 223,
+Blitz 224, Wackeln 225, Bilder 231–235, Ergebniszweige 601–603, Menü-Befehl
+351; Register **61 Typen**, CI grün, Commit `47124b1`.
+
+**Ziel:** XP spielt Musik und Geräusche aus **Dateien** (`Audio/BGM/*.ogg`).
+Rune3D hat die RGSS-Schicht (`Audio.bgm_play`/`se_play`), aber
+`src/core/sound.cpp` kennt nur **prozedural erzeugte** Klänge, die beim Start
+angemeldet werden. Damit sind `bgm`/`se`-Befehle und Karten-BGM heute
+substanzlos. Etappe 21 baut den Datei-Lader und hängt die XP-Befehle 241–246,
+Pitch und `bgm_fade` daran.
+
+## 0. Definition of Done (wie 20d–20f)
+
+Register → `CMD_TYPES` → Interpreter → `ISSUE_CMD_TYPES` → `docs/befehle.json`
+→ Formular (Lesen/Schreiben/Labels/Hinweise/`ev_cmd_label`) → MapCheck →
+`samples` in `tools/json_test.cpp` → Zählungen → kopfloser Beweis-Test → Doku
+(`architecture`, `XP_VERGLEICH`, `LOGIK_PRUEFUNG`, `HANDOFF`) → **CI grün**.
+
+Dateizugriffe laufen über die **sichere Assets-Brücke**
+(`Rune::Assets.read_texture` bzw. ein Gegenstück für Binärdateien), nie direkt
+über `File.binread` im Spielpfad — die Tests dürfen Bytes einbetten.
+
+## 1. Plan in Scheiben
+
+- [ ] **T1 — WAV-Lader in `src/core/sound.cpp`:** PCM (8/16 Bit, mono/stereo,
+  11–48 kHz) parsen, auf das WaveOut-Format (22,05 kHz, 16 Bit, mono)
+  resampeln, als benannten Klang anmelden (`Rune::Sound.load(name, bytes)`).
+  Rückgabe `true/false`; Fehler landen als Warnung im Log und in `Issues`.
+  Obergrenze: 60 s bzw. 8 MB pro Datei (XP-BGM-Längen reichen).
+- [ ] **T2 — OGG-Vorbis:** `stb_vorbis.c` (single header, public domain) unter
+  `src/core/` einbinden, dekodieren und über denselben Resampler schicken.
+  Alternative, falls die Lizenzprüfung im Repo das nicht will: OGG ablehnen
+  und im Handoff als offen führen — dann ist die Etappe mit WAV allein
+  trotzdem nützlich.
+- [ ] **T3 — Karten-BGM/BGS:** Karten-JSON bekommt `bgm`/`bgs`
+  (Datei + Lautstärke + Pitch). Beim Kartenwechsel startet das BGM, beim
+  Verlassen stoppt es (`Audio.bgm_play`/`bgm_stop`), `bgs` läuft wie XP
+  weiter. MapCheck: Dateiendung, Lautstärke 0–100, Pitch 50–150.
+- [ ] **T4 — Event-Befehle 241/242/245/246:**
+  `{"cmd":"play_bgm","name":"bgm/dorf.ogg","volume":100,"pitch":100}`,
+  `{"cmd":"fadeout_bgm","seconds":2}`,
+  `{"cmd":"play_bgs","name":"bgs/regen.ogg","volume":80}`,
+  `{"cmd":"fadeout_bgs","seconds":1}`. Register/Formular/MapCheck wie immer;
+  `bgm_fade` läuft über einen eigenen Takt (nicht im Interpreter blockierend).
+- [ ] **T5 — Pitch und `bgm_fade` über Zeit:** Resampling-Faktor aus Pitch
+  (50–150 %), Fade dauert `seconds` und blendet die Lautstärke in
+  `Sound.update()` herunter; danach ist der Kanal frei.
+- [ ] **T6 — Tests:** `tools/audio_test.rb` prüft den WAV-Parser an
+  eingebetteten Bytes (8/16 Bit, mono/stereo, kaputte Header, zu lang),
+  Pitch-/Fade-Rechnung als reine Funktionen und die Befehle über den
+  Interpreter (mit `Rune::Sound`-Attrappe). `json_test` bekommt die vier
+  Beispiele und je einen Grenzfall (Lautstärke 101, Pitch 20, `seconds` < 0).
+- [ ] **T7 — Doku:** `architecture.md` (Abschnitt „Ton“), `XP_VERGLEICH.md`
+  (241–246 von ⚠️/❌ auf ✅), `LOGIK_PRUEFUNG.md` (neuer AD-Eintrag),
+  `HANDOFF` (Commit-Tabelle, nächste Etappe).
+
+## 2. Bekannte Eigenheiten
+
+- Prozedurale Klänge (`musik`, `schritt`, `landung`, …) bleiben als Fallback
+  registriert; ein Datei-Klang gleichen Namens ersetzt sie.
+- WaveOut läuft mit **einem** Gerät und vier Puffern (`kBuffers`); lange BGMs
+  müssen deshalb geloopt gemischt werden, nicht in einen Puffer kopiert.
+- `Audio.bgm_play` übergibt heute nur den Basisnamen — T3/T4 müssen den
+  Dateipfad mitgeben, damit der Lader die Datei findet.
+- `bgm_fade` blockiert in XP nicht; die Dauer läuft im Engine-Takt
+  (`Graphics.frame_rate`, 40/s), nicht im Interpreter.
+
+## 3. Reihenfolge
+
+T1 → T5 (Resampling/Pitch ist die Grundlage) → T6 (Parser-Tests) → T3 → T4 →
+T2 (OGG zuletzt, weil Vendoring und Lizenzprüfung dazukommen) → T7.
