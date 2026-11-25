@@ -31,6 +31,7 @@ require 'issues'
 require 'graphics'
 require 'rgss'          # RGSS::GameTemp
 require 'temp_actions'
+require 'interpreter'
 
 $fail = 0
 def check(name)
@@ -168,6 +169,25 @@ check('Kampf hat Vorrang vor Menü') do
   $game_temp.menu_calling = true
   sammler
   TempActions.tick(sammler) && log == [[:battle, 0, false, false]] && $game_temp.menu_calling
+end
+
+frisch
+check('Interpreter-Befehl menu setzt $game_temp.menu_calling (XP 351)') do
+  i = Interpreter.new
+  i.start([{ 'cmd' => 'menu' }])
+  i.update(0.016)
+  $game_temp.menu_calling == true
+end
+check('... und der nächste Tick öffnet das Menü') do
+  sammler
+  TempActions.tick(sammler) && log == [[:menu, false]] && !$game_temp.menu_calling
+end
+$game_temp = nil
+check('menu ohne $game_temp warnt nur') do
+  i = Interpreter.new
+  i.start([{ 'cmd' => 'menu' }])
+  i.update(0.016)
+  true
 end
 
 puts($fail.zero? ? 'ALLE CHECKS GRUEN' : "#{$fail} CHECK(S) FEHLGESCHLAGEN")

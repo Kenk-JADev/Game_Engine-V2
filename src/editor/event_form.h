@@ -45,7 +45,7 @@ enum EvType {
     ET_IF_GOLD, ET_IF_ITEM, ET_IF_SCRIPT, ET_IF_ACTOR, ET_IF_BUTTON,
     ET_SAVE_ACCESS, ET_MENU_ACCESS, ET_ENCOUNTER_ACCESS,
     ET_TIMER, ET_ACTOR_HP, ET_ACTOR_SP, ET_ACTOR_EXP, ET_ACTOR_LEVEL,
-    ET_PARTY_MEMBER, ET_SHOP, ET_NAME_INPUT, ET_SCREEN_TONE, ET_FLASH, ET_COUNT
+    ET_PARTY_MEMBER, ET_SHOP, ET_NAME_INPUT, ET_SCREEN_TONE, ET_FLASH, ET_MENU, ET_COUNT
 };
 inline constexpr const char* const EV_TYPES[ET_COUNT] = {
     "text", "choices", "log", "wait", "switch", "toggle_switch", "variable",
@@ -56,7 +56,8 @@ inline constexpr const char* const EV_TYPES[ET_COUNT] = {
     "button_input", "text_options", "common_event",
     "if_gold", "if_item", "if_script", "if_actor", "if_button",
     "save_access", "menu_access", "encounter_access", "timer",
-    "actor_hp", "actor_sp", "actor_exp", "actor_level", "party_member", "shop", "name_input", "screen_tone", "flash"
+    "actor_hp", "actor_sp", "actor_exp", "actor_level", "party_member", "shop", "name_input", "screen_tone", "flash",
+    "menu"
 };
 inline constexpr const char* const EVENT_TRIGGERS[] = {"action", "touch", "auto", "parallel"};
 inline constexpr const char* const EVENT_OPS[] = {"==", "!=", "<", "<=", ">", ">="};
@@ -821,7 +822,7 @@ inline std::vector<const char*> event_command_keys(int type) {
         case ET_INPUT_NUMBER: return {"name", "digits", "initial", "cancel"};
         case ET_BATTLE: return {"name", "can_escape", "can_lose"};
         case ET_LOOP: return {"commands"};
-        case ET_BREAK: case ET_EXIT_EVENT: case ET_ERASE_EVENT: return {};
+        case ET_BREAK: case ET_EXIT_EVENT: case ET_ERASE_EVENT: case ET_MENU: return {};
         case ET_LABEL: case ET_JUMP: return {"name"};
         case ET_BUTTON_INPUT: return {"name", "keys"};
         case ET_TEXT_OPTIONS: return {"position", "frame", "transparent"};
@@ -1300,6 +1301,7 @@ inline EventEdit event_command_prepare(const JsonValue* existing, const EventCom
         // tragen keine Felder (der Schleifenkörper ist ein eigener Zweig),
         // marke/ziel der Sprünge sind Namen, Tasteneingabe eine Tastenliste.
         case ET_LOOP: case ET_BREAK: case ET_EXIT_EVENT: case ET_ERASE_EVENT:
+        case ET_MENU:
             break;
         case ET_LABEL: case ET_JUMP: case ET_COMMON_EVENT:
             ok = name();

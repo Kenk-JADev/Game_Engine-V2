@@ -1,7 +1,7 @@
 # Etappe 20f — Checkliste (Bildschirm-Ebenen)
 
 Diese Checkliste ist die Abhakliste für Etappe 20f. Stand: **Runde 32 —
-Ton und Blitz fertig (F1/F2, Register 53), Wackeln/Bilder/Ergebniszweige offen**.
+Ton, Blitz und Menü-Befehl fertig (F1/F2/F6, Register 54), Wackeln/Bilder/Ergebniszweige offen**.
 
 Legende: `[x]` erledigt und committet · `[~]` erledigt, CI offen · `[ ]` offen
 

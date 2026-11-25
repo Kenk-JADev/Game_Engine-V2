@@ -1895,7 +1895,7 @@ im Frame des Tastendrucks (`Rune::Input.pressed?`, wie XP `Input.trigger?`;
 ohne Eingabeschicht — kopfloser Test — falsch). Beide haben `then`/`else`
 wie die übrigen Wenn-Befehle und werden im F6-Baum rekursiv geprüft; MapCheck
 prüft den Namen (Actor gegen `database.json`, Taste auf Existenz).
-Register: **53 Typen**. **Tests:** `tools/bedingungen_test.rb` (34 Checks).
+Register: **54 Typen**. **Tests:** `tools/bedingungen_test.rb` (34 Checks).
 
 ### Variable-Operationen (XP 122)
 
@@ -1942,6 +1942,18 @@ Vier Befehle (Bereich „Party" in `docs/befehle.json`):
 MapCheck prüft `amount` (Pflicht, ≠ 0), den Actor-Namen gegen
 `database.json` und den Stufenbereich. **Tests:** `tools/actor_wert_test.rb`
 (24 Checks), `json_test` 778 Checks.
+
+### Menü öffnen (XP 351)
+
+```json
+{"cmd":"menu"}
+```
+
+Der Befehl setzt `$game_temp.menu_calling = true` — denselben Weg, den ein
+Script nimmt. Der Scene-Wechsel läuft im nächsten Frame über
+`TempActions.tick`, also genau einmal (das Flag wird dabei gelöscht); Esc
+öffnet das Menü weiterhin. Kein Feld im Formular, kein Zustand im Event.
+**Tests:** `tools/temp_flags_test.rb` (20 Checks, davon 3 für `menu`).
 
 ### Bildschirmton und Blitz (XP 223/224)
 

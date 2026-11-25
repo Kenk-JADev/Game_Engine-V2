@@ -61,6 +61,7 @@
 #    {"cmd":"name_input","actor":"arik","max":8,"cancel":true}  (Name, 20e; XP 303)
 #    {"cmd":"screen_tone","r":-34,"g":0,"b":68,"gray":0,"frames":60} (20f; XP 223)
 #    {"cmd":"flash","color":"weiss","strength":255,"frames":20}       (20f; XP 224)
+#    {"cmd":"menu"}                                        (Menü öffnen, 20f; XP 351)
 #    {"cmd":"if_actor","name":"arik","then":[],"else":[]}   (Wenn Actor, 20d)
 #    {"cmd":"if_button","name":"e","then":[],"else":[]}     (Wenn Taste, 20d)
 #    {"cmd":"actor_hp","target":"alle","amount":-20}    (Werte ändern, 20d)
@@ -358,6 +359,15 @@ class Interpreter
         Party.heal_all(cmd.key?('amount') ? cmd['amount'].to_i : 0)
       when 'weather'   # {"cmd":"weather","name":"schnee","intensity":1.5} (Etappe 17h)
         Weather.set(cmd['name'] || 'kein', (cmd['intensity'] || 1.0).to_f)
+      when 'menu'   # Etappe 20f (XP 351): Menü öffnen - über $game_temp, wie
+                    # ein Script ($game_temp.menu_calling). Der Scene-Wechsel
+                    # passiert im nächsten Frame (TempActions.tick).
+        if defined?($game_temp) && $game_temp
+          $game_temp.menu_calling = true
+          Rune::Log.info('Interpreter: Menü angefordert ($game_temp.menu_calling)')
+        else
+          Rune::Log.warn('Interpreter: menu ohne $game_temp (Kopfloser Lauf?)')
+        end
       when 'screen_tone'   # Etappe 20f (XP 223): Bildschirmton, frames = Übergang
         ScreenFx.tone(r: cmd['r'], g: cmd['g'], b: cmd['b'],
                       gray: cmd['gray'], frames: cmd['frames'])

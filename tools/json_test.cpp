@@ -1600,7 +1600,8 @@ void event_form_tests(const std::string& wurzel) {
         R"({"cmd":"shop","goods":[{"item":"heiltrank","price":20},{"item":"apfel"}]})",
         R"({"cmd":"name_input","actor":"arik","max":6,"cancel":false})",
         R"({"cmd":"screen_tone","r":-34,"g":0,"b":68,"frames":60})",
-        R"({"cmd":"flash","color":"weiss","strength":200,"frames":20})"
+        R"({"cmd":"flash","color":"weiss","strength":200,"frames":20})",
+        R"({"cmd":"menu"})"
     };
     check("Beispiel für jeden Befehlstyp vorhanden", samples.size() == ET_COUNT);
     for (size_t i = 0; i < samples.size(); ++i) {

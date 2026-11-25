@@ -583,6 +583,13 @@
         "frames"
       ],
       "beschreibung": "Blitzt den Bildschirm in weiss/rot/gruen/blau/gelb (XP 224); strength 0..255, frames ist die Abklingzeit, Default 20."
+    },
+    {
+      "typ": "menu",
+      "bereich": "System",
+      "pflicht": [],
+      "optional": [],
+      "beschreibung": "Oeffnet das Spielmenue aus einem Event heraus (XP 351); laeuft ueber $game_temp.menu_calling wie ein Script."
     }
   ]
 }

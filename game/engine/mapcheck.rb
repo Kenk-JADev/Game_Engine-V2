@@ -79,6 +79,7 @@ module MapCheck
     actor_hp actor_sp actor_exp actor_level
     party_member shop name_input
     screen_tone flash
+    menu
   ].freeze
 
   TRIGGER   = %w[action touch auto parallel].freeze
