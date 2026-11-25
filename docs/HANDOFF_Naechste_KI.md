@@ -64,7 +64,10 @@ Der User beauftragte eine Überarbeitung von Engine und Editor **im Stil von RPG
 | 20d-1 | `1eaa611` | Erweiterte Bedingungen (`if_gold`/`if_item`/`if_script`) und Sperr-Befehle 134/135/136 in Engine, F6-Modell, Issue-Scan und MapCheck; `tools/bedingungen_test.rb` |
 | 20d-2 | `33ac986` (CI grün: 45506017149) | Timer-Befehl 124 + Anzeige (`UI.timer`), Formular/MapCheck/Register (42 Typen); `tools/timer_test.rb` |
 | 20d-3 | `a40e5e2` (CI grün: 45506936568) | `$game_temp`-Calling-Flags über `TempActions` (LOGIK E.3); `tools/temp_flags_test.rb` |
-| 20f-1 | dieser Commit (CI-Status siehe Actions) | Bildschirmton 223 + Blitz 224 (`ScreenFx`, `UI`-Overlays), Register **53**; `tools/screen_fx_test.rb` |
+| 20f-4 | `d4eaaa5` (CI grün: 45563048017) | Wackeln 225 (`ScreenFx.shake`, `Rune::Camera.shake`, `camera.cpp`), Register **56**; `screen_fx_test` 36, `json_test` 823 |
+| 20f-3 | `241dc42` → Fix `49ba073` (CI grün: 45562297358) | Ergebnis-Zweige 601–603 als `if_battle_result`, Register **55**; `bedingungen_test` 41, `json_test` 820 |
+| 20f-2 | `d530329` (CI grün: 45560944955) | Menü-Befehl 351 (`menu` über `$game_temp.menu_calling`), Register **54**; `temp_flags_test` 20, `json_test` 817 |
+| 20f-1 | `e64ec55` (CI grün: 45560127278) | Bildschirmton 223 + Blitz 224 (`ScreenFx`, Overlays über Welt und UI), Register **53**; `tools/screen_fx_test.rb` |
 | 20f-Plan | `e6c2f3a` (CI grün: 45558116290) | `docs/ETAPPE_20F_CHECKLISTE.md` |
 | 20e-2 | `2e6f848` (CI grün: 45557621157) | Namenseingabe (XP 303): `NameInput`, `Party.rename`/`held`, Name im Spielstand, `UI.name_input`, Befehl `name_input`, Register **51**; `tools/name_input_test.rb` — **20e abgeschlossen** |
 | 20e-1 | `0df9724` (CI grün: 45556738324) | Laden (XP 302): `Shop`-Modul, `UI.shop`, Befehl `shop`, MapCheck, Formular, Register **50**; `tools/shop_test.rb` |
