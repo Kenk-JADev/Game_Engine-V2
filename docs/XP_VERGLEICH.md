@@ -17,7 +17,7 @@ Rune3D (Stand nach 19y) steht — mit Blick darauf, was sich sinngemäß in 3D
 ## 1. Event-Befehle — 92 XP-Befehle, 39 in Rune3D
 
 XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
-**65 Befehlstypen**. Bilanz: **51 ✅ · 8 ⚠️ · 33 ❌**.
+**69 Befehlstypen**. Bilanz: **53 ✅ · 7 ⚠️ · 33 ❌**.
 
 ### A. Nachricht & Ablaufsteuerung (101–119)
 
@@ -90,8 +90,9 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 |---|---|---|---|
 | BGM abspielen | 241 | `play_bgm` (R35) → `Audio.bgm_play` → `AudioFiles` (WAV/OGG/MP3) mit Rückfall auf den prozeduralen Loop | ✅ Datei + Lautstärke 0–100 + Pitch 50–150 %, neue Musik ersetzt die alte; Karten-BGM läuft seit R37 beim Kartenwechsel (`MapAudio`) |
 | BGM ausblenden | 242 | `fadeout_bgm` (R35) → `AudioFiles.fade_ms` im Engine-Takt | ✅ Dauer in Sekunden, 0 = sofort, nicht blockierend |
+| BGM sichern/zurückholen | 243/244 | `save_bgm`/`resume_bgm` (R41) → `$game_system.bgm_memorize`/`bgm_restore` | ✅ merkt die laufende Musik und holt sie wieder; Merker flüchtig, `resume_bgm` ohne Merker stoppt |
 | BGS abspielen/ausblenden | 245/246 | `play_bgs`/`fadeout_bgs` (R35) → `Audio.bgs_play`/`AudioFiles.fade_ms` | ✅ wie BGM, mit den Ordnern `audio/bgs/` und `audio/me/` (R40) |
-| BGM/BGS merken und wiederherstellen | 247/248 | nur RGSS-API: `$game_system.bgm_memorize`/`bgm_restore`/`bgs_*` + `playing_bgm`/`playing_bgs` (R40) | ⚠️ Verhalten vorhanden und von der Kampfmusik genutzt; der **Event-Befehl** fehlt noch (kommt mit 243/244) |
+| BGM/BGS merken und wiederherstellen | 247/248 | `memorize_audio`/`restore_audio` (R41) → `$game_system.bgm_memorize`/`bgs_memorize` bzw. `*_restore` | ✅ beide Spuren in einem Befehl, wie XP; die Kampfmusik nutzt dieselben Methoden (R40) |
 | ME abspielen | 249 | `Audio.me_play` (R40) → Datei (`audio/me/`) oder prozedural | ✅ verstummt wie RGSS die BGM, ohne sie fortzusetzen; `Audio.me_stop` stoppt das ME |
 | SE abspielen | 250 | `sound` | ✅ (7 prozedurale Sounds) |
 | SE stoppen | 251 | `Audio.se_stop` (R40) | ✅ stoppt alle gestarteten Einmal-Sounds (Datei und prozedural) |

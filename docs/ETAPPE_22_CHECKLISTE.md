@@ -92,9 +92,10 @@ Die XP-Event-Befehle **243/244** (BGM sichern/zurückholen) und **247/248**
 (BGM+BGS merken/wiederherstellen) gibt es im Register weiterhin nicht: Etappe
 22 füllt die RGSS-Schicht (`GameSystem#bgm_memorize/restore`), die Kampfmusik
 nutzt sie bereits. Die Befehle selbst brauchen Interpreter, MapCheck,
-F6-Formular und Register-Pflege (65 → 69 Typen) und kommen als eigene kleine
-Etappe, damit dieser Schritt prüfbar bleibt. In `XP_VERGLEICH.md` steht die
-Zeile 247/248 deshalb auf ⚠️ statt ✅.
+F6-Formular und Register-Pflege (65 → 69 Typen); sie kamen als eigene kleine
+Etappe, damit dieser Schritt prüfbar bleibt. **In Etappe 23 umgesetzt**
+(`save_bgm`/`resume_bgm`/`memorize_audio`/`restore_audio`, siehe
+`docs/ETAPPE_23_CHECKLISTE.md`); `XP_VERGLEICH.md` führt 247/248 seitdem auf ✅.
 
 ## 2. Definition of Done
 

@@ -2008,6 +2008,12 @@ Audio.bgm_play('Audio/BGM/dorf', 80, 120)          # RGSS-Aufruf, Pitch 120 %
   `{"cmd":"play_bgs","name":"bgs/regen.wav","volume":80}`,
   `{"cmd":"fadeout_bgs","seconds":1}` — MapCheck prüft Name, Lautstärke 0–100,
   Pitch 50–150 und `seconds >= 0`; das F6-Formular nutzt Name + Wert 1/2.
+- **Musik sichern/merken** (XP 243/244/247/248): `{"cmd":"save_bgm"}`,
+  `{"cmd":"resume_bgm"}`, `{"cmd":"memorize_audio"}`,
+  `{"cmd":"restore_audio"}` — felderlos; der Interpreter ruft
+  `$game_system.bgm_memorize`/`bgm_restore` bzw. beide Spuren
+  (`bgs_memorize`/`bgs_restore`). Ohne `$game_system` (kopfloser Lauf) bleibt
+  der Befehl still.
 - **Kartenmusik** (XP-Mapinfo): die Karten-JSON darf nennen
   `"bgm": {"name":"bgm/dorf.wav","volume":80,"pitch":100}` und dasselbe als
   `bgs`. `MapAudio.enter(map)` läuft in `Game.enter_map` nach
