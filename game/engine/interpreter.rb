@@ -305,9 +305,13 @@ class Interpreter
         ton_abspielen(cmd, :bgs)
       when 'fadeout_bgs'  # Etappe 21: Hintergrundklang ausblenden (XP 246)
         ton_ausblenden(cmd, :bgs)
-      when 'save_bgm', 'resume_bgm', 'memorize_audio', 'restore_audio'
-        # Etappe 23: Musik sichern/zurueckholen (XP 243/244) und den Merker
-        # fuer Musik + Hintergrundklang setzen/auslesen (XP 247/248).
+      when 'save_bgm'        # Etappe 23: Musik merken (XP 243)
+        ton_merker(cmd)
+      when 'resume_bgm'      # Etappe 23: Musik zurueckholen (XP 244)
+        ton_merker(cmd)
+      when 'memorize_audio'  # Etappe 23: Musik + Hintergrundklang merken (XP 247)
+        ton_merker(cmd)
+      when 'restore_audio'   # Etappe 23: beide zurueckholen (XP 248)
         ton_merker(cmd)
       when 'teleport'
         Rune::Player.teleport(cmd['x'].to_f, Game.gy(cmd['x'].to_f, cmd['z'].to_f) + 0.2,
