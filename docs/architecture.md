@@ -1895,7 +1895,7 @@ im Frame des Tastendrucks (`Rune::Input.pressed?`, wie XP `Input.trigger?`;
 ohne Eingabeschicht — kopfloser Test — falsch). Beide haben `then`/`else`
 wie die übrigen Wenn-Befehle und werden im F6-Baum rekursiv geprüft; MapCheck
 prüft den Namen (Actor gegen `database.json`, Taste auf Existenz).
-Register: **49 Typen**. **Tests:** `tools/bedingungen_test.rb` (34 Checks).
+Register: **50 Typen**. **Tests:** `tools/bedingungen_test.rb` (34 Checks).
 
 ### Variable-Operationen (XP 122)
 
@@ -1942,6 +1942,31 @@ Vier Befehle (Bereich „Party" in `docs/befehle.json`):
 MapCheck prüft `amount` (Pflicht, ≠ 0), den Actor-Namen gegen
 `database.json` und den Stufenbereich. **Tests:** `tools/actor_wert_test.rb`
 (24 Checks), `json_test` 778 Checks.
+
+### Laden (XP 302)
+
+```json
+{"cmd":"shop","goods":[{"item":"heiltrank","price":20},{"item":"apfel"}]}
+```
+
+`Shop` (`game/engine/shop.rb`) trennt Rechnung und Fenster: die Warenliste wird
+beim Öffnen normalisiert (`price` fehlt → Datenbankpreis), `kaufen` prüft Gold
+und legt Items ins Inventar, `verkaufen` nimmt aus dem Inventar und zahlt den
+halben Datenbankpreis — gedeckelt durch den Ladenpreis, damit „teuer kaufen,
+halb verkaufen" kein Gold-Generator ist. Unbekannte Items fliegen beim Öffnen
+raus und landen im Issue-Backlog; eine leere Liste öffnet keinen Laden.
+
+Der Interpreter setzt `@shop_wait` und blockiert, bis `Shop.active?` endet
+(XP 302 ist modal). `UI.shop` zeichnet Reiter (Kaufen/Verkaufen), Waren mit
+Preis bzw. Inventarmenge, die Gold-Zeile und die letzte Meldung; die Tasten
+(↑↓, ←→, E, Esc) ruft sie als `Shop`-Methoden auf und ist damit auch kopflos
+prüfbar (`input: false` zeichnet nur). Esc geht erst zu den Waren zurück und
+schließt dann — wie die Befehlsebene in XP. Im Formular stehen die Waren im
+Mehrzeiler als `item` bzw. `item:preis`; Waren mit Zusatzfeldern (z. B. später
+ein Bestand) zeigt das Formular als „nicht darstellbar" und verlangt eine
+bewusste Bestätigung. **Tests:** `tools/shop_test.rb` (38 Checks),
+`json_test` prüft Lesen, Preis-Schreiben, leere Zeilen und die Fehlerfälle
+(789 Checks).
 
 ### Mitglieder ändern (XP 129)
 

@@ -14,10 +14,10 @@ Rune3D (Stand nach 19y) steht — mit Blick darauf, was sich sinngemäß in 3D
 
 ---
 
-## 1. Event-Befehle — 92 XP-Befehle, 27 in Rune3D
+## 1. Event-Befehle — 92 XP-Befehle, 28 in Rune3D
 
 XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
-**49 Befehlstypen**. Bilanz: **37 ✅ · 7 ⚠️ · 48 ❌**.
+**50 Befehlstypen**. Bilanz: **38 ✅ · 7 ⚠️ · 47 ❌**.
 
 ### A. Nachricht & Ablaufsteuerung (101–119)
 
@@ -101,7 +101,7 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 | XP | Code | Rune3D | Status |
 |---|---|---|---|
 | Kampf starten | 301 | `battle` | ✅ (ohne Ergebniszweige) |
-| Shop | 302 | — | ❌ (kein Shop) |
+| Shop | 302 | `shop` (R30) mit `goods` (item/price) + Laden-Fenster (`UI.shop`) | ✅ Kaufen/Verkaufen, halber Preis beim Verkauf, Gold/Inventar wie XP; bewusst: unbegrenzter Bestand, Esc geht erst zurück zu den Waren |
 | Namenseingabe | 303 | — | ❌ |
 | HP ändern | 311 | `actor_hp` (R28) + `heal` | ✅ Ziel `alle` oder ein Actor, vorzeichenbehaftet (negativ = Schaden), geklemmt auf 0..Max |
 | SP ändern | 312 | `actor_sp` (R28) | ✅ wie `actor_hp`, Rune3D nennt das Feld `mp` (XP: SP) |
@@ -260,7 +260,7 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 | **20b Menü wie XP** | ~~Item (außerhalb Kampf)~~ ✅, ~~Skill~~ ✅, ~~Status-Detail~~ ✅, ~~Parteigesichter~~ ✅ (prozedural) — offen: Equip (keine Ausrüstung), Fortschritts-/Quest-Anzeige, Gesichter in Spielstand-Slots | Kern seit Runde 24 umgesetzt |
 | **20c Event-Befehle Welle 1 (Ablauf)** | ~~`loop`/`break`/`label`/`jump`/`exit_event`/`erase_event`/`button_input`/`text_options`~~ ✅, ~~**Common Events**~~ ✅ (Runde 27, 35 Befehlstypen: Datenhaltung, Aufruf 117, Trigger, MapCheck, RGSS) — offen: eigener Editor-Reiter für Common Events (F9/F6) | Struktur, die fast jedes XP-Projekt braucht |
 | **20d Event-Befehle Welle 2 (Daten)** | ~~erweiterte Bedingungen `if_gold`/`if_item`/`if_script`~~ ✅, ~~134/135/136 als Befehle (`save_access`/`menu_access`/`encounter_access`)~~ ✅ (R28, 46 Befehlstypen; Timer samt Anzeige, HP/SP/EXP/Stufe erledigt) — offen: `party_member`, ~~`$game_temp`-Calling-Flags auswerten~~ ✅ (R28, LOGIK E.3) | Verdoppelt die Aussagekraft von Variablen/Schaltern; XP-Scripts, die Szenen über `$game_temp` starten, funktionieren dann |
-| **20e Shop & Name** | Befehl 302 + Shop-Fenster (kaufen/verkaufen/preis), 303 Namenseingabe | XP-typisch, eigenständig nutzbar |
+| **20e Shop & Name** | ~~Befehl 302 + Shop-Fenster (kaufen/verkaufen/Preis)~~ ✅ (R30) — offen: 303 Namenseingabe | XP-typisch, eigenständig nutzbar |
 | **20f Bildschirm-Ebenen** | Pictures 231–235 als Overlay, Flash/Shake/Tone als PostFX, Ergebniszweige 601–603, Befehl 351 (Menü) | Macht die „Bildschirm“-Gruppe echt |
 | **20g Darstellung** | Figuren-Billboards, Ballons, Kampf-/Event-Animationen (207/337) | Sichtbarster XP-Optik-Unterschied |
 | **20h Editor & DX** | Dialoge F6/F9 XP-orientiert (Screenshots), Undo/Redo über Splats/NPCs/Events | Bedienung wie im Vorbild |

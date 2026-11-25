@@ -538,6 +538,15 @@
         "mode"
       ],
       "beschreibung": "Nimmt einen Helden ins Team auf oder entfernt ihn (XP 129); das letzte Mitglied bleibt, damit Kampf und Menue immer einen Helden haben."
+    },
+    {
+      "typ": "shop",
+      "bereich": "Party",
+      "pflicht": [
+        "goods"
+      ],
+      "optional": [],
+      "beschreibung": "Oeffnet einen Laden mit dieser Warenliste (XP 302); price ist der Ladenpreis, ohne price gilt der Datenbankpreis, Verkauf bringt den halben Preis."
     }
   ]
 }

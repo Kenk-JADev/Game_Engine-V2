@@ -2,8 +2,8 @@
 
 Diese Checkliste ist die Abhakliste für Etappe 20e. Sie steht im Repo, damit
 jede Sitzung (Mensch oder KI) den Stand ohne Rätselraten sieht: Was ist fertig,
-was fehlt, und woran erkennt man „fertig". Stand: **Runde 30 — geplant, noch
-nichts umgesetzt**.
+was fehlt, und woran erkennt man „fertig". Stand: **Runde 30 — Shop fertig
+(E1–E3, Register 50), Namenseingabe offen**.
 
 Legende: `[x]` erledigt und committet · `[~]` erledigt, CI offen · `[ ]` offen
 
@@ -26,29 +26,33 @@ Doku, **CI grün**.
 
 ## 1. Plan in Scheiben
 
-- [ ] **E1 — Shop-Modell (`Shop`):** Warenliste `[{item, price}]` (Preis 0 =
+- [x] **E1 — Shop-Modell (`Shop`):** Warenliste `[{item, price}]` (Preis 0 =
       Datenbankpreis), `Shop.open(waren)`, `Shop.buy(item)`, `Shop.sell(item)`,
       Bestand optional (unbegrenzt wie XP, `stock` als Erweiterung), Verkauf
-      zu 50 % (XP `Game_Party#sell_price`-Regel), Gold/Inventar über `Party`,
-      Meldungen ins Log und ins Issue-Backlog bei fehlendem Gold/Item
-- [ ] **E2 — Befehl `shop` (XP 302):** `{"cmd":"shop","goods":[{"item":"heiltrank","price":20}]}`,
+      zu 50 % (XP `Game_Party#sell_price`-Regel), gedeckelt durch den
+      Ladenpreis, Gold/Inventar über `Party`, Meldungen im Fenster und im Log;
+      unbekannte Items/leere Liste landen im Issue-Backlog
+- [x] **E2 — Befehl `shop` (XP 302):** `{"cmd":"shop","goods":[{"item":"heiltrank","price":20}]}`,
       `goods` als Liste (Pflicht), Preis optional, MapCheck prüft Item gegen
       `database.json` und Preise (≥ 0), Formular: Warenliste im Mehrzeiler
       (`item:preis` pro Zeile), `ev_cmd_label` = „Shop (n Waren)“
-- [ ] **E3 — Shop-Fenster:** `UI.shop` / eigenes Unterfenster im Stil des
+- [x] **E3 — Shop-Fenster:** `UI.shop` / eigenes Unterfenster im Stil des
       Menüs (Kaufen/Verkaufen/Verlassen, Cursor, Gold- und Preiszeile,
-      Esc = eine Ebene zurück), Anbindung an `Interpreter` (Befehl pausiert
-      bis das Fenster schließt, wie Text/Wahl)
+      Esc = eine Ebene zurück), Anbindung an `Interpreter` (`@shop_wait`
+      blockiert, bis `Shop.active?` endet), `UI.shop` mit `input: false` im
+      Draw-Pfad, Eingaben in `Game#update` vor der Esc-Menüprüfung
 - [ ] **E4 — Befehl `name_input` (XP 303):** `{"cmd":"name_input","actor":"arik","max":8}`,
       Tastatureingabe mit Backspace/Esc (Abbruch = alter Name), Klemmen auf
       `max` (XP: 8 Zeichen), Ergebnis in `Actor#name`, im Spielstand also im
       `party`-Snapshot; MapCheck prüft Actor und `max` (1–16)
-- [ ] **E5 — Tests:** `tools/shop_test.rb` (Modell, Befehl, MapCheck,
-      Verkaufspreis, fehlendes Gold), `tools/name_input_test.rb` (Eingabe,
-      Abbruch, Klemmen, Spielstand), je ein Beispielpaar in `json_test.cpp`,
-      `sync_test`-Vergleiche der neuen Listen
-- [ ] **E6 — Doku:** `architecture.md`, `XP_VERGLEICH.md` (302/303 auf ✅/⚠️),
-      `LOGIK_PRUEFUNG.md` (AD.11 Shop, AD.12 Namenseingabe), `HANDOFF`
+- [~] **E5 — Tests:** `tools/shop_test.rb` ✅ (38 Checks: Modell, Preise,
+      Kaufen/Verkaufen, Fensterbedienung, Interpreter, MapCheck, `UI.shop`),
+      `json_test` ✅ (Warenliste lesen/schreiben, leere Zeilen, Fehlerfälle —
+      789 Checks), `sync_test` ✅ grün. **Offen:** `tools/name_input_test.rb`
+      mit E4
+- [~] **E6 — Doku:** `architecture.md` (Abschnitt „Laden"), `XP_VERGLEICH.md`
+      (302 ✅, Bilanz 38 ✅ · 7 ⚠️ · 47 ❌), `LOGIK_PRUEFUNG.md` (AD.11),
+      `HANDOFF` ✅. **Offen:** AD.12 Namenseingabe mit E4
 
 ## 2. Bekannte Eigenheiten (nicht nochmal darüber stolpern)
 

@@ -9,6 +9,8 @@ Sounds.register_all   # prozedurale Sounds an die Engine melden (idempotent)
 # Etappe 20d: $game_temp-Aufträge (TempActions) - Tests laden main.rb einzeln,
 # ohne boot.rb, darum hier selbst nachziehen (LOAD_PATH zeigt auf game/engine).
 require 'temp_actions' unless defined?(TempActions)
+# Etappe 20e: Laden (XP 302) - gleiche Begründung wie oben.
+require 'shop' unless defined?(Shop)
 
 module Game
   # ---------------------------------------------------------------- Aufbau
@@ -1136,6 +1138,17 @@ end
 
     return if process_temp_scene_change
 
+    # Etappe 20e (XP 302): Der Laden ist modal wie das Menü - Spiel und
+    # Interpreter stehen, bis das Fenster schließt (Esc geht erst zurück zu den
+    # Waren, dann aus dem Laden). Vor der Esc-Menüprüfung, damit Esc den Laden
+    # schließt statt das Menü zu öffnen.
+    if defined?(Shop) && Shop.active?
+      Rune::Simulation.paused = true
+      Shop.close if UI.shop(Shop)
+      Rune::Simulation.paused = false
+      return
+    end
+
     # Menü (Esc): friert Spiellogik, Interpreter und Events ein.
     # Z5: Während einer offenen Eingabe (Text/Wahl/Zahl) gehört Esc der
     # Eingabe, nicht dem Menü (XP öffnet kein Scene_Menu über einer
@@ -1558,6 +1571,8 @@ end
                  transparent: (defined?(MessageWindow) ? MessageWindow.transparent? : false))
     end
     UI.nummer_eingabe(@interpreter.num_input) if @interpreter.busy_number?
+    # Etappe 20e: Laden-Fenster zeichnen (Eingaben macht update).
+    UI.shop(Shop, input: false) if defined?(Shop) && Shop.active?
     Battle.draw if defined?(Battle) && (Battle.active? || @interpreter.busy_battle?)
     UI.text(16, 54, "> #{@prompt}  (E)") if @prompt && !@interpreter.running?
     draw_hover_label if zeige

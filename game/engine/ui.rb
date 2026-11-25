@@ -294,6 +294,73 @@ module UI
   end
 
   # Kopfzeile mit Position, FPS und Kamera-Zustand (zum Einmessen der Welt).
+  # Etappe 20e (XP 302, Scene_Shop): Laden-Fenster. Zwei Reiter (Kaufen =
+  # Warenliste des Befehls, Verkaufen = Inventar), Cursor, Preis-/Mengenspalte,
+  # Gold-Zeile und die letzte Rückmeldung. Die Tasten werden hier auf die
+  # Methoden von Shop abgebildet; input: false zeichnet nur (Aufruf aus draw).
+  # Rückgabe true = Fenster soll schließen.
+  def self.shop(shop, input: true)
+    x = 40
+    y = 110
+    w = 640
+    h = 430
+    window(x, y, w, h, 'Laden')
+
+    # Reiter: Kaufen / Verkaufen (links/rechts wechselt, wie in XP das
+    # Befehlsfenster).
+    Shop::MODI.each_with_index do |modus, i|
+      aktiv = shop.modus == modus
+      bx = x + 16 + i * 116
+      panel(bx, y + 30, 108, 26, aktiv ? ACCENT : PANEL, aktiv ? 0.25 : 0.6)
+      text(bx + 14, y + 35, modus == :kaufen ? 'Kaufen' : 'Verkaufen',
+           aktiv ? ACCENT : TEXT, 15)
+    end
+    text(x + w - 150, y + 35, "Gold: #{Party.gold}", TEXT, 15)
+
+    liste = shop.liste
+    if liste.empty?
+      text(x + 20, y + 76, shop.modus == :kaufen ? 'Keine Ware im Angebot.' : 'Nichts zu verkaufen.',
+           TEXT_DIM, 15)
+    else
+      # Elf Zeilen passen ins Fenster; der Cursor scrollt seitenweise mit.
+      seite = (shop.sel / 11) * 11
+      liste[seite, 11].to_a.each_with_index do |ware, i|
+        zeile_y = y + 72 + i * 28
+        if seite + i == shop.sel
+          panel(x + 12, zeile_y - 4, w - 24, 26, ACCENT, 0.18)
+          text(x + 22, zeile_y, '▶', ACCENT, 14)
+        end
+        farbe = seite + i == shop.sel ? ACCENT : TEXT
+        name = ware[:name].to_s
+        text(x + 44, zeile_y, name, farbe, 16)
+        if shop.modus == :kaufen
+          text(x + w - 160, zeile_y, "#{ware[:preis]} G", TEXT_DIM, 15)
+        else
+          text(x + w - 220, zeile_y, "x#{ware[:anzahl]}", TEXT_DIM, 15)
+          text(x + w - 160, zeile_y, "#{ware[:preis]} G", TEXT_DIM, 15)
+        end
+      end
+    end
+
+    text(x + 20, y + h - 52, shop.meldung.to_s, TEXT_DIM, 13)
+    text(x + 20, y + h - 32,
+         '↑↓ Ware   ←→ Reiter   E = kaufen/verkaufen   Esc = zurück', TEXT_DIM, 12)
+
+    return false unless input
+    if Rune::Input.pressed?(:up)
+      shop.hoch
+    elsif Rune::Input.pressed?(:down)
+      shop.runter
+    elsif Rune::Input.pressed?(:left) || Rune::Input.pressed?(:right)
+      shop.wechsle_modus!
+    elsif Rune::Input.pressed?(:e) || Rune::Input.pressed?(:enter) || Rune::Input.pressed?(:space)
+      shop.bestaetigen
+    elsif Rune::Input.pressed?(:escape)
+      return shop.zurueck
+    end
+    false
+  end
+
   def self.hud(x = 16, y = 12)
     px, py, pz = Rune::Player.position
     line = format('x %.1f  y %.1f  z %.1f   %.0f FPS   %s',

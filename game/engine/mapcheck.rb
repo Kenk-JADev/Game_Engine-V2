@@ -77,7 +77,7 @@ module MapCheck
     save_access menu_access encounter_access
     timer
     actor_hp actor_sp actor_exp actor_level
-    party_member
+    party_member shop
   ].freeze
 
   TRIGGER   = %w[action touch auto parallel].freeze
@@ -1158,6 +1158,41 @@ module MapCheck
         end
         if typ == 'actor_level' && c['amount'].is_a?(Numeric) && c['amount'].to_i.abs > 99
           melde(WARNUNG, w, "'amount' übersteigt den Stufenbereich")
+        end
+      when 'shop'
+        # Etappe 20e (XP 302): Warenliste. Jede Ware ist ein Objekt
+        # {"item": "<id>", "price": <zahl>}; `price` fehlt = Datenbankpreis.
+        waren = c['goods']
+        if !waren.is_a?(Array) || waren.empty?
+          melde(FEHLER, w, "'goods' fehlt oder ist leer")
+        else
+          bekannt = (Database.database['items'] || []).filter_map do |h|
+            h.is_a?(Hash) ? [h['id'].to_s, (h['name'] || h['id']).to_s] : nil
+          end
+          waren.each_with_index do |ware, wi|
+            ort = "#{w} Ware ##{wi + 1}"
+            if !ware.is_a?(Hash)
+              melde(FEHLER, ort, 'Ware ist kein Objekt')
+              next
+            end
+            id = ware['item'].to_s.strip
+            if id.empty?
+              melde(FEHLER, ort, "'item' fehlt oder ist leer")
+            else
+              treffer = bekannt.find { |iid, name| id.casecmp?(iid) || id.casecmp?(name) }
+              melde(WARNUNG, ort, "Item '#{id}' nicht in database.json") if treffer.nil?
+            end
+            next unless ware.key?('price')
+            preis = ware['price']
+            if !zahl?(preis)
+              melde(FEHLER, ort, "'price' ist keine Zahl")
+            elsif preis.negative?
+              melde(FEHLER, ort, "'price' darf nicht negativ sein")
+            end
+          end
+          ids = waren.filter_map { |ware| ware.is_a?(Hash) ? ware['item'].to_s.strip.downcase : nil }
+          doppelt = ids.tally.select { |_, n| n > 1 }.keys
+          melde(WARNUNG, w, "Ware doppelt im Angebot: #{doppelt.join(', ')}") unless doppelt.empty?
         end
       when 'party_member'
         # Etappe 20d: Mitglied aufnehmen/entfernen (XP 129). `name` ist der

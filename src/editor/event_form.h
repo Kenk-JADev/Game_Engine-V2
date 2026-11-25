@@ -45,7 +45,7 @@ enum EvType {
     ET_IF_GOLD, ET_IF_ITEM, ET_IF_SCRIPT, ET_IF_ACTOR, ET_IF_BUTTON,
     ET_SAVE_ACCESS, ET_MENU_ACCESS, ET_ENCOUNTER_ACCESS,
     ET_TIMER, ET_ACTOR_HP, ET_ACTOR_SP, ET_ACTOR_EXP, ET_ACTOR_LEVEL,
-    ET_PARTY_MEMBER, ET_COUNT
+    ET_PARTY_MEMBER, ET_SHOP, ET_COUNT
 };
 inline constexpr const char* const EV_TYPES[ET_COUNT] = {
     "text", "choices", "log", "wait", "switch", "toggle_switch", "variable",
@@ -56,7 +56,7 @@ inline constexpr const char* const EV_TYPES[ET_COUNT] = {
     "button_input", "text_options", "common_event",
     "if_gold", "if_item", "if_script", "if_actor", "if_button",
     "save_access", "menu_access", "encounter_access", "timer",
-    "actor_hp", "actor_sp", "actor_exp", "actor_level", "party_member"
+    "actor_hp", "actor_sp", "actor_exp", "actor_level", "party_member", "shop"
 };
 inline constexpr const char* const EVENT_TRIGGERS[] = {"action", "touch", "auto", "parallel"};
 inline constexpr const char* const EVENT_OPS[] = {"==", "!=", "<", "<=", ">", ">="};
@@ -97,7 +97,7 @@ inline bool event_command_uses_field(int type, size_t field) {
             type == ET_BATTLE || type == ET_TEXT_OPTIONS;
         case 3: return type == ET_TELEPORT || type == ET_MOVE_ROUTE;
         case 4: return type == ET_TEXT || type == ET_LOG || type == ET_CHOICES || type == ET_MOVE_ROUTE ||
-            type == ET_VARIABLE ||
+            type == ET_SHOP || type == ET_VARIABLE ||
             type == ET_BUTTON_INPUT || type == ET_IF_SCRIPT;
         default: return false;
     }
@@ -183,6 +183,39 @@ inline std::string event_list_view(const JsonValue* value) {
     for (size_t i = 0; i < value->arr.size(); ++i) {
         if (i) text += "\r\n";
         text += value->arr[i].str;
+    }
+    return text;
+}
+
+// Etappe 20e: Warenliste des Shops (XP 302) als Zeilen "item" bzw.
+// "item:preis". Zusatzfelder je Ware (z. B. ein späterer Bestand) sind im
+// Mehrzeiler nicht darstellbar und werden als solche gemeldet.
+inline bool event_goods_representable(const JsonValue* value) {
+    if (!value || value->is_null()) return true;
+    if (!value->is_arr()) return false;
+    for (const JsonValue& ware : value->arr) {
+        if (!ware.is_obj()) return false;
+        const JsonValue* id = ware.find("item");
+        if (!id || !id->is_str() || id->str.empty() || !editor_single_line(id->str)) return false;
+        for (const auto& kv : ware.obj) {
+            if (kv.first == "item") continue;
+            if (kv.first == "price" && kv.second.is_num()) continue;
+            return false;
+        }
+    }
+    return true;
+}
+
+inline std::string event_goods_view(const JsonValue* value) {
+    if (!value || value->is_null()) return {};
+    if (!event_goods_representable(value)) return "[nicht darstellbare Warenliste]";
+    std::string text;
+    for (size_t i = 0; i < value->arr.size(); ++i) {
+        if (i) text += "\r\n";
+        const JsonValue& ware = value->arr[i];
+        text += ware.find("item")->str;
+        const JsonValue* preis = ware.find("price");
+        if (preis) { text += ":"; text += event_number_view(preis, "0"); }
     }
     return text;
 }
@@ -651,6 +684,9 @@ inline EventCommandForm event_command_form_read(const JsonValue& c) {
             f.name = text("letter"); f.flag = flag("value", 1); break;
         case ET_FADE: f.name = text("direction", "aus"); f.val1 = num("seconds", "0.5"); break;
         case ET_PARTY_MEMBER: f.name = text("name"); f.val1 = text("mode", "add"); break;
+        case ET_SHOP:
+            f.text = event_unique(c, "goods") ? event_goods_view(c.find("goods")) : "[mehrfach vorhanden]";
+            break;
         case ET_MOVE_ROUTE:
             f.name = text("target"); f.text = lines("steps"); f.val1 = num("speed");
             f.val2 = c.find("wait") ? (flag("wait", 1) == 0 ? "1" : flag("wait", 1) == 1 ? "0" : "[ungültig/mehrfach]") : "";
@@ -758,6 +794,7 @@ inline std::vector<const char*> event_command_keys(int type) {
         case ET_IF_SELF_SWITCH: return {"letter", "value", "then", "else"};
         case ET_FADE: return {"direction", "seconds"};
         case ET_PARTY_MEMBER: return {"name", "mode"};
+        case ET_SHOP: return {"goods"};
         case ET_MOVE_ROUTE: return {"target", "steps", "speed", "wait", "code", "repeat"};
         case ET_INPUT_NUMBER: return {"name", "digits", "initial", "cancel"};
         case ET_BATTLE: return {"name", "can_escape", "can_lose"};
@@ -1078,6 +1115,52 @@ inline EventEdit event_command_prepare(const JsonValue* existing, const EventCom
                 else ok = text("direction", "cmd_name", before.name, direction, false, false, true);
             }
             if (ok) ok = v1("seconds", false, "0.5", false, true, 0, unlimited);
+            break;
+        }
+        case ET_SHOP: {
+            // Etappe 20e (XP 302): eine Ware pro Zeile, "item" oder
+            // "item:preis". Ohne Preis gilt der Datenbankpreis (Schlüssel weg).
+            if (!fresh && before.text == after.text) break;
+            if (!unique("goods", "cmd_text")) break;
+            if (!event_multiline(after.text)) {
+                ok = fail("cmd_text", "Die Warenliste enthält ungültige Steuerzeichen oder ungültiges UTF-8.");
+                break;
+            }
+            JsonValue goods = JsonValue::make_arr();
+            for (const std::string& line : placement_lines(after.text)) {
+                if (line.empty()) continue;
+                if (!editor_single_line(line)) {
+                    ok = fail("cmd_text", "Jede Zeile muss einzeiliger Text ohne Steuerzeichen sein.");
+                    break;
+                }
+                const size_t doppelpunkt = line.find_last_of(':');
+                std::string id = doppelpunkt == std::string::npos ? line : line.substr(0, doppelpunkt);
+                std::string preis = doppelpunkt == std::string::npos ? std::string() : line.substr(doppelpunkt + 1);
+                id = database_trim(id);
+                preis = database_trim(preis);
+                if (id.empty()) {
+                    ok = fail("cmd_text", "Bitte je Zeile eine Item-ID (oder Item-ID:Preis) eingeben.");
+                    break;
+                }
+                JsonValue ware = JsonValue::make_obj();
+                ware.set("item", JsonValue::make_str(id));
+                if (!preis.empty()) {
+                    JsonValue zahl;
+                    if (!event_number_parse(preis, true, false, zahl) || zahl.number() < 0) {
+                        ok = fail("cmd_text", "Der Preis muss eine Ganzzahl >= 0 sein.");
+                        break;
+                    }
+                    ware.set("price", std::move(zahl));
+                }
+                goods.arr.push_back(std::move(ware));
+            }
+            if (!ok) break;
+            if (goods.arr.empty()) {
+                ok = fail("cmd_text", "Bitte mindestens eine Ware eingeben.");
+                break;
+            }
+            if (!event_goods_representable(r.value.find("goods"))) r.replaces_invalid = true;
+            r.value.set("goods", std::move(goods));
             break;
         }
         case ET_PARTY_MEMBER: {

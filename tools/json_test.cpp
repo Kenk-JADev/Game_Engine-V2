@@ -1596,7 +1596,8 @@ void event_form_tests(const std::string& wurzel) {
         R"({"cmd":"actor_sp","amount":10})",
         R"({"cmd":"actor_exp","target":"arik","amount":50})",
         R"({"cmd":"actor_level","amount":1})",
-        R"({"cmd":"party_member","name":"arik","mode":"add"})"
+        R"({"cmd":"party_member","name":"arik","mode":"add"})",
+        R"({"cmd":"shop","goods":[{"item":"heiltrank","price":20},{"item":"apfel"}]})"
     };
     check("Beispiel für jeden Befehlstyp vorhanden", samples.size() == ET_COUNT);
     for (size_t i = 0; i < samples.size(); ++i) {
@@ -1631,6 +1632,7 @@ void event_form_tests(const std::string& wurzel) {
             case ET_IF_SCRIPT: changed.text = "false"; break;
             case ET_IF_GOLD: case ET_IF_ITEM: changed.val1 = "7"; break;
             case ET_TIMER: changed.val1 = "30"; break;
+            case ET_SHOP: changed.text = "apfel:5"; break;
             default: changed.name = "neuer_name"; break;
         }
         const EventEdit patched = event_command_prepare(&c, f, changed);
@@ -3062,6 +3064,46 @@ int main(int argc, char** argv) {
                   zurueck.find("terrain")->find("heights") != nullptr);
             check("Roundtrip ist idempotent", json_write(zurueck) == out);
         }
+    }
+
+    std::printf("== Event-Befehl: Laden (20e, XP 302) ==\n");
+    {
+        using namespace rune::editor;
+        JsonValue laden = json_parse(R"({"cmd":"shop","goods":[{"item":"heiltrank","price":20},{"item":"apfel"}]})");
+        const EventCommandForm lf = event_command_form_read(laden);
+        check("shop zeigt die Warenliste als Zeilen",
+              lf.type == ET_SHOP && lf.text == "heiltrank:20\r\napfel");
+        const EventEdit unveraendert = event_command_prepare(&laden, lf, lf);
+        check("shop ohne Änderung bleibt unverändert",
+              unveraendert.ok && !unveraendert.changed &&
+              json_write(unveraendert.value) == json_write(laden));
+        EventCommandForm mit_preis = lf; mit_preis.text = "heiltrank:20\r\napfel:7";
+        const EventEdit e1 = event_command_prepare(&laden, lf, mit_preis);
+        const JsonValue* waren_nach = e1.value.find("goods");
+        check("shop schreibt den Preis in die Ware",
+              e1.ok && waren_nach && waren_nach->arr.size() == 2 &&
+              waren_nach->arr[1].find("item") && waren_nach->arr[1].find("item")->str == "apfel" &&
+              waren_nach->arr[1].find("price") && waren_nach->arr[1].find("price")->number() == 7);
+        EventCommandForm ohne_preis = lf; ohne_preis.text = "apfel";
+        const EventEdit e2 = event_command_prepare(&laden, lf, ohne_preis);
+        check("shop ohne Preis lässt den Schlüssel weg",
+              e2.ok && e2.value.find("goods")->arr.size() == 1 &&
+              e2.value.find("goods")->arr[0].find("price") == nullptr);
+        EventCommandForm falsch = lf; falsch.text = "apfel:teuer";
+        const EventEdit e3 = event_command_prepare(&laden, lf, falsch);
+        check("shop mit ungültigem Preis wird abgelehnt", !e3.ok && e3.field == "cmd_text");
+        EventCommandForm leer = lf; leer.text = "";
+        const EventEdit e4 = event_command_prepare(&laden, lf, leer);
+        check("shop ohne Ware wird abgelehnt", !e4.ok && e4.field == "cmd_text");
+        EventCommandForm leerzeile = lf; leerzeile.text = "apfel\r\n\r\n";
+        const EventEdit e5 = event_command_prepare(&laden, lf, leerzeile);
+        check("shop überliest leere Zeilen", e5.ok && e5.value.find("goods")->arr.size() == 1);
+        JsonValue extra = json_parse(R"({"cmd":"shop","goods":[{"item":"apfel","stock":5}]})");
+        const EventCommandForm ef = event_command_form_read(extra);
+        EventCommandForm geaendert = ef; geaendert.text = "apfel";
+        check("shop markiert nicht darstellbare Warenfelder",
+              ef.text == "[nicht darstellbare Warenliste]" &&
+              event_command_prepare(&extra, ef, geaendert).replaces_invalid);
     }
 
     std::printf("== Event-Befehl: Mitglieder ändern (20d, XP 129) ==\n");

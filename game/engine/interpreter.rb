@@ -57,6 +57,7 @@
 #    {"cmd":"save_access","allowed":false} / menu_access / encounter_access
 #                                                       (20d; XP 134/135/136)
 #    {"cmd":"timer","mode":"start","seconds":120}       (Timer, 20d; XP 124)
+#    {"cmd":"shop","goods":[{"item":"heiltrank","price":20}]}   (Laden, 20e; XP 302)
 #    {"cmd":"if_actor","name":"arik","then":[],"else":[]}   (Wenn Actor, 20d)
 #    {"cmd":"if_button","name":"e","then":[],"else":[]}     (Wenn Taste, 20d)
 #    {"cmd":"actor_hp","target":"alle","amount":-20}    (Werte ändern, 20d)
@@ -82,11 +83,13 @@ class Interpreter
     @num_input = nil   # Etappe 19i: Zahleneingabe blockiert hier
     @battle_wait = false   # Etappe 19i: battle blockiert bis Kampfende
     @button_input = nil    # Etappe 20c: Tasteneingabe blockiert hier
+    @shop_wait = false     # Etappe 20e: Laden blockiert bis Shop.close
   end
 
   def running?
     !@stack.empty? || !@message.nil? || !@choices.nil? || @wait_left > 0.0 ||
-      !@route_wait.nil? || !@num_input.nil? || @battle_wait || !@button_input.nil?
+      !@route_wait.nil? || !@num_input.nil? || @battle_wait || !@button_input.nil? ||
+      @shop_wait
   end
 
   # Zahleneingabe (19i): UI-Status für Game.draw / UI.nummer_eingabe.
@@ -180,6 +183,12 @@ class Interpreter
     if @battle_wait
       return if defined?(Battle) && Battle.active?
       @battle_wait = false
+    end
+
+    # Etappe 20e: der Laden blockiert, bis das Fenster schließt (XP 302).
+    if @shop_wait
+      return if defined?(Shop) && Shop.active?
+      @shop_wait = false
     end
 
     # Kommandos abarbeiten, bis eines blockiert oder die Liste leer ist.
@@ -327,6 +336,9 @@ class Interpreter
         Party.change_level(cmd['target'], cmd['amount'])
       when 'party_member'   # Etappe 20d (XP 129): {"cmd":"party_member","name":"arik","mode":"add"}
         mitglied(cmd)
+      when 'shop'   # Etappe 20e (XP 302): Laden öffnen, blockiert bis Shop.close
+        @shop_wait = Shop.start(cmd['goods'])
+        return if @shop_wait
       when 'heal'   # {"cmd":"heal"} = voll, {"cmd":"heal","amount":30}
         Party.heal_all(cmd.key?('amount') ? cmd['amount'].to_i : 0)
       when 'weather'   # {"cmd":"weather","name":"schnee","intensity":1.5} (Etappe 17h)
