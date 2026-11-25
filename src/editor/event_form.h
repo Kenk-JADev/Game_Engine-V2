@@ -45,7 +45,7 @@ enum EvType {
     ET_IF_GOLD, ET_IF_ITEM, ET_IF_SCRIPT, ET_IF_ACTOR, ET_IF_BUTTON,
     ET_SAVE_ACCESS, ET_MENU_ACCESS, ET_ENCOUNTER_ACCESS,
     ET_TIMER, ET_ACTOR_HP, ET_ACTOR_SP, ET_ACTOR_EXP, ET_ACTOR_LEVEL,
-    ET_PARTY_MEMBER, ET_SHOP, ET_COUNT
+    ET_PARTY_MEMBER, ET_SHOP, ET_NAME_INPUT, ET_COUNT
 };
 inline constexpr const char* const EV_TYPES[ET_COUNT] = {
     "text", "choices", "log", "wait", "switch", "toggle_switch", "variable",
@@ -56,7 +56,7 @@ inline constexpr const char* const EV_TYPES[ET_COUNT] = {
     "button_input", "text_options", "common_event",
     "if_gold", "if_item", "if_script", "if_actor", "if_button",
     "save_access", "menu_access", "encounter_access", "timer",
-    "actor_hp", "actor_sp", "actor_exp", "actor_level", "party_member", "shop"
+    "actor_hp", "actor_sp", "actor_exp", "actor_level", "party_member", "shop", "name_input"
 };
 inline constexpr const char* const EVENT_TRIGGERS[] = {"action", "touch", "auto", "parallel"};
 inline constexpr const char* const EVENT_OPS[] = {"==", "!=", "<", "<=", ">", ">="};
@@ -84,14 +84,15 @@ inline bool event_command_uses_field(int type, size_t field) {
             type == ET_COMMON_EVENT || type == ET_IF_ITEM ||
             type == ET_IF_ACTOR || type == ET_IF_BUTTON ||
             type == ET_ACTOR_HP || type == ET_ACTOR_SP || type == ET_ACTOR_EXP || type == ET_ACTOR_LEVEL ||
-            type == ET_PARTY_MEMBER;
+            type == ET_PARTY_MEMBER || type == ET_NAME_INPUT;
         case 1: return type == ET_WAIT || type == ET_VARIABLE || type == ET_IF_VARIABLE ||
             type == ET_TELEPORT || type == ET_MOVE_PLAYER || type == ET_SOUND || type == ET_EFFECT ||
             type == ET_GOLD || type == ET_HEAL || type == ET_WEATHER || type == ET_SAVE_GAME ||
             type == ET_LOAD_GAME || type == ET_FADE || type == ET_MOVE_ROUTE || type == ET_INPUT_NUMBER ||
             type == ET_CHOICES || type == ET_IF_GOLD || type == ET_IF_ITEM ||
             type == ET_TIMER || type == ET_ACTOR_HP || type == ET_ACTOR_SP ||
-            type == ET_ACTOR_EXP || type == ET_ACTOR_LEVEL || type == ET_PARTY_MEMBER;
+            type == ET_ACTOR_EXP || type == ET_ACTOR_LEVEL || type == ET_PARTY_MEMBER ||
+            type == ET_NAME_INPUT;
         case 2: return type == ET_TELEPORT || type == ET_MOVE_PLAYER ||
             type == ET_EFFECT || type == ET_ITEM || type == ET_MOVE_ROUTE || type == ET_INPUT_NUMBER ||
             type == ET_BATTLE || type == ET_TEXT_OPTIONS;
@@ -687,6 +688,12 @@ inline EventCommandForm event_command_form_read(const JsonValue& c) {
         case ET_SHOP:
             f.text = event_unique(c, "goods") ? event_goods_view(c.find("goods")) : "[mehrfach vorhanden]";
             break;
+        case ET_NAME_INPUT:
+            // Etappe 20e (XP 303): Held, maximale Laenge, Esc erlaubt.
+            f.name = text("actor");
+            f.val1 = num("max", "8");
+            f.flag = flag("cancel", 0);
+            break;
         case ET_MOVE_ROUTE:
             f.name = text("target"); f.text = lines("steps"); f.val1 = num("speed");
             f.val2 = c.find("wait") ? (flag("wait", 1) == 0 ? "1" : flag("wait", 1) == 1 ? "0" : "[ungültig/mehrfach]") : "";
@@ -795,6 +802,7 @@ inline std::vector<const char*> event_command_keys(int type) {
         case ET_FADE: return {"direction", "seconds"};
         case ET_PARTY_MEMBER: return {"name", "mode"};
         case ET_SHOP: return {"goods"};
+        case ET_NAME_INPUT: return {"actor", "max", "cancel"};
         case ET_MOVE_ROUTE: return {"target", "steps", "speed", "wait", "code", "repeat"};
         case ET_INPUT_NUMBER: return {"name", "digits", "initial", "cancel"};
         case ET_BATTLE: return {"name", "can_escape", "can_lose"};
@@ -1115,6 +1123,13 @@ inline EventEdit event_command_prepare(const JsonValue* existing, const EventCom
                 else ok = text("direction", "cmd_name", before.name, direction, false, false, true);
             }
             if (ok) ok = v1("seconds", false, "0.5", false, true, 0, unlimited);
+            break;
+        }
+        case ET_NAME_INPUT: {
+            // Etappe 20e (XP 303): 1..16 Zeichen (XP-Default 8), Esc erlaubt.
+            ok = text("actor", "cmd_name", before.name, after.name, false, false, true);
+            if (ok) ok = v1("max", true, "8", true, true, 1, 16);
+            if (ok) ok = boolean("cancel", "cmd_flag", before.flag, after.flag);
             break;
         }
         case ET_SHOP: {

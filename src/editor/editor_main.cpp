@@ -1216,7 +1216,7 @@ const char* const ISSUE_CMD_TYPES[] = {
     "button_input", "text_options", "common_event",
     "if_gold", "if_item", "if_script", "if_actor", "if_button",
     "save_access", "menu_access", "encounter_access", "timer",
-    "actor_hp", "actor_sp", "actor_exp", "actor_level", "party_member", "shop"
+    "actor_hp", "actor_sp", "actor_exp", "actor_level", "party_member", "shop", "name_input"
 };
 const int ISSUE_CMD_TYPE_COUNT =
     static_cast<int>(sizeof(ISSUE_CMD_TYPES) / sizeof(ISSUE_CMD_TYPES[0]));
@@ -7205,7 +7205,9 @@ const wchar_t* const EV_TYPE_LABELS[ET_COUNT] = {
     // Etappe 20d: Mitgliederliste ändern (XP 129).
     L"[Party] Mitglieder ändern",
     // Etappe 20e: Laden (XP 302).
-    L"[Party] Laden"
+    L"[Party] Laden",
+    // Etappe 20e: Namenseingabe (XP 303).
+    L"[Party] Name eingeben"
 };
 const wchar_t* const EV_TRIGGERS[4] = { L"action", L"touch", L"auto", L"parallel" };
 const wchar_t* const EV_OPS[6] = { L"==", L"!=", L"<", L"<=", L">", L">=" };
@@ -7438,6 +7440,10 @@ std::string ev_cmd_label(const JsonValue& c) {
                                                     : "Stufe";
         return was + " " + (ziel.empty() ? std::string("alle") : ziel) + " " +
                ev_num_str(ev_num_of(c, "amount"), 0);
+    }
+    if (type == "name_input") {
+        const std::string held = ev_str_of(c, "actor");
+        return "Name eingeben: " + (held.empty() ? std::string("(kein Held)") : held);
     }
     if (type == "shop") {
         const JsonValue* waren = c.find("goods");
@@ -7758,6 +7764,7 @@ void ev_cmd_visibility() {
                           t == ET_VARIABLE ||
                           t == ET_ACTOR_HP || t == ET_ACTOR_SP || t == ET_ACTOR_EXP ||
                           t == ET_ACTOR_LEVEL || t == ET_PARTY_MEMBER || t == ET_SHOP ||
+                          t == ET_NAME_INPUT ||
                           t == ET_SAVE_ACCESS || t == ET_MENU_ACCESS ||
                           t == ET_ENCOUNTER_ACCESS;
     show(g_ev.lbl_text, is_text || has_hint);
@@ -7879,6 +7886,13 @@ void ev_cmd_visibility() {
         SetWindowTextW(g_ev.lbl_name, L"Taste (z. B. e, space, f1)");
         SetWindowTextW(g_ev.lbl_text,
                        L"Zweigt im Frame des Tastendrucks; Name wie bei der Tasteneingabe (XP 111).");
+    }
+    if (t == ET_NAME_INPUT) {
+        SetWindowTextW(g_ev.lbl_name, L"Actor (ID oder Name)");
+        SetWindowTextW(g_ev.lbl_val1, L"Max. Zeichen (1-16)");
+        SetWindowTextW(g_ev.lbl_text,
+                       L"Der Spieler tippt den Namen; E übernimmt, Esc bricht ab "
+                       L"(an/aus = Abbruch erlaubt). XP 303.");
     }
     if (t == ET_SHOP) {
         SetWindowTextW(g_ev.lbl_text, L"Waren: eine pro Zeile als item oder item:preis "

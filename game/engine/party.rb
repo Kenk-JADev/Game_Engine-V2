@@ -188,6 +188,30 @@ class Party
     :ok
   end
 
+  # Etappe 20e (XP 303): Zugriff auf ALLE Datenbank-Helden, auch wenn sie
+  # nicht im Team sind - die Namenseingabe darf jeden umbenennen
+  # ($game_actors[id] in XP).
+  def self.held(id)
+    key = id.to_s.strip
+    return nil if key.empty?
+
+    (@katalog || []).find { |a| a.id == key }
+  end
+
+  # Umbenennen (Etappe 20e): gilt fuer Mitglied und Katalog gleichzeitig, weil
+  # @actors dieselben Actor-Objekte haelt.
+  def self.rename(id, name)
+    held = held(id)
+    return nil if held.nil?
+
+    neuer = name.to_s.strip
+    return nil if neuer.empty?
+
+    held.name = neuer
+    Rune::Log.info("Party: Held #{held.id} heisst jetzt #{neuer}")
+    held
+  end
+
   def self.member?(id)
     (@actors || []).any? { |a| a.id == id.to_s }
   end
@@ -451,7 +475,8 @@ class Party
       # Angriffswerte - sie gehören damit in den Spielstand, sonst steht ein
       # geladener Held wieder auf den Datenbank-Startwerten.
       'actors' => @actors.map do |a|
-        { 'id' => a.id, 'level' => a.level, 'hp' => a.hp, 'mp' => a.mp, 'exp' => a.exp,
+        { 'id' => a.id, 'name' => a.name,
+          'level' => a.level, 'hp' => a.hp, 'mp' => a.mp, 'exp' => a.exp,
           'max_hp' => a.max_hp, 'max_mp' => a.max_mp,
           'atk' => a.atk, 'def' => a.def, 'spi' => a.spi, 'agi' => a.agi }
       end
@@ -481,6 +506,8 @@ class Party
     (snap['actors'] || []).each do |h|
       a = find(h['id'])
       next unless a
+      # Etappe 20e: umbenannte Helden (XP 303) behalten ihren Namen.
+      a.name = h['name'].to_s.strip unless h['name'].to_s.strip.empty?
       a.level = (h['level'] || a.level).to_i
       # Bewusst am Setter vorbei: ein alter Spielstand darf beim Laden keine
       # Stufen aufholen (die Werte sind dort schon eingerechnet).

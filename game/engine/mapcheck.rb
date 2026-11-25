@@ -77,7 +77,7 @@ module MapCheck
     save_access menu_access encounter_access
     timer
     actor_hp actor_sp actor_exp actor_level
-    party_member shop
+    party_member shop name_input
   ].freeze
 
   TRIGGER   = %w[action touch auto parallel].freeze
@@ -1158,6 +1158,25 @@ module MapCheck
         end
         if typ == 'actor_level' && c['amount'].is_a?(Numeric) && c['amount'].to_i.abs > 99
           melde(WARNUNG, w, "'amount' übersteigt den Stufenbereich")
+        end
+      when 'name_input'
+        # Etappe 20e (XP 303): Held umbenennen. `actor` ist Pflicht,
+        # `max` 1..16 (XP-Default 8), `cancel` = Esc erlaubt (Default an).
+        ziel = c['actor'].to_s.strip
+        if ziel.empty?
+          melde(FEHLER, w, "'actor' fehlt oder ist leer")
+        else
+          namen = (Database.database['actors'] || []).filter_map do |h|
+            h.is_a?(Hash) ? [h['id'].to_s, (h['name'] || h['id']).to_s] : nil
+          end
+          bekannt = namen.any? { |id, name| ziel.casecmp?(id) || ziel.casecmp?(name) }
+          melde(WARNUNG, w, "Actor '#{ziel}' nicht in database.json") unless bekannt
+        end
+        unless !c.key?('max') || (zahl?(c['max']) && c['max'].to_i.between?(1, 16))
+          melde(FEHLER, w, "'max' muss eine Zahl von 1 bis 16 sein")
+        end
+        if c.key?('cancel') && ![true, false].include?(c['cancel'])
+          melde(WARNUNG, w, "'cancel' sollte true oder false sein")
         end
       when 'shop'
         # Etappe 20e (XP 302): Warenliste. Jede Ware ist ein Objekt

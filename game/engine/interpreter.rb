@@ -58,6 +58,7 @@
 #                                                       (20d; XP 134/135/136)
 #    {"cmd":"timer","mode":"start","seconds":120}       (Timer, 20d; XP 124)
 #    {"cmd":"shop","goods":[{"item":"heiltrank","price":20}]}   (Laden, 20e; XP 302)
+#    {"cmd":"name_input","actor":"arik","max":8,"cancel":true}  (Name, 20e; XP 303)
 #    {"cmd":"if_actor","name":"arik","then":[],"else":[]}   (Wenn Actor, 20d)
 #    {"cmd":"if_button","name":"e","then":[],"else":[]}     (Wenn Taste, 20d)
 #    {"cmd":"actor_hp","target":"alle","amount":-20}    (Werte ändern, 20d)
@@ -84,12 +85,13 @@ class Interpreter
     @battle_wait = false   # Etappe 19i: battle blockiert bis Kampfende
     @button_input = nil    # Etappe 20c: Tasteneingabe blockiert hier
     @shop_wait = false     # Etappe 20e: Laden blockiert bis Shop.close
+    @name_wait = false     # Etappe 20e: Namenseingabe blockiert bis NameInput.close
   end
 
   def running?
     !@stack.empty? || !@message.nil? || !@choices.nil? || @wait_left > 0.0 ||
       !@route_wait.nil? || !@num_input.nil? || @battle_wait || !@button_input.nil? ||
-      @shop_wait
+      @shop_wait || @name_wait
   end
 
   # Zahleneingabe (19i): UI-Status für Game.draw / UI.nummer_eingabe.
@@ -189,6 +191,12 @@ class Interpreter
     if @shop_wait
       return if defined?(Shop) && Shop.active?
       @shop_wait = false
+    end
+
+    # Etappe 20e: Namenseingabe blockiert wie der Laden (XP 303).
+    if @name_wait
+      return if defined?(NameInput) && NameInput.active?
+      @name_wait = false
     end
 
     # Kommandos abarbeiten, bis eines blockiert oder die Liste leer ist.
@@ -336,6 +344,11 @@ class Interpreter
         Party.change_level(cmd['target'], cmd['amount'])
       when 'party_member'   # Etappe 20d (XP 129): {"cmd":"party_member","name":"arik","mode":"add"}
         mitglied(cmd)
+      when 'name_input'   # Etappe 20e (XP 303): Held umbenennen
+        @name_wait = NameInput.start(cmd['actor'] || cmd['name'],
+                                     max: cmd['max'] || NameInput::STANDARD_MAX,
+                                     cancel: cmd['cancel'] != false)
+        return if @name_wait
       when 'shop'   # Etappe 20e (XP 302): Laden öffnen, blockiert bis Shop.close
         @shop_wait = Shop.start(cmd['goods'])
         return if @shop_wait

@@ -547,6 +547,18 @@
       ],
       "optional": [],
       "beschreibung": "Oeffnet einen Laden mit dieser Warenliste (XP 302); price ist der Ladenpreis, ohne price gilt der Datenbankpreis, Verkauf bringt den halben Preis."
+    },
+    {
+      "typ": "name_input",
+      "bereich": "Party",
+      "pflicht": [
+        "actor"
+      ],
+      "optional": [
+        "max",
+        "cancel"
+      ],
+      "beschreibung": "Laesst den Spieler den Namen eines Helden eintippen (XP 303); max begrenzt die Laenge (1-16, Default 8), cancel erlaubt Esc."
     }
   ]
 }

@@ -1895,7 +1895,7 @@ im Frame des Tastendrucks (`Rune::Input.pressed?`, wie XP `Input.trigger?`;
 ohne Eingabeschicht — kopfloser Test — falsch). Beide haben `then`/`else`
 wie die übrigen Wenn-Befehle und werden im F6-Baum rekursiv geprüft; MapCheck
 prüft den Namen (Actor gegen `database.json`, Taste auf Existenz).
-Register: **50 Typen**. **Tests:** `tools/bedingungen_test.rb` (34 Checks).
+Register: **51 Typen**. **Tests:** `tools/bedingungen_test.rb` (34 Checks).
 
 ### Variable-Operationen (XP 122)
 
@@ -1943,6 +1943,27 @@ MapCheck prüft `amount` (Pflicht, ≠ 0), den Actor-Namen gegen
 `database.json` und den Stufenbereich. **Tests:** `tools/actor_wert_test.rb`
 (24 Checks), `json_test` 778 Checks.
 
+### Namenseingabe (XP 303)
+
+```json
+{"cmd":"name_input","actor":"arik","max":8,"cancel":true}
+```
+
+`NameInput` (`game/engine/name_input.rb`) hält Held, Text und Grenze: `max`
+wird auf 1–16 geklemmt (XP-Default 8), getippt werden A-Z, a-z, 0-9 und
+Leerzeichen, Backspace löscht, Enter übernimmt über `Party.rename` (schreibt
+in den Actor, also auch ins Menü und in den Spielstand), Esc bricht ab — nur
+wenn der Befehl `cancel` erlaubt. Ein leerer Name wird mit einer Meldung
+abgelehnt, ein unbekannter Held öffnet kein Fenster (Log + Issue-Backlog).
+
+`UI.name_input` zeichnet Eingabefeld, blinkenden Cursor und Zeichenzähler und
+bildet Tasten auf das Modul ab (`input: false` zeichnet nur). **Achtung:** Hier
+bestätigt nur `Enter` — „e" muss ein Buchstabe bleiben. Der Interpreter
+blockiert über `@name_wait` wie beim Laden. Der Name steht seit 20e im
+`party`-Snapshot (`actors[].name`), umbenannte Mitglieder überleben damit
+Speichern/Laden. **Tests:** `tools/name_input_test.rb` (28 Checks),
+`json_test` prüft Lesen, `max`-Grenze, Default und `cancel` (798 Checks).
+
 ### Laden (XP 302)
 
 ```json
@@ -1966,7 +1987,7 @@ Mehrzeiler als `item` bzw. `item:preis`; Waren mit Zusatzfeldern (z. B. später
 ein Bestand) zeigt das Formular als „nicht darstellbar" und verlangt eine
 bewusste Bestätigung. **Tests:** `tools/shop_test.rb` (38 Checks),
 `json_test` prüft Lesen, Preis-Schreiben, leere Zeilen und die Fehlerfälle
-(789 Checks).
+(798 Checks).
 
 ### Mitglieder ändern (XP 129)
 

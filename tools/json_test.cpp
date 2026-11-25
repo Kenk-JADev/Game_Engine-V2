@@ -1597,7 +1597,8 @@ void event_form_tests(const std::string& wurzel) {
         R"({"cmd":"actor_exp","target":"arik","amount":50})",
         R"({"cmd":"actor_level","amount":1})",
         R"({"cmd":"party_member","name":"arik","mode":"add"})",
-        R"({"cmd":"shop","goods":[{"item":"heiltrank","price":20},{"item":"apfel"}]})"
+        R"({"cmd":"shop","goods":[{"item":"heiltrank","price":20},{"item":"apfel"}]})",
+        R"({"cmd":"name_input","actor":"arik","max":6,"cancel":false})"
     };
     check("Beispiel für jeden Befehlstyp vorhanden", samples.size() == ET_COUNT);
     for (size_t i = 0; i < samples.size(); ++i) {
@@ -3064,6 +3065,33 @@ int main(int argc, char** argv) {
                   zurueck.find("terrain")->find("heights") != nullptr);
             check("Roundtrip ist idempotent", json_write(zurueck) == out);
         }
+    }
+
+    std::printf("== Event-Befehl: Name eingeben (20e, XP 303) ==\n");
+    {
+        using namespace rune::editor;
+        JsonValue ni = json_parse(R"({"cmd":"name_input","actor":"arik","max":6,"cancel":false})");
+        const EventCommandForm nf = event_command_form_read(ni);
+        check("name_input liest Actor, max und cancel",
+              nf.type == ET_NAME_INPUT && nf.name == "arik" && nf.val1 == "6" && nf.flag == 1);
+        const EventEdit unveraendert = event_command_prepare(&ni, nf, nf);
+        check("name_input ohne Änderung bleibt unverändert",
+              unveraendert.ok && !unveraendert.changed &&
+              json_write(unveraendert.value) == json_write(ni));
+        EventCommandForm groesser = nf; groesser.val1 = "20";
+        const EventEdit e1 = event_command_prepare(&ni, nf, groesser);
+        check("name_input lehnt max > 16 ab", !e1.ok && e1.field == "cmd_val1");
+        EventCommandForm leer_max = nf; leer_max.val1 = "";
+        const EventEdit e2 = event_command_prepare(&ni, nf, leer_max);
+        check("name_input ohne max lässt den Schlüssel weg (Default 8)",
+              e2.ok && e2.value.find("max") == nullptr);
+        EventCommandForm ohne_actor = nf; ohne_actor.name = "";
+        const EventEdit e3 = event_command_prepare(&ni, nf, ohne_actor);
+        check("name_input ohne Actor wird abgelehnt", !e3.ok && e3.field == "cmd_name");
+        EventCommandForm erlaubt = nf; erlaubt.flag = 0;
+        const EventEdit e4 = event_command_prepare(&ni, nf, erlaubt);
+        check("name_input schreibt cancel=true als true",
+              e4.ok && e4.value.find("cancel") && e4.value.find("cancel")->b);
     }
 
     std::printf("== Event-Befehl: Laden (20e, XP 302) ==\n");

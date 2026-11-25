@@ -2,8 +2,8 @@
 
 Diese Checkliste ist die Abhakliste für Etappe 20e. Sie steht im Repo, damit
 jede Sitzung (Mensch oder KI) den Stand ohne Rätselraten sieht: Was ist fertig,
-was fehlt, und woran erkennt man „fertig". Stand: **Runde 30 — Shop fertig
-(E1–E3, Register 50), Namenseingabe offen**.
+was fehlt, und woran erkennt man „fertig". Stand: **Runde 30 — Etappe 20e
+abgeschlossen (Register 51)**.
 
 Legende: `[x]` erledigt und committet · `[~]` erledigt, CI offen · `[ ]` offen
 
@@ -41,20 +41,31 @@ Doku, **CI grün**.
       Esc = eine Ebene zurück), Anbindung an `Interpreter` (`@shop_wait`
       blockiert, bis `Shop.active?` endet), `UI.shop` mit `input: false` im
       Draw-Pfad, Eingaben in `Game#update` vor der Esc-Menüprüfung
-- [ ] **E4 — Befehl `name_input` (XP 303):** `{"cmd":"name_input","actor":"arik","max":8}`,
-      Tastatureingabe mit Backspace/Esc (Abbruch = alter Name), Klemmen auf
-      `max` (XP: 8 Zeichen), Ergebnis in `Actor#name`, im Spielstand also im
-      `party`-Snapshot; MapCheck prüft Actor und `max` (1–16)
-- [~] **E5 — Tests:** `tools/shop_test.rb` ✅ (38 Checks: Modell, Preise,
+- [x] **E4 — Befehl `name_input` (XP 303):** `{"cmd":"name_input","actor":"arik","max":8,"cancel":true}`,
+      Tastatureingabe (A-Z/a-z/0-9/Leerzeichen) mit Backspace, Enter übernimmt,
+      Esc bricht ab (nur wenn erlaubt), Klemmen auf `max` (1–16, XP-Default 8),
+      Ergebnis in `Actor#name` über `Party.rename` und damit im
+      `party`-Snapshot (`actors[].name`); MapCheck prüft Actor, `max` und
+      `cancel`
+- [x] **E5 — Tests:** `tools/shop_test.rb` ✅ (38 Checks: Modell, Preise,
       Kaufen/Verkaufen, Fensterbedienung, Interpreter, MapCheck, `UI.shop`),
-      `json_test` ✅ (Warenliste lesen/schreiben, leere Zeilen, Fehlerfälle —
-      789 Checks), `sync_test` ✅ grün. **Offen:** `tools/name_input_test.rb`
-      mit E4
-- [~] **E6 — Doku:** `architecture.md` (Abschnitt „Laden"), `XP_VERGLEICH.md`
-      (302 ✅, Bilanz 38 ✅ · 7 ⚠️ · 47 ❌), `LOGIK_PRUEFUNG.md` (AD.11),
-      `HANDOFF` ✅. **Offen:** AD.12 Namenseingabe mit E4
+      `name_input_test.rb` ✅ (28 Checks: Tippen, Grenze, Übernehmen/Abbruch,
+      Spielstand, Interpreter, MapCheck, Fenster), `json_test` ✅ (Warenliste
+      und Namenseingabe, 798 Checks), `sync_test` ✅ grün
+- [x] **E6 — Doku:** `architecture.md` (Abschnitte „Laden" und
+      „Namenseingabe"), `XP_VERGLEICH.md` (302 ✅, 303 ⚠️ wegen Umlauten;
+      Bilanz 38 ✅ · 8 ⚠️ · 46 ❌), `LOGIK_PRUEFUNG.md` (AD.11 Laden,
+      AD.12 Namenseingabe), `HANDOFF`
 
-## 2. Bekannte Eigenheiten (nicht nochmal darüber stolpern)
+## 2. Offene Reste (nicht Teil von 20e)
+
+- Umlaute in Namen, weil `Rune::Input` Tasten nur über Ein-Zeichen-ASCII-Namen
+  liest (Backend-Erweiterung in `src/ruby/vm.cpp`).
+- Bestand/Lagermenge im Laden (XP hat sie nicht; wir auch nicht).
+- Umbenannte **Nicht-Mitglieder** verlieren den Namen beim Neustart, weil nur
+  das Team im Spielstand steht (`party.actors`).
+
+## 3. Bekannte Eigenheiten (nicht nochmal darüber stolpern)
 
 - Das Menü-Unterfenster-System (`@menu_screen`, Esc-Ebenen) ist der nächste
   Verwandte des Shop-Fensters — erst dort nachsehen, dann Neues bauen.

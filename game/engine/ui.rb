@@ -361,6 +361,46 @@ module UI
     false
   end
 
+  # Etappe 20e (XP 303, Scene_Name): Namenseingabe. Zeigt den Heldennamen mit
+  # Cursor und Zeichenzähler; getippt wird über Ein-Zeichen-Tasten (A-Z, a-z,
+  # 0-9, Leertaste), Backspace löscht, E/Enter bestätigt, Esc bricht ab.
+  # Rückgabe true = Fenster soll schließen.
+  def self.name_input(eingabe, input: true)
+    w = 520
+    h = 150
+    x = (Rune::Window.width - w) / 2
+    y = 220
+    window(x, y, w, h, 'Name eingeben')
+    held = Party.held(eingabe.actor_id)
+    text(x + 20, y + 36, "Held: #{held ? held.name : eingabe.actor_id}", TEXT_DIM, 14)
+    # Eingabefeld mit blinkendem Cursor.
+    panel(x + 20, y + 60, w - 40, 38, PANEL, 0.95)
+    cursor = ((Time.now.to_f * 2.0).to_i % 2).zero? ? '_' : ' '
+    text(x + 30, y + 68, eingabe.text + cursor, ACCENT, 22)
+    text(x + w - 90, y + 68, "#{eingabe.text.size}/#{eingabe.max}", TEXT_DIM, 14)
+    text(x + 20, y + h - 40, eingabe.meldung.to_s, TEXT_DIM, 13)
+    # Enter statt E: im Namensfeld muss "e" ein Buchstabe bleiben.
+    text(x + 20, y + h - 22,
+         'A-Z/0-9 tippen   Backspace löschen   Enter = übernehmen   Esc = ' +
+         (eingabe.cancel? ? 'abbrechen' : 'gesperrt'), TEXT_DIM, 12)
+
+    return false unless input
+    shift = Rune::Input.down?(:shift)
+    ('a'..'z').each do |c|
+      next unless Rune::Input.pressed?(c.to_sym)
+      eingabe.buchstabe(shift ? c.upcase : c)
+    end
+    ('0'..'9').each do |c|
+      eingabe.buchstabe(c) if Rune::Input.pressed?(c.to_sym)
+    end
+    eingabe.buchstabe(' ') if Rune::Input.pressed?(:space)
+    eingabe.backspace if Rune::Input.pressed?(:backspace)
+    # Nur Enter bestätigt - "e" ist hier ein Buchstabe (anders als im Menü).
+    return eingabe.bestaetigen if Rune::Input.pressed?(:enter)
+    return eingabe.abbruch if Rune::Input.pressed?(:escape)
+    false
+  end
+
   def self.hud(x = 16, y = 12)
     px, py, pz = Rune::Player.position
     line = format('x %.1f  y %.1f  z %.1f   %.0f FPS   %s',

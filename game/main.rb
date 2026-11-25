@@ -11,6 +11,7 @@ Sounds.register_all   # prozedurale Sounds an die Engine melden (idempotent)
 require 'temp_actions' unless defined?(TempActions)
 # Etappe 20e: Laden (XP 302) - gleiche Begründung wie oben.
 require 'shop' unless defined?(Shop)
+require 'name_input' unless defined?(NameInput)
 
 module Game
   # ---------------------------------------------------------------- Aufbau
@@ -1149,6 +1150,14 @@ end
       return
     end
 
+    # Etappe 20e (XP 303): Namenseingabe ist modal wie der Laden.
+    if defined?(NameInput) && NameInput.active?
+      Rune::Simulation.paused = true
+      NameInput.close if UI.name_input(NameInput)
+      Rune::Simulation.paused = false
+      return
+    end
+
     # Menü (Esc): friert Spiellogik, Interpreter und Events ein.
     # Z5: Während einer offenen Eingabe (Text/Wahl/Zahl) gehört Esc der
     # Eingabe, nicht dem Menü (XP öffnet kein Scene_Menu über einer
@@ -1573,6 +1582,7 @@ end
     UI.nummer_eingabe(@interpreter.num_input) if @interpreter.busy_number?
     # Etappe 20e: Laden-Fenster zeichnen (Eingaben macht update).
     UI.shop(Shop, input: false) if defined?(Shop) && Shop.active?
+    UI.name_input(NameInput, input: false) if defined?(NameInput) && NameInput.active?
     Battle.draw if defined?(Battle) && (Battle.active? || @interpreter.busy_battle?)
     UI.text(16, 54, "> #{@prompt}  (E)") if @prompt && !@interpreter.running?
     draw_hover_label if zeige
