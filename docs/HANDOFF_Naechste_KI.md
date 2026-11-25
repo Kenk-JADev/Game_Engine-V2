@@ -92,6 +92,7 @@ Der User beauftragte eine Überarbeitung von Engine und Editor **im Stil von RPG
 | 20d-1 | `1eaa611` | Erweiterte Bedingungen (`if_gold`/`if_item`/`if_script`) und Sperr-Befehle 134/135/136 in Engine, F6-Modell, Issue-Scan und MapCheck; `tools/bedingungen_test.rb` |
 | 20d-2 | `33ac986` (CI grün: 45506017149) | Timer-Befehl 124 + Anzeige (`UI.timer`), Formular/MapCheck/Register (42 Typen); `tools/timer_test.rb` |
 | 20d-3 | `a40e5e2` (CI grün: 45506936568) | `$game_temp`-Calling-Flags über `TempActions` (LOGIK E.3); `tools/temp_flags_test.rb` |
+| 23-5 | `73a9f3d` (CI grün: 45608361222) | Doku: Checkliste abgehakt, `XP_VERGLEICH` (243/244 ✅, 247/248 ✅, Bilanz 53/7/33), `architecture.md`, `LOGIK_PRUEFUNG` (N-Tabelle, AD.19), Handoff |
 | 23-4 | `9c87e05` (CI grün: 45607505425) | Anführungszeichen im Hinweistext korrigiert (Windows-Build) |
 | 23-3 | `0735f28` | je eine `when`-Zeile pro Merker-Befehl (`sync_test`-Konvention) |
 | 23-2 | `1c001cb` | Etappe 23, T1–T3: `save_bgm`/`resume_bgm`/`memorize_audio`/`restore_audio`, Register **69**, Editor-Listen, `json_test` 873, `event_test` +6 |
