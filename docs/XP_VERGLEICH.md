@@ -88,7 +88,7 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 
 | XP | Code | Rune3D | Status |
 |---|---|---|---|
-| BGM abspielen | 241 | `play_bgm` (R35) → `Audio.bgm_play` → `AudioFiles` (WAV) mit Rückfall auf den prozeduralen Loop | ✅ Datei + Lautstärke 0–100 + Pitch 50–150 %, neue Musik ersetzt die alte; Karten-BGM aus der Karte fehlt noch (T3) |
+| BGM abspielen | 241 | `play_bgm` (R35) → `Audio.bgm_play` → `AudioFiles` (WAV) mit Rückfall auf den prozeduralen Loop | ✅ Datei + Lautstärke 0–100 + Pitch 50–150 %, neue Musik ersetzt die alte; Karten-BGM läuft seit R37 beim Kartenwechsel (`MapAudio`) |
 | BGM ausblenden | 242 | `fadeout_bgm` (R35) → `AudioFiles.fade_ms` im Engine-Takt | ✅ Dauer in Sekunden, 0 = sofort, nicht blockierend |
 | BGS abspielen/ausblenden | 245/246 | `play_bgs`/`fadeout_bgs` (R35) → `Audio.bgs_play`/`AudioFiles.fade_ms` | ✅ wie BGM; BGS merken/wiederherstellen (247/248) bleibt offen |
 | BGS merken/wiederherstellen | 247/248 | — | ❌ |

@@ -1981,8 +1981,16 @@ Audio.bgm_play('Audio/BGM/dorf', 80, 120)          # RGSS-Aufruf, Pitch 120 %
   `{"cmd":"play_bgs","name":"bgs/regen.wav","volume":80}`,
   `{"cmd":"fadeout_bgs","seconds":1}` — MapCheck prüft Name, Lautstärke 0–100,
   Pitch 50–150 und `seconds >= 0`; das F6-Formular nutzt Name + Wert 1/2.
-- **Tests:** `tools/wav_test.cpp` (18 Checks) und `tools/audio_files_test.rb`
-  (Datei-Weg, Pitch-Klemmung, Fade über Zeit).
+- **Kartenmusik** (XP-Mapinfo): die Karten-JSON darf nennen
+  `"bgm": {"name":"bgm/dorf.wav","volume":80,"pitch":100}` und dasselbe als
+  `bgs`. `MapAudio.enter(map)` läuft in `Game.enter_map` nach
+  `Weather.load_map`: genanntes BGM/BGS startet, eine Karte ohne Eintrag lässt
+  die laufende Musik weiterlaufen (XP startet dann ebenfalls nichts), und
+  dieselbe Datei mit gleichen Werten wird **nicht** neu gestartet. MapCheck
+  `pruefe_ton` prüft Objekt, Namen, OGG/MP3-Warnung und die Grenzen.
+- **Tests:** `tools/wav_test.cpp` (18 Checks), `tools/audio_files_test.rb`
+  (Datei-Weg, Pitch-Klemmung, Fade über Zeit) und `tools/map_audio_test.rb`
+  (Kartenmusik).
 
 ### Bildschirm-Bilder (XP 231–235)
 

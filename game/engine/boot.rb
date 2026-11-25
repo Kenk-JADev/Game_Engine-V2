@@ -36,6 +36,7 @@ require 'image_loader'
 # Etappe 20f: Bildschirm-Effekte (Ton/Blitz/Wackeln 223-225) und Bilder (231-235)
 require 'pictures'
 require 'audio_files'   # Etappe 21: WAV-Dateien für Audio.bgm/se
+require 'map_audio'     # Etappe 21: Karten-BGM/BGS (braucht audio_files)
 require 'battle'     # Etappe 19i: Kampf-Grundgerüst (XP Scene_Battle)
 require 'event'
 require 'npc'

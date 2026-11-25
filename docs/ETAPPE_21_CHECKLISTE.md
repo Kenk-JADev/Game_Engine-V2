@@ -40,10 +40,15 @@ Dateizugriffe laufen über die **sichere Assets-Brücke**
   Alternative, falls die Lizenzprüfung im Repo das nicht will: OGG ablehnen
   und im Handoff als offen führen — dann ist die Etappe mit WAV allein
   trotzdem nützlich.
-- [ ] **T3 — Karten-BGM/BGS:** Karten-JSON bekommt `bgm`/`bgs`
+- [~] **T3 — Karten-BGM/BGS:** Karten-JSON bekommt `bgm`/`bgs`
   (Datei + Lautstärke + Pitch). Beim Kartenwechsel startet das BGM, beim
   Verlassen stoppt es (`Audio.bgm_play`/`bgm_stop`), `bgs` läuft wie XP
   weiter. MapCheck: Dateiendung, Lautstärke 0–100, Pitch 50–150.
+  Umgesetzt (Runde 37): `game/engine/map_audio.rb` (`enter`/`bgm`/`bgs`/
+  `reset`), Aufruf in `Game.enter_map` nach `Weather.load_map`, MapCheck
+  `pruefe_ton` (Objekt, Name, OGG/MP3-Warnung, Grenzen), `tools/map_audio_test.rb`.
+  Offen: Formular im F2-Dialog „Karten-Eigenschaften" (BGM/BGS eintragen) —
+  bis dahin steht das Feld von Hand in der Karten-JSON.
 - [x] **T4 — Event-Befehle 241/242/245/246:**
   `{"cmd":"play_bgm","name":"bgm/dorf.ogg","volume":100,"pitch":100}`,
   `{"cmd":"fadeout_bgm","seconds":2}`,
@@ -88,8 +93,14 @@ F6-Formular; `Audio.bgm_play` ersetzt eine laufende Musik (XP 241);
 `json_test` hat je Typ ein Beispiel (850 Checks), `tools/event_test.rb` prüft
 Weiterreichen und Klemmung der Ton-Befehle (6 Checks).
 
-Offen: T2 (OGG), T3 (Karten-BGM/BGS), Doku-Feinschliff (T7) und der Rest von
-T6 (eigener Zuschnitt eines `audio_test.rb` bzw. weitere Grenzfälle).
+Kartenmusik (T3, Runde 37): `map_audio.rb` startet `bgm`/`bgs` beim
+Kartenwechsel, lässt die bisherige Musik weiterlaufen, wenn die Karte nichts
+nennt, und startet dieselbe Datei nicht neu; MapCheck prüft die Kartenfelder,
+`tools/map_audio_test.rb` deckt Start/Weiterlaufen/Klemmung ab.
+
+Offen: T2 (OGG), T3-Rest (F2-Formular für Karten-BGM), Doku-Feinschliff (T7)
+und der Rest von T6 (eigener Zuschnitt eines `audio_test.rb` bzw. weitere
+Grenzfälle).
 
 ## 3. Bekannte Eigenheiten
 

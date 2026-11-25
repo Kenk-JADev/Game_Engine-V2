@@ -216,6 +216,9 @@ end
     @npcs = (@map['npcs'] || []).map { |h| Npc.new(h, @scene) }
     Effects.clear
     Weather.load_map(@map)   # Etappe 17h: Wetter der Karte aktivieren
+    # Etappe 21: BGM/BGS der Karte starten (XP: Game_Map#autoplay). Fehlt der
+    # Eintrag, laeuft die bisherige Musik weiter.
+    MapAudio.enter(@map) if defined?(MapAudio)
 
     # Etappe 19a: Kartendaten prüfen. Der Editor scannt dieselben Regeln in
     # C++ (issues_scan_map in editor_main.cpp), hier landen nur harte Fehler im

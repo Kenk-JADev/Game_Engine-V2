@@ -308,6 +308,7 @@ module MapCheck
       pruefe_blocked(map['blocked'])
       pruefe_encounters(map['encounters'])   # Etappe 19l: Zufallskämpfe
       pruefe_atmosphaere(map)
+      pruefe_ton(map)   # Etappe 21: Karten-BGM/BGS
     end
 
     # Etappe 20c: Gemeinsame Events der Datenbank (öffentlich, weil
@@ -1572,6 +1573,37 @@ module MapCheck
              !(terrain_bereich?(wet['intensity'], 0, WEATHER_MAX_INTENSITY) && wet['intensity'] > 0)
             melde(WARNUNG, wo, "'intensity' muss > 0 und <= 10 sein; Ersatz 1")
           end
+        end
+      end
+    end
+
+    # Etappe 21: Karten-BGM/BGS (XP-Mapinfo). Beides ist optional; eine Karte
+    # ohne Eintrag lässt die laufende Musik weiterlaufen (XP: kein Stopp).
+    def pruefe_ton(map)
+      %w[bgm bgs].each do |feld|
+        wert = map[feld]
+        next if wert.nil?
+
+        wo = "#{@karte_name} #{feld}"
+        unless wert.is_a?(Hash)
+          melde(FEHLER, wo, 'ist kein Objekt')
+          next
+        end
+        name = wert['name']
+        if name.nil?
+          melde(WARNUNG, wo, "'name' fehlt (Karte spielt keine eigene Musik)")
+        elsif !text?(name)
+          melde(FEHLER, wo, "'name' ist leer oder kein Text")
+        elsif name.to_s.downcase.end_with?('.ogg', '.mp3')
+          melde(WARNUNG, wo, 'OGG/MP3 kann noch nicht dekodiert werden (WAV verwenden)')
+        end
+        if wert.key?('volume') && !wert['volume'].nil? &&
+           !(zahl?(wert['volume']) && TON_LAUTSTAERKE.cover?(wert['volume']))
+          melde(WARNUNG, wo, "'volume' muss zwischen 0 und 100 liegen; Ersatz 100")
+        end
+        if wert.key?('pitch') && !wert['pitch'].nil? &&
+           !(zahl?(wert['pitch']) && TON_PITCH.cover?(wert['pitch']))
+          melde(WARNUNG, wo, "'pitch' muss zwischen 50 und 150 liegen; Ersatz 100")
         end
       end
     end
