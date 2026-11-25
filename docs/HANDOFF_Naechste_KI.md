@@ -72,7 +72,7 @@ Der User beauftragte eine Überarbeitung von Engine und Editor **im Stil von RPG
 | 20d-1 | `1eaa611` | Erweiterte Bedingungen (`if_gold`/`if_item`/`if_script`) und Sperr-Befehle 134/135/136 in Engine, F6-Modell, Issue-Scan und MapCheck; `tools/bedingungen_test.rb` |
 | 20d-2 | `33ac986` (CI grün: 45506017149) | Timer-Befehl 124 + Anzeige (`UI.timer`), Formular/MapCheck/Register (42 Typen); `tools/timer_test.rb` |
 | 20d-3 | `a40e5e2` (CI grün: 45506936568) | `$game_temp`-Calling-Flags über `TempActions` (LOGIK E.3); `tools/temp_flags_test.rb` |
-| 21-2 | dieser Commit (CI-Status siehe Actions) | Fade über Zeit: `sound::set_volume/volume_of`, `Rune::Sound.volume`, `AudioFiles.fade/fade_ms/update`, echte `Audio.bgm_fade`/`bgs_fade`; `audio_files_test` +9 Fade-Checks |
+| 21-2 | `3f4b19e` + Testfix (CI grün: 45574542219) | Fade über Zeit: `sound::set_volume/volume_of`, `Rune::Sound.volume`, `AudioFiles.fade/fade_ms/update`, echte `Audio.bgm_fade`/`bgs_fade`; `audio_files_test` +9 Fade-Checks |
 | 21-1 | `70761b6` (CI grün: 45567689806) | Ton aus WAV-Dateien: `src/core/wav.h`, `load_wav`, `Rune::Sound.load/known?`, `audio_files.rb`, Pitch in `Audio.*`; `wav_test` 18, `audio_files_test` grün |
 | 20f-5 | `e92b461` (CI grün: 45565262096) | Bilder 231–235: `ImageLoader` (PNG/BMP), `Pictures`, UI-Bild-Durchgang, fünf Befehle, Register **61**; `image_loader_test` 19, `pictures_test` 39 |
 | 20f-4 | `d4eaaa5` (CI grün: 45563048017) | Wackeln 225 (`ScreenFx.shake`, `Rune::Camera.shake`, `camera.cpp`), Register **56**; `screen_fx_test` 36, `json_test` 823 |
