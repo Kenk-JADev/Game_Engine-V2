@@ -410,6 +410,17 @@ if ($Test) {
     & $TerrainTestExe
     if ($LASTEXITCODE -ne 0) { throw 'C++-Terrain-Test fehlgeschlagen' }
 
+    Write-Step 'WAV-Leser und Pitch prüfen (Etappe 21) ...'
+    $WavTestExe = Join-Path $BuildDir 'wav_test.exe'
+    $WavTestFlags = @(
+        '-std=c++20', '-O1', '-Wall', '-Wextra', '-Werror',
+        "-I$ProjectRoot\src", "$ProjectRoot\tools\wav_test.cpp", '-o', $WavTestExe
+    )
+    & $Gcc @WavTestFlags
+    if ($LASTEXITCODE -ne 0) { throw 'wav_test.exe konnte nicht gebaut werden' }
+    & $WavTestExe
+    if ($LASTEXITCODE -ne 0) { throw 'WAV-Test fehlgeschlagen' }
+
     Write-Step 'Materialdokument und Windows-Dateihandles prüfen ...'
     $MaterialTestExe = Join-Path $BuildDir 'material_test.exe'
     $MaterialTestFlags = @(

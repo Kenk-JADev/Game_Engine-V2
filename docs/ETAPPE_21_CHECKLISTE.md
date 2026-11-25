@@ -1,7 +1,7 @@
 # Etappe 21 — Checkliste (Ton: Dateien statt Prozedur-Sounds)
 
-Diese Checkliste ist die Abhakliste für Etappe 21. Stand: **Runde 34 — geplant,
-noch nichts umgesetzt**.
+Diese Checkliste ist die Abhakliste für Etappe 21. Stand: **Runde 34 — T1 und
+der Pitch aus T5 sind fertig (WAV-Dateien klingen, CI grün)**.
 
 Legende: `[x]` erledigt und committet · `[~]` erledigt, CI offen · `[ ]` offen
 
@@ -29,7 +29,7 @@ Dateizugriffe laufen über die **sichere Assets-Brücke**
 
 ## 1. Plan in Scheiben
 
-- [ ] **T1 — WAV-Lader in `src/core/sound.cpp`:** PCM (8/16 Bit, mono/stereo,
+- [x] **T1 — WAV-Lader in `src/core/sound.cpp`:** PCM (8/16 Bit, mono/stereo,
   11–48 kHz) parsen, auf das WaveOut-Format (22,05 kHz, 16 Bit, mono)
   resampeln, als benannten Klang anmelden (`Rune::Sound.load(name, bytes)`).
   Rückgabe `true/false`; Fehler landen als Warnung im Log und in `Issues`.
@@ -49,10 +49,10 @@ Dateizugriffe laufen über die **sichere Assets-Brücke**
   `{"cmd":"play_bgs","name":"bgs/regen.ogg","volume":80}`,
   `{"cmd":"fadeout_bgs","seconds":1}`. Register/Formular/MapCheck wie immer;
   `bgm_fade` läuft über einen eigenen Takt (nicht im Interpreter blockierend).
-- [ ] **T5 — Pitch und `bgm_fade` über Zeit:** Resampling-Faktor aus Pitch
+- [~] **T5 — Pitch und `bgm_fade` über Zeit:** Resampling-Faktor aus Pitch
   (50–150 %), Fade dauert `seconds` und blendet die Lautstärke in
   `Sound.update()` herunter; danach ist der Kanal frei.
-- [ ] **T6 — Tests:** `tools/audio_test.rb` prüft den WAV-Parser an
+- [~] **T6 — Tests:** `tools/audio_test.rb` prüft den WAV-Parser an
   eingebetteten Bytes (8/16 Bit, mono/stereo, kaputte Header, zu lang),
   Pitch-/Fade-Rechnung als reine Funktionen und die Befehle über den
   Interpreter (mit `Rune::Sound`-Attrappe). `json_test` bekommt die vier
@@ -61,7 +61,18 @@ Dateizugriffe laufen über die **sichere Assets-Brücke**
   (241–246 von ⚠️/❌ auf ✅), `LOGIK_PRUEFUNG.md` (neuer AD-Eintrag),
   `HANDOFF` (Commit-Tabelle, nächste Etappe).
 
-## 2. Bekannte Eigenheiten
+## 2. Stand (Runde 34)
+
+Umgesetzt: `src/core/wav.h` (portabel) + `sound.cpp::load_wav` +
+`Rune::Sound.load/known?`, `game/engine/audio_files.rb`, Anbindung in
+`Audio.bgm_play`/`bgs_play`/`se_play`/`me_play` mit Rückfall auf die
+prozeduralen Klänge, Pitch 50–150 % über Resampling, CI- und
+`build.ps1`-Prüfung des WAV-Tests.
+
+Offen: T2 (OGG), T3 (Karten-BGM/BGS), T4 (Befehle 241/242/245/246 im Register),
+Fade über Zeit (Teil von T5), Doku-Feinschliff (T7).
+
+## 3. Bekannte Eigenheiten
 
 - Prozedurale Klänge (`musik`, `schritt`, `landung`, …) bleiben als Fallback
   registriert; ein Datei-Klang gleichen Namens ersetzt sie.

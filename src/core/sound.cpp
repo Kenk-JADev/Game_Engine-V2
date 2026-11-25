@@ -1,5 +1,6 @@
 #include "core/sound.h"
 #include "core/log.h"
+#include "core/wav.h"   // Etappe 21: portabler WAV-Leser
 
 #include <atomic>
 #include <cstring>
@@ -96,6 +97,38 @@ void register_sound(const std::string& name, int rate, const int16_t* samples, s
         const float f = static_cast<float>(src - static_cast<double>(i0));
         out[i] = static_cast<int16_t>(samples[i0] * (1.0f - f) + samples[i1] * f + 0.5f);
     }
+}
+
+// Etappe 21: WAV-Bytes kommen aus Ruby (sichere Assets-Brücke), werden hier
+// geparst, auf mono heruntergemischt und mit Pitch auf die Geräterate
+// gebracht. register_sound übernimmt den Rest (Resampling auf 44100 Hz).
+bool load_wav(const std::string& name, const unsigned char* bytes, size_t size, int pitch) {
+    if (!bytes || size == 0) {
+        log_warn("Sound: leere WAV-Daten für '" + name + "'");
+        return false;
+    }
+    wav::Clip clip;
+    std::string fehler;
+    if (!wav::parse(bytes, size, clip, &fehler)) {
+        log_warn("Sound: '" + name + "': " + fehler);
+        return false;
+    }
+    if (pitch != 100) clip = wav::resample(clip, wav::rate_fuer_pitch(clip.sample_rate, pitch));
+    register_sound(name, clip.sample_rate, clip.samples.data(), clip.samples.size());
+    char info[160];
+    std::snprintf(info, sizeof(info), "Sound: '%s' geladen (%d Hz, %.2f s, Pitch %d%%)",
+                  name.c_str(), clip.sample_rate,
+                  clip.sample_rate > 0
+                      ? static_cast<double>(clip.samples.size()) / clip.sample_rate
+                      : 0.0,
+                  pitch);
+    log_info(info);
+    return true;
+}
+
+bool has(const std::string& name) {
+    const auto it = g_sounds.find(name);
+    return it != g_sounds.end() && !it->second.empty();
 }
 
 void play(const std::string& name, float volume) {

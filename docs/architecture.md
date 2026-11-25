@@ -1943,6 +1943,33 @@ MapCheck prüft `amount` (Pflicht, ≠ 0), den Actor-Namen gegen
 `database.json` und den Stufenbereich. **Tests:** `tools/actor_wert_test.rb`
 (24 Checks), `json_test` 778 Checks.
 
+### Ton aus Dateien (Etappe 21, WAV)
+
+Audio war bis Etappe 20 vollständig prozedural: Ruby rechnete PCM und meldete
+es über `Rune::Sound.register` an. Seit Etappe 21 gibt es einen Dateiweg:
+
+```ruby
+AudioFiles.loop('dorf', volume: 0.6, pitch: 100)   # sucht audio/bgm/dorf.wav
+AudioFiles.play('audio/se/tuer.wav', volume: 0.8)
+Audio.bgm_play('Audio/BGM/dorf', 80, 120)          # RGSS-Aufruf, Pitch 120 %
+```
+
+- `src/core/wav.h` ist ein **portabler** WAV-Leser (PCM 8/16/24/32 Bit, mono/
+  stereo, `WAVE_FORMAT_EXTENSIBLE`, 8–192 kHz, max. 60 s). Er mischt auf mono,
+  rechnet die Abtastrate und den Pitch um und wird von `tools/wav_test.cpp`
+  ohne Windows geprüft (CI + `build.ps1 -Test`).
+- `src/core/sound.cpp` bekommt `load_wav(name, bytes, size, pitch)` und `has()`;
+  Ruby ruft sie über `Rune::Sound.load(name, bytes, pitch)` und
+  `Rune::Sound.known?(name)`.
+- `game/engine/audio_files.rb` holt die Bytes über die sichere Assets-Brücke
+  (max. 8 MB), sucht Kandidaten (`<pfad>`, `audio/<name>`, `audio/bgm/<name>`,
+  `audio/se/<name>`; `.wav`, `.ogg`, `.mp3`), lädt WAV und warnt bei OGG/MP3
+  (noch kein Decoder).
+- `Audio.bgm_play`/`bgs_play`/`se_play`/`me_play` versuchen zuerst eine Datei
+  und fallen sonst auf den prozeduralen Klang zurück — alte Projekte klingen
+  weiter.
+- **Tests:** `tools/wav_test.cpp` (18 Checks) und `tools/audio_files_test.rb`.
+
 ### Bildschirm-Bilder (XP 231–235)
 
 ```json

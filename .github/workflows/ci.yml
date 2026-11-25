@@ -92,6 +92,11 @@ jobs:
             -Isrc src/world/terrain.cpp tools/terrain_test.cpp -o terrain_test
           ./terrain_test
 
+      - name: WAV-Leser und Pitch portabel prüfen (Etappe 21)
+        run: |
+          g++ -std=c++20 -O2 -Wall -Wextra -Werror -Isrc tools/wav_test.cpp -o wav_test
+          ./wav_test
+
       - name: Materialdokument portabel prüfen
         run: |
           g++ -std=c++20 -O2 -Wall -Wextra -Werror \

@@ -962,6 +962,22 @@ VALUE rune_sound_register(VALUE, VALUE name, VALUE rate, VALUE samples) {
     return Qnil;
 }
 
+// Etappe 21: WAV-Bytes laden - Rune::Sound.load(name, bytes, pitch = 100).
+VALUE rune_sound_load(int argc, VALUE* argv, VALUE) {
+    VALUE name, bytes, pitch = Qnil;
+    rb_scan_args(argc, argv, "21", &name, &bytes, &pitch);
+    Check_Type(bytes, T_STRING);
+    const int p = NIL_P(pitch) ? 100 : NUM2INT(pitch);
+    const bool ok = core::sound::load_wav(
+        to_std(name), reinterpret_cast<const unsigned char*>(RSTRING_PTR(bytes)),
+        static_cast<size_t>(RSTRING_LEN(bytes)), p);
+    return ok ? Qtrue : Qfalse;
+}
+
+VALUE rune_sound_has(VALUE, VALUE name) {
+    return core::sound::has(to_std(name)) ? Qtrue : Qfalse;
+}
+
 VALUE rune_sound_play(int argc, VALUE* argv, VALUE) {
     VALUE name, volume = Qnil;
     rb_scan_args(argc, argv, "11", &name, &volume);
@@ -1045,6 +1061,8 @@ void register_bindings() {
 
     VALUE mSound = rb_define_module_under(mRune, "Sound");
     rb_define_module_function(mSound, "register", RUBY_METHOD_FUNC(rune_sound_register), 3);
+    rb_define_module_function(mSound, "load", RUBY_METHOD_FUNC(rune_sound_load), -1);
+    rb_define_module_function(mSound, "known?", RUBY_METHOD_FUNC(rune_sound_has), 1);
     rb_define_module_function(mSound, "play", RUBY_METHOD_FUNC(rune_sound_play), -1);
     rb_define_module_function(mSound, "loop", RUBY_METHOD_FUNC(rune_sound_loop), -1);
     rb_define_module_function(mSound, "stop", RUBY_METHOD_FUNC(rune_sound_stop), 1);

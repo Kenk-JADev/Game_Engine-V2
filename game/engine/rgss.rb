@@ -814,20 +814,32 @@ module Input
 end
 
 # ============================================================================
-#  Audio (RGSS1): bgm/bgs = Schleifen (Rune::Sound.loop), se/me = Einmal-
-#  Sounds (Rune::Sound.play). Lautstärke 0..100 wie RGSS; Pitch wird
-#  ignoriert. Dateinamen dürfen Pfade/Endungen tragen ("Audio/BGM/x.ogg").
+#  Audio (RGSS1): bgm/bgs = Schleifen, se/me = Einmal-Sounds.
+#  Lautstärke 0..100 wie RGSS. Seit Etappe 21 gilt:
+#    1. Existiert eine WAV-Datei zum Namen (AudioFiles), wird sie gespielt -
+#       mit Pitch (50..150 %) wie in XP.
+#    2. Sonst fällt es auf den prozeduralen Klang zurück (Rune::Sound.loop/
+#       play mit dem Basisnamen), damit alte Projekte weiterklingen.
+#  Fade über Zeit ist noch nicht umgesetzt (sofortiger Stopp, T5 offen).
 # ============================================================================
 module Audio
   @bgm = nil
   @bgs = nil
 
-  def self.bgm_play(filename, volume = 100, _pitch = 100)
+  def self.bgm_play(filename, volume = 100, pitch = 100)
     @bgm = basisname(filename)
+    if defined?(AudioFiles) && AudioFiles.loop(filename, volume: lautstaerke(volume), pitch: pitch)
+      return
+    end
+
     Rune::Sound.loop(@bgm, lautstaerke(volume))
   end
 
   def self.bgm_stop
+    if defined?(AudioFiles)
+      AudioFiles.stop(@bgm) if @bgm
+      AudioFiles.stop("audio/bgm/#{@bgm}") if @bgm
+    end
     Rune::Sound.stop(@bgm) if @bgm
     @bgm = nil
   end
@@ -837,12 +849,17 @@ module Audio
     bgm_stop
   end
 
-  def self.bgs_play(filename, volume = 100, _pitch = 100)
+  def self.bgs_play(filename, volume = 100, pitch = 100)
     @bgs = basisname(filename)
+    if defined?(AudioFiles) && AudioFiles.loop(filename, volume: lautstaerke(volume), pitch: pitch)
+      return
+    end
+
     Rune::Sound.loop(@bgs, lautstaerke(volume))
   end
 
   def self.bgs_stop
+    AudioFiles.stop(@bgs) if defined?(AudioFiles) && @bgs
     Rune::Sound.stop(@bgs) if @bgs
     @bgs = nil
   end
@@ -851,11 +868,15 @@ module Audio
     bgs_stop
   end
 
-  def self.me_play(filename, volume = 100, _pitch = 100)
+  def self.me_play(filename, volume = 100, pitch = 100)
+    return if defined?(AudioFiles) && AudioFiles.play(filename, volume: lautstaerke(volume), pitch: pitch)
+
     Rune::Sound.play(basisname(filename), lautstaerke(volume))
   end
 
-  def self.se_play(filename, volume = 100, _pitch = 100)
+  def self.se_play(filename, volume = 100, pitch = 100)
+    return if defined?(AudioFiles) && AudioFiles.play(filename, volume: lautstaerke(volume), pitch: pitch)
+
     Rune::Sound.play(basisname(filename), lautstaerke(volume))
   end
 
