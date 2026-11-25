@@ -30,6 +30,7 @@ namespace rune::editor {
 // liest die Namen dort als Liste.
 // tools/befehle_test.rb vergleicht EvType/EV_TYPES mit CMD_TYPES
 // (mapcheck.rb), ISSUE_CMD_TYPES (editor_main.cpp) und interpreter.rb.
+// Etappe 24 hängt Zustand/Parameter/Name von Helden an (XP 313/317/320).
 enum EvType {
     ET_TEXT = 0, ET_CHOICES, ET_LOG,
     ET_WAIT, ET_SWITCH, ET_TOGGLE_SWITCH, ET_VARIABLE,
@@ -49,7 +50,6 @@ enum EvType {
     ET_TINT_PICTURE, ET_ERASE_PICTURE,
     ET_PLAY_BGM, ET_FADEOUT_BGM, ET_PLAY_BGS, ET_FADEOUT_BGS,
     ET_SAVE_BGM, ET_RESUME_BGM, ET_MEMORIZE_AUDIO, ET_RESTORE_AUDIO,
-    // Etappe 24: Zustand und Werte von Helden (XP 313/317/320).
     ET_STATE, ET_ACTOR_PARAM, ET_ACTOR_NAME, ET_COUNT
 };
 inline constexpr const char* const EV_TYPES[ET_COUNT] = {
