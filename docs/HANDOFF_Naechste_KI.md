@@ -82,7 +82,7 @@ Der User beauftragte eine Überarbeitung von Engine und Editor **im Stil von RPG
 | 20d-1 | `1eaa611` | Erweiterte Bedingungen (`if_gold`/`if_item`/`if_script`) und Sperr-Befehle 134/135/136 in Engine, F6-Modell, Issue-Scan und MapCheck; `tools/bedingungen_test.rb` |
 | 20d-2 | `33ac986` (CI grün: 45506017149) | Timer-Befehl 124 + Anzeige (`UI.timer`), Formular/MapCheck/Register (42 Typen); `tools/timer_test.rb` |
 | 20d-3 | `a40e5e2` (CI grün: 45506936568) | `$game_temp`-Calling-Flags über `TempActions` (LOGIK E.3); `tools/temp_flags_test.rb` |
-| 21-7 | dieser Commit (CI-Status siehe Actions) | T6-Rest: zehn Grenzfälle der Ton-Befehle im `json_test` (860 Checks); T7: Checkliste T6/T7 abgehakt |
+| 21-7 | `a9956f8` (CI grün: 45598889588) | T6-Rest: zehn Grenzfälle der Ton-Befehle im `json_test` (860 Checks); T7: Checkliste T6/T7 abgehakt |
 | 21-6 | `ceeae37` (CI grün: 45598099926) | Kartenmusik im F2-Formular: `MapPropsForm` bgm/bgs, `map_props_check`/`apply`, Dialoggruppe „Ton (Kartenmusik)", `editor_workflow_test` 67 Checks |
 | 21-5 | `653b34b` (CI grün: 45597300244) | OGG Vorbis: `src/core/stb_vorbis.cpp` (vendored), `src/core/ogg.h`, `sound::load_audio`, `tools/ogg_test.cpp` (11 Checks), CI-/`build.ps1`-Schritt |
 | 21-4 | `3395e4e` (CI grün: 45576498638) | Karten-BGM/BGS: `map_audio.rb`, `Game.enter_map`, MapCheck `pruefe_ton`, `tools/map_audio_test.rb` (12 Checks); F2-Formular offen |
