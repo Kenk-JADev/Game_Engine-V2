@@ -155,7 +155,8 @@ check('nach der Hälfte ist die Lautstärke etwa halbiert') do
   (laut - 0.4).abs < 0.05
 end
 check('Fade läuft weiter, solange Zeit übrig ist') do
-  AudioFiles.fade_aktiv?('dorf') && Rune::Sound.stimmen.none? { |s| s.first == :stop }
+  # letzter Eintrag ist das Lautstärke-Update, kein Stopp
+  AudioFiles.fade_aktiv?('dorf') && Rune::Sound.stimmen.last.first == :volume
 end
 check('am Ende wird gestoppt und der Fade geräumt') do
   AudioFiles.update(0.6)
