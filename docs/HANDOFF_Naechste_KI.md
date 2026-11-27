@@ -18,8 +18,12 @@ injiziert ihn beim Laden. Ohne Index bleibt der Ablauf unverändert (kompatibel)
 Spezifikations-Deltas: digits **1..8**, picture_slot **1..50**, cancel branch.
 Tests: prepare48 **65/0**, settings **29/0**, catalog **32/0**, json **1121/0**,
 legacy_validator **18/0**, engine **129/0**, befehle 103/11, sync 0; Register-
-Zähltests auf 103; Zig-Cross editor_main EXIT 0. Doku:
-`docs/ETAPPE_48_30_XP_BEFEHLE.md`. **Offen für später:** diskriminierte Unions im
+Zähltests auf 103; Zig-Cross editor_main EXIT 0. Demo-Baum gespiegelt
+(`projekte/dorf/data/database.json` = Vorlage, sync_demo dry-run sauber).
+**CI grün:** Lauf
+[46019664148](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/46019664148)
+(`ac7fa9b`), alle vier Jobs; Ruby-Engine 62 OK/0/1 (tex_import übersprungen).
+Doku: `docs/ETAPPE_48_30_XP_BEFEHLE.md`. **Offen für später:** diskriminierte Unions im
 Editor (ConditionalBranch-Bedingungs-Tabs, ControlVariables-Operand, MoveStep,
 ForceAction, Targets) — conditional_branch hat ein flaches Fenster und legt beim
 Neueinfügen keine `then`/`else`-Arrays an.

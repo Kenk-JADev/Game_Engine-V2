@@ -98,7 +98,11 @@ Karte `dorf.json` + Common Events sind referenz-sauber
 
 CI: neuer Job-Schritt „XP-Befehle Etappe 48 im Editor-Formular serialisieren"
 (`event_command_prepare48_test`) im cpp-logik-Job; `test_all.rb` erfasst den
-neuen Legacy-Validator-Test automatisch.
+neuen Legacy-Validator-Test automatisch. **CI grün:** Lauf
+[46019664148](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/46019664148)
+(`ac7fa9b`), alle vier Jobs (Hygiene, C++-Logik, Windows-Build, Ruby-Engine
+62 OK/0/1). Nachzug: `projekte/dorf/data/database.json` an die Vorlage
+gespiegelt (weapons/armors/classes), damit `sync_demo_test` sauber bleibt.
 
 **Grenze:** CI-Grün ≠ Windows-/DPI-/GPU-Test. Die 12 WASI-bedingten Ausnahmen
 (tmpdir/Open3/EXE) laufen im CRuby-CI-Job.
