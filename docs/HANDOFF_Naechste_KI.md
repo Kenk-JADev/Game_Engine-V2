@@ -11,7 +11,9 @@ Befehlstyp-Combo zu nutzen. Doppelklick auf einen Befehl bearbeitet ihn weiter
 gültigem Befehl an). Nur `src/editor/editor_main.cpp` geändert (`ev_flatten_empty`,
 Doppelklick-Verzweigung, Ziel-Label). Cross-Kompilat sauber; json_test 1031/0,
 catalog 32/0, settings 29/0, arch 1542/0, engine 110/0. Doku:
-`docs/ETAPPE_46_BRANCH_INSERT_SLOTS.md`. **CI grün:** wird nachgetragen.
+`docs/ETAPPE_46_BRANCH_INSERT_SLOTS.md`. **CI grün:** Lauf
+[46002910770](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/46002910770)
+(`0b26d2e`), alle vier Jobs; Ruby-Engine 60 OK/0/1.
 **Offen für den Windows-Rechner:** Sicht-/DPI-Test der Leer-Slots und des
 Einfügens per Doppelklick.
 

@@ -45,8 +45,11 @@ gültigem Befehl an). Keine Änderung an Datenformat oder Engine.
 
 ## CI
 
-<!-- CI_ABSCHNITT -->
-Wird nach dem Push nachgetragen (Lauf-ID, alle vier Jobs).
+**CI grün:** Lauf [46002910770](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/46002910770)
+(Commit `0b26d2e`), alle vier Jobs erfolgreich (C++-Logik, Repo-Hygiene,
+Windows-Build mit `RuneEditor.exe`, Ruby-Engine 60 OK/0/1). Der Windows-Job
+kompiliert die geänderte Befehlsliste mit der echten Toolchain; er ersetzt keinen
+interaktiven Sicht-/DPI-Test.
 
 ## Sicht-/DPI-Test auf dem Windows-Rechner
 
