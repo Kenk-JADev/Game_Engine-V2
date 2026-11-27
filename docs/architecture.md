@@ -2560,6 +2560,12 @@ für `bc237b3` ist grün. Die Zwei-Karten-Live-Prüfung nach
 ## Rune3D-Laufzeit ohne Ingame-Editor (Etappe 19t)
 
 `boot.rb` lädt `map_objects.rb` statt des entfernten `editor.rb`.
+Nacharbeit zu Etappe 41: Die Restdatei `game/engine/editor.rb` lag noch im
+Laufzeitbaum, obwohl sie niemand lud — `runtime_boot_test.rb` verlangte zu
+Recht ihre Abwesenheit und war deshalb rot. Sie ist jetzt gelöscht; der
+RuneEditor braucht nur `textures` und `sounds` aus `game/editor/boot.rb`.
+Die Prefab-/Textur-Prüfungen des früheren `tools/editor_test.rb` liegen in
+`tools/prefabs_test.rb`.
 `Game.enter_map` und `Scene_Title#bau_kulisse` erzeugen je eine eigene
 `MapObjects`-Instanz, die mit `Prefabs.instantiate`, Geländehöhe und
 `Scene.refresh_solids` die Spiel- bzw. Kulissenszene aufbaut. Die alten

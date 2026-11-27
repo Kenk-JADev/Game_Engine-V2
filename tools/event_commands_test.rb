@@ -244,7 +244,7 @@ interpreter.run(KATALOG.program(3), max_updates: 5000)
 assert(!interpreter.running?, 'Programm 3 läuft bis zum Ende')
 assert(ports.battle.calls.any? { |eintrag| eintrag[:name] == 'start' && eintrag[:troop_id] == 9 },
        'Kampf mit Troop 9 gestartet')
-gleich(12, ports.actor.calls.size, 'zwölf Actor-Operationen über Actor-Port')
+gleich(12, ports.actors.calls.size, 'zwölf Actor-Operationen über Actor-Port')
 gleich(8, ports.battle.calls.count { |eintrag| eintrag[:name] == 'enemy' }, 'acht Gegnerwert-Operationen')
 assert(ports.battle.calls.any? { |eintrag| eintrag[:name] == 'force_action' }, 'Force Action ausgeführt')
 assert(ports.battle.calls.any? { |eintrag| eintrag[:name] == 'abort' }, 'Abort Battle ausgeführt')

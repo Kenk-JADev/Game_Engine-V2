@@ -1,7 +1,7 @@
 #encoding: utf-8
 # Etappe 18h: require 'issues' in alle Kopflos-Tests einziehen, die
 # Engine-Module direkt laden (ohne boot.rb). Einmalig; idempotent.
-files = %w[editor_test effects_test event18f_test event_pages_test event_test
+files = %w[prefabs_test effects_test event18f_test event_pages_test event_test
            npc_test party_test save_test script_test weather_test]
 files.each do |f|
   path = File.join('tools', f + '.rb')

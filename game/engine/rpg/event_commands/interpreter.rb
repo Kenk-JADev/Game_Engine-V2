@@ -78,7 +78,16 @@ module Rpg
           command = frame.commands[frame.index]
           ergebnis = execute(command, frame)
           wende_an(ergebnis, frame, command)
-          break if @wait
+          if @wait
+            # XP (063 - Interpreter 1.rb) zählt den Wartebefehl schon im selben
+            # Update herunter: die Schleife läuft weiter und sieht im nächsten
+            # Durchgang "@wait_count > 0". Deshalb bekommt ein frisch gesetztes
+            # Warten das Delta dieses Updates ebenfalls ab.
+            tick_wait(delta_seconds.to_f)
+            break unless wait_ready?
+
+            @wait = nil
+          end
         end
         self
       end
@@ -127,7 +136,13 @@ module Rpg
         when :break_loop then break_loop
         when :exit_frame then exit_frame
         when :exit_all then beenden
-        when :wait then @wait = Wait.new(kind: ergebnis.value, seconds: ergebnis.data.fetch(:seconds, 0.0).to_f)
+        when :wait
+          # Wie XP (063 - Interpreter 1.rb: nach erfolgreichem Befehl
+          # "@index += 1"): Der Befehl ist ausgeführt, danach wird gewartet.
+          # Ohne diesen Schritt würde derselbe Wait-Befehl ewig neu starten
+          # und das Programm liefe nie zu Ende.
+          frame.index += 1
+          @wait = Wait.new(kind: ergebnis.value, seconds: ergebnis.data.fetch(:seconds, 0.0).to_f)
         else frame.index += 1
         end
       end

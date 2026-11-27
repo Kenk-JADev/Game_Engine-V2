@@ -124,13 +124,16 @@ module Rpg
         end
       end
 
+      # kind ist die Sammlung (items/weapons/armors), operation die Richtung
+      # (add/subtract). Beides getrennt: sonst landet der Bestand unter dem
+      # Schlüssel "add" und count("items", ...) findet nichts.
       class IInventoryPort
-        def change(_kind, _id, _amount, _include_equipment) = raise(NotImplementedError, 'IInventoryPort#change fehlt')
+        def change(_kind, _id, _amount, _include_equipment, operation: 'add') = raise(NotImplementedError, 'IInventoryPort#change fehlt')
         def count(_kind, _id) = raise(NotImplementedError, 'IInventoryPort#count fehlt')
       end
 
       class NullInventoryPort < IInventoryPort
-        def change(_kind, _id, _amount, _include_equipment) = nil
+        def change(_kind, _id, _amount, _include_equipment, operation: 'add') = nil
         def count(_kind, _id) = 0
       end
 
@@ -141,12 +144,12 @@ module Rpg
           @bestand = Hash.new(0)
         end
 
-        def change(kind, id, amount, include_equipment)
+        def change(kind, id, amount, include_equipment, operation: 'add')
           schluessel = [kind.to_s, id.to_i]
           delta = amount.to_i
-          delta = -delta if kind.to_s == 'subtract'
+          delta = -delta if operation.to_s == 'subtract'
           @bestand[schluessel] = [@bestand[schluessel] + delta, 0].max
-          record(:inventory_change, kind: kind.to_s, id: id.to_i,
+          record(:inventory_change, kind: kind.to_s, id: id.to_i, operation: operation.to_s,
                                     amount: delta, include_equipment: include_equipment)
         end
 

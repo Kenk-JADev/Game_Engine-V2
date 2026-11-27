@@ -79,6 +79,26 @@ tools/event_commands_test.rb             Tests der Schicht
 | 40b.4 | Ports, Handler-Registry und Interpreter inkl. Wait/Stack/Labels | Interpreter-Tests | umgesetzt |
 | 40b.5 | Einbindung in `rpg.rb`, Gesamtprüfung | TestSuite/Lint/Build | Code fertig; manuell zu prüfen |
 
+## Nachtrag aus Etappe 41: zwei Fehler dieser Schicht behoben
+
+`tools/event_commands_test.rb` war seit dem Stand `7d4023a` rot und ist jetzt
+grün (107 Prüfungen). Zwei echte Fehler, keine Testkosmetik:
+
+- **Wait blieb auf demselben Befehl stehen.** `Interpreter#wende_an` setzte bei
+  `:wait` nur `@wait`, ohne `frame.index` zu erhöhen. Nach Ablauf wurde
+  derselbe Wartebefehl erneut ausgeführt — das Programm endete nie. XP erhöht
+  den Index nach jedem ausgeführten Befehl (`063 - Interpreter 1.rb`,
+  „Advance index"). Zusätzlich zählt XP ein frisch gesetztes Warten schon im
+  selben Update herunter; `update` gibt deshalb das Delta dieses Updates an
+  `tick_wait` weiter, bevor es wegen Wartens abbricht.
+- **Inventar landete unter falschem Schlüssel.** `Handlers#inventory` rief
+  `ports.inventory.change(operation, id, amount, include_equipment)` — der
+  Port behandelte den ersten Parameter aber als Sammlung. Der Bestand wurde
+  unter `["add", 3]` geführt, `count("items", 3)` blieb 0. Der Port heißt jetzt
+  `change(kind, id, amount, include_equipment, operation: 'add')`, der Handler
+  übergibt `items`/`weapons`/`armors` und die Richtung getrennt, und
+  `MemoryInventoryPort` protokolliert `operation` mit.
+
 ## Manuelle Prüfung
 
 ```powershell

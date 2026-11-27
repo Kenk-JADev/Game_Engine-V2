@@ -254,9 +254,10 @@ module Rpg
               field, id = command.params.find { |name, _wert| name.end_with?('_id') }
               collection = { 'item_id' => 'items', 'weapon_id' => 'weapons',
                              'armor_id' => 'armors' }.fetch(field.to_s)
-              interpreter.ports.inventory.change(command.params['operation'], id,
+              interpreter.ports.inventory.change(collection, id,
                                                   command.params['amount'],
-                                                  command.params.fetch('include_equipment', false))
+                                                  command.params.fetch('include_equipment', false),
+                                                  operation: command.params['operation'])
               interpreter.emit('inventory.changed', collection: collection, id: id)
               Result.next
             end,

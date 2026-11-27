@@ -106,6 +106,41 @@ jetzt nur noch, dass `switch` ein Text ist; leer ist erlaubt, ein Nicht-Text
 läuft dauerhaft" bleibt bestehen. Gefunden und abgesichert durch
 `tools/database_register_test.rb`.
 
+## Zwei Altfehler der CI mitbehoben
+
+Der erste CI-Lauf zu dieser Etappe war rot — aber nicht wegen F9: dieselben
+zwei Tests scheitern schon auf `main`
+([Lauf 45973867530](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45973867530),
+Commit `7d4023a`). Beide sind jetzt behoben, damit die Etappe auf grünem Grund
+steht:
+
+1. **`event_commands_test.rb` — „Programm 1 läuft bis zum Ende".** Zwei echte
+   Fehler in der Etappe-40b-Schicht:
+   - `Rpg::EventCommands::Interpreter#wende_an` setzte bei `:wait` nur die
+     Wartezeit und ließ den Befehlsindex stehen. Nach Ablauf startete also
+     derselbe Wartebefehl erneut — eine Endlosschleife. XP erhöht den Index
+     nach jedem ausgeführten Befehl (`063 - Interpreter 1.rb`, „Advance
+     index"); das tut der Interpreter jetzt auch. Zusätzlich bekommt ein
+     frisch gesetztes Warten das Delta desselben Updates ab, wie XP, dessen
+     Schleife im nächsten Durchgang sofort `@wait_count` herunterzählt.
+   - `Handlers` übergab bei `change_items`/`change_weapons`/`change_armors`
+     die *Operation* (`add`) als *Sammlung* an `IInventoryPort#change`. Der
+     Bestand landete unter `["add", 3]`, `count("items", 3)` fand nichts.
+     Der Port nimmt die Sammlung jetzt als ersten Parameter und die Richtung
+     als Schlüsselwort `operation:`; `MemoryInventoryPort` protokolliert
+     beides. Ein Testaufruf nutzte außerdem `ports.actor` statt `ports.actors`.
+2. **`runtime_boot_test.rb` — „echter Bootstrap startet auf Scene_Title ohne
+   Ingame-Editor".** Der Test verlangt, dass `game/engine/editor.rb` nicht
+   mehr im Laufzeitbaum liegt (Etappe 19t). Die Datei lag aber noch dort:
+   691 Zeilen alter Ingame-Editor, von `boot.rb` nicht geladen, vom
+   eigenständigen RuneEditor nicht benutzt (`game/editor/boot.rb` braucht nur
+   `textures` und `sounds`). Sie ist jetzt entfernt. Die nützlichen Prüfungen
+   des alten `tools/editor_test.rb` (Prefabs, Instantiierung, Kristall-
+   Animation, Dorf-Daten, prozedurale Texturen) leben weiter in
+   **`tools/prefabs_test.rb`** — 23 übernommene Checks plus der neue Check
+   „kein editor.rb im Laufzeitbaum", zusammen 24. Die reinen Editor-Checks (setzen/löschen/
+   speichern des Ruby-Ingame-Editors) entfallen mit dem Code.
+
 ## Stufenplan
 
 | Stufe | Inhalt | Prüfung | Status |
@@ -116,7 +151,8 @@ läuft dauerhaft" bleibt bestehen. Gefunden und abgesichert durch
 | 41.4 | F9-Oberfläche: Registerkarten, zwei Spalten, Hinweiszeile | Windows-Zielkompilierung | erledigt |
 | 41.5 | Vokabelabgleich Katalog ↔ Engine ↔ Demo-Daten | `sync_test` | erledigt |
 | 41.6 | Dokumentation, Backlog, Handoff | diese Datei | erledigt |
-| 41.7 | Interaktiver Windows-/DPI-Test | Anleitung unten | **offen (Nutzer)** |
+| 41.7 | Zwei Altfehler der CI behoben (Event-Wait/Inventar, Ingame-Editor-Rest) | `event_commands_test`, `runtime_boot_test`, `prefabs_test` | erledigt |
+| 41.8 | Interaktiver Windows-/DPI-Test | Anleitung unten | **offen (Nutzer)** |
 
 ## Prüfungen in dieser Etappe
 
@@ -135,6 +171,11 @@ läuft dauerhaft" bleibt bestehen. Gefunden und abgesichert durch
   Windows-Lauf und kein GUI-Test.
 - `ruby tools/lint_repo.rb` → JSON, UTF-8/BOM, Zeilenenden und Requires ohne
   Befund; der Git-Abschnitt braucht ein echtes System und läuft in der CI.
+- Nach der Altfehler-Nacharbeit: `event_commands_test` → **107 Prüfungen,
+  0 Fehler**, `prefabs_test` → **24 Checks, 0 Fehler**, `runtime_boot_test`
+  → der zuvor rote Bootstrap-Check ist grün. Alle 59 Ruby-Testdateien wurden
+  einzeln gefahren; die übrigen Ausfälle in dieser Sandbox sind ausschließlich
+  WASI-Grenzen (`Dir.tmpdir`, `flock`, `Open3`, fehlende `RuneEditor.exe`).
 
 ## Manuelle Prüfung (echter Windows-Rechner, offen)
 
@@ -185,4 +226,5 @@ CI-Lauf ersetzt diesen Test nicht.
 - Keine Dropdown-Steuerelemente: Auswahlfelder bleiben Textfelder mit
   Werteliste in der Beschriftung, damit unbekannte Altdaten sichtbar und
   verlustfrei bleiben.
-- Der alte Ingame-Editor existiert weiter nicht; F9 gibt es nur im RuneEditor.
+- Der alte Ingame-Editor existiert nicht mehr — auch die Restdatei
+  `game/engine/editor.rb` ist jetzt entfernt (oben). F9 gibt es nur im RuneEditor.
