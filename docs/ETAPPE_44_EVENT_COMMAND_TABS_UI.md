@@ -138,10 +138,19 @@ Bestehende Suiten bleiben grün: `json_test` **1031/0**, `befehle_test` (73 Befe
 
 ## CI
 
-<!-- CI_ABSCHNITT -->
-Wird nach dem Push nachgetragen (Lauf-ID, alle vier Jobs). Der neue Schritt
-„XP-Befehlskatalog portabel prüfen (Etappe 44)“ baut und startet
-`event_command_catalog_test` mit `-Werror` im Job `cpp-logik`.
+**CI grün:** Lauf [45997114648](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45997114648)
+(Commit `1b3fa44`), alle vier Jobs erfolgreich:
+
+| Job | Ergebnis |
+|---|---|
+| C++-Logik (JSON-Schicht) | ✓ — inkl. neuem Schritt „XP-Befehlskatalog portabel prüfen (Etappe 44)“ (`-Werror`, 32/0) |
+| Repo-Hygiene | ✓ |
+| Windows-Build (Rune3D + RuneEditor) | ✓ — `RuneEditor.exe` mit MSYS2-ucrt64-g++ gebaut, neuer Dialog kompiliert; 61 OK/0/0, D3D11-WARP/UI-Smoke |
+| Ruby-Engine (Tests + Karten) | ✓ — 60 OK, 0 fehlgeschlagen, 1 übersprungen (nur `tex_import`) |
+
+Der Windows-Job beweist, dass `event_command_dialog_win.h` auch mit der echten
+Windows-Toolchain kompiliert (nicht nur im zig-Cross-Kompilat). Er ersetzt trotzdem
+keinen interaktiven Sicht-/DPI-Test (siehe unten).
 
 ## Sicht-/DPI-Test auf dem Windows-Rechner
 

@@ -16,8 +16,10 @@ kopfloser Test `tools/event_command_catalog_test.cpp` (**32/0**, CI-Schritt mit
 `-Werror` im Job `cpp-logik`). Cross-Kompilat des Editors sauber; `json_test`
 1031/0, `befehle_test` 0 Fehler (keine neuen `cmd`-Strings), `event_commands_arch_test`
 1542/0, `event_commands_engine_test` 110/0. Doku:
-`docs/ETAPPE_44_EVENT_COMMAND_TABS_UI.md`. **CI grün:** wird nach dem Push
-nachgetragen. **Offen für den Windows-Rechner:** interaktiver Sicht-/DPI-Test
+`docs/ETAPPE_44_EVENT_COMMAND_TABS_UI.md`. **CI grün:** Lauf
+[45997114648](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45997114648)
+(`1b3fa44`), alle vier Jobs; Windows-Build baut `RuneEditor.exe` mit dem neuen
+Dialog (61 OK/0/0), Ruby-Engine 60 OK/0/1. **Offen für den Windows-Rechner:** interaktiver Sicht-/DPI-Test
 (96/120/144/192 DPI, Tab-Umbruch bei langen Beschriftungen, Übernehmen,
 Fenster in der Arbeitsfläche). CI-Grün (auch Windows-Job mit D3D11-WARP) ersetzt
 keinen GUI-Test. **Nächster sinnvoller Schritt:** typisierte Parameterformulare
