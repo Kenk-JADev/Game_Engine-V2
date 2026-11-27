@@ -21,6 +21,26 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 ---
 
 ## Offen
+### [Editor] Einstellfenster für die 30 vorbereiteten XP-Befehle + grafische Listen-Editoren — offen (Etappe 45)
+- Symptom: Die 30 „vorbereiteten“ Befehle (ohne `cmd`, Etappe 44) haben kein
+  Karten-Event und damit noch kein Einstellfenster; Wegpunkte/Waren/Wahlzweige
+  werden im Einstellfenster als Mehrzeiler statt grafisch bearbeitet.
+- Vermutung/Analyse: Erst wenn die Befehle an die Engine-Ports (Etappe 43)
+  angebunden sind, lohnt ein eigenes Fenster. Grafische Listen-Editoren je
+  Zweig sind ein eigener Ausbau auf dem bestehenden Schema.
+- Betroffene Stellen: `src/editor/event_command_settings.h`,
+  `event_command_settings_win.h`, `game/engine/rpg/event_commands/engine_ports.rb`.
+- Gefunden in: Etappe 45.
+
+### [Editor] F9-Registerkarte zum Pflegen aller Schalter-/Variablennamen — offen (Etappe 45)
+- Symptom: Namen werden aktuell je Befehl im Einstellfenster vergeben; eine
+  zentrale Liste aller 999 Nummern zum Umbenennen fehlt.
+- Vermutung/Analyse: `NumberedRegistry` + `database.json["switches"/"variables"]`
+  sind vorhanden; eine F9-Registerkarte (Muster database_catalog) kann sie pflegen.
+- Betroffene Stellen: `src/editor/database_catalog.h`, `editor_main.cpp` (F9),
+  `src/editor/event_numbered_registry.h`.
+- Gefunden in: Etappe 45.
+
 ### [Engine] Level-Up ohne Klassentabellen — bewusste Grenze (Runde 22)
 - Symptom: Stufenaufstieg wächst prozentual (8 % HP/MP, 5 % je
   Angriffswert), XP rechnet dagegen aus `RPG::Class`-Kurven je Stufe.
@@ -494,6 +514,24 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Runde 12 (Y4-Nachgang).
 
 ## Erledigt
+### [Editor] XP-Einstellfenster je Befehl, nummerierte Listen, Asset-Ordnerwahl, XP-Befehlsliste — erledigt (Etappe 45)
+- Symptom: F6 hatte nur Freitextfelder; Schalter/Variable mussten eingetippt
+  werden, Audio/Bilder likewise; die Befehlsliste war nicht XP-artig bedienbar.
+- Fix: Einstellfenster je Befehl (`event_command_settings_win.h` + portables
+  Schema `event_command_settings.h`); nummerierte Register 1..999 für
+  Schalter/Variablen (`event_numbered_registry.h`, `database.json`); Ref-Auswahl
+  aus der Datenbank; Asset-Ordnerwahl mit Kopie ins Projekt
+  (`event_asset_browser_win.h`); Befehlsliste Klick/Doppelklick/Rechtsklick-Menü;
+  Picker öffnet beim Übernehmen das Einstellfenster. Serialisierung bleibt
+  `event_command_prepare` (verlustfrei, Engine-lesbar).
+- Abdeckung: `tools/event_command_settings_test.cpp` (29/0, CI `-Werror`);
+  Cross-Kompilat sauber; json_test 1031/0, befehle_test 0, arch 1542/0, engine 110/0.
+- Doku: `docs/ETAPPE_45_COMMAND_SETTINGS_UI.md`.
+- Betroffene Stellen: `src/editor/editor_main.cpp`, `event_command_dialog_win.h`,
+  `event_command_settings.h/.h_win`, `event_numbered_registry.h`,
+  `event_asset_browser_win.h`, `.github/workflows/ci.yml`.
+- Offen für den Windows-Rechner: Sicht-/DPI-Test (siehe Doku).
+
 ### [Editor] F6 zeigt den XP-Bauplan der drei Tabs — erledigt (Etappe 44)
 - Symptom: Der Event-Editor nutzte weiter seine eigene flache Befehlsliste; die
   drei XP-Tabs mit je zwei Spalten und zwei Abschnitten gab es nur als Daten

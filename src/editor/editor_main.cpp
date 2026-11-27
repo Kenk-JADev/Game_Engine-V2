@@ -55,6 +55,8 @@
 #include "editor/database_layout.h"
 #include "editor/event_command_catalog.h"
 #include "editor/event_command_layout.h"
+#include "editor/event_numbered_registry.h"
+#include "editor/event_command_settings.h"
 #include "editor/document_store_win.h"
 #include "editor/encounter_check.h"
 #include "editor/encounter_form.h"
@@ -654,6 +656,7 @@ bool material_editor_focused();
 // Etappe 17g: Datenbank-Dialog (Helden/Items/Gold).
 void open_database_dialog();
 void open_event_command_picker();   // Etappe 44: XP-Befehlsauswahl (drei Tabs)
+void open_event_command_settings(int type, const EventCommandForm& initial, bool is_update);  // Etappe 45
 bool database_editor_open();
 bool database_editor_focused();
 bool database_request_close();
@@ -8399,6 +8402,9 @@ enum {
     IDEV_CSELF     = 5055,
     IDEV_CSELFVAL  = 5056,
     IDEV_XP_PICK   = 5057,   // Etappe 44: XP-Befehlsauswahl öffnen
+    IDEV_CTX_EDIT  = 5060,   // Etappe 45: Kontextmenü Befehl bearbeiten
+    IDEV_CTX_DEL   = 5061,   // Etappe 45: Kontextmenü Befehl löschen
+    IDEV_CTX_INS   = 5062,   // Etappe 45: Kontextmenü Befehl einfügen
 };
 
 // Pfade statt langlebiger Zeiger: jede Strukturänderung löst die Referenz auf
@@ -10024,6 +10030,28 @@ LRESULT CALLBACK event_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             if (id == IDEV_CMDS && code == LBN_SELCHANGE) { ev_queue_selection(2); return 0; }
             if (id == IDEV_CETYPE && code == CBN_SELCHANGE) { ev_cmd_visibility(true); return 0; }
             if (id == IDEV_CE_SOURCE && code == CBN_SELCHANGE) { ev_cmd_visibility(); return 0; }
+            // Etappe 45: Doppelklick auf einen Befehl öffnet sein XP-Einstellfenster.
+            if (id == IDEV_CMDS && code == LBN_DBLCLK) {
+                ev_flush_queued_selections();
+                if (g_ev.sel_cmd >= 0 && static_cast<size_t>(g_ev.sel_cmd) < g_ev.refs.size() &&
+                    !g_ev.refs[static_cast<size_t>(g_ev.sel_cmd)].header)
+                    open_event_command_settings(g_ev.command_before.type, g_ev.command_before, true);
+                return 0;
+            }
+            // Etappe 45: Kontextmenü (Rechtsklick) Bearbeiten/Löschen/Einfügen.
+            if (id == IDEV_CTX_EDIT) {
+                if (g_ev.sel_cmd >= 0 && static_cast<size_t>(g_ev.sel_cmd) < g_ev.refs.size() &&
+                    !g_ev.refs[static_cast<size_t>(g_ev.sel_cmd)].header)
+                    open_event_command_settings(g_ev.command_before.type, g_ev.command_before, true);
+                return 0;
+            }
+            if (id == IDEV_CTX_DEL) { ev_delete_command(); return 0; }
+            if (id == IDEV_CTX_INS) {
+                EventCommandForm f;
+                f.type = static_cast<int>(SendMessageW(g_ev.cb_ce_type, CB_GETCURSEL, 0, 0));
+                open_event_command_settings(f.type, f, false);
+                return 0;
+            }
             if (code != BN_CLICKED) return 0;
             if (!ev_flush_queued_selections()) return 0;
             if (id == IDEV_NEWPAGE)   { ev_new_page(); return 0; }
@@ -10041,6 +10069,28 @@ LRESULT CALLBACK event_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             if (id == IDEV_UP)       { ev_move_command(-1); return 0; }
             if (id == IDEV_DOWN)     { ev_move_command(+1); return 0; }
             return 0;
+        }
+        case WM_CONTEXTMENU: {
+            // Etappe 45: Rechtsklick auf die Befehlsliste => XP-artiges Menü.
+            if (reinterpret_cast<HWND>(wp) == g_ev.list_cmds && g_ev.list_cmds) {
+                POINT pt{ GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
+                POINT cp = pt; ScreenToClient(g_ev.list_cmds, &cp);
+                const LRESULT hit = SendMessageW(g_ev.list_cmds, LB_ITEMFROMPOINT, 0, MAKELPARAM(cp.x, cp.y));
+                if (HIWORD(hit) == 0) {
+                    SendMessageW(g_ev.list_cmds, LB_SETCURSEL, LOWORD(hit), 0);
+                    ev_queue_selection(2);
+                    ev_flush_queued_selections();
+                }
+                HMENU menu = CreatePopupMenu();
+                AppendMenuW(menu, MF_STRING, IDEV_CTX_EDIT, L"Bearbeiten…");
+                AppendMenuW(menu, MF_STRING, IDEV_CTX_INS, L"Einfügen…");
+                AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+                AppendMenuW(menu, MF_STRING, IDEV_CTX_DEL, L"Löschen");
+                TrackPopupMenu(menu, TPM_RIGHTBUTTON, pt.x, pt.y, 0, h, nullptr);
+                DestroyMenu(menu);
+                return 0;
+            }
+            break;
         }
         case WM_CLOSE:
             if (resolve_event_editor()) DestroyWindow(h);
@@ -11428,6 +11478,7 @@ bool database_editor_focused() {
 //  nutzt dieselbe portable Fensterrechnung wie der Datenbank-Dialog.
 // ============================================================================
 #include "editor/event_command_dialog_win.h"
+#include "editor/event_command_settings_win.h"
 
 // ============================================================================
 //  Etappe 17h: Sound-Test + Playtest

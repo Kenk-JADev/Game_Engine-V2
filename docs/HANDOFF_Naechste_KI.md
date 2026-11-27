@@ -1,4 +1,27 @@
-# Handoff für die nächste KI - Rune3D, Stand nach Etappe 44
+# Handoff für die nächste KI - Rune3D, Stand nach Etappe 45
+
+**Etappe 45 (XP-Einstellfenster, nummerierte Listen, Asset-Ordnerwahl, XP-Befehlsliste) — fertig, Sicht-/DPI-Test steht aus.**
+F6 bedient sich jetzt wie XP: jeder Befehl hat ein **eigenes Einstellfenster**
+(`event_command_settings_win.h`, portabel beschrieben in `event_command_settings.h`);
+**Schalter/Variablen werden über eine nummerierte Liste 1..999 + Namensfeld gewählt**
+(`event_numbered_registry.h`, Persistenz `database.json["switches"/"variables"]`,
+Engine bleibt namen-basiert); Items/Helden/Truppen/… als Datenbank-Auswahl;
+**Audio/Bilder über „Durchsuchen…“** aus einem Ordner (`event_asset_browser_win.h`,
+externe Datei wird ins Projekt kopiert); die **Befehlsliste** ist XP-artig:
+Klick = auswählen, Doppelklick = Bearbeiten, Rechtsklick = Menü
+(Bearbeiten…/Einfügen…/Löschen). Der Picker (Etappe 44) öffnet beim Übernehmen
+direkt das Einstellfenster. **Serialisierung bleibt der getestete Pfad**
+`event_command_prepare` (verlustfrei, validiert, Undo, Engine-lesbar) — das Schema
+folgt `event_command_keys`, nicht dem typisierten Katalog. Neuer kopfloser Test
+`tools/event_command_settings_test.cpp` (**29/0**, CI-Schritt `-Werror`).
+Cross-Kompilat sauber; `json_test` 1031/0, `befehle_test` 0, `event_commands_arch_test`
+1542/0, `event_commands_engine_test` 110/0, `event_command_catalog_test` 32/0.
+Doku: `docs/ETAPPE_45_COMMAND_SETTINGS_UI.md`. **CI grün:** wird nachgetragen.
+**Offen für den Windows-Rechner:** interaktiver Sicht-/DPI-Test der Einstellfenster,
+der nummerierten Listen und der Ordnerwahl. **Nächster Ausbau:** die 30
+vorbereiteten XP-Befehle an die Engine-Ports anbinden + eigene Einstellfenster;
+grafische Listen-Editoren für Wegpunkte/Waren/Wahlzweige; F9-Registerkarte zum
+Pflegen aller Schalter-/Variablennamen.
 
 **Etappe 44 (F6 als drei XP-Registerkarten) — fertig, Sicht-/DPI-Test steht aus.**
 Der Event-Editor (F6) hat jetzt eine Befehlsauswahl wie RPG Maker XP: neben der

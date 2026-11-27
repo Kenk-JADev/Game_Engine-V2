@@ -715,6 +715,19 @@ sind verdrahtet; 30 sind als „vorbereitet“ gekennzeichnet (die Rpg-Schicht f
 sie, das Karten-Event-System noch nicht — Etappe 43) und werden nicht still in
 eine Karte geschrieben. Details: `docs/ETAPPE_44_EVENT_COMMAND_TABS_UI.md`.
 
+**XP-Einstellfenster & Bedienung (Etappe 45):** Hinter der Auswahl öffnet jeder
+Befehl ein eigenes Einstellfenster (`event_command_settings_win.h`), das ein
+portables Schema (`event_command_settings.h`) rendert: nummerierte Listen 1..999
+für Schalter/Variablen (`event_numbered_registry.h`, Persistenz
+`database.json["switches"/"variables"]`, Engine bleibt namen-basiert),
+Datenbank-Auswahlen für Refs, Asset-Ordnerwahl für Audio/Bilder
+(`event_asset_browser_win.h`, Kopie ins Projekt), Combos/An-Aus/geprüfte Zahlen/
+Mehrzeiler. Die Befehlsliste ist XP-artig bedienbar (Klick auswählen, Doppelklick
+Bearbeiten, Rechtsklick Menü). Serialisierung bleibt der getestete Pfad
+`event_command_prepare`; das Schema folgt `event_command_keys` (laufendes
+Karten-Event-System), nicht dem typisierten Katalog. Details:
+`docs/ETAPPE_45_COMMAND_SETTINGS_UI.md`.
+
 **Befehlskategorien:** Die Befehls-ComboBox gruppiert jetzt 20 Typen
 mit Präfixen: [Nachricht] (Text, Wahlmöglichkeiten, Log),
 [Steuerung] (Warte, Schalter setzen/umschalten, Variable, Wenn

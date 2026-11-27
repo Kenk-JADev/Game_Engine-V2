@@ -220,6 +220,7 @@ ruby tools\lint_repo.rb                        # Repo-Hygiene
 | F9-Register ↔ Engine | Datenbank mit allen 13 Registern, vorbereitete Register wirkungslos, F9-Vorgaben spielbar, alte Projekte gültig | `tools/database_register_test.rb` |
 | Event-Command-Architektur | Bauplan der drei XP-Tabs (90 Befehle), typisierte Command-Objekte, ein Handler je Typ, Ports und Interpreter | `tools/event_commands_arch_test.rb`, `tools/event_commands_test.rb` |
 | XP-Befehlskatalog (F6) | Portable Abbildung des Bauplans: 90 Befehle, 3 Tabs, 12 Abschnitte, Codes, Felder, `cmd`-Zuordnung und überlappungsfreie Geometrie | `tools/event_command_catalog_test.cpp` |
+| Einstell-Schema + Register (F6) | Nummerierte Schalter-/Variablen-Register 1..999, Einstellfelder je Befehl, Asset-Ordnerfilter | `tools/event_command_settings_test.cpp` |
 | Script-/Kartenmodell | RGSS-Dokumente, Einrückung, Markeridentität und Startposition | `tools/editor_workflow_test.cpp` |
 | C++-Terrain | Echte Geländegenerierung, Höhen-/Splat-Budgets, Atlasplan und Fehlerpfade ohne D3D | `tools/terrain_test.cpp` |
 | Materialien/Dateien | Verlustfreier JSON-Baum, unter Windows Handle-Konflikte, Junctions und Hardlinks | `tools/material_test.cpp` |
@@ -476,6 +477,14 @@ Abschnitten, 90 Befehle). Ein Klick wählt den Befehl, „Übernehmen“ stellt 
 ComboBox auf den passenden Event-String. 60 Befehle sind ausführbar verdrahtet;
 30 sind als „vorbereitet“ markiert und melden ihre Grenze, statt still in eine
 Karte geschrieben zu werden. Siehe `docs/ETAPPE_44_EVENT_COMMAND_TABS_UI.md`.
+
+**XP-Einstellfenster & Bedienung (Etappe 45):** Jeder Befehl hat ein eigenes
+Einstellfenster mit genau seinen Feldern. Schalter und Variablen werden über eine
+nummerierte Liste 1..999 (mit Namen) gewählt, nicht eingetippt; Items/Helden/
+Truppen/… aus der Datenbank; Audio und Bilder über „Durchsuchen…“ aus einem Ordner
+(extern gewählte Dateien werden ins Projekt kopiert). In der Befehlsliste:
+Klick = auswählen, Doppelklick = Bearbeiten, Rechtsklick = Menü
+(Bearbeiten…/Einfügen…/Löschen). Siehe `docs/ETAPPE_45_COMMAND_SETTINGS_UI.md`.
 
 Nur geänderte Felder werden geschrieben. Unberührte Zahlen, fehlende Felder,
 Zusatzdaten und verschachtelte Zweige bleiben erhalten. Alte Events ohne

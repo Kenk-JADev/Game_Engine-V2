@@ -136,18 +136,17 @@ static void ec_apply() {
             L"Befehl vorbereitet", MB_OK | MB_ICONINFORMATION);
         return;
     }
-    if (g_ev.cb_ce_type) {
-        for (int i = 0; i < ET_COUNT; ++i) {
-            if (std::strcmp(EV_TYPES[i], c.cmd) == 0) {
-                SendMessageW(g_ev.cb_ce_type, CB_SETCURSEL, i, 0);
-                SendMessageW(g_ev.win, WM_COMMAND,
-                             MAKEWPARAM(IDEV_CETYPE, CBN_SELCHANGE),
-                             reinterpret_cast<LPARAM>(g_ev.cb_ce_type));
-                break;
-            }
-        }
-    }
+    // Etappe 45: nicht nur den Typ setzen, sondern direkt das XP-Einstellfenster
+    // des Befehls öffnen (Felder einstellen, dann einfügen).
+    int index = -1;
+    for (int i = 0; i < ET_COUNT; ++i)
+        if (std::strcmp(EV_TYPES[i], c.cmd) == 0) { index = i; break; }
     DestroyWindow(g_ec.win);
+    if (index >= 0) {
+        EventCommandForm f;
+        f.type = index;
+        open_event_command_settings(index, f, false);
+    }
 }
 
 static LRESULT CALLBACK ec_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {

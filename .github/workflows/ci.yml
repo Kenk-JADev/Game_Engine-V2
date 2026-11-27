@@ -123,6 +123,13 @@ jobs:
             -Isrc tools/event_command_catalog_test.cpp -o event_command_catalog_test
           ./event_command_catalog_test
 
+      - name: Einstell-Schema + nummerierte Register portabel prüfen (Etappe 45)
+        run: |
+          g++ -std=c++20 -O2 -Wall -Wextra -Werror \
+            -Wno-unused-parameter -Wno-missing-field-initializers \
+            -Isrc src/editor/json.cpp tools/event_command_settings_test.cpp -o event_command_settings_test
+          ./event_command_settings_test
+
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.4'
