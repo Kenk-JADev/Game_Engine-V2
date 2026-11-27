@@ -277,6 +277,7 @@ end
     @npcs = (@map['npcs'] || []).map { |h| Npc.new(h, @scene) }
     Effects.clear
     Weather.load_map(@map)   # Etappe 17h: Wetter der Karte aktivieren
+    MapEffects.reset! if defined?(MapEffects)   # Etappe 48: Scroll/Nebel/Keys je Karte
     # Etappe 21: BGM/BGS der Karte starten (XP: Game_Map#autoplay). Fehlt der
     # Eintrag, laeuft die bisherige Musik weiter.
     MapAudio.enter(@map) if defined?(MapAudio)
@@ -286,7 +287,13 @@ end
     # Laufzeit-Backlog (log/issues.json) - Warnungen bleiben Editor und CI.
     # Der defined?-Schutz hält main.rb lauffähig, falls das Modul fehlt.
     if defined?(MapCheck) && defined?(Issues)
-      funde = MapCheck.scan(@map, name: id.to_s).select(&:fehler?)
+      # Etappe 48: CommandValidator-Referenzprüfung (IDs/Asset-Keys) in den
+      # Lade-Prüfablauf holen. Der Index kommt aus der laufenden Datenbank.
+      resources = nil
+      if defined?(Rpg::EventCommands::CommandValidator) && defined?(Database)
+        resources = Rpg::EventCommands::CommandValidator.resources_from_database(Database.database)
+      end
+      funde = MapCheck.scan(@map, name: id.to_s, resources: resources).select(&:fehler?)
       MapCheck.report!(funde) unless funde.empty?
     end
 
@@ -1212,6 +1219,8 @@ end
     # Etappe 20f: Bildschirmton/Blitz laufen weiter, auch während Menü, Laden
     # oder Textfenster offen sind (XP: $game_screen#update in jedem Frame).
     ScreenFx.update(dt) if defined?(ScreenFx)
+    # Etappe 48: Karten-Scroll/Nebel-Übergänge laufen im Engine-Takt.
+    MapEffects.update(dt) if defined?(MapEffects)
     # Etappe 20f: Bilder bewegen/drehen/tönen (XP 231-235).
     Pictures.update(dt) if defined?(Pictures)
     # Etappe 21: BGM/BGS-Fades laufen im Engine-Takt (nicht blockierend).
@@ -1633,6 +1642,8 @@ end
     end
 
     Rune::Gfx.clear_color = 0x131A24
+    # Etappe 48: Panorama-Hintergrund vor der Welt (XP 204).
+    MapEffects.draw_background if defined?(MapEffects)
 
     # Der Spieler existiert nur als Punkt; im Third-Person-Modus bekommt er einen Körper.
     # F6: $game_player.transparent (XP) verbirgt den Körper.
@@ -1645,6 +1656,7 @@ end
     @scene.draw
     Effects.draw   # Partikel über der Szene, unter dem UI
     Weather.draw   # Etappe 17h: Wetter über den Partikeln
+    MapEffects.draw_fog if defined?(MapEffects)   # Etappe 48: Nebel-Overlay (XP 205/206)
     # Hervorhebung des Objekts unter der Maus / dem Fadenkreuz.
     # Im Fang-Modus (Egoperspektive) nur Events, sonst wäre alles markiert.
     zeige = @hover && (@hover.is_a?(Event) || !Rune::Input.captured?)

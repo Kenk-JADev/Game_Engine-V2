@@ -50,7 +50,8 @@ enum EvType {
     ET_TINT_PICTURE, ET_ERASE_PICTURE,
     ET_PLAY_BGM, ET_FADEOUT_BGM, ET_PLAY_BGS, ET_FADEOUT_BGS,
     ET_SAVE_BGM, ET_RESUME_BGM, ET_MEMORIZE_AUDIO, ET_RESTORE_AUDIO,
-    ET_STATE, ET_ACTOR_PARAM, ET_ACTOR_NAME, ET_ACTOR_SKILL, ET_COUNT
+    ET_STATE, ET_ACTOR_PARAM, ET_ACTOR_NAME, ET_ACTOR_SKILL,
+    ET_CONDITIONAL_BRANCH, ET_CHANGE_WEAPONS, ET_CHANGE_ARMORS, ET_CHANGE_WINDOWSKIN, ET_CHANGE_BATTLE_BGM, ET_CHANGE_BATTLE_END_ME, ET_SCROLL_MAP, ET_CHANGE_MAP_SETTINGS, ET_CHANGE_FOG_COLOR_TONE, ET_CHANGE_FOG_OPACITY, ET_SHOW_ANIMATION, ET_CHANGE_TRANSPARENT_FLAG, ET_WAIT_FOR_MOVE_COMPLETION, ET_PREPARE_TRANSITION, ET_STOP_SE, ET_CHANGE_EQUIPMENT, ET_CHANGE_ACTOR_CLASS, ET_CHANGE_ACTOR_GRAPHIC, ET_CHANGE_ENEMY_HP, ET_CHANGE_ENEMY_SP, ET_CHANGE_ENEMY_STATE, ET_ENEMY_RECOVER_ALL, ET_ENEMY_APPEARANCE, ET_ENEMY_TRANSFORM, ET_SHOW_BATTLE_ANIMATION, ET_DEAL_DAMAGE, ET_FORCE_ACTION, ET_ABORT_BATTLE, ET_GAME_OVER, ET_RETURN_TO_TITLE_SCREEN, ET_COUNT
 };
 inline constexpr const char* const EV_TYPES[ET_COUNT] = {
     "text", "choices", "log", "wait", "switch", "toggle_switch", "variable",
@@ -66,7 +67,8 @@ inline constexpr const char* const EV_TYPES[ET_COUNT] = {
     "show_picture", "move_picture", "rotate_picture", "tint_picture", "erase_picture",
     "play_bgm", "fadeout_bgm", "play_bgs", "fadeout_bgs",
     "save_bgm", "resume_bgm", "memorize_audio", "restore_audio",
-    "state", "actor_param", "actor_name", "actor_skill"
+    "state", "actor_param", "actor_name", "actor_skill",
+    "conditional_branch", "change_weapons", "change_armors", "change_windowskin", "change_battle_bgm", "change_battle_end_me", "scroll_map", "change_map_settings", "change_fog_color_tone", "change_fog_opacity", "show_animation", "change_transparent_flag", "wait_for_move_completion", "prepare_transition", "stop_se", "change_equipment", "change_actor_class", "change_actor_graphic", "change_enemy_hp", "change_enemy_sp", "change_enemy_state", "enemy_recover_all", "enemy_appearance", "enemy_transform", "show_battle_animation", "deal_damage", "force_action", "abort_battle", "game_over", "return_to_title_screen"
 };
 inline constexpr const char* const EVENT_TRIGGERS[] = {"action", "touch", "auto", "parallel"};
 inline constexpr const char* const EVENT_OPS[] = {"==", "!=", "<", "<=", ">", ">="};
@@ -83,6 +85,25 @@ inline constexpr const char* const EVENT_ACTOR_SOURCES[] = {"const", "variable"}
 inline constexpr size_t EVENT_ACTOR_SOURCES_COUNT = sizeof(EVENT_ACTOR_SOURCES) / sizeof(EVENT_ACTOR_SOURCES[0]);
 inline constexpr size_t EVENT_VAR_OPS_COUNT = sizeof(EVENT_VAR_OPS) / sizeof(EVENT_VAR_OPS[0]);
 inline constexpr size_t EVENT_OPS_COUNT = sizeof(EVENT_OPS) / sizeof(EVENT_OPS[0]);
+// Etappe 48: Auswahlen der neu angebundenen XP-Befehle (Editor-Combos).
+inline constexpr const char* const EVENT_OPERATION[] = {"add", "subtract"};
+inline constexpr size_t EVENT_OPERATION_COUNT = sizeof(EVENT_OPERATION) / sizeof(EVENT_OPERATION[0]);
+inline constexpr const char* const EVENT_STATE_MODE[] = {"add", "remove"};
+inline constexpr size_t EVENT_STATE_MODE_COUNT = sizeof(EVENT_STATE_MODE) / sizeof(EVENT_STATE_MODE[0]);
+inline constexpr const char* const EVENT_SCROLL_DIR[] = {"up", "down", "left", "right"};
+inline constexpr size_t EVENT_SCROLL_DIR_COUNT = sizeof(EVENT_SCROLL_DIR) / sizeof(EVENT_SCROLL_DIR[0]);
+inline constexpr const char* const EVENT_MAP_TARGET[] = {"panorama", "fog", "battleback"};
+inline constexpr size_t EVENT_MAP_TARGET_COUNT = sizeof(EVENT_MAP_TARGET) / sizeof(EVENT_MAP_TARGET[0]);
+inline constexpr const char* const EVENT_EQUIP_SLOT[] = {"weapon", "armor", "accessory"};
+inline constexpr size_t EVENT_EQUIP_SLOT_COUNT = sizeof(EVENT_EQUIP_SLOT) / sizeof(EVENT_EQUIP_SLOT[0]);
+inline constexpr const char* const EVENT_ANIM_TARGET[] = {"player", "this_event", "event"};
+inline constexpr size_t EVENT_ANIM_TARGET_COUNT = sizeof(EVENT_ANIM_TARGET) / sizeof(EVENT_ANIM_TARGET[0]);
+inline constexpr const char* const EVENT_COND_KIND[] = {
+    "switch", "variable", "self_switch", "timer", "actor", "enemy",
+    "gold", "item", "weapon", "armor", "button", "script"};
+inline constexpr size_t EVENT_COND_KIND_COUNT = sizeof(EVENT_COND_KIND) / sizeof(EVENT_COND_KIND[0]);
+inline constexpr const char* const EVENT_COMPARATOR[] = {"==", "!=", ">", ">=", "<", "<="};
+inline constexpr size_t EVENT_COMPARATOR_COUNT = sizeof(EVENT_COMPARATOR) / sizeof(EVENT_COMPARATOR[0]);
 
 // Felder des Befehlsformulars: Name, Wert 1/2/3 und Mehrzeiler. Dasselbe
 // Schema steuert die Anzeige und verhindert, dass ein geschütztes Alt-Feld
@@ -688,6 +709,10 @@ inline EventCommandForm event_command_form_read(const JsonValue& c) {
     };
     auto flag = [&](const char* key, int def) { return event_unique(c, key) ? event_bool_view(c.find(key), def) : -1; };
     auto lines = [&](const char* key) { return event_unique(c, key) ? event_list_view(c.find(key)) : "[mehrfach vorhanden]"; };
+    // Etappe 48: Combo-Schlüssel als Index lesen (operation/direction/target/...).
+    auto wahl = [&](const char* key, const char* const* liste, int anzahl) {
+        return event_unique(c, key) ? event_choice_view(c.find(key), liste, anzahl, -1) : -1;
+    };
     auto actor_operand = [&]() {
         if (!event_unique(c, "source")) f.source = -1;
         else f.source = c.find("source")
@@ -879,6 +904,57 @@ inline EventCommandForm event_command_form_read(const JsonValue& c) {
                             : flag("transparent", 1) == 1 ? "0" : "[ungültig/mehrfach]")
                          : "";
             break;
+        // Etappe 48: die 30 neuen XP-Befehle für das Formular zurücklesen.
+        case ET_CONDITIONAL_BRANCH:
+            f.name = text("kind", "switch"); f.op = wahl("comparator", EVENT_COMPARATOR, EVENT_COMPARATOR_COUNT);
+            f.val1 = num("switch_id"); f.val2 = num("value"); f.val3 = num("seconds"); break;
+        case ET_CHANGE_WEAPONS:
+            f.name = text("weapon_id"); f.val1 = num("amount", "1");
+            f.op = wahl("operation", EVENT_OPERATION, EVENT_OPERATION_COUNT); break;
+        case ET_CHANGE_ARMORS:
+            f.name = text("armor_id"); f.val1 = num("amount", "1");
+            f.op = wahl("operation", EVENT_OPERATION, EVENT_OPERATION_COUNT); break;
+        case ET_CHANGE_WINDOWSKIN: f.name = text("skin_key"); break;
+        case ET_CHANGE_BATTLE_BGM:
+            f.name = text("bgm_key"); f.val1 = num("volume", "100"); f.val2 = num("pitch", "100"); break;
+        case ET_CHANGE_BATTLE_END_ME: f.name = text("me_key"); f.val1 = num("volume", "100"); break;
+        case ET_SCROLL_MAP:
+            f.op = wahl("direction", EVENT_SCROLL_DIR, EVENT_SCROLL_DIR_COUNT);
+            f.val1 = num("distance", "1"); f.val2 = num("speed", "4"); break;
+        case ET_CHANGE_MAP_SETTINGS:
+            f.op = wahl("target", EVENT_MAP_TARGET, EVENT_MAP_TARGET_COUNT); f.name = text("asset_key"); break;
+        case ET_CHANGE_FOG_COLOR_TONE:
+            f.val1 = num("r", "0"); f.val2 = num("g", "0"); f.val3 = num("b", "0"); f.text = num("duration", "0"); break;
+        case ET_CHANGE_FOG_OPACITY: f.val1 = num("opacity", "160"); f.val2 = num("duration", "0"); break;
+        case ET_SHOW_ANIMATION:
+            f.op = wahl("target", EVENT_ANIM_TARGET, EVENT_ANIM_TARGET_COUNT);
+            f.name = text("animation_key"); f.val1 = num("event_id", "0"); break;
+        case ET_CHANGE_TRANSPARENT_FLAG: f.flag = flag("transparent", 0); break;
+        case ET_WAIT_FOR_MOVE_COMPLETION: break;
+        case ET_PREPARE_TRANSITION: f.name = text("transition_key"); f.val1 = num("duration", "0"); break;
+        case ET_STOP_SE: break;
+        case ET_CHANGE_EQUIPMENT:
+            f.val1 = num("actor_id", "0"); f.op = wahl("slot", EVENT_EQUIP_SLOT, EVENT_EQUIP_SLOT_COUNT);
+            f.name = text("item_id"); break;
+        case ET_CHANGE_ACTOR_CLASS: f.val1 = num("actor_id", "0"); f.name = text("class_id"); break;
+        case ET_CHANGE_ACTOR_GRAPHIC:
+            f.val1 = num("actor_id", "0"); f.name = text("character_key");
+            f.val2 = text("battler_key"); f.val3 = text("face_key"); break;
+        case ET_CHANGE_ENEMY_HP: case ET_CHANGE_ENEMY_SP:
+            f.val1 = num("slot", "0");
+            f.op = wahl("operation", EVENT_OPERATION, EVENT_OPERATION_COUNT); f.val2 = num("amount", "0"); break;
+        case ET_CHANGE_ENEMY_STATE:
+            f.val1 = num("slot", "0"); f.name = text("state_id");
+            f.op = wahl("operation", EVENT_STATE_MODE, EVENT_STATE_MODE_COUNT); break;
+        case ET_ENEMY_RECOVER_ALL: break;
+        case ET_ENEMY_APPEARANCE: f.val1 = num("slot", "0"); f.flag = flag("hidden", 0); break;
+        case ET_ENEMY_TRANSFORM: f.val1 = num("slot", "0"); f.name = text("enemy_id"); break;
+        case ET_SHOW_BATTLE_ANIMATION:
+            f.name = text("animation_key"); f.val1 = num("target_slot", "-1"); break;
+        case ET_DEAL_DAMAGE: f.val1 = num("target_slot", "0"); f.val2 = num("amount", "0"); break;
+        case ET_FORCE_ACTION:
+            f.val1 = num("slot", "0"); f.name = text("action_key"); f.val2 = num("target_slot", "-1"); break;
+        case ET_ABORT_BATTLE: case ET_GAME_OVER: case ET_RETURN_TO_TITLE_SCREEN: break;
         default: break;
     }
     return f;
@@ -941,6 +1017,37 @@ inline std::vector<const char*> event_command_keys(int type) {
         case ET_ACTOR_PARAM: return {"param", "actor", "amount", "source", "src"};
         case ET_ACTOR_NAME: return {"actor", "name"};
         case ET_ACTOR_SKILL: return {"name", "actor", "mode"};
+        // Etappe 48: die 30 neu an die Engine angebundenen XP-Befehle.
+        case ET_CONDITIONAL_BRANCH:
+            return {"kind", "switch_id", "variable_id", "comparator", "value", "value_variable_id",
+                    "letter", "seconds", "actor_id", "enemy_slot", "item_id", "weapon_id", "armor_id",
+                    "button", "script_key", "expression", "then", "else"};
+        case ET_CHANGE_WEAPONS: return {"weapon_id", "amount", "operation", "include_equipment"};
+        case ET_CHANGE_ARMORS: return {"armor_id", "amount", "operation", "include_equipment"};
+        case ET_CHANGE_WINDOWSKIN: return {"skin_key"};
+        case ET_CHANGE_BATTLE_BGM: return {"bgm_key"};
+        case ET_CHANGE_BATTLE_END_ME: return {"me_key"};
+        case ET_SCROLL_MAP: return {"direction", "distance", "speed"};
+        case ET_CHANGE_MAP_SETTINGS: return {"target", "asset_key", "color"};
+        case ET_CHANGE_FOG_COLOR_TONE: return {"color", "r", "g", "b", "gray"};
+        case ET_CHANGE_FOG_OPACITY: return {"opacity"};
+        case ET_SHOW_ANIMATION: return {"target", "animation_key", "event_id"};
+        case ET_CHANGE_TRANSPARENT_FLAG: return {"transparent"};
+        case ET_WAIT_FOR_MOVE_COMPLETION: return {};
+        case ET_PREPARE_TRANSITION: return {"transition_key"};
+        case ET_STOP_SE: return {"se_key"};
+        case ET_CHANGE_EQUIPMENT: return {"actor_id", "slot", "item_id"};
+        case ET_CHANGE_ACTOR_CLASS: return {"actor_id", "class_id"};
+        case ET_CHANGE_ACTOR_GRAPHIC: return {"actor_id", "character_key", "battler_key", "face_key"};
+        case ET_CHANGE_ENEMY_HP: return {"slot", "operation", "amount", "allow_knockout"};
+        case ET_CHANGE_ENEMY_SP: return {"slot", "operation", "amount"};
+        case ET_CHANGE_ENEMY_STATE: return {"slot", "state_id", "operation"};
+        case ET_ENEMY_RECOVER_ALL: case ET_ENEMY_APPEARANCE: return {"slot"};
+        case ET_ENEMY_TRANSFORM: return {"slot", "enemy_id"};
+        case ET_SHOW_BATTLE_ANIMATION: return {"slot", "animation_key"};
+        case ET_DEAL_DAMAGE: return {"slot", "amount", "element_id"};
+        case ET_FORCE_ACTION: return {"slot", "action_key", "target_slot"};
+        case ET_ABORT_BATTLE: case ET_GAME_OVER: case ET_RETURN_TO_TITLE_SCREEN: return {};
         default: return {};
     }
 }
@@ -1049,6 +1156,18 @@ inline EventEdit event_command_prepare(const JsonValue* existing, const EventCom
         return true;
     };
     auto op_feld = [&]() { return op_feld_mit(EVENT_OPS, static_cast<int>(EVENT_OPS_COUNT)); };
+    // Etappe 48: Combo-Auswahl in einen frei benannten JSON-Schlüssel schreiben
+    // (operation/direction/target/slot/... statt immer "op").
+    auto combo = [&](const char* key, const char* const* liste, int anzahl) {
+        if (after.op < 0 || after.op >= anzahl) return fail("cmd_op", "Bitte eine gültige Auswahl treffen.");
+        if (!fresh && before.op == after.op) return true;
+        if (!unique(key, "cmd_op")) return false;
+        const JsonValue* alt = r.value.find(key);
+        if (alt && !alt->is_null() && event_choice_view(alt, liste, anzahl, -1) < 0)
+            r.replaces_invalid = true;
+        r.value.set(key, JsonValue::make_str(liste[after.op]));
+        return true;
+    };
     const double unlimited = std::numeric_limits<double>::infinity();
     auto num = [&](const char* key, const char* field, const std::string& was, const std::string& now,
                    bool optional = false, const char* fallback = "0", bool integer = false,
@@ -1100,6 +1219,11 @@ inline EventEdit event_command_prepare(const JsonValue* existing, const EventCom
                   bool finite = true, double min = -std::numeric_limits<double>::infinity(),
                   double max = std::numeric_limits<double>::infinity(), bool strict_min = false) {
         return num(key, "cmd_val2", before.val2, after.val2, optional, fallback, integer, finite, min, max, strict_min);
+    };
+    auto v3 = [&](const char* key, bool optional = false, const char* fallback = "0", bool integer = false,
+                  bool finite = true, double min = -std::numeric_limits<double>::infinity(),
+                  double max = std::numeric_limits<double>::infinity(), bool strict_min = false) {
+        return num(key, "cmd_val3", before.val3, after.val3, optional, fallback, integer, finite, min, max, strict_min);
     };
     auto actor_wert_felder = [&](const char* amount_key, const char* amount_field,
                                  const std::string& before_amount, const std::string& after_amount) {
@@ -1472,8 +1596,8 @@ inline EventEdit event_command_prepare(const JsonValue* existing, const EventCom
                  boolean("repeat", "cmd_flag", before.flag, after.flag);
             break;
         case ET_INPUT_NUMBER: {
-            ok = name() && v1("digits", true, "1", true, true, 1, 6) &&
-                 v2("initial", true, "0", true, true, 0, 999999) &&
+            ok = name() && v1("digits", true, "1", true, true, 1, 8) &&
+                 v2("initial", true, "0", true, true, 0, 99999999) &&
                  boolean("cancel", "cmd_flag", before.flag, after.flag);
             if (ok && (fresh || before.val1 != after.val1 || before.val2 != after.val2)) {
                 // Der Ruby-Interpreter klemmt initial auf 10^digits-1. Neue
@@ -1488,9 +1612,9 @@ inline EventEdit event_command_prepare(const JsonValue* existing, const EventCom
                     return true;
                 };
                 int digits = 1, initial = 0;
-                if (!valid_whole("digits", 1, 1, 6, digits))
-                    ok = fail("cmd_val1", "Bitte zuerst eine gültige Ziffernzahl von 1 bis 6 eingeben.");
-                else if (!valid_whole("initial", 0, 0, 999999, initial))
+                if (!valid_whole("digits", 1, 1, 8, digits))
+                    ok = fail("cmd_val1", "Bitte zuerst eine gültige Ziffernzahl von 1 bis 8 eingeben.");
+                else if (!valid_whole("initial", 0, 0, 99999999, initial))
                     ok = fail("cmd_val2", "Bitte zuerst einen gültigen nichtnegativen Startwert eingeben.");
                 else {
                     int limit = 1;
@@ -1622,6 +1746,137 @@ inline EventEdit event_command_prepare(const JsonValue* existing, const EventCom
             if (ok) ok = bool_text("transparent", "cmd_val2", before.val2, after.val2);
             break;
         }
+        // Etappe 48: die 30 neu an die Engine angebundenen XP-Befehle. Die
+        // Felder folgen dem, was EventRuntime/MapEffects/Party/Battle lesen.
+        case ET_CONDITIONAL_BRANCH: {
+            ok = combo("kind", EVENT_COND_KIND, static_cast<int>(EVENT_COND_KIND_COUNT));
+            if (!ok) break;
+            const std::string kind = EVENT_COND_KIND[after.op];
+            if (kind == "self_switch") {
+                ok = text("letter", "cmd_name", before.name, after.name, false, false, true);
+                if (ok) ok = boolean("value", "cmd_flag", before.flag, after.flag);
+            } else if (kind == "switch") {
+                ok = name("switch_id");
+                if (ok) ok = boolean("value", "cmd_flag", before.flag, after.flag);
+            } else if (kind == "enemy") {
+                ok = v1("enemy_slot", false, "0", true, true, 0, 7);
+            } else if (kind == "timer") {
+                ok = v1("seconds", false, "0", false, true, 0, unlimited);
+                if (ok) ok = text("comparator", "cmd_val3", before.val3, after.val3, true, false, false);
+            } else if (kind == "script") {
+                ok = text("expression", "cmd_text", before.text, after.text, false, true, true);
+                if (ok) ok = text("script_key", "cmd_name", before.name, after.name, true, false, false);
+            } else if (kind == "gold") {
+                ok = v1("value", false, "0", false, true, -unlimited, unlimited);
+                if (ok) ok = text("comparator", "cmd_val3", before.val3, after.val3, true, false, false);
+            } else {
+                // variable/actor/item/weapon/armor/button: ID + Wert + Vergleich.
+                const char* id_key = kind == "variable" ? "variable_id"
+                                   : kind == "actor" ? "actor_id"
+                                   : kind == "item" ? "item_id"
+                                   : kind == "weapon" ? "weapon_id"
+                                   : kind == "armor" ? "armor_id" : "button";
+                ok = name(id_key);
+                if (ok && kind != "actor" && kind != "button") {
+                    ok = v1("value", false, "0", false, true, -unlimited, unlimited);
+                    if (ok) ok = text("comparator", "cmd_val3", before.val3, after.val3, true, false, false);
+                }
+            }
+            break;
+        }
+        case ET_CHANGE_WEAPONS:
+            ok = name("weapon_id") && v1("amount", false, "1", true, true, 1, 999) &&
+                 combo("operation", EVENT_OPERATION, static_cast<int>(EVENT_OPERATION_COUNT)) &&
+                 boolean("include_equipment", "cmd_flag", before.flag, after.flag);
+            break;
+        case ET_CHANGE_ARMORS:
+            ok = name("armor_id") && v1("amount", false, "1", true, true, 1, 999) &&
+                 combo("operation", EVENT_OPERATION, static_cast<int>(EVENT_OPERATION_COUNT)) &&
+                 boolean("include_equipment", "cmd_flag", before.flag, after.flag);
+            break;
+        case ET_CHANGE_WINDOWSKIN: ok = name("skin_key"); break;
+        case ET_CHANGE_BATTLE_BGM: ok = name("bgm_key"); break;
+        case ET_CHANGE_BATTLE_END_ME: ok = name("me_key"); break;
+        case ET_SCROLL_MAP:
+            ok = combo("direction", EVENT_SCROLL_DIR, static_cast<int>(EVENT_SCROLL_DIR_COUNT)) &&
+                 v1("distance", false, "1", true, true, 1, 999) &&
+                 v2("speed", false, "4", true, true, 1, 10);
+            break;
+        case ET_CHANGE_MAP_SETTINGS:
+            ok = combo("target", EVENT_MAP_TARGET, static_cast<int>(EVENT_MAP_TARGET_COUNT)) &&
+                 name("asset_key");
+            break;
+        case ET_CHANGE_FOG_COLOR_TONE:
+            ok = v1("r", false, "0", true, true, -255, 255) &&
+                 v2("g", false, "0", true, true, -255, 255) &&
+                 v3("b", false, "0", true, true, -255, 255);
+            break;
+        case ET_CHANGE_FOG_OPACITY:
+            ok = v1("opacity", false, "0", true, true, 0, 255);
+            break;
+        case ET_SHOW_ANIMATION:
+            ok = combo("target", EVENT_ANIM_TARGET, static_cast<int>(EVENT_ANIM_TARGET_COUNT)) &&
+                 name("animation_key");
+            if (ok) ok = text("event_id", "cmd_val1", before.val1, after.val1, true, false, false);
+            break;
+        case ET_CHANGE_TRANSPARENT_FLAG:
+            ok = boolean("transparent", "cmd_flag", before.flag, after.flag);
+            break;
+        case ET_WAIT_FOR_MOVE_COMPLETION: ok = true; break;
+        case ET_PREPARE_TRANSITION: ok = name("transition_key"); break;
+        case ET_STOP_SE: ok = name("se_key", false); break;
+        case ET_CHANGE_EQUIPMENT:
+            ok = name("actor_id") &&
+                 combo("slot", EVENT_EQUIP_SLOT, static_cast<int>(EVENT_EQUIP_SLOT_COUNT)) &&
+                 text("item_id", "cmd_val1", before.val1, after.val1, true, false, false);
+            break;
+        case ET_CHANGE_ACTOR_CLASS:
+            ok = name("actor_id") &&
+                 text("class_id", "cmd_val1", before.val1, after.val1, false, false, true);
+            break;
+        case ET_CHANGE_ACTOR_GRAPHIC:
+            ok = name("actor_id") &&
+                 text("character_key", "cmd_val1", before.val1, after.val1, false, false, true) &&
+                 text("battler_key", "cmd_val2", before.val2, after.val2, true, false, false) &&
+                 text("face_key", "cmd_val3", before.val3, after.val3, true, false, false);
+            break;
+        case ET_CHANGE_ENEMY_HP:
+            ok = v1("slot", false, "0", true, true, 0, 7) &&
+                 v2("amount", false, "0", true, true, -9999999, 9999999) &&
+                 combo("operation", EVENT_OPERATION, static_cast<int>(EVENT_OPERATION_COUNT)) &&
+                 boolean("allow_knockout", "cmd_flag", before.flag, after.flag);
+            break;
+        case ET_CHANGE_ENEMY_SP:
+            ok = v1("slot", false, "0", true, true, 0, 7) &&
+                 v2("amount", false, "0", true, true, -9999999, 9999999) &&
+                 combo("operation", EVENT_OPERATION, static_cast<int>(EVENT_OPERATION_COUNT));
+            break;
+        case ET_CHANGE_ENEMY_STATE:
+            ok = v1("slot", false, "0", true, true, 0, 7) &&
+                 name("state_id") &&
+                 combo("operation", EVENT_STATE_MODE, static_cast<int>(EVENT_STATE_MODE_COUNT));
+            break;
+        case ET_ENEMY_RECOVER_ALL: case ET_ENEMY_APPEARANCE:
+            ok = v1("slot", false, "0", true, true, 0, 7);
+            break;
+        case ET_ENEMY_TRANSFORM:
+            ok = v1("slot", false, "0", true, true, 0, 7) && name("enemy_id");
+            break;
+        case ET_SHOW_BATTLE_ANIMATION:
+            ok = name("animation_key") && v1("target_slot", false, "-1", true, true, -1, 7);
+            break;
+        case ET_DEAL_DAMAGE:
+            ok = v1("target_slot", false, "0", true, true, 0, 7) &&
+                 v2("amount", false, "0", true, true, 0, 9999999);
+            break;
+        case ET_FORCE_ACTION:
+            ok = v1("slot", false, "0", true, true, 0, 7) &&
+                 name("action_key") &&
+                 v2("target_slot", false, "-1", true, true, -1, 7);
+            break;
+        case ET_ABORT_BATTLE: case ET_GAME_OVER: case ET_RETURN_TO_TITLE_SCREEN:
+            ok = true;
+            break;
         default: return event_failure(original, "cmd_type", "Unbekannter Befehlstyp.");
     }
     if (!ok) return r;

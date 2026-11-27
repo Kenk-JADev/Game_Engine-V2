@@ -77,6 +77,38 @@
       "desc": "Bringt 50 Gold beim Öffnen."
     }
   ],
+  "weapons": [
+    {
+      "id": "rune_blade",
+      "name": "Rune Blade",
+      "key": "weapon/rune_blade",
+      "kind": "weapon",
+      "atk": 12,
+      "price": 180,
+      "start": 0,
+      "desc": "Ausgewogene Klinge mit Runensiegel."
+    }
+  ],
+  "armors": [
+    {
+      "id": "warded_cloak",
+      "name": "Warded Cloak",
+      "key": "armor/warded_cloak",
+      "kind": "armor",
+      "def": 8,
+      "price": 140,
+      "start": 0,
+      "desc": "Schutzumhang mit Terra-Siegel."
+    }
+  ],
+  "classes": [
+    {
+      "id": "vanguard",
+      "name": "Vanguard",
+      "key": "class/vanguard",
+      "desc": "Frontkämpfer mit ausgewogenen Werten."
+    }
+  ],
   "enemies": [
     {
       "id": "goblin",

@@ -51,11 +51,13 @@ void Camera::update(const core::InputState& in, float dt) {
 
 Vec3 Camera::eye_position() const {
     const Vec3 fwd = forward();
+    const float tx = target.x + scroll_x;
+    const float tz = target.z + scroll_z;
 
     if (mode == CameraMode::FirstPerson) {
-        return Vec3{target.x, target.y + eye_height, target.z};
+        return Vec3{tx, target.y + eye_height, tz};
     }
-    return sub(Vec3{target.x, target.y + eye_height + 0.6f + m_applied_lift, target.z},
+    return sub(Vec3{tx, target.y + eye_height + 0.6f + m_applied_lift, tz},
                scale(fwd, m_applied_dist));
 }
 
@@ -82,7 +84,7 @@ Mat4 Camera::view_proj(int fb_width, int fb_height) const {    const float aspec
     if (mode == CameraMode::FirstPerson) {
         view = look_to_lh(eye, fwd, up);
     } else {
-        view = look_at_lh(eye, add(Vec3{target.x, target.y + eye_height, target.z}, wackeln), up);
+        view = look_at_lh(eye, add(Vec3{target.x + scroll_x, target.y + eye_height, target.z + scroll_z}, wackeln), up);
     }
     return mul(view, proj);
 }
@@ -96,7 +98,7 @@ Ray Camera::pick_ray(int fb_width, int fb_height, float screen_x, float screen_y
     const Vec3 eye = eye_position();
     Vec3 view_dir = forward();
     if (mode == CameraMode::ThirdPerson) {
-        view_dir = normalize(sub(Vec3{target.x, target.y + eye_height, target.z}, eye));
+        view_dir = normalize(sub(Vec3{target.x + scroll_x, target.y + eye_height, target.z + scroll_z}, eye));
     }
 
     const Vec3 up{0.0f, 1.0f, 0.0f};

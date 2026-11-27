@@ -84,6 +84,7 @@ module MapCheck
     play_bgm fadeout_bgm play_bgs fadeout_bgs
     save_bgm resume_bgm memorize_audio restore_audio
     state actor_param actor_name actor_skill
+    conditional_branch change_weapons change_armors change_windowskin change_battle_bgm change_battle_end_me scroll_map change_map_settings change_fog_color_tone change_fog_opacity show_animation change_transparent_flag wait_for_move_completion prepare_transition stop_se change_equipment change_actor_class change_actor_graphic change_enemy_hp change_enemy_sp change_enemy_state enemy_recover_all enemy_appearance enemy_transform show_battle_animation deal_damage force_action abort_battle game_over return_to_title_screen
   ].freeze
 
   TRIGGER   = %w[action touch auto parallel].freeze
@@ -187,10 +188,10 @@ module MapCheck
   #   maps:      bekannte Karten-Ids für Teleport-Ziele (optional)
   #   common_events: bekannte Namen Gemeinsamer Events (optional, 20c)
   def scan(map, name: 'karte', prefabs: default_prefabs, materials: nil,
-           scripts: nil, maps: nil, common_events: nil)
+           scripts: nil, maps: nil, common_events: nil, resources: nil)
     f = Sammler.new(name, prefabs: prefabs, materials: materials,
                           scripts: scripts, maps: maps,
-                          common_events: common_events)
+                          common_events: common_events, resources: resources)
     f.karte(map)
     f.liste
   end
@@ -199,7 +200,13 @@ module MapCheck
   # Gemeinsamen Events: eindeutige Namen, gültige Trigger, Schalter-Pflicht
   # bei autorun/parallel und die Befehlslisten selbst.
   def scan_database(db, name: 'database.json')
-    f = Sammler.new(name, prefabs: default_prefabs)
+    # Etappe 48: Ressourcen-Index für die CommandValidator-Referenzprüfung der
+    # Common Events direkt aus der geprüften Datenbank bauen (wenn Rpg da ist).
+    resources = nil
+    if defined?(Rpg::EventCommands::CommandValidator) && db.is_a?(Hash)
+      resources = Rpg::EventCommands::CommandValidator.resources_from_database(db)
+    end
+    f = Sammler.new(name, prefabs: default_prefabs, resources: resources)
     f.gemeinsame_events(db)
     f.liste
   end
@@ -286,13 +293,16 @@ module MapCheck
     attr_reader :liste
 
     def initialize(name, prefabs: nil, materials: nil, scripts: nil, maps: nil,
-                   common_events: nil)
+                   common_events: nil, resources: nil)
       @karte_name = name
       @prefabs    = prefabs
       @materials  = materials
       @scripts    = scripts
       @maps       = maps
       @common_events = common_events
+      # Etappe 48: Ressourcen-Index für die CommandValidator-Referenzprüfung
+      # (IDs/Asset-Keys). Ohne Index bleibt der Prüfablauf unverändert.
+      @resources  = resources
       @liste      = []
       # Etappe 19k.3: Block-Zonen der GEPRÜFTEN Karte (nicht der geladenen!) -
       # für die Lage-Prüfungen „steht in einer Block-Zone".
@@ -363,6 +373,7 @@ module MapCheck
           melde(WARNUNG, w, 'keine Befehle (Aufruf bewirkt nichts)')
         else
           pruefe_befehle(befehle, w)
+          validiere_referenzen(befehle, w)
         end
       end
     end
@@ -371,6 +382,17 @@ module MapCheck
 
     def melde(severity, where, message)
       @liste << Finding.new(severity, where, message)
+    end
+
+    # Etappe 48: CommandValidator über die Legacy-Befehlsliste laufen lassen
+    # (Ressourcen-IDs/Asset-Keys + Block-Struktur). Nur mit Ressourcen-Index und
+    # geladener Rpg-Schicht aktiv; jeder Befund wird ein harter MapCheck-Fehler.
+    def validiere_referenzen(cmds, wo)
+      return unless @resources && cmds.is_a?(Array)
+      return unless defined?(Rpg::EventCommands::CommandValidator)
+
+      Rpg::EventCommands::CommandValidator.validate_legacy(cmds, resources: @resources, name: wo)
+                                          .each { |befund| melde(FEHLER, wo, befund) }
     end
 
     # Etappe 20d: `variable` prüfen (XP 122). Neu ist `op` + `value`; die
@@ -877,6 +899,7 @@ module MapCheck
           e['pages'].each_with_index { |p, pi| pruefe_seite(p, "#{w} Seite #{pi + 1}") }
         elsif e.key?('commands')
           pruefe_befehle(e['commands'], w)
+          validiere_referenzen(e['commands'], w)
         else
           melde(WARNUNG, w, "weder 'pages' noch 'commands'")
         end
@@ -902,6 +925,7 @@ module MapCheck
         melde(FEHLER, wo, "'commands' fehlt/keine Liste")
       else
         pruefe_befehle(seite['commands'], wo)
+        validiere_referenzen(seite['commands'], wo)
       end
       pruefe_bedingungen(seite['conditions'], wo)
     end
@@ -1639,7 +1663,10 @@ module MapCheck
           melde(WARNUNG, w, "'radius' muss > 0 sein")
         end
         pruefe_wegpunkte(n['path'], w)
-        pruefe_befehle(n['commands'], w) if n.key?('commands')
+        if n.key?('commands')
+          pruefe_befehle(n['commands'], w)
+          validiere_referenzen(n['commands'], w)
+        end
       end
     end
 

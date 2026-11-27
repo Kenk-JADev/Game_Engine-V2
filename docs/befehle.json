@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "stand": "Etappe 25 (Runde 44): 73 Befehle",
+  "stand": "Etappe 48: 103 Befehle (73 Engine-Strings + 30 XP-Befehle an der Engine)",
   "zweck": "Quellen-Register der Event-Befehlstypen. Vier Stellen im Baum müssen zu dieser Liste passen: CMD_TYPES (game/engine/mapcheck.rb), die Ausführung (game/engine/interpreter.rb), ISSUE_CMD_TYPES (src/editor/editor_main.cpp) und EvType/EV_TYPES (src/editor/event_form.h). Ein neuer Befehl ist erst fertig, wenn er hier UND in allen vier Stellen steht; tools/befehle_test.rb meldet die Lücke vor dem Commit.",
   "reihenfolge": "Die Reihenfolge ist die des Registers; die vier Stellen halten dieselbe Reihenfolge ein, damit Diffs lesbar bleiben.",
   "bereiche": [
@@ -804,6 +804,320 @@
         "mode"
       ],
       "beschreibung": "Lernt oder vergisst eine Fertigkeit (XP 318); name ist Skill-ID oder Name, actor fehlt/fuer alle oder ein Held, mode add/remove (Default add)."
+    },
+    {
+      "typ": "conditional_branch",
+      "bereich": "Verzweigung",
+      "pflicht": [
+        "kind"
+      ],
+      "optional": [
+        "switch_id",
+        "variable_id",
+        "comparator",
+        "value",
+        "value_variable_id",
+        "letter",
+        "seconds",
+        "actor_id",
+        "enemy_slot",
+        "item_id",
+        "weapon_id",
+        "armor_id",
+        "button",
+        "script_key",
+        "expression"
+      ],
+      "beschreibung": "Wertet eine Bedingung aus und führt einen Kinderblock aus. (XP 111)."
+    },
+    {
+      "typ": "change_weapons",
+      "bereich": "Inventar",
+      "pflicht": [
+        "weapon_id",
+        "operation",
+        "amount"
+      ],
+      "optional": [
+        "include_equipment"
+      ],
+      "beschreibung": "Verändert den Bestand in weapons. (XP 127)."
+    },
+    {
+      "typ": "change_armors",
+      "bereich": "Inventar",
+      "pflicht": [
+        "armor_id",
+        "operation",
+        "amount"
+      ],
+      "optional": [
+        "include_equipment"
+      ],
+      "beschreibung": "Verändert den Bestand in armors. (XP 128)."
+    },
+    {
+      "typ": "change_windowskin",
+      "bereich": "System",
+      "pflicht": [
+        "skin_key"
+      ],
+      "optional": [],
+      "beschreibung": "Wechselt das Windowskin zur Laufzeit. (XP 131)."
+    },
+    {
+      "typ": "change_battle_bgm",
+      "bereich": "Ton",
+      "pflicht": [
+        "bgm_key"
+      ],
+      "optional": [],
+      "beschreibung": "Setzt die Kampf-BGM. (XP 132)."
+    },
+    {
+      "typ": "change_battle_end_me",
+      "bereich": "Ton",
+      "pflicht": [
+        "me_key"
+      ],
+      "optional": [],
+      "beschreibung": "Setzt das Kampf-Ende-ME. (XP 133)."
+    },
+    {
+      "typ": "scroll_map",
+      "bereich": "Bewegung",
+      "pflicht": [
+        "direction",
+        "distance",
+        "speed"
+      ],
+      "optional": [],
+      "beschreibung": "Scrollt die Kartenansicht. (XP 203)."
+    },
+    {
+      "typ": "change_map_settings",
+      "bereich": "Welt",
+      "pflicht": [
+        "target",
+        "asset_key"
+      ],
+      "optional": [
+        "color"
+      ],
+      "beschreibung": "Wechselt Panorama, Nebel oder Kampf-Hintergrund. (XP 204)."
+    },
+    {
+      "typ": "change_fog_color_tone",
+      "bereich": "Welt",
+      "pflicht": [
+        "color"
+      ],
+      "optional": [],
+      "beschreibung": "Verändert Nebelfarbton und Graustufe. (XP 205)."
+    },
+    {
+      "typ": "change_fog_opacity",
+      "bereich": "Welt",
+      "pflicht": [
+        "opacity"
+      ],
+      "optional": [],
+      "beschreibung": "Verändert die Nebeldeckkraft. (XP 206)."
+    },
+    {
+      "typ": "show_animation",
+      "bereich": "Bild",
+      "pflicht": [
+        "target",
+        "animation_key"
+      ],
+      "optional": [
+        "event_id"
+      ],
+      "beschreibung": "Spielt eine Animation an einem Charakter ab. (XP 207)."
+    },
+    {
+      "typ": "change_transparent_flag",
+      "bereich": "Bewegung",
+      "pflicht": [
+        "transparent"
+      ],
+      "optional": [],
+      "beschreibung": "Setzt das Transparenz-Flag des Spielers. (XP 208)."
+    },
+    {
+      "typ": "wait_for_move_completion",
+      "bereich": "Bewegung",
+      "pflicht": [],
+      "optional": [],
+      "beschreibung": "Wartet, bis alle Routen beendet sind. (XP 210)."
+    },
+    {
+      "typ": "prepare_transition",
+      "bereich": "Bild",
+      "pflicht": [
+        "transition_key"
+      ],
+      "optional": [],
+      "beschreibung": "Bereitet einen Übergang vor. (XP 221)."
+    },
+    {
+      "typ": "stop_se",
+      "bereich": "Ton",
+      "pflicht": [
+        "se_key"
+      ],
+      "optional": [],
+      "beschreibung": "Stoppt einen Sound-Effect. (XP 251)."
+    },
+    {
+      "typ": "change_equipment",
+      "bereich": "Party",
+      "pflicht": [
+        "actor_id",
+        "slot",
+        "item_id"
+      ],
+      "optional": [],
+      "beschreibung": "Wechselt einen Ausrüstungsslot. (XP 319)."
+    },
+    {
+      "typ": "change_actor_class",
+      "bereich": "Party",
+      "pflicht": [
+        "actor_id",
+        "class_id"
+      ],
+      "optional": [],
+      "beschreibung": "Wechselt die Klasse eines Charakters. (XP 321)."
+    },
+    {
+      "typ": "change_actor_graphic",
+      "bereich": "Party",
+      "pflicht": [
+        "actor_id",
+        "character_key",
+        "battler_key",
+        "face_key"
+      ],
+      "optional": [],
+      "beschreibung": "Wechselt die Grafiken eines Charakters. (XP 322)."
+    },
+    {
+      "typ": "change_enemy_hp",
+      "bereich": "Zustand",
+      "pflicht": [
+        "slot",
+        "operation",
+        "amount"
+      ],
+      "optional": [
+        "allow_knockout"
+      ],
+      "beschreibung": "Verändert die HP eines Gegners. (XP 331)."
+    },
+    {
+      "typ": "change_enemy_sp",
+      "bereich": "Zustand",
+      "pflicht": [
+        "slot",
+        "operation",
+        "amount"
+      ],
+      "optional": [],
+      "beschreibung": "Verändert die SP eines Gegners. (XP 332)."
+    },
+    {
+      "typ": "change_enemy_state",
+      "bereich": "Zustand",
+      "pflicht": [
+        "slot",
+        "state_id",
+        "operation"
+      ],
+      "optional": [],
+      "beschreibung": "Setzt oder entfernt einen Gegnerzustand. (XP 333)."
+    },
+    {
+      "typ": "enemy_recover_all",
+      "bereich": "Zustand",
+      "pflicht": [
+        "slot"
+      ],
+      "optional": [],
+      "beschreibung": "Heilt einen Gegner vollständig. (XP 334)."
+    },
+    {
+      "typ": "enemy_appearance",
+      "bereich": "Zustand",
+      "pflicht": [
+        "slot"
+      ],
+      "optional": [],
+      "beschreibung": "Macht einen Gegner sichtbar. (XP 335)."
+    },
+    {
+      "typ": "enemy_transform",
+      "bereich": "Zustand",
+      "pflicht": [
+        "slot",
+        "enemy_id"
+      ],
+      "optional": [],
+      "beschreibung": "Verwandelt einen Gegner. (XP 336)."
+    },
+    {
+      "typ": "show_battle_animation",
+      "bereich": "Bild",
+      "pflicht": [
+        "slot",
+        "animation_key"
+      ],
+      "optional": [],
+      "beschreibung": "Zeigt eine Animation im Kampf. (XP 337)."
+    },
+    {
+      "typ": "deal_damage",
+      "bereich": "Zustand",
+      "pflicht": [
+        "slot",
+        "amount",
+        "element_id"
+      ],
+      "optional": [],
+      "beschreibung": "Fügt einem Gegner direkten Schaden zu. (XP 338)."
+    },
+    {
+      "typ": "force_action",
+      "bereich": "Zustand",
+      "pflicht": [
+        "slot",
+        "action_key",
+        "target_slot"
+      ],
+      "optional": [],
+      "beschreibung": "Erzwingt eine gegnerische Aktion. (XP 339)."
+    },
+    {
+      "typ": "abort_battle",
+      "bereich": "System",
+      "pflicht": [],
+      "optional": [],
+      "beschreibung": "Bricht den laufenden Kampf ab. (XP 340)."
+    },
+    {
+      "typ": "game_over",
+      "bereich": "System",
+      "pflicht": [],
+      "optional": [],
+      "beschreibung": "Zeigt Game Over. (XP 353)."
+    },
+    {
+      "typ": "return_to_title_screen",
+      "bereich": "System",
+      "pflicht": [],
+      "optional": [],
+      "beschreibung": "Kehrt zum Titelbild zurück. (XP 354)."
     }
   ]
 }

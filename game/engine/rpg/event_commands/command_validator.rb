@@ -68,6 +68,121 @@ module Rpg
           end
         end
       end
+
+      # Etappe 48: Adapter für das LEGACY-Format der Karten-/Common-Event-
+      # Befehle ({"cmd":"item","name":"heiltrank",...}). Maps und Common Events
+      # nutzen diese Form, nicht die typisierte Rpg-Form. Geprüft werden dieselben
+      # Guarantees wie validate(): Ressourcen-IDs/Asset-Keys existieren und die
+      # Block-Struktur (then/else/branches/commands/cancel_branch) ist konsistent.
+      # Eine Referenz wird nur gemeldet, wenn die Sammlung geführt ist (nicht
+      # leer) - so erzeugen fehlende Asset-Ordner keine Massenbefunde.
+      LEGACY_REFS = {
+        'switch' => [['name', 'switches']], 'toggle_switch' => [['name', 'switches']],
+        'if_switch' => [['name', 'switches']],
+        'variable' => [['name', 'variables']], 'if_variable' => [['name', 'variables']],
+        'item' => [['name', 'items']], 'if_item' => [['name', 'items']],
+        'actor_hp' => [['actor', 'actors']], 'actor_sp' => [['actor', 'actors']],
+        'actor_exp' => [['actor', 'actors']], 'actor_level' => [['actor', 'actors']],
+        'actor_param' => [['actor', 'actors']], 'actor_name' => [['actor', 'actors']],
+        'state' => [['name', 'states'], ['actor', 'actors']],
+        'actor_skill' => [['name', 'skills'], ['actor', 'actors']],
+        'party_member' => [['name', 'actors']],
+        'battle' => [['name', 'troops']], 'common_event' => [['name', 'common_events']],
+        'sound' => [['name', 'ses']], 'play_bgm' => [['name', 'bgms']], 'play_bgs' => [['name', 'bgss']],
+        'change_weapons' => [['weapon_id', 'weapons']], 'change_armors' => [['armor_id', 'armors']],
+        'change_equipment' => [['actor_id', 'actors']],
+        'change_actor_class' => [['actor_id', 'actors'], ['class_id', 'classes']],
+        'change_actor_graphic' => [['actor_id', 'actors']],
+        'change_enemy_state' => [['state_id', 'states']], 'enemy_transform' => [['enemy_id', 'enemies']],
+        'change_battle_bgm' => [['bgm_key', 'bgms']], 'change_battle_end_me' => [['me_key', 'mes']],
+        'change_windowskin' => [['skin_key', 'windowskins']],
+        'prepare_transition' => [['transition_key', 'transitions']],
+        'show_animation' => [['animation_key', 'animations']],
+        'show_battle_animation' => [['animation_key', 'animations']]
+      }.freeze
+
+      BLOCK_KEYS = %w[then else commands cancel_branch].freeze
+
+      def validate_legacy(commands, resources:, name: 'legacy')
+        befunde = []
+        legacy_liste(Array(commands), resources || {}, name, befunde, 0)
+        befunde
+      end
+
+      def legacy_valid?(commands, resources:, name: 'legacy')
+        validate_legacy(commands, resources: resources, name: name).empty?
+      end
+
+      def legacy_liste(liste, resources, wo, befunde, tiefe)
+        if tiefe > 16
+          befunde << "#{wo}: Block-Struktur zu tief verschachtelt (> 16)"
+          return
+        end
+        liste.each_with_index do |c, i|
+          next unless c.is_a?(Hash)
+
+          w = "#{wo} Befehl ##{i + 1}"
+          typ = c['cmd'].to_s
+          # conditional_branch: artabhängige Referenz.
+          if typ == 'conditional_branch'
+            feld, sammlung = case c['kind'].to_s
+                             when 'switch' then ['switch_id', 'switches']
+                             when 'variable' then ['variable_id', 'variables']
+                             when 'actor' then ['actor_id', 'actors']
+                             when 'item' then ['item_id', 'items']
+                             when 'weapon' then ['weapon_id', 'weapons']
+                             when 'armor' then ['armor_id', 'armors']
+                             end
+            legacy_ref(c, feld, sammlung, resources, w, befunde) if feld
+          end
+          Array(LEGACY_REFS[typ]).each { |feld, sammlung| legacy_ref(c, feld, sammlung, resources, w, befunde) }
+          # Block-Struktur: then/else/commands/cancel_branch sind Listen,
+          # branches ist eine Liste von Listen.
+          BLOCK_KEYS.each do |schluessel|
+            next unless c.key?(schluessel)
+
+            wert = c[schluessel]
+            if wert.nil?
+              next
+            elsif wert.is_a?(Array)
+              legacy_liste(wert, resources, "#{w} #{schluessel}", befunde, tiefe + 1)
+            else
+              befunde << "#{w}: '#{schluessel}' muss eine Befehlsliste sein"
+            end
+          end
+          if c.key?('branches')
+            branches = c['branches']
+            if branches.is_a?(Array)
+              branches.each_with_index do |zweig, j|
+                if zweig.is_a?(Array)
+                  legacy_liste(zweig, resources, "#{w} Zweig #{j}", befunde, tiefe + 1)
+                else
+                  befunde << "#{w}: Zweig #{j} muss eine Befehlsliste sein"
+                end
+              end
+            else
+              befunde << "#{w}: 'branches' muss eine Liste von Zweigen sein"
+            end
+          end
+        end
+      end
+
+      def legacy_ref(c, feld, sammlung, resources, wo, befunde)
+        wert = c[feld]
+        return if wert.nil? || wert.to_s.strip.empty?
+
+        eintraege = resources[sammlung] || resources[sammlung.to_sym] || []
+        return if eintraege.empty? # Sammlung nicht geführt -> nicht prüfbar
+        return if eintraege.any? { |e| referenz_treffer?(wert, e) }
+
+        befunde << "#{wo}: #{sammlung}-Referenz '#{wert}' (#{feld}) nicht in der Datenbank"
+      end
+
+      def referenz_treffer?(wert, eintrag)
+        ziel = wert.to_s.strip.downcase
+        [eintrag['id'], eintrag['name'], eintrag['key'],
+         eintrag['key'].to_s.split('/').last].any? { |k| k.to_s.strip.downcase == ziel }
+      end
     end
   end
 end

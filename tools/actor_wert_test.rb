@@ -225,7 +225,7 @@ check('Variable als Stufenoperand ignoriert den konstanten amount-Bereich') do
   MapCheck.scan(karte_mit([{ 'cmd' => 'actor_level', 'source' => 'variable', 'src' => 'stufen', 'amount' => 200 }]), **OPTS)
     .none? { |finding| finding.to_s.include?('übersteigt den Stufenbereich') }
 end
-check('alle 73 Befehlstypen im Register der Prüfung') { MapCheck::CMD_TYPES.size == 73 }
+check('alle 103 Befehlstypen im Register der Prüfung') { MapCheck::CMD_TYPES.size == 103 }
 
 puts($fail.zero? ? 'ALLE CHECKS GRUEN' : "#{$fail} CHECK(S) FEHLGESCHLAGEN")
 exit($fail.zero? ? 0 : 1)

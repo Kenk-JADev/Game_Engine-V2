@@ -76,6 +76,31 @@ module Battle
       @actor = actor
       @defi = defi          # Party::Actor bei Helden, Enemy-Hash bei Gegnern
       @states = []          # 20a: [{ id:, turns: }] (XP: Game_Battler#states)
+      @hidden = false       # Etappe 48: XP 335 Enemy Appearance (versteckt)
+    end
+
+    # Etappe 48: XP 335/336 - Sichtbarkeit und Verwandlung. Eine Verwandlung
+    # ersetzt die Definition, behält aber HP/MP/Zustände wie ein neuer Gegner
+    # mit denselben aktuellen Werten (XP: Game_Enemy#transform).
+    attr_accessor :hidden
+
+    def visible? = !@hidden && alive?
+
+    def transform(enemy_id)
+      defi = Battle.enemy_def(enemy_id)
+      return false unless defi
+      @id = enemy_id.to_s
+      @name = (defi['name'] || enemy_id).to_s
+      @max_hp = [(defi['hp'] || @max_hp).to_i, 1].max
+      @max_mp = [(defi['mp'] || @max_mp).to_i, 0].max
+      @hp = [[@hp, 0].max, @max_hp].min
+      @mp = [[@mp, 0].max, @max_mp].min
+      @atk = (defi['atk'] || @atk).to_i
+      @def = (defi['def'] || @def).to_i
+      @spi = (defi['spi'] || @spi).to_i
+      @agi = (defi['agi'] || @agi).to_i
+      @defi = defi
+      true
     end
 
     # ---------------------------------------------------------- Zustände (20a)
@@ -273,7 +298,7 @@ module Battle
   class << self
     attr_reader :enemies, :actors, :phase, :actor_index, :command_index,
                 :item_index, :target_index, :actions, :result, :log, :turn,
-                :skill_index, :selected_skill
+                :skill_index, :selected_skill, :forced_actions
     attr_accessor :can_escape, :can_lose
   end
 
@@ -345,6 +370,7 @@ module Battle
     @can_escape = can_escape ? true : false
     @can_lose = can_lose ? true : false
     @actions = []
+    @forced_actions = []   # Etappe 48: XP 339 Force Action
     @log = []
     @turn = 0
     @result = nil
@@ -397,6 +423,7 @@ module Battle
     @enemies = []
     @actors = []
     @actions = []
+    @forced_actions = []
     @selecting_actor = nil
     @selected_item = nil
     @selected_skill = nil
@@ -404,6 +431,126 @@ module Battle
     release_simulation
     musik_ende
     Rune::Log.info('Battle: Kampf abgebrochen')
+  end
+
+  # ---------------------------------------------------- Event-Befehle (48)
+  # XP 331-340: Gegnerbefehle wirken auf einen Slot (0-basiert) der laufenden
+  # Truppe. Rückgabe false = kein Kampf/kein Slot; der Interpreter meldet das.
+  def self.enemy_slot(index)
+    return nil unless @active
+    @enemies[index.to_i]
+  end
+
+  def self.enemy_command(cmd, params = {})
+    return false unless @active
+    p = params.transform_keys(&:to_s)
+    slot = p['slot'].to_i
+    gegner = enemy_slot(slot)
+    case cmd.to_s
+    when 'change_enemy_hp'
+      return false unless gegner
+      wert = p['amount'].to_i
+      wert = -wert if p['operation'].to_s == 'subtract'
+      if wert.negative? && !p['allow_knockout'] && gegner.alive?
+        wert = [wert, -(gegner.hp - 1)].max
+      end
+      wert.negative? ? gegner.damage(-wert) : gegner.heal(wert)
+      log("#{gegner.name} HP -> #{gegner.hp}")
+      beende_pruefen
+      true
+    when 'change_enemy_sp'
+      return false unless gegner
+      wert = p['amount'].to_i
+      wert = -wert if p['operation'].to_s == 'subtract'
+      gegner.mp = [[gegner.mp + wert, gegner.max_mp].min, 0].max
+      true
+    when 'change_enemy_state'
+      return false unless gegner
+      if p['operation'].to_s == 'remove'
+        gegner.remove_state(p['state_id'])
+      else
+        gegner.add_state(p['state_id'], p['turns'])
+      end
+      true
+    when 'enemy_recover_all'
+      return false unless gegner
+      gegner.heal(gegner.max_hp)
+      gegner.mp = gegner.max_mp
+      gegner.clear_states
+      true
+    when 'enemy_appearance'
+      return false unless gegner
+      gegner.hidden = !gegner.hidden
+      log("#{gegner.name} #{gegner.hidden ? 'verschwindet' : 'erscheint'}")
+      true
+    when 'enemy_transform'
+      return false unless gegner
+      ok = gegner.transform(p['enemy_id'])
+      log("#{gegner.name} verwandelt sich") if ok
+      ok
+    when 'show_battle_animation'
+      # Etappe 48: target_slot -1 = alle Gegner, sonst dieser Platz.
+      if p.key?('target_slot')
+        ziel = p['target_slot'].to_i
+        ziele = ziel < 0 ? @enemies.compact : [@enemies[ziel]].compact
+        return false if ziele.empty?
+        ziele.each { |g| Battle.animation_at(g, p['animation_key']) }
+        return true
+      end
+      return false unless gegner
+      Battle.animation_at(gegner, p['animation_key'])
+      true
+    when 'deal_damage'
+      # Etappe 48: der Katalog nennt den Gegnerplatz target_slot (nicht slot).
+      ziel = p.key?('target_slot') ? enemy_slot(p['target_slot'].to_i) : gegner
+      return false unless ziel
+      schaden = [p['amount'].to_i, 0].max
+      ziel.damage(schaden)
+      log("#{ziel.name} erleidet #{schaden} Schaden")
+      beende_pruefen
+      true
+    when 'force_action'
+      return false unless gegner
+      @forced_actions << { enemy: gegner, action_key: p['action_key'].to_s,
+                           target_slot: p['target_slot'].to_i }
+      true
+    when 'abort_battle'
+      abort!
+      true
+    else false
+    end
+  end
+
+  # Einfache Kampfanimation als Partikelburst am Gegner (XP 337). Ein Projekt
+  # kann später eine echte Animationsdatei hinterlegen; der Key wird geführt.
+  def self.animation_at(battler, key = nil)
+    return unless defined?(Effects) && defined?(Rune::Player)
+    pos = enemy_positions.find { |(_x, _y, _z, g)| g.equal?(battler) }
+    return unless pos
+    x, y, z, = pos
+    Effects.burst(x, y, z, color: 0xFFE14A, count: 16, speed: 2.4, life: 0.6)
+    Rune::Log.info("Battle: Animation '#{key}' auf #{battler.name}") if key
+  end
+
+  # Erzwungene Gegneraktion (XP 339): Skill oder Angriff auf ein Ziel.
+  def self.execute_forced_actions
+    @forced_actions.each do |act|
+      gegner = act[:enemy]
+      next if gegner.dead? || gegner.hidden
+      skill = skill_def(act[:action_key])
+      ziel = if act[:target_slot] >= 0
+               @actors[act[:target_slot]]
+             else
+               living_actors.sample
+             end
+      next unless ziel && ziel.alive?
+      if skill
+        wende_skill_an(gegner, skill, ziel)
+      else
+        angriff(gegner, ziel, gegner: true)
+      end
+    end
+    @forced_actions = []
   end
 
   # Auch direkte Ruby-Aufrufe von abort!/ende dürfen die Welt nicht pausiert
@@ -739,9 +886,13 @@ module Battle
     end
     @actions = []
 
-    # Gegnerzug: jeder lebende Gegner schlägt einen zufälligen Helden.
+    # Etappe 48: erzwungene Aktionen (XP 339) wirken vor dem normalen Gegnerzug.
+    execute_forced_actions
+    return if beende_pruefen
+
+    # Gegnerzug: jeder lebende, sichtbare Gegner schlägt einen zufälligen Helden.
     @enemies.each do |g|
-      next if g.dead?
+      next if g.dead? || g.hidden
       ziel = living_actors.sample
       break unless ziel
       angriff(g, ziel, gegner: true)
@@ -1046,6 +1197,9 @@ module Battle
 
     w = Rune::Window.width
     h = Rune::Window.height
+
+    # Etappe 48: Kampfhintergrund (XP 204 battleback), falls gesetzt.
+    MapEffects.draw_battleback if defined?(MapEffects)
 
     # Gegner-Kästen + HP-Balken (3D-Teil).
     enemy_positions.each_with_index do |(x, y, z, g), i|

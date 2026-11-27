@@ -579,7 +579,7 @@ check('play_se ohne Namen -> Warnung statt Absturz') do
 end
 Game.npcs = []
 
-check('CMD_TYPES zählen 73') { MapCheck::CMD_TYPES.size == 73 }
+check('CMD_TYPES zählen 103') { MapCheck::CMD_TYPES.size == 103 }
 
 puts '== Mover: Block-Zonen (19k.3) =='
 # Zone x = 1..3 (Mitte 2, Breite 2): der erste move_right-Schritt (1 m) endet

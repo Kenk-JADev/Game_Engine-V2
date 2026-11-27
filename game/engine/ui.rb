@@ -175,6 +175,11 @@ module UI
           else y + text_h - h
           end
     if frame
+      # Etappe 48: Windowskin (XP 131) als Hintergrund, falls geladen.
+      skin = defined?(MessageWindow) ? MessageWindow.skin_key.to_s : ''
+      if !skin.empty? && defined?(Rune::Gfx) && Rune::Gfx.respond_to?(:picture)
+        Rune::Gfx.picture("windowskin:#{skin}", x, top, w, h, transparent ? 0.55 : 0.95)
+      end
       panel(x, top, w, h, PANEL, transparent ? 0.35 : 0.80)
       panel(x, top, w, 2, ACCENT, transparent ? 0.5 : 0.85)   # Zierlinie oben
     end

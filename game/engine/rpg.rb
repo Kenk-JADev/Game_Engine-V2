@@ -55,6 +55,13 @@ module Rpg
     EventCommands::CommandValidator.validate(commands, resources: resources)
   end
 
+  # Etappe 48: Legacy-Format der Karten-/Common-Event-Befehle prüfen (Maps und
+  # Common Events nutzen {"cmd":...}, nicht die typisierte Rpg-Form). Liefert
+  # Befund-Strings zu Ressourcen-Referenzen und Block-Struktur.
+  def self.validate_legacy_event_commands(commands, resources:, name: 'legacy')
+    EventCommands::CommandValidator.validate_legacy(commands, resources: resources, name: name)
+  end
+
   # Etappe 43: Interpreter auf der echten Engine. Ohne Angaben greifen die
   # laufenden Module (GameState, Party, Battle, $game_system, Pictures, ...).
   # bindungen ordnet die Rpg-IDs den Engine-Namen zu, z. B.

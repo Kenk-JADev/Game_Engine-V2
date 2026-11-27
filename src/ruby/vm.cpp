@@ -627,6 +627,22 @@ VALUE rune_camera_shake(VALUE) {
     return rb_ary_new_from_args(2, DBL2NUM(x), DBL2NUM(y));
 }
 
+// Etappe 48 (XP 203): freier Kamera-Versatz [x, z] in Weltmetern.
+VALUE rune_camera_scroll_set(VALUE, VALUE v) {
+    if (!app().camera) return v;
+    Check_Type(v, T_ARRAY);
+    if (RARRAY_LEN(v) != 2) rb_raise(rb_eArgError, "Camera.scroll erwartet [x, z]");
+    app().camera->scroll_x = static_cast<float>(NUM2DBL(rb_ary_entry(v, 0)));
+    app().camera->scroll_z = static_cast<float>(NUM2DBL(rb_ary_entry(v, 1)));
+    return v;
+}
+
+VALUE rune_camera_scroll(VALUE) {
+    const float x = app().camera ? app().camera->scroll_x : 0.0f;
+    const float z = app().camera ? app().camera->scroll_z : 0.0f;
+    return rb_ary_new_from_args(2, DBL2NUM(x), DBL2NUM(z));
+}
+
 // Bildschirmpixel -> Weltstrahl. Rückgabe: [ox, oy, oz, dx, dy, dz]
 VALUE rune_camera_ray(VALUE, VALUE sx, VALUE sy) {
     if (!app().camera || !app().window) return rb_ary_new();
@@ -1104,6 +1120,8 @@ void register_bindings() {
     rb_define_module_function(mCam, "ray", RUBY_METHOD_FUNC(rune_camera_ray), 2);
     rb_define_module_function(mCam, "shake", RUBY_METHOD_FUNC(rune_camera_shake), 0);
     rb_define_module_function(mCam, "shake=", RUBY_METHOD_FUNC(rune_camera_shake_set), 1);
+    rb_define_module_function(mCam, "scroll", RUBY_METHOD_FUNC(rune_camera_scroll), 0);
+    rb_define_module_function(mCam, "scroll=", RUBY_METHOD_FUNC(rune_camera_scroll_set), 1);
 
     VALUE mIn = rb_define_module_under(mRune, "Input");
     rb_define_module_function(mIn, "down?", RUBY_METHOD_FUNC(rune_input_down), 1);

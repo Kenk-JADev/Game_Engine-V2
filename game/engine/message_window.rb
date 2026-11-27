@@ -27,9 +27,12 @@ module MessageWindow
   @position = STANDARD_POSITION
   @frame = true
   @transparent = false
+  @skin_key = ''
+  @speed = 0
+  @no_fast = false
 
   class << self
-    attr_reader :position
+    attr_reader :position, :skin_key, :speed, :no_fast
 
     def frame?
       @frame
@@ -37,6 +40,20 @@ module MessageWindow
 
     def transparent?
       @transparent
+    end
+
+    # Etappe 48: Windowskin/Textgeschwindigkeit werden geführt; die Zeichnung
+    # nutzt den Skin, sobald ein Projekt das Asset hat.
+    def skin_key=(key)
+      @skin_key = key.to_s
+    end
+
+    def speed=(value)
+      @speed = value.to_i.clamp(0, 10)
+    end
+
+    def no_fast=(flag)
+      @no_fast = !!flag
     end
 
     # Nur gesetzte (nicht-nil) Werte ändern; Rückgabe = true, wenn etwas
@@ -68,6 +85,9 @@ module MessageWindow
       @position = STANDARD_POSITION
       @frame = true
       @transparent = false
+      @skin_key = ''
+      @speed = 0
+      @no_fast = false
       nil
     end
   end

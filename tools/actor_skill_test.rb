@@ -116,7 +116,7 @@ check('actor_skill mit unbekanntem Skill -> Warnung') do
   hat?(MapCheck.scan(karte_mit([{ 'cmd' => 'actor_skill', 'name' => 'gibtsnicht' }]), **OPTS),
        "Fertigkeit 'gibtsnicht' nicht in database.json", MapCheck::WARNUNG)
 end
-check('alle 73 Befehlstypen sind registriert') { MapCheck::CMD_TYPES.size == 73 }
+check('alle 103 Befehlstypen sind registriert') { MapCheck::CMD_TYPES.size == 103 }
 
 puts($fail.zero? ? 'ALLE CHECKS GRUEN' : "#{$fail} CHECK(S) FEHLGESCHLAGEN")
 exit($fail.zero? ? 0 : 1)

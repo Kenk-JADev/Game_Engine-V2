@@ -296,7 +296,7 @@ check('text_options mit gültigen Werten: keine Funde') do
   MapCheck.scan(karte_mit([{ 'cmd' => 'text_options', 'position' => 'mitte',
                              'frame' => false, 'transparent' => true }]), **OPTS).empty?
 end
-check('alle 73 Befehlstypen im Register der Prüfung') { MapCheck::CMD_TYPES.size == 73 }
+check('alle 103 Befehlstypen im Register der Prüfung') { MapCheck::CMD_TYPES.size == 103 }
 
 puts($fail.zero? ? 'ALLE CHECKS GRUEN' : "#{$fail} CHECK(S) FEHLGESCHLAGEN")
 exit($fail.zero? ? 0 : 1)

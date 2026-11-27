@@ -160,12 +160,14 @@ module Rpg
         def change_member(_actor_id, _operation, initialize: false) = raise(NotImplementedError, 'IPartyPort#change_member fehlt')
         def change_gold(_operation, _amount) = raise(NotImplementedError, 'IPartyPort#change_gold fehlt')
         def members = raise(NotImplementedError, 'IPartyPort#members fehlt')
+        def steps = raise(NotImplementedError, 'IPartyPort#steps fehlt')
       end
 
       class NullPartyPort < IPartyPort
         def change_member(_actor_id, _operation, initialize: false) = nil
         def change_gold(_operation, _amount) = nil
         def members = []
+        def steps = 0
       end
 
       class MemoryPartyPort < IPartyPort
@@ -174,9 +176,11 @@ module Rpg
         def initialize(members: [])
           @members = members.map(&:to_i)
           @gold = 0
+          @steps = 0
         end
 
         attr_reader :gold
+        attr_accessor :steps
 
         def members = @members.dup
 

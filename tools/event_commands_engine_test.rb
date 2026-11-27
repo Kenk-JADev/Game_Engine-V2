@@ -57,6 +57,8 @@ module Rune
       attr_accessor :yaw, :shake
     end
     def self.shake=(wert); @shake = wert; end
+    def self.scroll; @scroll ||= [0.0, 0.0]; end
+    def self.scroll=(wert); @scroll = wert; end
   end
 
   module Window
@@ -71,6 +73,9 @@ module Rune
     def self.box(*a) = (CALLS << [:box, *a])
     def self.texture(*a) = nil
     def self.image(*a) = nil
+    def self.fog(*a) = (CALLS << [:fog, *a])
+    def self.picture(*a) = (CALLS << [:picture, *a])
+    def self.clear_color(*a) = nil
   end
 
   module Simulation
@@ -79,7 +84,9 @@ module Rune
   end
 
   module ImageLoader
+    REGISTERED = []
     def self.size(_name) = [64, 64]
+    def self.register(name, key) = (REGISTERED << [name, key])
   end
 end
 
@@ -117,14 +124,17 @@ require 'battle'
 require 'screen_fx'
 require 'weather'
 require 'fade'
+require 'effects'
 require 'image_loader'
 require 'pictures'
 require 'mover'
 require 'message_window'
+require 'map_effects'
 require 'ui'
 require 'shop'
 require 'name_input'
 require 'rgss'
+require 'event_runtime'
 require 'interpreter'
 require 'rpg'
 
@@ -141,7 +151,8 @@ BINDUNGEN = {
   'states' => { 11 => 'gift' },
   'skills' => { 50 => 'kraftschlag' },
   'maps' => { 7 => 'dorf' },
-  'events' => { 7 => 'waechter' }
+  'events' => { 7 => 'waechter' },
+  'enemies' => { 8 => 'wolf' }
 }.freeze
 
 $pruefungen = 0
@@ -179,6 +190,7 @@ def frame(dt, interpreter = nil)
   Fade.update(dt)
   Pictures.update(dt)
   ScreenFx.update(dt)
+  MapEffects.update(dt) if defined?(MapEffects)
   $game_system&.update(dt)
   AudioFiles.update(dt) if defined?(AudioFiles)
 end
@@ -516,24 +528,86 @@ engine.update(0.05)
 check('Namenseingabe zu, Programm weiter') { !engine.running? }
 gleich([Party.held('arik').name], gelesen, 'name.changed meldet den bestätigten Namen')
 
-puts '== Ehrliche Grenzen: was die Engine nicht kann, wird gemeldet =='
+puts '== Etappe 48: die 30 neuen XP-Befehle wirken an der Engine =='
 Rpg::EventCommands::EnginePorts.reset_warnungen!
+Party.setup(Database.database)
+MapEffects.reset!
+Effects::PARTS.clear
+
+# --- Tab 1/3: Waffen/Rüstungen-Bestand, Ausrüstung, Klasse, Grafik (127/128/319/321/322)
+einzeln('change_weapons', { 'weapon_id' => 4, 'operation' => 'add', 'amount' => 2, 'include_equipment' => false })
+gleich(2, Party.equipment_count('weapons', 'rune_blade'), 'Waffenbestand +2 (XP 127)')
+einzeln('change_armors', { 'armor_id' => 5, 'operation' => 'add', 'amount' => 1, 'include_equipment' => false })
+gleich(1, Party.equipment_count('armors', 'warded_cloak'), 'Rüstungsbestand +1 (XP 128)')
+einzeln('change_weapons', { 'weapon_id' => 4, 'operation' => 'subtract', 'amount' => 1, 'include_equipment' => false })
+gleich(1, Party.equipment_count('weapons', 'rune_blade'), 'Waffenbestand -1')
 einzeln('change_equipment', { 'actor_id' => 1, 'slot' => 'weapon', 'item_id' => 4 })
+gleich('rune_blade', Party.held('arik').equipment['weapon'], 'Ausrüstungsslot belegt (XP 319)')
+einzeln('change_equipment', { 'actor_id' => 1, 'slot' => 'weapon', 'item_id' => 0 })
+check('Ausrüstungsslot ausgezogen') { Party.held('arik').equipment['weapon'].nil? }
 einzeln('change_actor_class', { 'actor_id' => 1, 'class_id' => 10 })
+gleich('vanguard', Party.held('arik').class_id, 'Klasse gewechselt (XP 321)')
 einzeln('change_actor_graphic', { 'actor_id' => 1, 'character_key' => 'char/kael',
                                   'face_key' => 'face/kael', 'battler_key' => 'battler/kael' })
-einzeln('change_weapons', { 'weapon_id' => 4, 'operation' => 'add', 'amount' => 1, 'include_equipment' => false })
-einzeln('change_armors', { 'armor_id' => 5, 'operation' => 'add', 'amount' => 1, 'include_equipment' => false })
-einzeln('scroll_map', { 'direction' => 'right', 'distance' => 3, 'speed' => 4 })
-einzeln('change_fog_opacity', { 'opacity' => 120 })
-einzeln('show_animation', { 'target' => 'player', 'animation_key' => 'fx/rune_burst' })
-einzeln('enemy_transform', { 'slot' => 0, 'enemy_id' => 8 })
-einzeln('force_action', { 'slot' => 0, 'action_key' => 'skill/rune_burst', 'target_slot' => 0 })
-
-%w[change_equipment change_actor_class change_actor_graphic change_weapons change_armors
-   scroll_map change_fog_opacity show_animation enemy_transform force_action].each do |typ|
-  check("#{typ} wird als Grenze gemeldet") { Rpg::EventCommands::EnginePorts.fehlt?(typ) }
+gleich('char/kael', Party.held('arik').character_key, 'Charaktergrafik gesetzt (XP 322)')
+gleich('face/kael', Party.held('arik').face_key, 'Facegrafik gesetzt')
+check('Ausrüstung/Klasse/Grafik melden keine Grenze') do
+  %w[change_weapons change_armors change_equipment change_actor_class change_actor_graphic]
+    .none? { |typ| Rpg::EventCommands::EnginePorts.fehlt?(typ) }
 end
+
+# --- Tab 2: Karte Scroll/Nebel/Animation/Transparenz/Übergang (203-208/221)
+einzeln('scroll_map', { 'direction' => 'right', 'distance' => 3, 'speed' => 4 })
+40.times { MapEffects.update(0.05) }   # Scroll läuft zeitbasiert fertig (XP 203)
+check('Kamera frei gescrollt (XP 203)') { (Rune::Camera.scroll[0] - 3.0).abs < 0.01 }
+check('Scroll abgeschlossen') { !MapEffects.scrolling? }
+einzeln('change_map_settings', { 'target' => 'battleback', 'asset_key' => 'bb/forest' })
+gleich('bb/forest', MapEffects.battleback_key, 'Kampf-Hintergrund gesetzt (XP 204)')
+einzeln('change_fog_color_tone', { 'color' => { 'r' => 10, 'g' => 20, 'b' => 30, 'gray' => 0 } })
+gleich(10, MapEffects.fog[:tone][:r], 'Nebelfarbton gesetzt (XP 205)')
+einzeln('change_fog_opacity', { 'opacity' => 120 })
+gleich(120, MapEffects.fog[:opacity], 'Nebeldeckkraft gesetzt (XP 206)')
+einzeln('show_animation', { 'target' => 'player', 'animation_key' => 'fx/rune_burst' })
+check('Animation erzeugt Partikel (XP 207)') { Effects::PARTS.size >= 20 }
+einzeln('change_transparent_flag', { 'transparent' => true })
+check('Spieler transparent (XP 208)') { $game_player.transparent == true }
+einzeln('prepare_transition', { 'transition_key' => 'transition/rune_fade' })
+gleich('transition/rune_fade', MapEffects.transition_key, 'Übergang vorbereitet (XP 221)')
+einzeln('change_windowskin', { 'skin_key' => 'skin/obsidian' })
+gleich('skin/obsidian', MapEffects.windowskin_key, 'Windowskin geführt (XP 131)')
+gleich('skin/obsidian', $game_system.windowskin_name, 'Windowskin in $game_system')
+check('Karten-/Screen-Effekte melden keine Grenze') do
+  %w[scroll_map change_map_settings change_fog_color_tone change_fog_opacity show_animation
+     change_transparent_flag prepare_transition change_windowskin]
+    .none? { |typ| Rpg::EventCommands::EnginePorts.fehlt?(typ) }
+end
+
+# --- Tab 3: Gegnerbefehle im laufenden Kampf (335/336/337/339)
+Battle.start('waldweg')
+check('Kampf für Gegnerbefehle läuft') { Battle.active? }
+einzeln('enemy_transform', { 'slot' => 0, 'enemy_id' => 8 })
+gleich('wolf', Battle.enemies[0].id, 'Gegner verwandelt (XP 336)')
+einzeln('enemy_appearance', { 'slot' => 1 })
+check('Gegner versteckt (XP 335 toggelt)') { !Battle.enemies[1].visible? }
+einzeln('enemy_appearance', { 'slot' => 1 })
+check('Gegner wieder sichtbar') { Battle.enemies[1].visible? }
+Effects::PARTS.clear
+einzeln('show_battle_animation', { 'slot' => 0, 'animation_key' => 'fx/rune_burst' })
+check('Kampfanimation erzeugt Partikel (XP 337)') { Effects::PARTS.size >= 16 }
+einzeln('force_action', { 'slot' => 0, 'action_key' => 'skill/rune_burst', 'target_slot' => 0 })
+gleich(1, Battle.forced_actions.size, 'Erzwungene Aktion vorgemerkt (XP 339)')
+check('Gegnerbefehle melden keine Grenze') do
+  %w[enemy_transform enemy_appearance show_battle_animation force_action]
+    .none? { |typ| Rpg::EventCommands::EnginePorts.fehlt?(typ) }
+end
+einzeln('abort_battle', {})
+check('Kampf abgebrochen (XP 340)') { !Battle.active? }
+
+puts '== Ehrliche Grenzen: was die Engine nicht kann, wird weiter gemeldet =='
+Rpg::EventCommands::EnginePorts.reset_warnungen!
+# Ein RGB-Blitz, den ScreenFx nur näherungsweise abbildet, bleibt eine gemeldete Grenze.
+einzeln('screen_flash', { 'color' => { 'red' => 1, 'green' => 2, 'blue' => 3 }, 'duration' => 0.1 }, ticks: false)
+check('screen_flash_RGB wird als Grenze gemeldet') { Rpg::EventCommands::EnginePorts.fehlt?('screen_flash') }
 check('Warnungen stehen im Engine-Log') do
   Rune::Log.meldungen.any? { |stufe, text| stufe == :warn && text.include?('Rpg-Event:') }
 end

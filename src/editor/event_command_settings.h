@@ -268,6 +268,133 @@ inline int ec_settings_fields(int type, EcSetField* out, int max) {
         case ET_SCRIPT: case ET_IF_SCRIPT:
             add(ec_set(4, "Script-Code", C::Multiline));
             break;
+        // Etappe 48: Einstellfenster der 30 neu angebundenen XP-Befehle.
+        case ET_CONDITIONAL_BRANCH:
+            add(ec_set(5, "Bedingungsart", C::Combo, nullptr, EVENT_COND_KIND, EVENT_COND_KIND_COUNT));
+            add(ec_set(0, "ID / Name / Buchstabe", C::Text));
+            add(ec_set(1, "Wert / Sekunden / Platz", C::Number));
+            add(ec_set(3, "Vergleich", C::Combo, nullptr, EVENT_COMPARATOR, EVENT_COMPARATOR_COUNT));
+            add(ec_set(6, "Wert (an/aus)", C::Bool));
+            add(ec_set(4, "Script-Ausdruck", C::Multiline));
+            break;
+        case ET_CHANGE_WEAPONS:
+            add(ec_set(0, "Waffe (aus Datenbank)", C::Ref, "weapons"));
+            add(ec_set(1, "Anzahl", C::Int));
+            add(ec_set(5, "Operation", C::Combo, nullptr, EVENT_OPERATION, EVENT_OPERATION_COUNT));
+            add(ec_set(6, "Ausrüstung einbeziehen", C::Bool));
+            break;
+        case ET_CHANGE_ARMORS:
+            add(ec_set(0, "Rüstung (aus Datenbank)", C::Ref, "armors"));
+            add(ec_set(1, "Anzahl", C::Int));
+            add(ec_set(5, "Operation", C::Combo, nullptr, EVENT_OPERATION, EVENT_OPERATION_COUNT));
+            add(ec_set(6, "Ausrüstung einbeziehen", C::Bool));
+            break;
+        case ET_CHANGE_WINDOWSKIN:
+            add(ec_set(0, "Windowskin", C::Asset, "windowskins"));
+            break;
+        case ET_CHANGE_BATTLE_BGM:
+            add(ec_set(0, "Kampf-BGM", C::Asset, "bgms"));
+            break;
+        case ET_CHANGE_BATTLE_END_ME:
+            add(ec_set(0, "Kampf-Ende-ME", C::Asset, "ses"));
+            break;
+        case ET_SCROLL_MAP:
+            add(ec_set(5, "Richtung", C::Combo, nullptr, EVENT_SCROLL_DIR, EVENT_SCROLL_DIR_COUNT));
+            add(ec_set(1, "Distanz (Kacheln)", C::Int));
+            add(ec_set(2, "Tempo (1..10)", C::Int));
+            break;
+        case ET_CHANGE_MAP_SETTINGS:
+            add(ec_set(5, "Ziel", C::Combo, nullptr, EVENT_MAP_TARGET, EVENT_MAP_TARGET_COUNT));
+            add(ec_set(0, "Asset-Schlüssel", C::Asset, "panoramas"));
+            break;
+        case ET_CHANGE_FOG_COLOR_TONE:
+            add(ec_set(1, "Rot (-255..255)", C::Int));
+            add(ec_set(2, "Grün (-255..255)", C::Int));
+            add(ec_set(3, "Blau (-255..255)", C::Int));
+            break;
+        case ET_CHANGE_FOG_OPACITY:
+            add(ec_set(1, "Deckkraft (0..255)", C::Int));
+            break;
+        case ET_SHOW_ANIMATION:
+            add(ec_set(5, "Ziel", C::Combo, nullptr, EVENT_ANIM_TARGET, EVENT_ANIM_TARGET_COUNT));
+            add(ec_set(0, "Animation", C::Asset, "animations"));
+            add(ec_set(1, "Event (bei Ziel event)", C::Text));
+            break;
+        case ET_CHANGE_TRANSPARENT_FLAG:
+            add(ec_set(6, "Transparent", C::Bool));
+            break;
+        case ET_WAIT_FOR_MOVE_COMPLETION:
+            add(ec_set(0, "Wartet auf alle Bewegungs Routen", C::Text));
+            break;
+        case ET_PREPARE_TRANSITION:
+            add(ec_set(0, "Übergang", C::Asset, "transitions"));
+            break;
+        case ET_STOP_SE:
+            add(ec_set(0, "SE-Schlüssel (leer = alle)", C::Asset, "ses"));
+            break;
+        case ET_CHANGE_EQUIPMENT:
+            add(ec_set(0, "Held (aus Datenbank)", C::Ref, "actors"));
+            add(ec_set(5, "Slot", C::Combo, nullptr, EVENT_EQUIP_SLOT, EVENT_EQUIP_SLOT_COUNT));
+            add(ec_set(1, "Item-ID/Name (leer = ausziehen)", C::Text));
+            break;
+        case ET_CHANGE_ACTOR_CLASS:
+            add(ec_set(0, "Held (aus Datenbank)", C::Ref, "actors"));
+            add(ec_set(1, "Klasse (aus Datenbank)", C::Ref, "classes"));
+            break;
+        case ET_CHANGE_ACTOR_GRAPHIC:
+            add(ec_set(0, "Held (aus Datenbank)", C::Ref, "actors"));
+            add(ec_set(1, "Charaktergrafik", C::Asset, "characters"));
+            add(ec_set(2, "Battlergrafik", C::Asset, "battlers"));
+            add(ec_set(3, "Facegrafik", C::Asset, "faces"));
+            break;
+        case ET_CHANGE_ENEMY_HP:
+            add(ec_set(1, "Gegnerplatz (0..7)", C::Int));
+            add(ec_set(2, "Menge", C::Int));
+            add(ec_set(5, "Operation", C::Combo, nullptr, EVENT_OPERATION, EVENT_OPERATION_COUNT));
+            add(ec_set(6, "KO erlaubt", C::Bool));
+            break;
+        case ET_CHANGE_ENEMY_SP:
+            add(ec_set(1, "Gegnerplatz (0..7)", C::Int));
+            add(ec_set(2, "Menge", C::Int));
+            add(ec_set(5, "Operation", C::Combo, nullptr, EVENT_OPERATION, EVENT_OPERATION_COUNT));
+            break;
+        case ET_CHANGE_ENEMY_STATE:
+            add(ec_set(1, "Gegnerplatz (0..7)", C::Int));
+            add(ec_set(0, "Zustand (aus Datenbank)", C::Ref, "states"));
+            add(ec_set(5, "Operation", C::Combo, nullptr, EVENT_STATE_MODE, EVENT_STATE_MODE_COUNT));
+            break;
+        case ET_ENEMY_RECOVER_ALL:
+            add(ec_set(1, "Gegnerplatz (0..7)", C::Int));
+            break;
+        case ET_ENEMY_APPEARANCE:
+            add(ec_set(1, "Gegnerplatz (0..7)", C::Int));
+            break;
+        case ET_ENEMY_TRANSFORM:
+            add(ec_set(1, "Gegnerplatz (0..7)", C::Int));
+            add(ec_set(0, "Neuer Gegner (aus Datenbank)", C::Ref, "enemies"));
+            break;
+        case ET_SHOW_BATTLE_ANIMATION:
+            add(ec_set(0, "Animation", C::Asset, "animations"));
+            add(ec_set(1, "Zielplatz (-1 = alle Gegner)", C::Int));
+            break;
+        case ET_DEAL_DAMAGE:
+            add(ec_set(1, "Zielplatz (0..7)", C::Int));
+            add(ec_set(2, "Schaden", C::Int));
+            break;
+        case ET_FORCE_ACTION:
+            add(ec_set(1, "Gegnerplatz (0..7)", C::Int));
+            add(ec_set(0, "Aktion (Skill)", C::Ref, "skills"));
+            add(ec_set(2, "Zielplatz (-1 = zufällig)", C::Int));
+            break;
+        case ET_ABORT_BATTLE:
+            add(ec_set(0, "Bricht den laufenden Kampf ab", C::Text));
+            break;
+        case ET_GAME_OVER:
+            add(ec_set(0, "Zeigt Game Over", C::Text));
+            break;
+        case ET_RETURN_TO_TITLE_SCREEN:
+            add(ec_set(0, "Kehrt zum Titelbild zurück", C::Text));
+            break;
         default:
             // GenerischerFallback: alle nicht-leeren Slots sinnvoll bedienen.
             add(ec_set(0, "Name / Schlüssel", C::Text));

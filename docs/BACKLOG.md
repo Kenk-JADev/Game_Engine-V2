@@ -21,16 +21,18 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 ---
 
 ## Offen
-### [Editor] Einstellfenster für die 30 vorbereiteten XP-Befehle + grafische Listen-Editoren — offen (Etappe 45)
-- Symptom: Die 30 „vorbereiteten“ Befehle (ohne `cmd`, Etappe 44) haben kein
-  Karten-Event und damit noch kein Einstellfenster; Wegpunkte/Waren/Wahlzweige
-  werden im Einstellfenster als Mehrzeiler statt grafisch bearbeitet.
-- Vermutung/Analyse: Erst wenn die Befehle an die Engine-Ports (Etappe 43)
-  angebunden sind, lohnt ein eigenes Fenster. Grafische Listen-Editoren je
-  Zweig sind ein eigener Ausbau auf dem bestehenden Schema.
+### [Editor] Grafische Listen-Editoren + diskriminierte Unions (ConditionalBranch/MoveStep/Targets) — offen (Etappe 48)
+- Symptom: Wegpunkte/Waren/Wahlzweige werden im Einstellfenster als Mehrzeiler
+  statt grafisch bearbeitet; `conditional_branch` hat ein flaches Fenster mit
+  „Bedingungsart“-Combo und legt beim Neueinfügen keine `then`/`else`-Arrays an.
+  ControlVariables-Operand, MoveStep, ForceAction und Targets sind noch keine
+  diskriminierten Unions (eigene Tabs je Variante).
+- Vermutung/Analyse: Die 30 Befehle sind seit Etappe 48 an die Engine angebunden
+  und haben vollständige Einstellfenster (Katalog-konsistent). Die grafischen
+  Listen-Editoren und Unions sind ein eigener Ausbau auf dem bestehenden Schema.
 - Betroffene Stellen: `src/editor/event_command_settings.h`,
-  `event_command_settings_win.h`, `game/engine/rpg/event_commands/engine_ports.rb`.
-- Gefunden in: Etappe 45.
+  `event_command_settings_win.h`, `event_form.h` (conditional_branch prepare).
+- Gefunden in: Etappe 45, präzisiert in Etappe 48.
 
 ### [Editor] F9-Registerkarte zum Pflegen aller Schalter-/Variablennamen — offen (Etappe 45)
 - Symptom: Namen werden aktuell je Befehl im Einstellfenster vergeben; eine

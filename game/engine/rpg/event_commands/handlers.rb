@@ -123,6 +123,7 @@ module Rpg
             case parameter['other']
             when 'party_size' then ports.party.members.size.to_f
             when 'gold' then ports.party.gold.to_f
+            when 'steps' then ports.party.steps.to_f
             when 'timer' then ports.timer.remaining
             else 0.0
             end

@@ -1,4 +1,30 @@
-# Handoff für die nächste KI - Rune3D, Stand nach Etappe 47
+# Handoff für die nächste KI - Rune3D, Stand nach Etappe 48
+
+**Etappe 48 (die 30 vorbereiteten XP-Befehle an die Engine anbinden) — fertig.**
+Register jetzt **103 Befehle / 11 Bereiche** (73 Alt + 30 neu), synchron in
+`docs/befehle.json`, `MapCheck::CMD_TYPES`, `EvType`/`EV_TYPES`, `ISSUE_CMD_TYPES`,
+`interpreter.rb` (je Typ eine `when`-Zeile) und `cmd_map`. Die Wirkung der 30
+neuen Typen liegt in der **EventRuntime-Registry** (`game/engine/event_runtime.rb`),
+nicht im Switch; neue Engine-Bausteine `map_effects.rb` (Scroll/Fog/Transition/
+Windowskin), `battle.rb` (`enemy_command`/`forced_actions`/`target_slot`),
+`party.rb` (equipment/class/graphic), `camera`+`vm` (Scroll). **Alle 90
+Einstellfenster** (F6) sind konsistent zu den Katalog-Feldern
+(`event_command_settings.h` + `event_form.h` read/prepare für alle 30 neuen).
+**CommandValidator im Lade-/Prüfablauf:** neu `validate_legacy` /
+`Rpg.validate_legacy_event_commands` für das Karten-/CE-Format (`{"cmd":...}`);
+`MapCheck::Sammler` nimmt `resources:`, `validiere_referenzen` läuft an allen vier
+Befehl-Einstiegen, `scan_database` baut den Index aus der DB, `game/main.rb`
+injiziert ihn beim Laden. Ohne Index bleibt der Ablauf unverändert (kompatibel).
+Spezifikations-Deltas: digits **1..8**, picture_slot **1..50**, cancel branch.
+Tests: prepare48 **65/0**, settings **29/0**, catalog **32/0**, json **1121/0**,
+legacy_validator **18/0**, engine **129/0**, befehle 103/11, sync 0; Register-
+Zähltests auf 103; Zig-Cross editor_main EXIT 0. Doku:
+`docs/ETAPPE_48_30_XP_BEFEHLE.md`. **Offen für später:** diskriminierte Unions im
+Editor (ConditionalBranch-Bedingungs-Tabs, ControlVariables-Operand, MoveStep,
+ForceAction, Targets) — conditional_branch hat ein flaches Fenster und legt beim
+Neueinfügen keine `then`/`else`-Arrays an.
+
+---
 
 **Etappe 47 (CommandValidator + neue Beispielwerte) — fertig, ohne UI.**
 Die modulare Architektur nach den drei XP-Tabs (Datenmodell commandType/indent/

@@ -56,7 +56,7 @@ module Rpg
                     choices: f('choices', :string_list),
                     cancel_index: f('cancel_index', :integer, required: false, default: -1, min: -1, max: 4),
                     cancel_behavior: f('cancel_behavior', :enum, required: false, default: 'cancel',
-                                       values: %w[cancel disabled]),
+                                       values: %w[cancel disabled branch]),
                     default_index: f('default_index', :integer, required: false, default: 0, min: 0, max: 3),
                     position: f('position', :enum, required: false, default: 'center',
                                 values: %w[left center right]),
@@ -69,7 +69,7 @@ module Rpg
           command('input_number', 103, 1, :dialog, :input_number,
                   fields: {
                     variable_id: f('variable_id', :ref, ref: 'variables'),
-                    digits: f('digits', :integer, required: false, default: 4, min: 1, max: 10)
+                    digits: f('digits', :integer, required: false, default: 4, min: 1, max: 8)
                   },
                   summary: 'Schreibt eine Zahleneingabe in eine Variable.')
 
@@ -339,7 +339,7 @@ module Rpg
 
           command('erase_picture', 235, 2, :picture, :picture,
                   fields: {
-                    picture_slot_id: f('picture_slot_id', :integer, min: 1, max: 100),
+                    picture_slot_id: f('picture_slot_id', :integer, min: 1, max: 50),
                     picture_key: f('picture_key', :key, key: 'pictures')
                   },
                   summary: 'Löscht ein Bild über Slot-ID.')
@@ -595,7 +595,7 @@ module Rpg
 
         def picture_fields(include_motion:, include_position: true)
           fields = {
-            picture_slot_id: f('picture_slot_id', :integer, min: 1, max: 100),
+            picture_slot_id: f('picture_slot_id', :integer, min: 1, max: 50),
             picture_key: f('picture_key', :key, key: 'pictures')
           }
           if include_position

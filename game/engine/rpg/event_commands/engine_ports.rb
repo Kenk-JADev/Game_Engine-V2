@@ -153,26 +153,28 @@ module Rpg
 
         def change(kind, id, amount, include_equipment, operation: 'add')
           sammlung = kind.to_s
-          unless sammlung == 'items'
-            return EnginePorts.fehlt("change_#{sammlung}",
-                                     'die Engine führt nur einen Item-Bestand (F9: Waffen/Rüstungen vorbereitet)')
-          end
-
-          name = @ressourcen.engine_id('items', id)
+          name = @ressourcen.engine_id(sammlung, id)
           menge = amount.to_i
-          if operation.to_s == 'subtract'
-            party.take_item(name, menge)
+          case sammlung
+          when 'items'
+            operation.to_s == 'subtract' ? party.take_item(name, menge) : party.add_item(name, menge)
+          when 'weapons', 'armors'
+            party.change_equipment_stock(sammlung, name, menge,
+                                         include_equipment: include_equipment, operation: operation)
           else
-            party.add_item(name, menge)
+            return EnginePorts.fehlt("change_#{sammlung}", "unbekannte Sammlung '#{sammlung}'")
           end
-          EnginePorts.fehlt("change_#{sammlung}", 'include_equipment wird nicht ausgewertet') if include_equipment
           nil
         end
 
         def count(kind, id)
-          return 0 unless kind.to_s == 'items'
-
-          party.item_count(@ressourcen.engine_id('items', id)).to_i
+          sammlung = kind.to_s
+          name = @ressourcen.engine_id(sammlung, id)
+          case sammlung
+          when 'items' then party.item_count(name).to_i
+          when 'weapons', 'armors' then party.equipment_count(sammlung, name).to_i
+          else 0
+          end
         end
       end
 
@@ -185,6 +187,7 @@ module Rpg
         def party = @party || ::Party
         def gold = party.gold.to_i
         def members = party.actors.map(&:id)
+        def steps = party.respond_to?(:steps) ? party.steps.to_i : 0
 
         def change_gold(operation, amount)
           wert = amount.to_i
@@ -237,8 +240,18 @@ module Rpg
             fertigkeit = @ressourcen.engine_id('skills', parameter['skill_id'])
             party.change_skill(ziel, fertigkeit, mode: parameter['operation'].to_s == 'remove' ? 'remove' : 'add')
           when 'change_actor_name' then party.rename(ziel, parameter['name'])
-          when 'change_equipment', 'change_actor_class', 'change_actor_graphic'
-            EnginePorts.fehlt(command, 'Ausrüstung, Klasse und Grafik sind in der Engine noch nicht geführt')
+          when 'change_equipment'
+            item = parameter['item_id']
+            item_id = item.is_a?(Hash) ? (item['id'] || item['item_id']) : item
+            leer = item_id.nil? || item_id.to_s.strip.empty? || item_id.to_s == '0'
+            kind = parameter['slot'].to_s == 'weapon' ? 'weapons' : 'armors'
+            resolved = leer ? item_id : @ressourcen.engine_id(kind, item_id)
+            party.change_equipment(ziel, parameter['slot'], resolved)
+          when 'change_actor_class'
+            party.change_class(ziel, @ressourcen.engine_id('classes', parameter['class_id']))
+          when 'change_actor_graphic'
+            party.change_graphic(ziel, character_key: parameter['character_key'],
+                                 battler_key: parameter['battler_key'], face_key: parameter['face_key'])
           else
             EnginePorts.fehlt(command, 'unbekannter Heldenbefehl')
           end
@@ -266,9 +279,8 @@ module Rpg
         def windowskin(key:)
           return EnginePorts.fehlt('change_windowskin', 'kein $game_system') unless system
 
-          # Der Name wird geführt wie in XP; die Fensterzeichnung der Engine
-          # nutzt ihn noch nicht (Backlog: Fenstergrafik).
           system.windowskin_name = key.to_s
+          MapEffects.windowskin(key.to_s) if defined?(::MapEffects)
         end
 
         def save_access(allowed:)
@@ -327,40 +339,57 @@ module Rpg
           ereignis
         end
 
-        def scroll(**_argumente)
-          EnginePorts.fehlt('scroll_map', 'die Kamera folgt dem Spieler; freies Scrollen fehlt')
+        def scroll(direction:, distance:, speed: 4, **_rest)
+          return EnginePorts.fehlt('scroll_map', 'MapEffects fehlt') unless defined?(::MapEffects)
+
+          ::MapEffects.scroll(direction, distance, speed)
         end
 
-        def settings(**_argumente)
-          EnginePorts.fehlt('change_map_settings', 'Panorama/Nebel/Battleback werden nicht je Befehl gesetzt')
+        def settings(target:, asset_key:, color: nil, **_rest)
+          return EnginePorts.fehlt('change_map_settings', 'MapEffects fehlt') unless defined?(::MapEffects)
+
+          ::MapEffects.map_settings(target, asset_key, color: color)
         end
 
-        def fog_tone(**_argumente)
-          EnginePorts.fehlt('change_fog_color_tone', 'die Engine hat keine Nebelschicht')
+        def fog_tone(color:, **_rest)
+          return EnginePorts.fehlt('change_fog_color_tone', 'MapEffects fehlt') unless defined?(::MapEffects)
+
+          ::MapEffects.fog_tone(color)
         end
 
-        def fog_opacity(**_argumente)
-          EnginePorts.fehlt('change_fog_opacity', 'die Engine hat keine Nebelschicht')
+        def fog_opacity(opacity:, **_rest)
+          return EnginePorts.fehlt('change_fog_opacity', 'MapEffects fehlt') unless defined?(::MapEffects)
+
+          ::MapEffects.fog_opacity(opacity)
         end
 
         def transparent(flag:)
           return EnginePorts.fehlt('change_transparent_flag', 'kein $game_player') unless spieler
 
           spieler.transparent = flag
+          ::MapEffects.transparent(flag) if defined?(::MapEffects)
         end
 
         def move_route(target:, steps: [], repeat: false, ignore: false, event_id: nil, **_rest)
           tempo = nil
+          frequenz = nil
+          wiederholen = repeat
+          ueberspringen = ignore
           schritte = []
           Array(steps).each do |roh|
             schritt = Rpg::Support.stringify_keys(roh)
-            text, tempo_aus_schritt = schritt_text(schritt)
+            text, tempo_aus_schritt, freq, route_opt = schritt_text(schritt)
             tempo = tempo_aus_schritt if tempo_aus_schritt
+            frequenz = freq if freq
+            case route_opt
+            when :repeat then wiederholen = true
+            when :skip then ueberspringen = true
+            end
             schritte << text if text
           end
-          EnginePorts.fehlt('set_move_route', 'ignore (unpassierbare Schritte) wird nicht ausgewertet') if ignore
           ziel = target.to_s == 'event' ? @ressourcen.engine_id('events', event_id) : ziel_fuer(target)
-          mover.start(ziel, schritte, repeat: repeat, speed: tempo)
+          mover.start(ziel, schritte, repeat: wiederholen, speed: tempo,
+                      frequency: frequenz, ignore: ueberspringen)
         end
 
         def route_active? = mover.active?
@@ -374,21 +403,22 @@ module Rpg
 
         private
 
-        # Ein Rpg-Schritt ist ein Hash (action/direction/dx/dz/value), der
-        # Mover erwartet Text wie "move_up", "wait", "jump:1:0".
+        # Ein Rpg-Schritt ist ein Hash (action/direction/dx/dz/value). Mover
+        # erwartet Text wie "move_up", "wait", "jump:1:0"; frequency/repeat/skip
+        # sind Routen-Optionen (Etappe 48). Rückgabe: [text, tempo, freq, opt].
         def schritt_text(schritt)
           case schritt['action'].to_s
-          when 'walk' then ["move_#{schritt['direction']}", nil]
-          when 'turn' then ["turn_#{schritt['direction']}", nil]
-          when 'wait' then ['wait', nil]
-          when 'jump' then [format('jump:%d:%d', schritt['dx'].to_i, schritt['dz'].to_i), nil]
-          when 'speed' then [nil, schritt['value'].to_f]
-          when 'frequency', 'repeat', 'skip'
-            EnginePorts.fehlt('set_move_route', "Schritt '#{schritt['action']}' kennt die Engine nicht")
-            [nil, nil]
+          when 'walk' then ["move_#{schritt['direction']}", nil, nil, nil]
+          when 'turn' then ["turn_#{schritt['direction']}", nil, nil, nil]
+          when 'wait' then ['wait', nil, nil, nil]
+          when 'jump' then [format('jump:%d:%d', schritt['dx'].to_i, schritt['dz'].to_i), nil, nil, nil]
+          when 'speed' then [nil, schritt['value'].to_f, nil, nil]
+          when 'frequency' then [nil, nil, schritt['value'].to_i, nil]
+          when 'repeat' then [nil, nil, nil, :repeat]
+          when 'skip' then [nil, nil, nil, :skip]
           else
             EnginePorts.fehlt('set_move_route', "unbekannter Schritt '#{schritt['action']}'")
-            [nil, nil]
+            [nil, nil, nil, nil]
           end
         end
 
@@ -416,8 +446,14 @@ module Rpg
       end
 
       class AnimationService < Ports::IAnimationService
-        def play(**_argumente)
-          EnginePorts.fehlt('show_animation', 'Animationsdatenbank (F9-Register Animationen) ist vorbereitet, ohne Renderer')
+        def play(key: nil, animation_key: nil, target: 'player', event_id: nil, **_rest)
+          return EnginePorts.fehlt('show_animation', 'MapEffects fehlt') unless defined?(::MapEffects)
+
+          ereignis = nil
+          if target.to_s != 'player' && defined?(::Game) && ::Game.respond_to?(:events)
+            ereignis = ::Game.events.find { |e| e.respond_to?(:name) && e.name.to_s == event_id.to_s }
+          end
+          ::MapEffects.show_animation(target, animation_key || key, event: ereignis)
         end
       end
 
@@ -470,11 +506,15 @@ module Rpg
         def wetter = @wetter || ::Weather
 
         def set(kind:, intensity: 1, duration: 0.0)
-          EnginePorts.fehlt('set_weather_effects', 'Dauer wird nicht ausgewertet') if duration.to_f.positive?
-          EnginePorts.fehlt('set_weather_effects', 'Sturm nutzt Regen (die Engine kennt kein/regen/schnee)') if kind.to_s == 'storm'
+          # Sturm wird als kräftiger Regen geführt (die Engine kennt kein/regen/schnee).
           name = NAMEN.fetch(kind.to_s, 'kein')
           staerke = kind.to_s == 'none' ? 0.0 : [intensity.to_f, 0.1].max
-          wetter.set(name, staerke)
+          staerke = [staerke, 8.0].max if kind.to_s == 'storm'
+          begin
+            wetter.set(name, staerke, duration.to_f)
+          rescue ArgumentError
+            wetter.set(name, staerke)
+          end
         end
       end
 
@@ -486,9 +526,8 @@ module Rpg
         def fade = @fade || ::Fade
 
         def prepare(key: nil, **_rest)
-          # XP merkt sich den Übergang; Rune3D kennt nur aus/ein. Der Key wird
-          # gemeldet, damit ein Projekt sieht, was nicht abgebildet wird.
-          EnginePorts.fehlt('prepare_transition', "Übergang '#{key}' — die Engine kennt nur aus/ein") if key
+          # Etappe 48: den Übergangs-Key führen; execute_transition blendet.
+          ::MapEffects.prepare_transition(key.to_s) if key && defined?(::MapEffects)
           nil
         end
 
@@ -673,40 +712,31 @@ module Rpg
 
         def enemy(command:, params:)
           parameter = Rpg::Support.stringify_keys(params)
-          ziel = gegner(parameter['slot'])
-          return EnginePorts.fehlt(command, "Gegnerplatz #{parameter['slot']} ist leer") unless ziel
-
-          wert = EnginePorts.vorzeichen(parameter['operation'], parameter['amount'])
-          case command.to_s
-          when 'change_enemy_hp'
-            wert = [wert, -(ziel.hp - 1)].max if wert.negative? && !parameter.fetch('allow_knockout', false)
-            ziel.hp = ziel.hp + wert
-          when 'change_enemy_sp' then ziel.mp = ziel.mp + wert
-          when 'change_enemy_state'
-            zustand = @ressourcen.engine_id('states', parameter['state_id'])
-            if parameter['operation'].to_s == 'remove'
-              ziel.remove_state(zustand)
-            else
-              ziel.add_state(zustand, parameter['turns'])
-            end
-          when 'enemy_recover_all'
-            ziel.hp = ziel.max_hp
-            ziel.mp = ziel.max_mp
-            ziel.clear_states
-          when 'deal_damage' then ziel.damage(parameter['amount'].to_i)
-          when 'enemy_appearance', 'enemy_transform', 'show_battle_animation'
-            EnginePorts.fehlt(command, 'Verstecken/Verwandeln/Kampfanimation fehlen im Kampfgerüst')
-          else EnginePorts.fehlt(command, 'unbekannter Gegnerbefehl')
+          # Etappe 48: die Engine führt alle Gegnerbefehle selbst (inkl.
+          # appearance/transform/animation). Ressourcen-IDs vorher auflösen.
+          parameter['state_id'] = @ressourcen.engine_id('states', parameter['state_id']) if parameter['state_id']
+          parameter['enemy_id'] = @ressourcen.engine_id('enemies', parameter['enemy_id']) if parameter['enemy_id']
+          if kampf.respond_to?(:enemy_command)
+            ok = kampf.enemy_command(command, parameter)
+            return EnginePorts.fehlt(command, "Gegnerplatz #{parameter['slot']} ist leer oder kein Kampf") unless ok
+            return nil
           end
+          EnginePorts.fehlt(command, 'Kampfmodul ohne enemy_command')
         end
 
-        def force_action(**_argumente)
-          EnginePorts.fehlt('force_action', 'das Kampfgerüst erlaubt keine erzwungene Aktion')
+        def force_action(slot:, action_key:, target_slot: -1, **_rest)
+          if kampf.respond_to?(:enemy_command)
+            kampf.enemy_command('force_action', { 'slot' => slot, 'action_key' => action_key,
+                                                  'target_slot' => target_slot })
+            return nil
+          end
+          EnginePorts.fehlt('force_action', 'Kampfmodul ohne enemy_command')
         end
 
         private
 
         def gegner(slot)
+          return kampf.enemy_slot(slot) if kampf.respond_to?(:enemy_slot)
           return nil unless kampf.respond_to?(:enemies)
 
           kampf.enemies[slot.to_i]
@@ -766,20 +796,28 @@ module Rpg
         def choices(choices:, options: {})
           return 0 unless @interpreter
 
+          optionen = Rpg::Support.stringify_keys(options || {})
           if @wahl_offen
             return 0 if @interpreter.busy_choices?
 
             @wahl_offen = false
-            return @interpreter.choice_index.to_i
+            index = @interpreter.choice_index.to_i
+            # XP "Cancel: Branch": Abbruch (ESC) bekommt einen eigenen Zweig.
+            if index == :aus || index == -1 || (index == @wahl_abbruch_index && @wahl_abbruch_index >= 0)
+              @interpreter.push_branch(Array(@wahl_abbruch_befehle)) if @wahl_abbruch_befehle.any?
+              return @wahl_abbruch_index >= 0 ? @wahl_abbruch_index : -1
+            end
+            return index
           end
 
-          optionen = Rpg::Support.stringify_keys(options || {})
           abbruch = if optionen['cancel_behavior'].to_s == 'disabled'
                       :aus
                     else
-                      index = optionen['cancel_index'].to_i
-                      index.negative? ? :aus : index
+                      idx = optionen['cancel_index'].to_i
+                      idx.negative? ? :aus : idx
                     end
+          @wahl_abbruch_index = optionen['cancel_behavior'].to_s == 'branch' ? optionen['cancel_index'].to_i : -1
+          @wahl_abbruch_befehle = Array(optionen['cancel_branch'])
           unless @interpreter.choose(Array(choices), cancel: abbruch)
             EnginePorts.fehlt('show_choices', 'Event-Interpreter ist belegt (Text/Wahl/Zahl läuft bereits)')
             return 0
@@ -830,7 +868,9 @@ module Rpg
         def text_options(background: nil, position: nil, speed: nil, no_fast: nil, **_rest)
           fenster.set(position: position(position), frame: rahmen(background),
                       transparent: background.to_s == 'transparent')
-          EnginePorts.fehlt('change_text_options', 'Textgeschwindigkeit wird nicht ausgewertet') if speed
+          # Etappe 48: Textgeschwindigkeit/No-Fast werden geführt (MessageWindow).
+          fenster.speed = speed if speed && fenster.respond_to?(:speed=)
+          fenster.no_fast = no_fast unless no_fast.nil? || !fenster.respond_to?(:no_fast=)
           nil
         end
 

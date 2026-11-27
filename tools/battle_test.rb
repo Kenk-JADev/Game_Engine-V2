@@ -448,8 +448,8 @@ interp6 = Interpreter.new
 interp6.start([{ 'cmd' => 'input_number', 'name' => 'klemme', 'digits' => 99,
                  'initial' => 12345678 }])
 interp6.update(0.016)
-check('digits clamp 1..6, initial clamp') do
-  interp6.num_input[:digits] == 6 && interp6.num_input[:ziffern] == [9, 9, 9, 9, 9, 9]
+check('digits clamp 1..8, initial clamp') do
+  interp6.num_input[:digits] == 8 && interp6.num_input[:ziffern] == [1, 2, 3, 4, 5, 6, 7, 8]
 end
 interp6.instance_variable_set(:@num_input, nil)
 

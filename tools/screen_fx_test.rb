@@ -271,7 +271,7 @@ check('Wackeln ohne Werte -> Warnung') do
   hat?(MapCheck.scan(karte_mit([{ 'cmd' => 'shake' }]), **OPTS),
        'shake ohne Werte', MapCheck::WARNUNG)
 end
-check('alle 73 Befehlstypen im Register der Prüfung') { MapCheck::CMD_TYPES.size == 73 }
+check('alle 103 Befehlstypen im Register der Prüfung') { MapCheck::CMD_TYPES.size == 103 }
 
 puts($fail.zero? ? 'ALLE CHECKS GRUEN' : "#{$fail} CHECK(S) FEHLGESCHLAGEN")
 exit($fail.zero? ? 0 : 1)

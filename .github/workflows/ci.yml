@@ -130,6 +130,13 @@ jobs:
             -Isrc src/editor/json.cpp tools/event_command_settings_test.cpp -o event_command_settings_test
           ./event_command_settings_test
 
+      - name: XP-Befehle Etappe 48 im Editor-Formular serialisieren (portabel)
+        run: |
+          g++ -std=c++20 -O2 -Wall -Wextra -Werror \
+            -Wno-unused-parameter -Wno-missing-field-initializers \
+            -Isrc src/editor/json.cpp tools/event_command_prepare48_test.cpp -o event_command_prepare48_test
+          ./event_command_prepare48_test
+
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.4'

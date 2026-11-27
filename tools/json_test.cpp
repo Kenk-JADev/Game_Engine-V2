@@ -2027,7 +2027,37 @@ void event_form_tests(const std::string& wurzel) {
         R"({"cmd":"state","actor":"alle","name":"gift","mode":"add","turns":3})",
         R"({"cmd":"actor_param","actor":"arik","param":"max_hp","amount":10})",
         R"({"cmd":"actor_name","actor":"arik","name":"Arik der Kuehne"})",
-        R"({"cmd":"actor_skill","actor":"arik","name":"eisspeer","mode":"add"})"
+        R"({"cmd":"actor_skill","actor":"arik","name":"eisspeer","mode":"add"})",
+        R"({"cmd":"conditional_branch","kind":"switch","switch_id":101,"comparator":"=="})",
+        R"({"cmd":"change_weapons","weapon_id":"rune_blade","amount":1,"operation":"add"})",
+        R"({"cmd":"change_armors","armor_id":"warded_cloak","amount":1,"operation":"add"})",
+        R"({"cmd":"change_windowskin","skin_key":"skin/obsidian"})",
+        R"({"cmd":"change_battle_bgm","bgm_key":"bgm/kampf.wav","volume":100,"pitch":100})",
+        R"({"cmd":"change_battle_end_me","me_key":"me/sieg.wav","volume":100})",
+        R"({"cmd":"scroll_map","direction":"right","distance":3,"speed":4})",
+        R"({"cmd":"change_map_settings","target":"battleback","asset_key":"battleback/wald"})",
+        R"({"cmd":"change_fog_color_tone","r":10,"g":-5,"b":20,"duration":30})",
+        R"({"cmd":"change_fog_opacity","opacity":160,"duration":20})",
+        R"({"cmd":"show_animation","target":"player","animation_key":"animation/hit"})",
+        R"({"cmd":"change_transparent_flag","transparent":true})",
+        R"({"cmd":"wait_for_move_completion"})",
+        R"({"cmd":"prepare_transition","transition_key":"transition/fade","duration":20})",
+        R"({"cmd":"stop_se"})",
+        R"({"cmd":"change_equipment","actor_id":1,"slot":"weapon","item_id":"rune_blade"})",
+        R"({"cmd":"change_actor_class","actor_id":1,"class_id":"vanguard"})",
+        R"({"cmd":"change_actor_graphic","actor_id":1,"character_key":"character/arik"})",
+        R"({"cmd":"change_enemy_hp","slot":0,"amount":-5,"operation":"add"})",
+        R"({"cmd":"change_enemy_sp","slot":0,"amount":3,"operation":"add"})",
+        R"({"cmd":"change_enemy_state","slot":0,"state_id":11,"operation":"add"})",
+        R"({"cmd":"enemy_recover_all"})",
+        R"({"cmd":"enemy_appearance","slot":0,"hidden":true})",
+        R"({"cmd":"enemy_transform","slot":0,"enemy_id":"wolf"})",
+        R"({"cmd":"show_battle_animation","animation_key":"animation/hit","target_slot":-1})",
+        R"({"cmd":"deal_damage","target_slot":0,"amount":10})",
+        R"({"cmd":"force_action","slot":0,"action_key":"kraftschlag","target_slot":-1})",
+        R"({"cmd":"abort_battle"})",
+        R"({"cmd":"game_over"})",
+        R"({"cmd":"return_to_title_screen"})"
     };
     check("Beispiel für jeden Befehlstyp vorhanden", samples.size() == ET_COUNT);
     for (size_t i = 0; i < samples.size(); ++i) {
@@ -2445,8 +2475,8 @@ void event_form_tests(const std::string& wurzel) {
     cmd_before = event_command_form_read(long_text); cmd_after = cmd_before;
     check("mehr als 8192 Textzeichen bleiben beim Lesen und unverändertem Übernehmen erhalten",
           cmd_before.text.size() == 20000 && json_write(event_command_prepare(&long_text, cmd_before, cmd_after).value) == json_write(long_text));
-    EventCommandForm invalid_new; invalid_new.type = ET_INPUT_NUMBER; invalid_new.name = "n"; invalid_new.val1 = "7";
-    check("Ziffernzahl außerhalb 1–6 wird nicht geklemmt", !event_command_prepare(nullptr, EventCommandForm{}, invalid_new).ok);
+    EventCommandForm invalid_new; invalid_new.type = ET_INPUT_NUMBER; invalid_new.name = "n"; invalid_new.val1 = "9";
+    check("Ziffernzahl außerhalb 1–8 wird nicht geklemmt", !event_command_prepare(nullptr, EventCommandForm{}, invalid_new).ok);
     invalid_new.val1 = "3"; invalid_new.val2 = "-1";
     check("negativer Startwert wird nicht still verworfen", !event_command_prepare(nullptr, EventCommandForm{}, invalid_new).ok);
     invalid_new.val1 = "2"; invalid_new.val2 = "100";

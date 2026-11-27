@@ -172,13 +172,29 @@ class Interpreter
     @choice_index
   end
 
+  # Etappe 48: einen Zweig (then/else) auf den Stack legen. Genutzt vom
+  # generischen conditional_branch und von der EventRuntime-Brücke.
+  def push_branch(commands)
+    @stack.push(list: Array(commands), index: 0)
+  end
+
+  # Etappe 48 (XP 210): auf das Ende aller Bewegungsrouten warten.
+  def wait_for_move_completion
+    return false unless defined?(Mover) && Mover.active?
+    @route_wait = :all
+    true
+  end
+
+  # Eigentümer des laufenden Events (für Animationen/Self-Switches).
+  attr_reader :owner
+
   # Etappe 43: Zahleneingabe von außen öffnen. Die Eingabe läuft über
   # UI.nummer_eingabe wie beim Befehl 'input_number' und schreibt in die
   # genannte Variable.
   def number_input(variable:, digits: 4, initial: 0, cancel: true)
     return false if running?
 
-    stellen = digits.to_i.clamp(1, 6)
+    stellen = digits.to_i.clamp(1, 8)
     start = initial.to_i.clamp(0, (10**stellen) - 1)
     @num_input = { variable: variable.to_s, digits: stellen,
                    ziffern: start.digits(10).then { |d| Array.new(stellen) { |i| d[i] || 0 } }.reverse,
@@ -217,7 +233,11 @@ class Interpreter
 
     # Etappe 19g: move_route mit "wait" - blockieren, bis der Mover fertig ist.
     if @route_wait
-      return if Mover.running?(@route_wait)
+      if @route_wait == :all
+        return if defined?(Mover) && Mover.active?
+      else
+        return if Mover.running?(@route_wait)
+      end
       @route_wait = nil
     end
 
@@ -483,8 +503,8 @@ class Interpreter
                        frames: cmd['frames'] || 20)
       when 'fade'   # {"cmd":"fade","direction":"aus","seconds":0.5} (Etappe 19d)
         Fade.start(cmd['direction'] || 'aus', cmd['seconds'] || 0.5)
-      when 'input_number'   # Zahleneingabe (Etappe 19i, RPG Maker XP)
-        digits = (cmd['digits'] || 1).to_i.clamp(1, 6)
+      when 'input_number'   # Zahleneingabe (Etappe 19i, RPG Maker XP; 48: 1..8)
+        digits = (cmd['digits'] || 1).to_i.clamp(1, 8)
         start = (cmd['initial'] || 0).to_i.clamp(0, 10**digits - 1)
         @num_input = { variable: cmd['name'].to_s, digits: digits,
                        ziffern: start.digits(10).then { |d| Array.new(digits) { |i| d[i] || 0 } }.reverse,
@@ -543,6 +563,40 @@ class Interpreter
             return
           end
         end
+      # Etappe 48: die 30 neuen XP-Befehle. Je Typ eine when-Zeile (Register-
+      # Sync, tools/befehle_test.rb + sync_test.rb); die Wirkung liegt in der
+      # EventRuntime-Registry, nicht in diesem Switch (ein gemeinsamer Rumpf).
+      when 'conditional_branch'
+      when 'change_weapons'
+      when 'change_armors'
+      when 'change_windowskin'
+      when 'change_battle_bgm'
+      when 'change_battle_end_me'
+      when 'scroll_map'
+      when 'change_map_settings'
+      when 'change_fog_color_tone'
+      when 'change_fog_opacity'
+      when 'show_animation'
+      when 'change_transparent_flag'
+      when 'wait_for_move_completion'
+      when 'prepare_transition'
+      when 'stop_se'
+      when 'change_equipment'
+      when 'change_actor_class'
+      when 'change_actor_graphic'
+      when 'change_enemy_hp'
+      when 'change_enemy_sp'
+      when 'change_enemy_state'
+      when 'enemy_recover_all'
+      when 'enemy_appearance'
+      when 'enemy_transform'
+      when 'show_battle_animation'
+      when 'deal_damage'
+      when 'force_action'
+      when 'abort_battle'
+      when 'game_over'
+      when 'return_to_title_screen'
+        return if EventRuntime.execute(cmd, self) == :wait
       else
         Rune::Log.warn("Interpreter: unbekanntes Kommando '#{cmd['cmd']}' übersprungen")
         Issues.report('Interpreter', "unbekanntes Kommando '#{cmd['cmd']}'")

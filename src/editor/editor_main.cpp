@@ -1340,7 +1340,8 @@ const char* const ISSUE_CMD_TYPES[] = {
     "show_picture", "move_picture", "rotate_picture", "tint_picture", "erase_picture",
     "play_bgm", "fadeout_bgm", "play_bgs", "fadeout_bgs",
     "save_bgm", "resume_bgm", "memorize_audio", "restore_audio",
-    "state", "actor_param", "actor_name", "actor_skill"
+    "state", "actor_param", "actor_name", "actor_skill",
+    "conditional_branch", "change_weapons", "change_armors", "change_windowskin", "change_battle_bgm", "change_battle_end_me", "scroll_map", "change_map_settings", "change_fog_color_tone", "change_fog_opacity", "show_animation", "change_transparent_flag", "wait_for_move_completion", "prepare_transition", "stop_se", "change_equipment", "change_actor_class", "change_actor_graphic", "change_enemy_hp", "change_enemy_sp", "change_enemy_state", "enemy_recover_all", "enemy_appearance", "enemy_transform", "show_battle_animation", "deal_damage", "force_action", "abort_battle", "game_over", "return_to_title_screen"
 };
 const int ISSUE_CMD_TYPE_COUNT =
     static_cast<int>(sizeof(ISSUE_CMD_TYPES) / sizeof(ISSUE_CMD_TYPES[0]));
@@ -8533,7 +8534,18 @@ const wchar_t* const EV_TYPE_LABELS[ET_COUNT] = {
     L"[Ton] Musik + Hintergrundklang merken", L"[Ton] Musik + Hintergrundklang zurückholen",
     // Etappe 24: Helden-Zustand und Werte (XP 313/317/320).
     L"[Party] Zustand ändern", L"[Party] Parameter ändern", L"[Party] Held umbenennen",
-    L"[Party] Fertigkeit ändern"
+    L"[Party] Fertigkeit ändern",
+    // Etappe 48: die 30 neu an die Engine angebundenen XP-Befehle.
+    L"[Verzweigung] Bedingung (XP)", L"[Party] Waffenbestand", L"[Party] Rüstungsbestand",
+    L"[System] Windowskin", L"[Ton] Kampf-BGM", L"[Ton] Kampf-Ende-ME",
+    L"[Bewegung] Karte scrollen", L"[Welt] Karten-Einstellungen", L"[Welt] Nebelfarbe",
+    L"[Welt] Nebeldeckkraft", L"[Bild] Animation zeigen", L"[Spieler] Transparenz",
+    L"[Bewegung] Auf Routen warten", L"[Bild] Übergang vorbereiten", L"[Ton] SE stoppen",
+    L"[Party] Ausrüstung wechseln", L"[Party] Klasse wechseln", L"[Party] Grafik wechseln",
+    L"[Kampf] Gegner-HP", L"[Kampf] Gegner-SP", L"[Kampf] Gegner-Zustand",
+    L"[Kampf] Gegner heilen", L"[Kampf] Gegner sichtbar", L"[Kampf] Gegner verwandeln",
+    L"[Kampf] Kampfanimation", L"[Kampf] Schaden zufügen", L"[Kampf] Aktion erzwingen",
+    L"[Kampf] Kampf abbrechen", L"[System] Game Over", L"[System] Zum Titel"
 };
 const wchar_t* const EV_TRIGGERS[4] = { L"action", L"touch", L"auto", L"parallel" };
 const wchar_t* const EV_OPS[6] = { L"==", L"!=", L"<", L"<=", L">", L">=" };

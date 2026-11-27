@@ -20,15 +20,19 @@ module Weather
   @intensity = 1.0
   @drops = []          # aktive Partikel { x,y,z,vy,size,sway,phase }
   @rng = 0
+  @duration = 0.0      # Etappe 48: XP 236 Dauer (0 = unbegrenzt)
 
   module_function
 
   def type = @type
   def intensity = @intensity
+  def duration = @duration
   def active? = @type != 'kein' && @intensity.positive?
 
   # Einstellen (auch aus dem Interpreter/Scripts). Unbekannt = aus.
-  def set(name, intensity = 1.0)
+  # duration > 0 beendet das Wetter nach Sekunden (Etappe 48).
+  def set(name, intensity = 1.0, duration = 0.0)
+    @duration = duration.to_f.positive? ? duration.to_f : 0.0
     key = name.to_s
     unless TYPES.include?(key) || key == 'kein'
       Issues.report('Wetter', "unbekannter Wetter-Typ '#{key}' (nehme 'kein')")
@@ -73,6 +77,14 @@ module Weather
   end
 
   def update(dt, px, py, pz)
+    # Etappe 48: zeitlich begrenztes Wetter herunterzählen.
+    if @duration.positive?
+      @duration = [@duration - dt, 0.0].max
+      if @duration.zero?
+        set('kein', 0)
+        return
+      end
+    end
     return unless active?
 
     # Zielmenge: ~ 40 Partikel pro Intensitätsstufe.

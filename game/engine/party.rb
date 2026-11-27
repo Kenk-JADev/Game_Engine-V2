@@ -25,12 +25,21 @@
 
 class Party
   Actor = Struct.new(:id, :name, :klass, :level, :max_hp, :max_mp, :hp, :mp,
-                     :atk, :def, :spi, :agi, :exp, :states, keyword_init: true) do
+                     :atk, :def, :spi, :agi, :exp, :states,
+                     :equipment, :class_id, :character_key, :battler_key, :face_key,
+                     keyword_init: true) do
     # Etappe 24 (XP 313): Zustände hängen wie im Kampf am Helden
     # ([{ id:, turns: }]); außerhalb des Kampfes läuft `turns` nicht ab.
+    # Etappe 48: Ausrüstung/Klasse/Grafik sind additive Felder; alte Spielstände
+    # ohne sie behalten die Datenbank-Defaults.
     def initialize(**felder)
       super
       self.states ||= []
+      self.equipment ||= { 'weapon' => nil, 'armor' => nil, 'accessory' => nil }
+      self.class_id ||= klass.to_s
+      self.character_key ||= ''
+      self.battler_key ||= ''
+      self.face_key ||= ''
     end
 
     def damaged? = hp < max_hp
@@ -71,10 +80,12 @@ class Party
 
   @actors = []
   @items = {}
+  @weapons = {}
+  @armors = {}
   @gold = 0
 
   class << self
-    attr_reader :actors, :items, :gold
+    attr_reader :actors, :items, :weapons, :armors, :gold
   end
 
   # Höchste Stufe (XP: final_level = 99) und Kurven-Exponent.
@@ -155,6 +166,33 @@ class Party
       id = h['id'].to_s
       next if id.empty?
       @items[id] = (h['start'] || 0).to_i if (h['start'] || 0).to_i.positive?
+    end
+    # Etappe 48: getrennte Bestände für Waffen/Rüstungen (XP 127/128).
+    @weapons = {}
+    (db['weapons'] || []).each do |h|
+      next unless h.is_a?(Hash)
+      id = h['id'].to_s
+      next if id.empty?
+      @weapons[id] = (h['start'] || 0).to_i if (h['start'] || 0).to_i.positive?
+    end
+    @armors = {}
+    (db['armors'] || []).each do |h|
+      next unless h.is_a?(Hash)
+      id = h['id'].to_s
+      next if id.empty?
+      @armors[id] = (h['start'] || 0).to_i if (h['start'] || 0).to_i.positive?
+    end
+    # Startausrüstung/Klasse/Grafik aus der Datenbank (optional, kompatibel).
+    @katalog.each do |a|
+      eintrag = (db['actors'] || []).find { |h| h.is_a?(Hash) && h['id'].to_s == a.id }
+      next unless eintrag
+      a.class_id = (eintrag['class_id'] || eintrag['class'] || a.klass).to_s
+      a.character_key = eintrag['character_key'].to_s
+      a.battler_key = eintrag['battler_key'].to_s
+      a.face_key = eintrag['face_key'].to_s
+      if eintrag['equipment'].is_a?(Hash)
+        %w[weapon armor accessory].each { |slot| a.equipment[slot] = eintrag['equipment'][slot]&.to_s }
+      end
     end
     # Fertigkeiten je Held (20a): Liste von Skill-IDs aus der Datenbank.
     @skills = {}
@@ -637,6 +675,94 @@ class Party
     actors.size
   end
 
+  # ------------------------------------ Ausrüstung/Klasse/Grafik (Etappe 48)
+  # XP 127/128: Waffen/Rüstungen sind eigene Inventarsammlungen. `include_equipment`
+  # zählt beim Entnehmen auch angelegte Stücke mit (XP: Game_Party#weapon_number).
+  EQUIPMENT_SLOTS = %w[weapon armor accessory].freeze
+
+  def self.equipment_def(kind, id)
+    key = id.to_s.strip
+    return nil if key.empty?
+    collection = kind.to_s == 'weapons' ? 'weapons' : 'armors'
+    liste = (defined?(::Database) && ::Database.respond_to?(:database) &&
+             ::Database.database.is_a?(Hash) ? ::Database.database[collection] : nil) || []
+    liste.find { |h| h.is_a?(Hash) && h['id'].to_s.casecmp?(key) } ||
+      liste.find { |h| h.is_a?(Hash) && h['name'].to_s.casecmp?(key) }
+  end
+
+  def self.equipment_count(kind, id, include_equipment: false)
+    store = kind.to_s == 'weapons' ? @weapons : @armors
+    n = store[id.to_s].to_i
+    return n unless include_equipment
+    slot = kind.to_s == 'weapons' ? 'weapon' : 'armor'
+    n + @actors.count { |a| a.equipment[slot].to_s == id.to_s }
+  end
+
+  def self.change_equipment_stock(kind, id, amount, include_equipment: false, operation: 'add')
+    store = kind.to_s == 'weapons' ? @weapons : @armors
+    key = id.to_s
+    return :unbekannt if key.empty?
+    delta = amount.to_i
+    delta = -delta if operation.to_s == 'subtract'
+    if delta.negative? && include_equipment
+      # Angelegte Stücke zuerst ausziehen, dann aus dem Lager nehmen.
+      slot = kind.to_s == 'weapons' ? 'weapon' : 'armor'
+      fehlend = -delta
+      @actors.each do |a|
+        break if fehlend <= 0
+        next unless a.equipment[slot].to_s == key
+        a.equipment[slot] = nil
+        fehlend -= 1
+      end
+    end
+    n = [store[key].to_i + delta, 0].max
+    n.zero? ? store.delete(key) : store[key] = n
+    Rune::Log.info("Party: #{kind} '#{key}' #{delta >= 0 ? '+' : ''}#{delta} (jetzt #{n})")
+    n
+  end
+
+  # XP 319: Ausrüstung wechseln. item_id nil/0/"" zieht den Slot aus.
+  def self.change_equipment(actor_id, slot, item_id)
+    held = held(actor_id) || find(actor_id)
+    return :ziel_unbekannt unless held
+    schluessel = slot.to_s
+    return :slot_unbekannt unless EQUIPMENT_SLOTS.include?(schluessel)
+    if item_id.nil? || item_id.to_s.strip.empty? || item_id.to_s == '0'
+      held.equipment[schluessel] = nil
+      return :ok
+    end
+    kind = schluessel == 'weapon' ? 'weapons' : 'armors'
+    defi = equipment_def(kind, item_id)
+    return :unbekannt unless defi
+    held.equipment[schluessel] = defi['id'].to_s
+    Rune::Log.info("Party: #{held.name} trägt #{defi['name'] || defi['id']} (#{schluessel})")
+    :ok
+  end
+
+  # XP 321: Klasse ändern. Rune3D führt die Klasse als Namen/ID; Parameter
+  # wachsen weiter über die bestehende Kurve (keine Klassentabellen).
+  def self.change_class(actor_id, class_id)
+    held = held(actor_id) || find(actor_id)
+    return :ziel_unbekannt unless held
+    key = class_id.to_s.strip
+    return :unbekannt if key.empty?
+    held.class_id = key
+    held.klass = key
+    Rune::Log.info("Party: #{held.name} Klasse -> #{key}")
+    :ok
+  end
+
+  # XP 322: Grafik ändern. Die Keys werden geführt und von der Darstellung
+  # genutzt, sobald ein Projekt passende Assets hat.
+  def self.change_graphic(actor_id, character_key: nil, battler_key: nil, face_key: nil)
+    held = held(actor_id) || find(actor_id)
+    return :ziel_unbekannt unless held
+    held.character_key = character_key.to_s unless character_key.nil?
+    held.battler_key = battler_key.to_s unless battler_key.nil?
+    held.face_key = face_key.to_s unless face_key.nil?
+    :ok
+  end
+
   # ------------------------------------------------------- Speichern/Laden
 
   def self.snapshot
@@ -644,6 +770,8 @@ class Party
       'gold' => @gold,
       'steps' => steps,
       'items' => @items.dup,
+      'weapons' => (@weapons || {}).dup,
+      'armors' => (@armors || {}).dup,
       'skills' => (@skills || {}).transform_values(&:dup),
       # Seit dem Level-Up (D4) wachsen auch max_hp/max_mp und die
       # Angriffswerte - sie gehören damit in den Spielstand, sonst steht ein
@@ -655,7 +783,13 @@ class Party
           'atk' => a.atk, 'def' => a.def, 'spi' => a.spi, 'agi' => a.agi,
           # Etappe 24 (XP 313): Zustände gehören in den Spielstand; `turns`
           # bleibt erhalten und läuft erst im Kampf ab.
-          'states' => states(a).map { |s| { 'id' => s[:id], 'turns' => s[:turns] } } }
+          'states' => states(a).map { |s| { 'id' => s[:id], 'turns' => s[:turns] } },
+          # Etappe 48: additive Felder; alte Spielstände ohne sie laden weiter.
+          'equipment' => (a.equipment || {}).dup,
+          'class_id' => a.class_id.to_s,
+          'character_key' => a.character_key.to_s,
+          'battler_key' => a.battler_key.to_s,
+          'face_key' => a.face_key.to_s }
       end
     }
   end
@@ -665,6 +799,9 @@ class Party
     @gold = (snap['gold'] || 0).to_i
     @steps = (snap['steps'] || 0).to_i   # alte Spielstände ohne 'steps' = 0
     @items = (snap['items'] || {}).map { |k, v| [k.to_s, v.to_i] }.reject { |_, v| v <= 0 }.to_h
+    # Etappe 48: alte Spielstände ohne weapons/armors behalten die Setup-Bestände.
+    @weapons = (snap['weapons'] || @weapons || {}).map { |k, v| [k.to_s, v.to_i] }.reject { |_, v| v <= 0 }.to_h
+    @armors = (snap['armors'] || @armors || {}).map { |k, v| [k.to_s, v.to_i] }.reject { |_, v| v <= 0 }.to_h
     # Fertigkeiten (20a): alte Spielstände ohne 'skills' behalten die
     # Datenbank-Liste aus Party.setup.
     if snap['skills'].is_a?(Hash)
@@ -706,6 +843,15 @@ class Party
         next if id.empty?
         { id: id, turns: eintrag['turns'].nil? ? nil : eintrag['turns'].to_i }
       end.first(MAX_STATES)
+      # Etappe 48: additive Felder nur übernehmen, wenn der Spielstand sie hat.
+      if h['equipment'].is_a?(Hash)
+        EQUIPMENT_SLOTS.each { |slot| a.equipment[slot] = h['equipment'][slot]&.to_s }
+      end
+      a.class_id = h['class_id'].to_s if h.key?('class_id') && !h['class_id'].to_s.empty?
+      a.klass = a.class_id unless a.class_id.to_s.empty?
+      a.character_key = h['character_key'].to_s if h.key?('character_key')
+      a.battler_key = h['battler_key'].to_s if h.key?('battler_key')
+      a.face_key = h['face_key'].to_s if h.key?('face_key')
     end
     Rune::Log.info("Party wiederhergestellt: #{@gold} Gold, #{@items.size} Item-Sorten")
     true

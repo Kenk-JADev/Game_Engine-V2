@@ -46,6 +46,12 @@ public:
     float shake_x = 0.0f;
     float shake_y = 0.0f;
 
+    // Etappe 48 (XP 203 Scroll Map): freier Kamera-Versatz in Welt-XZ,
+    // unabhängig von der Spielerposition. MapEffects setzt/animiert ihn;
+    // ein Kartenwechsel setzt ihn zurück. Picking nutzt denselben Versatz.
+    float scroll_x = 0.0f;
+    float scroll_z = 0.0f;
+
     // Blickrichtung (auch für den Kamera-Kollisions-Check in main.cpp).
     math::Vec3 forward() const;
 

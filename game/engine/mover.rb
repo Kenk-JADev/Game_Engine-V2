@@ -155,6 +155,7 @@ module Mover
   # richtung = aktuelle Blickrichtung (XP 2/4/6/8).
   Route = Struct.new(:objekt, :spieler, :schritte, :index, :rest, :distanz,
                      :dx, :dz, :wiederholen, :speed, :richtung, :code,
+                     :frequency, :ignore,
                      keyword_init: true)
 
   @routes = []
@@ -168,7 +169,7 @@ module Mover
   # desselben Ziels wird ersetzt (wie XP force_move_route). code = Zusatzwert
   # für Schritte mit Parameter (switch_on/off: Schaltername, change_speed:
   # m/s, script: Ruby-Code). Rückgabe: die Route oder nil bei Unsinn.
-  def self.start(target, steps, repeat: false, speed: nil, code: nil)
+  def self.start(target, steps, repeat: false, speed: nil, code: nil, frequency: nil, ignore: false)
     schritte = Array(steps).map { |s| normalize(s) }.reject(&:empty?)
     if schritte.empty?
       Rune::Log.warn('Mover: leere Bewegungsroute ignoriert')
@@ -194,7 +195,7 @@ module Mover
     route = Route.new(objekt: objekt, spieler: spieler, schritte: schritte,
                       index: 0, rest: 0.0, distanz: 0.0, dx: 0.0, dz: 0.0,
                       wiederholen: !!repeat, speed: tempo, richtung: 2,
-                      code: code)
+                      code: code, frequency: frequency, ignore: !!ignore)
 
     # Alte Route desselben Ziels ersetzen.
     @routes.reject! do |r|
@@ -278,7 +279,8 @@ module Mover
   def self.ausfuehren(r, befehl, dt)
     case befehl
     when 'wait'
-      r.rest = WARTE_DAUER
+      # Etappe 48: XP change_freq (1..8) steuert die Pause zwischen Schritten.
+      r.rest = r.frequency ? [(9 - r.frequency.to_i) * 0.1, 0.05].max : WARTE_DAUER
 
     when 'move_down', 'move_left', 'move_right', 'move_up',
          'move_lower_left', 'move_lower_right', 'move_upper_left',
@@ -356,6 +358,10 @@ module Mover
     when 'change_speed'
       r.speed = r.code.to_f if r.code && r.code.to_f > 0
 
+    when 'change_freq'
+      # Etappe 48: Frequenz 1..8 (XP); höher = kürzere Pause zwischen Schritten.
+      r.frequency = r.code.to_i.clamp(1, 8) if r.code
+
     when 'play_se'
       # XP-Code 44: 'code' enthält den SE-Namen; XP-Volumen 100 = 1.0.
       # Pitch hat die Engine noch nicht (offen unter "20x Ton").
@@ -381,7 +387,7 @@ module Mover
         Effects.dust(x, Game.gy(x, z) + 0.1, z)
       end
 
-    when 'change_freq', 'move_animation_off',
+    when 'move_animation_off',
          'stop_animation_on', 'stop_animation_off',
          'direction_fix_on', 'direction_fix_off',
          'through_on', 'through_off',
@@ -507,7 +513,9 @@ module Mover
     # gilt dann als abgelaufen, die Route macht mit dem nächsten Befehl
     # weiter - genau wie ein Charakter, der gegen eine Wand läuft.
     nx, nz = teil_ziel(r, weg)
-    if Passage.blockiert?(nx, nz)
+    # Etappe 48: XP "ignore impossible moves" (through) lässt die Route
+    # auch durch Block-Zonen laufen; sonst stoppt der Schritt wie bisher.
+    if !r.ignore && Passage.blockiert?(nx, nz)
       r.distanz = 0.0
       warn_once('Mover: Schritt an Block-Zone/Hindernis gestoppt')
       return
