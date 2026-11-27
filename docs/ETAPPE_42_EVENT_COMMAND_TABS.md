@@ -375,8 +375,8 @@ das nicht, denn diese Etappe enthält keine UI.
 - **Keine neuen `cmd`-Strings** im bestehenden Event-System: `docs/befehle.json`,
   `MapCheck::CMD_TYPES`, `ISSUE_CMD_TYPES`, `EV_TYPES` und `interpreter.rb`
   bleiben unangetastet. Die `Rpg`-Schicht ist additiv und hat eigene Typnamen.
-- **Noch nicht an die laufende Engine angeschlossen.** Die Ports sind
-  Schnittstellen mit Null-/Memory-/Recording-Adaptern; die Anbindung an
-  `Party`, `Battle`, `Audio`, `Pictures` usw. ist der nächste Schritt
-  (Backlog: „Rpg-Schicht an das laufende Spiel anbinden").
+- **An die laufende Engine angeschlossen seit Etappe 43.** Die Ports bleiben
+  Schnittstellen mit Null-/Memory-/Recording-Adaptern für Tests; dazu liefert
+  `engine_ports.rb` die echten Adapter auf `Party`, `Battle`, `Audio`,
+  `Pictures` usw. Siehe `docs/ETAPPE_43_ENGINE_PORTS.md`.
 - Keine Änderung an `game/data/*`, Karten oder Spielständen.

@@ -1,5 +1,27 @@
 # Handoff für die nächste KI - Rune3D, Stand nach Implementierung 19y
 
+**Etappe 43 (Ports an die echte Engine) — fertig, ohne UI.** Die 90 typisierten
+XP-Befehle wirken jetzt im laufenden Spiel: `game/engine/rpg/event_commands/engine_ports.rb`
+liefert **19 Adapter** auf `GameState`, `Party`, `Battle`, `$game_system`,
+`$game_temp`, `Pictures`, `ScreenFx`, `Weather`, `Fade`, `Mover`, `Shop`,
+`NameInput`, `MessageWindow`, `Interpreter` und `Game`. Factory
+`Rpg.build_engine_event_interpreter(catalog:, bindungen:, interpreter:)`; alle
+Engine-Objekte sind injizierbar (Vorgabe = echte Module). IDs löst
+`Ressourcen#engine_id` über die Bindungstabelle oder den Katalog-Key auf.
+Blockierende Fenster (Wahl, Zahl, Taste, Laden, Name) warten frame-weise und
+werden danach erneut gelesen (`Result.wait(:ui, erneut: true)`) — XP-getreu.
+Was die Engine nicht kann, wird **gemeldet statt vorgetäuscht**:
+`EnginePorts.fehlt(befehl, grund)` schreibt ins `Rune::Log` und in
+`EnginePorts.warnungen`. Kleine Engine-Erweiterungen: `Battler#remove_state/
+#clear_states`, `Interpreter#choose/#choice_index/#number_input`; leere
+Wahlzweige bekommen keinen Stack-Rahmen mehr. Neuer Test
+`tools/event_commands_engine_test.rb` (**110/0**) lädt die echte Engine mit
+Native-Attrappen und tickt pro Frame auch `Mover`/`Fade`/`Pictures`/`ScreenFx`/
+`$game_system`. Bestehende Suiten bleiben grün (`event_commands_arch_test`
+1542/0, `event_commands_test` 107/0). Doku: `docs/ETAPPE_43_ENGINE_PORTS.md`.
+**Nächster Schritt: Etappe 44 — F6 als drei XP-Registerkarten** (C++/Win32,
+in der Sandbox nur cross-kompilierbar; Sicht-/DPI-Test auf dem Windows-Rechner).
+
 **Etappe 42 (Event-Command-Architektur nach den drei XP-Tabs) — fertig, ohne UI.**
 Die `Rpg::EventCommands`-Schicht ist jetzt der vollständige XP-Bauplan:
 `layout.rb` beschreibt drei Tabs mit je zwei Spalten und je zwei Abschnitten
@@ -22,8 +44,8 @@ Beispielwerte bleiben die eigenen IDs/Keys (Schalter 101 `Tor_Offen`, Variable
 202 `Quest_Phase`, Karte 12 an (8, 14), `bgm_tavern_night`, `se_door_latch`);
 die vier Beispielprogramme decken alle 90 Befehle ab. Prüfungen:
 `tools/event_commands_arch_test.rb` **1542/0** (neu), `event_commands_test`
-**107/0**, `lint_repo` ohne Befund. **Keine UI gebaut** und die Ports sind noch
-nicht an das laufende Spiel angeschlossen (Backlog). Bauplan und Tabellen:
+**107/0**, `lint_repo` ohne Befund. **Keine UI gebaut**; die Ports sind seit
+Etappe 43 an das laufende Spiel angeschlossen. Bauplan und Tabellen:
 `docs/ETAPPE_42_EVENT_COMMAND_TABS.md`. **CI grün:** Lauf
 [45985842278](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45985842278)
 (`ce1743b`), alle vier Jobs; Windows 60 OK/0/0.

@@ -655,6 +655,9 @@ Spielstände liegen in `projekte/<name>/saves/slot1..3.json`.
 - [`docs/ETAPPE_42_EVENT_COMMAND_TABS.md`](docs/ETAPPE_42_EVENT_COMMAND_TABS.md) —
   Event-Command-Architektur nach den drei XP-Tabs: Bauplan, Typen, Handler,
   Ports, Beispielwerte
+- [`docs/ETAPPE_43_ENGINE_PORTS.md`](docs/ETAPPE_43_ENGINE_PORTS.md) — die 90
+  Befehle an der echten Engine: 19 Adapter, blockierende Fenster, gemeldete
+  Grenzen
 - [`docs/HANDOFF_Naechste_KI.md`](docs/HANDOFF_Naechste_KI.md) — Arbeitsregeln,
   Etappen-Tabelle, bekannte Fallstricke
 

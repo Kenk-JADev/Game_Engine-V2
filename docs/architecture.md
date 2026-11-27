@@ -3758,3 +3758,38 @@ Common Event 9. Die vier Beispielprogramme zeigen alle 90 Befehle.
 `tools/event_commands_arch_test.rb` prüft Bauplan, Typen, Handler, Ports und
 Interpreter (1542 Prüfungen), `tools/event_commands_test.rb` bleibt mit 107
 Prüfungen grün. Details: `docs/ETAPPE_42_EVENT_COMMAND_TABS.md`.
+
+## Event-Command-Ports an der echten Engine (Etappe 43)
+
+`game/engine/rpg/event_commands/engine_ports.rb` schließt die 19 Ports der
+Schicht an die laufenden Engine-Module an. `EnginePorts.build(katalog:,
+bindungen:, interpreter:, …)` liefert ein `Ports::PortSet`; alle Engine-Objekte
+sind injizierbar, ohne Angabe greifen die echten Module (`GameState`, `Party`,
+`Battle`, `$game_system`, `$game_temp`, `Pictures`, `ScreenFx`, `Weather`,
+`Fade`, `Mover`, `Shop`, `NameInput`, `MessageWindow`, `Game`). Die Factory
+`Rpg.build_engine_event_interpreter` baut daraus einen Interpreter.
+
+IDs übersetzt `Ressourcen#engine_id(sammlung, wert)`: erst die Bindungstabelle
+des Projekts (`'actors' => { 1 => 'arik' }`), dann der Key-Endteil der
+Katalog-Ressource (`item/heiltrank` → `heiltrank`), sonst der Wert selbst.
+
+Blockierende Fenster arbeiten XP-getreu: `Result.wait(:ui, erneut: true)` lässt
+den Befehlszeiger stehen, der Interpreter wartet auf `ui.busy? == false` und
+liest denselben Befehl erneut. Der Adapter erkennt am eigenen Zustand, ob er
+das Fenster öffnen oder das Ergebnis liefern soll. Wahl pusht danach den
+gewählten Zweig, Zahl schreibt die Zielvariable, Taste wartet auf eine der
+XP-Tasten, Laden wartet auf `Shop.close`, Name liest den bestätigten Namen.
+
+Was die Engine nicht ausdrücken kann, wird gemeldet statt vorgetäuscht:
+`EnginePorts.fehlt(befehl, grund)` schreibt eine Warnung ins `Rune::Log` und
+in `EnginePorts.warnungen` (`fehlt?`, `reset_warnungen!`). Dazu gehören
+Waffen/Rüstungs-Bestand, Ausrüstung/Klasse/Grafik, freies Scrollen, Nebel,
+Animationen, erzwungene Kampfaktionen, Gegner-Verwandlung, benannte Übergänge,
+Sturm, RGB-Blitz (nächstliegender Farbname), Textgeschwindigkeit und Lagermengen.
+
+Kleine Engine-Erweiterungen: `Battler#remove_state/#clear_states`,
+`Interpreter#choose/#choice_index/#number_input`; `advance_choices` pusht keinen
+leeren Zweig mehr. `tools/event_commands_engine_test.rb` prüft die Adapter gegen
+die echte Engine (110 Prüfungen) und tickt pro Frame auch `Mover`, `Fade`,
+`Pictures`, `ScreenFx` und `$game_system`. Details:
+`docs/ETAPPE_43_ENGINE_PORTS.md`.

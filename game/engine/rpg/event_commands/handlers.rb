@@ -22,7 +22,12 @@ module Rpg
         def self.next = new(action: :next)
         def self.push(block_name) = new(action: :push, value: block_name)
         def self.call_sub(id) = new(action: :call, value: id)
-        def self.wait(kind, seconds: 0.0) = new(action: :wait, value: kind, data: { seconds: seconds })
+        # erneut: true heisst "nach dem Warten denselben Befehl nochmal lesen".
+        # XP macht das bei Wahl/Zahl/Taste/Laden so: der Befehl liefert erst
+        # false (Fenster offen) und beim nächsten Durchgang das Ergebnis.
+        def self.wait(kind, seconds: 0.0, erneut: false)
+          new(action: :wait, value: kind, data: { seconds: seconds, erneut: erneut })
+        end
         def self.control(action, value = nil, data: {}) = new(action: action, value: value, data: data)
       end
 
@@ -228,7 +233,7 @@ module Rpg
               index = interpreter.ports.ui.choices(choices: command.params['choices'],
                                                    options: choice_options(command))
               if interpreter.ports.ui.busy?
-                Result.wait(:ui)
+                Result.wait(:ui, erneut: true)
               else
                 interpreter.choice_result = index
                 block_name = if command.params.fetch('cancel_behavior', 'cancel') == 'disabled' ||
@@ -243,7 +248,7 @@ module Rpg
             'input_number' => handler('input_number') do |command, interpreter|
               wert = interpreter.ports.ui.input_number(digits: command.params['digits'])
               if interpreter.ports.ui.busy?
-                Result.wait(:ui)
+                Result.wait(:ui, erneut: true)
               else
                 interpreter.ports.variables.set(command.params['variable_id'], wert)
                 interpreter.emit('input.number', variable_id: command.params['variable_id'])
@@ -258,7 +263,7 @@ module Rpg
             'button_input_processing' => handler('button_input_processing') do |command, interpreter|
               taste = interpreter.ports.ui.button_input
               if interpreter.ports.ui.busy?
-                Result.wait(:ui)
+                Result.wait(:ui, erneut: true)
               else
                 interpreter.ports.variables.set(command.params['variable_id'], taste)
                 Result.next
@@ -533,7 +538,7 @@ module Rpg
               name = interpreter.ports.ui.name_input(actor_id: command.params['actor_id'],
                                                      max_length: command.params['max_length'])
               if interpreter.ports.ui.busy?
-                Result.wait(:ui)
+                Result.wait(:ui, erneut: true)
               else
                 interpreter.emit('name.changed', actor_id: command.params['actor_id'], name: name)
                 Result.next

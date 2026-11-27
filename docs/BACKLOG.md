@@ -21,19 +21,6 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 ---
 
 ## Offen
-### [Ruby] Event-Command-Ports sind noch nicht an das laufende Spiel angeschlossen — offen (Etappe 42)
-- Symptom: `Rpg::EventCommands` führt alle 90 XP-Befehle typisiert aus, aber
-  standardmäßig gegen Null-/Memory-/Recording-Adapter. Ein `play_se` oder
-  `change_hp` aus dieser Schicht verändert das laufende Spiel noch nicht.
-- Vermutung/Analyse: Es fehlen die Adapter, die `IPartyService`,
-  `IBattleController`, `IAudioService`, `IPictureService`, `IMapController`
-  usw. auf `Party`, `Battle`, `Audio`, `Pictures`, `Game` abbilden — plus die
-  Entscheidung, welche Schicht künftig die Events führt (bestehender
-  `interpreter.rb` oder dieser).
-- Betroffene Stellen: `game/engine/rpg/event_commands/ports.rb`,
-  `game/engine/rpg.rb` (`build_event_interpreter`), `game/engine/interpreter.rb`.
-- Gefunden in: Etappe 42 (bewusst zurückgestellt, Auftrag war Architektur ohne UI).
-
 ### [Editor] F6 zeigt den XP-Bauplan der drei Tabs noch nicht — offen (Etappe 42)
 - Symptom: Der Event-Editor nutzt weiter seine eigene Befehlsliste; die
   drei XP-Tabs mit je zwei Spalten und zwei Abschnitten gibt es nur als Daten
@@ -518,6 +505,25 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Runde 12 (Y4-Nachgang).
 
 ## Erledigt
+### [Ruby] Event-Command-Ports sind nicht an das laufende Spiel angeschlossen — erledigt (Etappe 43)
+- Symptom: `Rpg::EventCommands` führte alle 90 XP-Befehle typisiert aus, aber
+  gegen Null-/Memory-/Recording-Adapter. Ein `play_se` oder `change_hp`
+  veränderte das laufende Spiel nicht.
+- Fix: `game/engine/rpg/event_commands/engine_ports.rb` — 19 Adapter auf
+  `GameState`, `Party`, `Battle`, `$game_system`, `$game_temp`, `Pictures`,
+  `ScreenFx`, `Weather`, `Fade`, `Mover`, `Shop`, `NameInput`, `MessageWindow`,
+  `Interpreter`, `Game`. Factory `Rpg.build_engine_event_interpreter`.
+  Blockierende Fenster (Wahl/Zahl/Taste/Laden/Name) warten frame-weise und
+  werden erneut gelesen (`Result.wait(:ui, erneut: true)`). Was die Engine
+  nicht kann, meldet `EnginePorts.fehlt` ins Log und in eine Liste.
+  Kleine Engine-Erweiterungen: `Battler#remove_state/#clear_states`,
+  `Interpreter#choose/#choice_index/#number_input`.
+- Abdeckung: `tools/event_commands_engine_test.rb` (110 Prüfungen, 0 Fehler),
+  `event_commands_arch_test` 1542/0, `event_commands_test` 107/0.
+- Doku: `docs/ETAPPE_43_ENGINE_PORTS.md`.
+- Betroffene Stellen: `game/engine/rpg/event_commands/engine_ports.rb`,
+  `game/engine/rpg.rb`, `game/engine/battle.rb`, `game/engine/interpreter.rb`.
+
 ### [Engine] Esc-Menü kann über offenem Textfenster aufgehen — erledigt (Runde 16, Z5)
 - Symptom: Während ein Event-Text offen ist, öffnet Esc das Pause-Menü über
   dem Text; nach Schliessen des Menüs liegt das Textfenster wieder darunter.

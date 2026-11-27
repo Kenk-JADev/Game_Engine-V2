@@ -15,7 +15,13 @@ module Rpg
         def loop? = kind == :loop
       end
 
-      Wait = Data.define(:kind, :seconds)
+      # erneut: Der Befehl wird nach dem Warten nochmal gelesen (XP: ein
+      # blockierender Befehl liefert erst false, dann sein Ergebnis).
+      Wait = Data.define(:kind, :seconds, :erneut) do
+        def initialize(kind:, seconds: 0.0, erneut: false)
+          super(kind: kind, seconds: seconds, erneut: erneut)
+        end
+      end
 
       attr_reader :catalog, :ports, :registry, :dispatcher, :frames, :wait,
                   :random, :event_key
@@ -169,8 +175,12 @@ module Rpg
           # "@index += 1"): Der Befehl ist ausgeführt, danach wird gewartet.
           # Ohne diesen Schritt würde derselbe Wait-Befehl ewig neu starten
           # und das Programm liefe nie zu Ende.
-          frame.index += 1
-          @wait = Wait.new(kind: ergebnis.value, seconds: ergebnis.data.fetch(:seconds, 0.0).to_f)
+          # Ausnahme erneut: Wahl/Zahl/Taste/Name liefern ihr Ergebnis erst,
+          # wenn das Fenster zu ist - dann wird derselbe Befehl nochmal gelesen.
+          wiederholen = ergebnis.data.fetch(:erneut, false)
+          frame.index += 1 unless wiederholen
+          @wait = Wait.new(kind: ergebnis.value, seconds: ergebnis.data.fetch(:seconds, 0.0).to_f,
+                           erneut: wiederholen)
         else frame.index += 1
         end
       end
@@ -262,7 +272,9 @@ module Rpg
       end
 
       def tick_wait(seconds)
-        @wait = Wait.new(kind: @wait.kind, seconds: [@wait.seconds - seconds, 0.0].max) if @wait.kind == :time
+        return unless @wait.kind == :time
+
+        @wait = Wait.new(kind: @wait.kind, seconds: [@wait.seconds - seconds, 0.0].max, erneut: @wait.erneut)
       end
 
       def wait_ready?

@@ -49,6 +49,20 @@ module Rpg
     EventCommands::Loader.new(file_system: file_system, reporter: reporter).load(path)
   end
 
+  # Etappe 43: Interpreter auf der echten Engine. Ohne Angaben greifen die
+  # laufenden Module (GameState, Party, Battle, $game_system, Pictures, ...).
+  # bindungen ordnet die Rpg-IDs den Engine-Namen zu, z. B.
+  #   { 'actors' => { 1 => 'arik' }, 'items' => { 3 => 'heiltrank' } }
+  # interpreter ist der laufende Event-Interpreter für Text/Wahl/Zahleneingabe.
+  def self.build_engine_event_interpreter(catalog:, bindungen: {}, interpreter: nil,
+                                          ports: nil, dispatcher: nil, registry: nil, random: nil)
+    engine_ports = ports || EventCommands::EnginePorts.build(
+      katalog: catalog, bindungen: bindungen, interpreter: interpreter, dispatcher: dispatcher
+    )
+    build_event_interpreter(catalog: catalog, ports: engine_ports,
+                            dispatcher: dispatcher, registry: registry, random: random)
+  end
+
   # Baut einen Interpreter mit injizierten Ports. Ohne eigene Ports entstehen
   # stumme Null-Adapter, die sich für Tests und Trockenläufe eignen.
   def self.build_event_interpreter(catalog:, ports: EventCommands::Ports::PortSet.new,

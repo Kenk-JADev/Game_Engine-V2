@@ -153,6 +153,39 @@ class Interpreter
     @message = @lines
   end
 
+  # Etappe 43: Wahlmöglichkeiten von außen öffnen (Rpg::EventCommands).
+  # Läuft über dasselbe Fenster wie der Befehl 'choices'; die Zweige bleiben
+  # leer, das Ergebnis liest der Aufrufer über choice_index.
+  def choose(options, cancel: :aus)
+    return false if running?
+
+    liste = Array(options).map(&:to_s)
+    return false if liste.empty?
+
+    @choice_index = nil
+    @choices = { options: liste, branches: [], sel: 0, cancel: cancel, cancel_branch: [] }
+    true
+  end
+
+  # Gewählte Option der letzten Wahl (0-basiert), nil solange keine gewählt ist.
+  def choice_index
+    @choice_index
+  end
+
+  # Etappe 43: Zahleneingabe von außen öffnen. Die Eingabe läuft über
+  # UI.nummer_eingabe wie beim Befehl 'input_number' und schreibt in die
+  # genannte Variable.
+  def number_input(variable:, digits: 4, initial: 0, cancel: true)
+    return false if running?
+
+    stellen = digits.to_i.clamp(1, 6)
+    start = initial.to_i.clamp(0, (10**stellen) - 1)
+    @num_input = { variable: variable.to_s, digits: stellen,
+                   ziffern: start.digits(10).then { |d| Array.new(stellen) { |i| d[i] || 0 } }.reverse,
+                   sel: 0, cancel: cancel }
+    true
+  end
+
   # Startet eine Kommandoliste. Wird bereits gesprochen, wird ignoriert.
   # owner: auslösendes Objekt (z. B. Event/NPC) für Effekt-Ursprung etc.
   # common: Name des gemeinsamen Events (Etappe 20c) - nur für Log/Tiefe.
@@ -1088,9 +1121,12 @@ class Interpreter
                     Rune::Input.pressed?(:enter)
     end
     branch = c[:branches][c[:sel]] || []
+    @choice_index = c[:sel]
     @choices = nil
     Rune::Sound.play('klick', 0.7)
-    @stack.push(list: branch, index: 0)
+    # Leere Zweige (Rpg::EventCommands liest nur choice_index) bekommen keinen
+    # Rahmen - sonst gilt der Interpreter einen Frame lang als belegt.
+    @stack.push(list: branch, index: 0) unless branch.empty?
   end
 
   # XP-konformer Abbruch-Modus eines Wahlbefehls (Z5): abwesend/false/

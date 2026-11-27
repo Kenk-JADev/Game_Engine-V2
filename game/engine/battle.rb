@@ -104,6 +104,19 @@ module Battle
 
     def state?(id) = @states.any? { |s| s[:id] == id.to_s }
 
+    # Etappe 43: Zustand gezielt entfernen (XP 313/333) und alle löschen
+    # (XP 314/334, "Recover All"). Rückgabe: wurde etwas entfernt?
+    def remove_state(id)
+      vorher = @states.size
+      @states.reject! { |s| s[:id] == id.to_s }
+      @states.size != vorher
+    end
+
+    def clear_states
+      @states.clear
+      self
+    end
+
     # Anzeige fürs Kampf-UI: "Gift(2) Schutz(3)".
     def state_names
       @states.filter_map do |s|
