@@ -151,10 +151,49 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Betroffene Stellen: `src/main.cpp`, `src/core/window.cpp`, `game/main.rb`,
   `tools/encounter_test.rb`, `docs/WINDOWS_BATTLE_LIVE_TEST.md`.
 
+### [Engine] Sechs F9-Register haben noch keine Spielwirkung — offen (Feature-Fehlend)
+- Symptom: F9 pflegt seit Etappe 41 alle 13 XP-Register. `classes`, `weapons`,
+  `armors`, `animations`, `tilesets` und `system` werden vollständig
+  gespeichert, das Spiel liest sie aber nicht. Die Hinweiszeile im Dialog
+  sagt das ausdrücklich ("noch ohne Wirkung").
+- Vermutung/Analyse: Es fehlt die Engine-Seite: Klassen-Lernlisten beim
+  Stufenaufstieg (`Party.level_up!`), Ausrüstung samt Equip-Szene, Animations-
+  Darstellung (20g), benannte Boden-Vorlagen für F7 und Systemwerte
+  (Startparty, Titel-/Kampfmusik, SE). Die typisierte Schicht aus Etappe 40
+  (`game/engine/rpg/`) zeigt das Zielmodell, ist aber nicht angeschlossen.
+- Betroffene Stellen: `src/editor/database_catalog.h` (Register-Status),
+  `game/engine/party.rb`, `game/engine/battle.rb`, `game/main.rb` (Menü),
+  `game/engine/rpg/*` (Etappe 40), `game/engine/textures.rb`.
+- Gefunden in: Etappe 41 (bewusste Grenze, damit die Editor-Etappe klein bleibt).
+
+### [Editor] F9-Fenster hat keine Scrollleisten — offen (Bedienung/DPI)
+- Symptom: Das Datenbankfenster ist jetzt 980x786 (96-DPI-Einheiten) und wird
+  auf die Arbeitsfläche begrenzt. Auf kleinen Schirmen oder bei 150/200 %
+  Skalierung können untere Bedienelemente (Speichern, Neu laden, Status)
+  abgeschnitten sein; das Fenster ist nicht veränderbar und nicht scrollbar.
+- Vermutung/Analyse: F6 löst das mit `event_layout.h` plus Scrollleisten und
+  Fokus-Nachführung. F9 nutzt nur `event_layout_center`; eine gleiche
+  Behandlung (Rand-Resize, Scrollbereich, Rad/Shift-Rad) steht aus.
+- Betroffene Stellen: `src/editor/editor_main.cpp` (`open_database_dialog`,
+  `database_proc`), `src/editor/database_layout.h`, `src/editor/event_layout.h`.
+- Gefunden in: Etappe 41 (Geometry-Tests prüfen die Fläche, nicht den Schirm).
+
+### [Tests/Editor] F9 mit 13 Registern auf Windows interaktiv prüfen — offen (Live)
+- Registerkarten bei 1024x640 und 100/125/150/200 %, Registerwechsel mit
+  offenen Eingaben, Auswahlfelder mit ungültigen und unbekannten Altwerten,
+  JSON-Befehlsliste gemeinsamer Events, System-Einzeldatensatz, Dateikonflikt
+  und das Zusammenspiel mit F2 ("Neu laden") prüfen.
+- Anleitung und Abhakliste: `docs/ETAPPE_41_F9_DATENBANK.md`. Portable Tests
+  und eine Windows-Zielkompilierung sind kein GUI-/DPI-/Hardwaretest.
+- Betroffene Stellen: `src/editor/editor_main.cpp`, `database_catalog.h`,
+  `database_layout.h`, `database_form.h`, `tools/json_test.cpp`.
+- Gefunden in: Etappe 41.
+
 ### [Editor] Weitere Dialoge am RPG Maker XP orientieren — offen (Design)
 - Symptom/Wunsch: Das Hauptfenster wurde in 19w als erster Bereich am
-  Screenshot-Vorbild ausgerichtet. Projekt-, Datenbank-, Event-, Material-,
-  Tileset- und Script-Dialoge wurden in dieser Etappe nicht neugestaltet.
+  Screenshot-Vorbild ausgerichtet; die Datenbank F9 folgte in Etappe 41
+  (13 Registerkarten, Liste links, Formular rechts). Projekt-, Event-,
+  Material-, Tileset- und Script-Dialoge sind weiter im alten Aufbau.
 - Vermutung/Analyse: Jeder Bereich braucht eine eigene Funktions-/Datenprüfung;
   vorhandene 3D-Funktionen, kleine Fenster und hohe DPI bleiben zu beachten.
 - Ideen aus den Screenshots: Datenbank mit Kategorien, Liste und Formular;

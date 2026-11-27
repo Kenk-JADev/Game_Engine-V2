@@ -41,7 +41,9 @@ Laufzeit neu geladen werden.
 - NPCs und Events in der Kartenansicht auswählen und per Doppelklick bearbeiten;
   Spieler-Startposition per Rechtsklick auf das Gelände setzen
 - RGSS-/Ruby-Script-Editor mit Zeilennummern, Materialbase (PNG/BMP-Import per WIC, auch per Drag & Drop),
-  Datenbank (Helden, Items, Gegner, Truppen, Gold), Sound-Test,
+  Datenbank mit **13 Registerkarten wie RPG Maker XP** (Helden, Klassen,
+  Fertigkeiten, Items, Waffen, Rüstungen, Gegner, Truppen, Zustände,
+  Animationen, Tilesets, Gemeinsame Events, System) samt Startgold, Sound-Test,
   Probleme-Dialog (F10)
 - Playtest: speichert die ausgewählte Karte und startet
   `Rune3D.exe --project <name> --map <karten-id>` als eigenen Prozess.
@@ -108,12 +110,12 @@ ist benutzbar. Der grafische Kampf-Live-Test ist noch offen:
 | Event-Editor, Seiten, Bedingungen | 73 Befehle, 4 Trigger, Self-Switches A-D | ✅ |
 | NPCs / Schilder / Objektpositionen | F5-Platzier-Editor, Text, Wegpunkte und Y-Bodenversatz | ✅ teilweise |
 | Schalter & Variablen | `GameState` | ✅ |
-| Datenbank (Helden, Items, Gegner, Truppen …) | alle vier Sammlungen + Gold per GUI editierbar; keine Skills/Waffen/Zustände | ✅ teilweise |
+| Datenbank: 13 Register, Liste + Formular | F9 mit allen 13 XP-Registern (Etappe 41): 7 davon liest die Engine, 6 sind vorbereitet (Klassen/Waffen/Rüstungen/Animationen/Tilesets/System); Gemeinsame Events inkl. Befehlsliste editierbar; kein „Change Maximum" | ✅ teilweise |
 | Tileset / Boden | Splat-Böden, Höhen-Malwerkzeug | ✅ |
 | Script-Editor (Ruby/RGSS) | Zeilennummern, Syntaxprüfung, opt-in Startscripts; keine Sandbox | ✅ teilweise |
 | Playtest | F4 startet die gewählte Karte im eigenen Spielprozess; keine Sandbox | ✅ teilweise |
 | Nebel / Panorama / Wetter | Karten-JSON + Interpreter | ✅ |
-| Kampfsystem | Rundenkampf (`battle.rb`): Angriff/Fertigkeit/Item/Flucht, Fertigkeiten mit MP-Kosten und Zielwahl, Zustände mit Dauer (Gift/Regeneration/Wut/Schutz), Exp mit XP-Stufenaufstieg, Gold/Drops; Zufallskämpfe pro Karte im F2-Dialog; offen: Gegner-Fertigkeiten/-KI, F9-Reiter für `skills`/`states` | ✅ teilweise |
+| Kampfsystem | Rundenkampf (`battle.rb`): Angriff/Fertigkeit/Item/Flucht, Fertigkeiten mit MP-Kosten und Zielwahl, Zustände mit Dauer (Gift/Regeneration/Wut/Schutz), Exp mit XP-Stufenaufstieg, Gold/Drops; Zufallskämpfe pro Karte im F2-Dialog; offen: Gegner-Fertigkeiten/-KI (`skills`/`states` sind seit Etappe 41 in F9 editierbar) | ✅ teilweise |
 | Bewegungsfolgen (Move Routes) | `mover.rb`, XP-Schrittnamen + Codes, Routen im Event-Befehl | ✅ |
 | Self-Switches | A-D, Seiten-Bedingung + Befehle | ✅ |
 | Zahleneingabe (Input Number) | `input_number`-Befehl, Ziffernfeld 1-6 Stellen | ✅ |
@@ -214,7 +216,8 @@ ruby tools\lint_repo.rb                        # Repo-Hygiene
 |---|---|---|
 | Ruby-Modultests | Engine-Logik mit `Rune::*`-Stubs (Events, Seiten, Interpreter, Party, Kampf, Wetter, Scripte, Projekte, Speichern) + Ruby/C++-Vokabular-Sync | `tools/*_test.rb`, Runner `tools/test_all.rb` |
 | Ruby-Laufzeit | Echter Bootstrap, Launcher, Szenenbau, F4/F5, Kampf-Eingabe und Save/Load mit nativen Attrappen | `tools/runtime_boot_test.rb`, `tools/map_objects_test.rb`, `tools/encounter_test.rb` |
-| C++-Logiktest | JSON, Editor-Formulare, Hauptfenster-Geometrie und Kartenaktionsschutz; unter Windows zusätzlich unsichtbare Panel-/Baumtests | `tools/json_test.cpp` |
+| C++-Logiktest | JSON, Editor-Formulare, F9-Registerkatalog und -Geometrie, Hauptfenster-Geometrie und Kartenaktionsschutz; unter Windows zusätzlich unsichtbare Panel-/Baumtests | `tools/json_test.cpp` |
+| F9-Register ↔ Engine | Datenbank mit allen 13 Registern, vorbereitete Register wirkungslos, F9-Vorgaben spielbar, alte Projekte gültig | `tools/database_register_test.rb` |
 | Script-/Kartenmodell | RGSS-Dokumente, Einrückung, Markeridentität und Startposition | `tools/editor_workflow_test.cpp` |
 | C++-Terrain | Echte Geländegenerierung, Höhen-/Splat-Budgets, Atlasplan und Fehlerpfade ohne D3D | `tools/terrain_test.cpp` |
 | Materialien/Dateien | Verlustfreier JSON-Baum, unter Windows Handle-Konflikte, Junctions und Hardlinks | `tools/material_test.cpp` |
@@ -572,7 +575,28 @@ werden nicht automatisch umgestellt; für die Demo zieht
 
 ### Datenbank (F9)
 
-F9 übernimmt beim Reiter- oder Eintragswechsel nur geänderte Felder;
+Seit **Etappe 41** hat F9 alle **13 Register von RPG Maker XP** als echte
+Registerkarten (bei wenig Platz oder hoher DPI mehrzeilig) in XP-Reihenfolge:
+Helden, Klassen, Fertigkeiten, Items, Waffen, Rüstungen, Gegner, Truppen,
+Zustände, Animationen, Tilesets, Gemeinsame Events, System. Links die Liste,
+rechts das Formular in zwei Spalten; das Startgold steht unabhängig vom
+Register oben rechts. Die Hinweiszeile sagt pro Register, ob das Spiel die
+Daten schon liest: **Helden, Fertigkeiten, Items, Gegner, Truppen, Zustände
+und Gemeinsame Events** wirken im Spiel; **Klassen, Waffen, Rüstungen,
+Animationen, Tilesets und System** sind vorbereitet und werden vollständig
+gespeichert, aber noch nicht ausgewertet.
+
+**System** ist wie in XP ein einzelner Datensatz (keine Liste, kein
+Neu/Löschen) und liegt als Objekt `system` in `database.json` — Projektstart
+und Kartenbaum stehen weiterhin in `system.json`. **Gemeinsame Events** haben
+Nummer, Name, Auslöser, Schalter und ihre **Befehlsliste als JSON** direkt im
+Dialog; kaputtes JSON wird abgelehnt, ohne die Liste zu verändern.
+Auswahlfelder (Art, Ziel, Auslöser, Rüstungsplatz …) nennen ihre erlaubten
+Werte in der Beschriftung; ein unbekannter Altwert bleibt stehen und wird nur
+nach Rückfrage ersetzt. Details und Prüfanleitung:
+[`docs/ETAPPE_41_F9_DATENBANK.md`](docs/ETAPPE_41_F9_DATENBANK.md).
+
+F9 übernimmt beim Register- oder Eintragswechsel nur geänderte Felder;
 unveränderte Zahlen, optionale Felder und unbekannte Zusatzdaten bleiben
 erhalten. Gold kann auch ohne ausgewählten Eintrag geändert werden. Ganze
 Zahlen werden exakt gespeichert; Kommazahlen akzeptieren Punkt oder Komma.
@@ -625,6 +649,8 @@ Spielstände liegen in `projekte/<name>/saves/slot1..3.json`.
 - [`docs/architecture.md`](docs/architecture.md) — Aufbau, Ruby-API, Etappen
 - [`docs/BACKLOG.md`](docs/BACKLOG.md) — offene Fehler und Grenzen, mit Symptom
   und betroffener Datei
+- [`docs/ETAPPE_41_F9_DATENBANK.md`](docs/ETAPPE_41_F9_DATENBANK.md) — F9 mit 13
+  XP-Registern: Recherche, Aufbau, Prüfungen und Live-Test-Anleitung
 - [`docs/HANDOFF_Naechste_KI.md`](docs/HANDOFF_Naechste_KI.md) — Arbeitsregeln,
   Etappen-Tabelle, bekannte Fallstricke
 

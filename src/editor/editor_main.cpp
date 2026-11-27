@@ -51,6 +51,8 @@
 #include "editor/atomic_file_win.h"
 #include "editor/json.h"
 #include "editor/database_form.h"
+#include "editor/database_catalog.h"
+#include "editor/database_layout.h"
 #include "editor/document_store_win.h"
 #include "editor/encounter_check.h"
 #include "editor/encounter_form.h"
@@ -6699,7 +6701,7 @@ LRESULT CALLBACK main_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                                 L"  F3 Materialbase    F4 Playtest starten\n"
                                 L"  F5 NPCs, Schilder und Objekte platzieren\n"
                                 L"  F6 Event-Editor    F7 Tileset    F8 Sound-Test\n"
-                                L"  F9 Datenbank (Helden/Items/Gegner/Truppen)\n"
+                                L"  F9 Datenbank (13 Register wie RPG Maker XP)\n"
                                 L"  F11 Script-Editor\n\n"
                                 L"Modus (wie XP-Ebenen): Gelände, Objekte, Events.\n"
                                 L"Maßstab (wie XP-Zoom): 1/1 nah, 1/2 mittel, 1/4 weit.\n\n"
@@ -10698,119 +10700,58 @@ bool material_editor_focused() {
 }
 
 // ============================================================================
-//  Etappe 17g, 19k.1: Datenbank-Dialog (Helden / Items / Gegner / Truppen)
+//  Etappe 17g, 19k.1, 41: Datenbank-Dialog (F9) wie RPG Maker XP
 //
-//  Bearbeitet projekte/<name>/data/database.json
-//  ({"gold","actors","items","enemies","troops"}).
-//  Das Spiel liest sie via Database.database und baut daraus die Party
-//  (Party.setup) und die Kämpfe (Battle.start, Etappe 19i); Gold/Inventar
-//  wandern mit den Spielständen.
-//  Vier Reiter-Umschalter oben + eine Liste links + Formular rechts.
-//  Das Formular ist feldgesteuert (DB_FIELDS_*): pro Reiter eine Tabelle aus
-//  JSON-Schlüssel, Beschriftung, Zahlen-Flag und Präzision. Neue Felder
-//  brauchen nur einen Tabellen-Eintrag (Platz: DB_MAX_ROWS Zeilen).
-//  tools/sync_test.rb prüft die Tabellen gegen die echte database.json.
+//  Bearbeitet projekte/<name>/data/database.json. Das Spiel liest sie via
+//  Database.database und baut daraus die Party (Party.setup) und die Kämpfe
+//  (Battle.start); Gold/Inventar wandern mit den Spielständen.
+//
+//  Seit Etappe 41 hat der Dialog alle 13 XP-Register in XP-Reihenfolge als
+//  echte Registerkarten (SysTabControl32, mehrzeilig bei wenig Platz):
+//  Helden, Klassen, Fertigkeiten, Items, Waffen, Rüstungen, Gegner, Truppen,
+//  Zustände, Animationen, Tilesets, Gem. Events, System.
+//  Felder, Auswahlwerte und Vorgaben stehen portabel in database_catalog.h,
+//  die Geometrie in database_layout.h. "System" ist wie in XP ein einzelner
+//  Datensatz statt einer Liste. Register ohne Engine-Wirkung sagen das in
+//  der Hinweiszeile; ihre Daten bleiben trotzdem vollständig erhalten.
+//  tools/sync_test.rb prüft den Katalog gegen die echte database.json.
 // ============================================================================
 enum {
-    IDDB_LIST     = 8001,   // Eintrags-Liste (alle Reiter)
-    IDDB_TAB_H    = 8010,   // Umschalter: Helden
-    IDDB_TAB_I    = 8011,   // Umschalter: Items
-    IDDB_GOLD     = 8012,   // Gold-Edit
-    IDDB_TAB_E    = 8013,   // Umschalter: Gegner (19k.1)
-    IDDB_TAB_T    = 8014,   // Umschalter: Truppen (19k.1)
-    IDDB_F1       = 8020,   // Formularfelder 1..13 (IDDB_F1 + Zeile)
+    IDDB_LIST     = 8001,   // Eintrags-Liste (alle Register außer System)
+    IDDB_TABS     = 8002,   // Registerkarten (13 Bereiche)
+    IDDB_GOLD     = 8012,   // Startgold (Wurzelfeld, unabhängig vom Register)
+    IDDB_F1       = 8020,   // Formularfelder (IDDB_F1 + Zeile)
     IDDB_NEW      = 8050,
     IDDB_DEL      = 8051,
     IDDB_SAVE     = 8052,
     IDDB_RELOAD   = 8053,
     IDDB_CLOSE    = 8054,
     IDDB_STATUS   = 8055,
-    IDDB_L1       = 8060,   // Labels 1..13 (IDDB_L1 + Zeile)
+    IDDB_L1       = 8060,   // Labels (IDDB_L1 + Zeile)
+    IDDB_INFO     = 8080,   // Registerkopf (Name, Anzahl, Engine-Stand)
+    IDDB_HINT     = 8081,   // Hinweis zum Register
+    IDDB_BIG      = 8082,   // großes JSON-Feld (Befehle gemeinsamer Events)
+    IDDB_BIGLBL   = 8083,
 };
 
-constexpr int DB_MAX_ROWS = 13;   // Gegner brauchen 12 Felder, eine Zeile Luft
-
-// Ein Formularfeld: JSON-Schlüssel, Beschriftung, Zahl (sonst Text),
-// Nachkommastellen. Sonderfall Truppen-"enemies": Array aus Gegner-IDs,
-// im Edit komma-getrennt (siehe database_form.h).
-struct DbField {
-    const char*    key;
-    const wchar_t* label;
-    bool           num;
-    int            prec;
-};
-
-const DbField DB_FIELDS_ACTOR[9] = {
-    { "id",    L"ID",       false, 0 },
-    { "name",  L"Name",     false, 0 },
-    { "class", L"Klasse",   false, 0 },
-    { "hp",    L"HP (max)", true,  0 },
-    { "mp",    L"MP (max)", true,  0 },
-    { "atk",   L"ATK",      true,  0 },
-    { "def",   L"DEF",      true,  0 },
-    { "spi",   L"SPI",      true,  0 },
-    { "agi",   L"AGI",      true,  0 },
-};
-const DbField DB_FIELDS_ITEM[7] = {
-    { "id",    L"ID",                          false, 0 },
-    { "name",  L"Name",                        false, 0 },
-    { "kind",  L"Art (heal/mana/quest/money)", false, 0 },
-    { "power", L"Stärke",                      true,  0 },
-    { "price", L"Preis",                       true,  0 },
-    { "start", L"Startmenge",                  true,  0 },
-    { "desc",  L"Beschreibung",                false, 0 },
-};
-const DbField DB_FIELDS_ENEMY[12] = {
-    { "id",        L"ID",                           false, 0 },
-    { "name",      L"Name",                         false, 0 },
-    { "hp",        L"HP",                           true,  0 },
-    { "mp",        L"MP",                           true,  0 },
-    { "atk",       L"ATK",                          true,  0 },
-    { "def",       L"DEF",                          true,  0 },
-    { "spi",       L"SPI",                          true,  0 },
-    { "agi",       L"AGI",                          true,  0 },
-    { "exp",       L"Exp (Belohnung)",              true,  0 },
-    { "gold",      L"Gold (Beute)",                 true,  0 },
-    { "drop",      L"Drop (Item-ID, leer = keins)", false, 0 },
-    { "drop_rate", L"Drop-Chance (0..1)",           true,  2 },
-};
-const DbField DB_FIELDS_TROOP[4] = {
-    { "id",      L"ID",                           false, 0 },
-    { "name",    L"Name",                         false, 0 },
-    { "enemies", L"Gegner (IDs, komma-getrennt)", false, 0 },
-    { "desc",    L"Beschreibung",                 false, 0 },
-};
-
-// Reiter -> Feldtabelle. 0 = Helden, 1 = Items, 2 = Gegner, 3 = Truppen.
-const DbField* db_fields(int tab, int& count) {
-    switch (tab) {
-        case 1:  count = 7;  return DB_FIELDS_ITEM;
-        case 2:  count = 12; return DB_FIELDS_ENEMY;
-        case 3:  count = 4;  return DB_FIELDS_TROOP;
-        default: count = 9;  return DB_FIELDS_ACTOR;
-    }
-}
-
-// Reiter -> Schlüssel des JSON-Arrays in database.json.
-const char* db_tab_key(int tab) {
-    switch (tab) {
-        case 1:  return "items";
-        case 2:  return "enemies";
-        case 3:  return "troops";
-        default: return "actors";
-    }
-}
+constexpr int DB_MAX_ROWS = DATABASE_FORM_FIELDS;   // 16 Felder in zwei Spalten
 
 struct DatabaseDlgState {
     HWND win = nullptr;
+    HWND tabs = nullptr;
     HWND list = nullptr;
     HWND ed_gold = nullptr;
     HWND ed[DB_MAX_ROWS] = {};    // Formularfelder
     HWND lbl[DB_MAX_ROWS] = {};   // zugehörige Labels
+    HWND big = nullptr;           // JSON-Mehrzeiler
+    HWND lbl_big = nullptr;
+    HWND lbl_info = nullptr;
+    HWND lbl_hint = nullptr;
     HWND lbl_status = nullptr;
     JsonValue root;      // komplette database.json
-    int  tab = 0;        // 0 Helden, 1 Items, 2 Gegner, 3 Truppen
+    int  tab = 0;        // Registerindex (Reihenfolge wie XP)
     int  sel = -1;
+    int  big_row = -1;   // Zeile des JSON-Felds im aktuellen Register
     bool dirty = false;
     bool syncing = false;
     DatabaseForm before;
@@ -10827,7 +10768,16 @@ std::string db_path() {
     return g.project_dir + "\\database.json";
 }
 
-// Das bloße Öffnen/Wechseln eines Reiters darf fehlende oder fehlerhafte
+// Register -> Schlüssel in database.json (Liste oder beim System ein Objekt).
+const char* db_tab_key(int tab) {
+    return database_area(tab).key;
+}
+
+bool db_is_object_area() {
+    return database_area(g_db.tab).kind == DatabaseAreaKind::Object;
+}
+
+// Das bloße Öffnen/Wechseln eines Registers darf fehlende oder fehlerhafte
 // Sammlungen nicht durch leere Listen ersetzen.
 JsonValue* db_array(const char* key) {
     JsonValue* a = g_db.root.find(key);
@@ -10835,23 +10785,22 @@ JsonValue* db_array(const char* key) {
 }
 
 JsonValue* db_entry() {
+    // System ist ein einzelnes Objekt; es gibt keine Auswahl und keine Liste.
+    if (db_is_object_area()) return g_db.root.find(db_tab_key(g_db.tab));
     JsonValue* a = db_array(db_tab_key(g_db.tab));
     if (!a || g_db.sel < 0 || static_cast<size_t>(g_db.sel) >= a->arr.size()) return nullptr;
     return &a->arr[static_cast<size_t>(g_db.sel)];
 }
 
 std::vector<DatabaseFieldSpec> db_specs() {
-    int count = 0;
-    const DbField* fields = db_fields(g_db.tab, count);
-    std::vector<DatabaseFieldSpec> result;
-    for (int i = 0; i < count; ++i) {
-        const DbField& f = fields[i];
-        const DatabaseFieldKind kind = std::strcmp(f.key, "enemies") == 0 ? DatabaseFieldKind::IdList
-            : !f.num ? DatabaseFieldKind::Text
-            : f.prec == 0 ? DatabaseFieldKind::Integer : DatabaseFieldKind::Decimal;
-        result.push_back({f.key, kind});
-    }
-    return result;
+    return database_area_fields(g_db.tab);
+}
+
+// Zeile des großen JSON-Felds (-1, wenn das Register keines hat).
+int db_big_row(const std::vector<DatabaseFieldSpec>& specs) {
+    for (size_t i = 0; i < specs.size(); ++i)
+        if (specs[i].kind == DatabaseFieldKind::Json) return static_cast<int>(i);
+    return -1;
 }
 
 std::string db_text(HWND control) { return control_text(control); }
@@ -10897,50 +10846,105 @@ bool db_load() {
     return true;
 }
 
-// Formular je Reiter beschriften (Feldanzahl sichtbar, Rest versteckt).
+// Ein Steuerelement an seine 96-DPI-Position setzen (Layout ist portabel).
+void db_place(HWND control, const DatabaseRect& rect) {
+    if (!control) return;
+    SetWindowPos(control, nullptr, ui_px(rect.x), ui_px(rect.y), ui_px(rect.w), ui_px(rect.h),
+                 SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+void db_show(HWND control, bool visible) {
+    if (control) ShowWindow(control, visible ? SW_SHOW : SW_HIDE);
+}
+
+// Formular je Register beschriften und platzieren. Das JSON-Feld bekommt
+// die große Fläche unter den Spalten, alle anderen Felder zwei Spalten.
 void db_form_layout() {
-    int count = 0;
-    const DbField* fields = db_fields(g_db.tab, count);
+    const std::vector<DatabaseFieldSpec> specs = db_specs();
+    g_db.big_row = db_big_row(specs);
+    const bool object_area = db_is_object_area();
+    const int small_count = static_cast<int>(specs.size()) - (g_db.big_row >= 0 ? 1 : 0);
+    const DatabaseLayout layout = database_layout(small_count, g_db.big_row >= 0, !object_area);
+
+    int slot = 0;
     for (int i = 0; i < DB_MAX_ROWS; ++i) {
-        const bool used = i < count;
-        ShowWindow(g_db.lbl[i], used ? SW_SHOW : SW_HIDE);
-        ShowWindow(g_db.ed[i], used ? SW_SHOW : SW_HIDE);
-        EnableWindow(g_db.ed[i], used ? TRUE : FALSE);
-        if (used) SetWindowTextW(g_db.lbl[i], fields[i].label);
+        const bool used = static_cast<size_t>(i) < specs.size() && i != g_db.big_row;
+        if (!used) {
+            db_show(g_db.lbl[i], false);
+            db_show(g_db.ed[i], false);
+            EnableWindow(g_db.ed[i], FALSE);
+            continue;
+        }
+        const DatabaseFieldSpec& spec = specs[static_cast<size_t>(i)];
+        const DatabaseRect& label_rect = layout.label[slot];
+        const DatabaseRect& field_rect = layout.field[slot];
+        db_place(g_db.lbl[i], label_rect);
+        db_place(g_db.ed[i], field_rect);
+        db_show(g_db.lbl[i], true);
+        db_show(g_db.ed[i], true);
+        std::wstring label = utf8_to_wide(spec.label ? spec.label : spec.key);
+        if (spec.kind == DatabaseFieldKind::Choice && !spec.choices.empty())
+            label += L" (" + utf8_to_wide(database_choice_list(spec)) + L")";
+        SetWindowTextW(g_db.lbl[i], label.c_str());
+        ++slot;
     }
+
+    // Großes JSON-Feld: nur ein Register hat es (Befehle gemeinsamer Events).
+    const bool big_used = g_db.big_row >= 0;
+    db_show(g_db.lbl_big, big_used);
+    db_show(g_db.big, big_used);
+    if (big_used) {
+        const DatabaseFieldSpec& spec = specs[static_cast<size_t>(g_db.big_row)];
+        SetWindowTextW(g_db.lbl_big, utf8_to_wide(spec.label ? spec.label : spec.key).c_str());
+        db_place(g_db.lbl_big, layout.big_label);
+        db_place(g_db.big, layout.big);
+    }
+
+    db_place(g_db.lbl_hint, layout.hint);
+    const DatabaseArea& area = database_area(g_db.tab);
+    std::wstring hint = utf8_to_wide(area.hint);
+    hint += L"\r\n";
+    hint += area.engine == DatabaseEngineState::Wired
+        ? L"Engine: Das Spiel liest diese Daten."
+        : L"Engine: noch ohne Wirkung - Daten werden vorbereitet und vollständig gespeichert.";
+    if (object_area)
+        hint += L"\r\nSystem ist ein einzelner Datensatz: keine Liste, kein Neu/Löschen.";
+    SetWindowTextW(g_db.lbl_hint, hint.c_str());
+
+    // System hat keine Liste; die Knöpfe bleiben sichtbar, aber gesperrt.
+    db_show(g_db.list, !object_area);
+    EnableWindow(g_db.list, object_area ? FALSE : TRUE);
+    EnableWindow(GetDlgItem(g_db.win, IDDB_NEW), object_area ? FALSE : TRUE);
+    EnableWindow(GetDlgItem(g_db.win, IDDB_DEL), object_area ? FALSE : TRUE);
+}
+
+// Kopfzeile: Registername, Anzahl Einträge, Speicherstand.
+void db_refresh_info() {
+    if (!g_db.lbl_info) return;
+    const DatabaseArea& area = database_area(g_db.tab);
+    std::wstring text = utf8_to_wide(area.label);
+    if (db_is_object_area()) {
+        const JsonValue* entry = g_db.root.find(area.key);
+        text += entry && entry->is_obj() ? L" - ein Datensatz"
+              : entry ? L" - ungültiger Datensatz" : L" - noch nicht angelegt";
+    } else {
+        const JsonValue* array = db_array(area.key);
+        text += L" - " + std::to_wstring(array ? array->arr.size() : 0) + L" Einträge";
+        if (!array && g_db.root.find(area.key)) text += L" (keine Liste!)";
+    }
+    SetWindowTextW(g_db.lbl_info, text.c_str());
 }
 
 void db_refresh_lists() {
     if (!g_db.win) return;
     SendMessageW(g_db.list, LB_RESETCONTENT, 0, 0);
+    if (db_is_object_area()) { g_db.sel = -1; return; }
     const JsonValue* arr = db_array(db_tab_key(g_db.tab));
     if (!arr) { g_db.sel = -1; return; }
     int selected_row = -1;
     for (int i = 0; i < static_cast<int>(arr->arr.size()); ++i) {
-        const JsonValue& e = arr->arr[static_cast<size_t>(i)];
-        std::wstring label = std::to_wstring(i + 1) + L". ";
-        if (!e.is_obj()) {
-            label += L"[ungültiger Eintrag]";
-        } else {
-            label += utf8_to_wide(ev_str_of(e, "name", "?"));
-            switch (g_db.tab) {
-                case 1:
-                    label += L"  [" + utf8_to_wide(ev_str_of(e, "kind", "-")) + L"]";
-                    break;
-                case 2:
-                    label += L"  (HP " + utf8_to_wide(database_number_text(e.find("hp"))) + L")";
-                    break;
-                case 3: {
-                    const JsonValue* en = e.find("enemies");
-                    const size_t n = en && en->is_arr() ? en->arr.size() : 0;
-                    label += L"  (" + std::to_wstring(n) + L" Gegner)";
-                    break;
-                }
-                default:
-                    label += L" (" + utf8_to_wide(ev_str_of(e, "class", "-")) + L")";
-                    break;
-            }
-        }
+        const std::wstring label = utf8_to_wide(
+            database_list_label(g_db.tab, i, arr->arr[static_cast<size_t>(i)]));
         const int idx = static_cast<int>(SendMessageW(
             g_db.list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label.c_str())));
         if (idx >= 0) {
@@ -10953,24 +10957,45 @@ void db_refresh_lists() {
     else g_db.sel = -1;
 }
 
+// Ein Mehrzeiler zeigt CRLF; zurück gelesen wird wieder LF. Nur wenn die
+// Anzeige den Wert verlustfrei wiedergibt, darf das Feld bearbeitet werden.
+void db_set_big_text(const std::string& text) {
+    SetWindowTextW(g_db.big, utf8_to_wide(event_multiline_view(text)).c_str());
+}
+
+std::string db_big_text() {
+    return database_lines_lf(control_text(g_db.big));
+}
+
 void db_refresh_fields() {
     if (!g_db.win) return;
     const bool was_syncing = g_db.syncing;
     g_db.syncing = true;
     const std::vector<DatabaseFieldSpec> specs = db_specs();
     const JsonValue* entry = db_entry();
-    const bool valid = entry && entry->is_obj();
+    // Beim System darf ein fehlendes oder kaputtes Objekt neu gefüllt werden;
+    // database_system_prepare fragt vorher, ob Altdaten ersetzt werden.
+    const bool valid = db_is_object_area() || (entry && entry->is_obj());
     g_db.before = database_form_read(g_db.root, entry, specs);
     bool protected_field = false;
     for (int i = 0; i < DB_MAX_ROWS; ++i) {
         const bool used = static_cast<size_t>(i) < specs.size();
         const std::string text = used ? g_db.before.fields[static_cast<size_t>(i)] : std::string();
+        if (used && i == g_db.big_row) {
+            db_set_big_text(text);
+            const JsonValue* value = entry && entry->is_obj() ? entry->find(specs[static_cast<size_t>(i)].key) : nullptr;
+            g_db.field_editable[i] = database_json_representable(value) && db_big_text() == text;
+            if (!g_db.field_editable[i]) protected_field = true;
+            EnableWindow(g_db.big, g_db.field_editable[i] ? TRUE : FALSE);
+            continue;
+        }
         ev_set_text(g_db.ed[i], text);
         g_db.field_editable[i] = valid && used && database_single_line(text) && db_text(g_db.ed[i]) == text;
         if (valid && used && !g_db.field_editable[i]) protected_field = true;
         EnableWindow(g_db.ed[i], g_db.field_editable[i] ? TRUE : FALSE);
     }
-    EnableWindow(GetDlgItem(g_db.win, IDDB_DEL), entry ? TRUE : FALSE);
+    EnableWindow(GetDlgItem(g_db.win, IDDB_DEL),
+                 !db_is_object_area() && entry ? TRUE : FALSE);
     ev_set_text(g_db.ed_gold, g_db.before.gold);
     g_db.gold_editable = database_single_line(g_db.before.gold) && db_text(g_db.ed_gold) == g_db.before.gold;
     EnableWindow(g_db.ed_gold, g_db.gold_editable ? TRUE : FALSE);
@@ -10992,6 +11017,7 @@ void db_refresh() {
     g_db.syncing = true;
     db_form_layout();
     db_refresh_lists();
+    db_refresh_info();
     db_refresh_fields();
     g_db.syncing = was_syncing;
 }
@@ -10999,8 +11025,10 @@ void db_refresh() {
 DatabaseForm db_current_form() {
     DatabaseForm current = g_db.before;
     if (g_db.gold_editable) current.gold = db_text(g_db.ed_gold);
-    for (size_t i = 0; i < current.fields.size(); ++i)
-        if (g_db.field_editable[i]) current.fields[i] = db_text(g_db.ed[i]);
+    for (size_t i = 0; i < current.fields.size(); ++i) {
+        if (!g_db.field_editable[i]) continue;
+        current.fields[i] = static_cast<int>(i) == g_db.big_row ? db_big_text() : db_text(g_db.ed[i]);
+    }
     return current;
 }
 
@@ -11014,16 +11042,22 @@ bool db_pending() {
 // kann das Eintragsformular übersprungen werden, Gold bleibt aber erhalten.
 bool db_apply(bool include_entry = true) {
     const std::vector<DatabaseFieldSpec> specs = db_specs();
+    const bool object_area = db_is_object_area();
     DatabaseForm after = db_current_form();
     if (!include_entry) after.fields = g_db.before.fields;
-    const DatabaseEdit edit = database_form_prepare(g_db.root, db_entry(), specs, g_db.before, after);
+    const DatabaseEdit edit = object_area
+        ? database_system_prepare(g_db.root, db_entry(), specs, g_db.before, after)
+        : database_form_prepare(g_db.root, db_entry(), specs, g_db.before, after);
     if (!edit.ok) {
         const std::string message = (edit.field.empty() ? std::string() : edit.field + ": ") + edit.error;
         data_prompt(g_db.win, utf8_to_wide(message).c_str(), L"Ungültige Eingabe", MB_OK | MB_ICONWARNING);
         if (edit.gold_error) SetFocus(g_db.ed_gold);
         else {
-            for (size_t i = 0; i < specs.size(); ++i)
-                if (edit.field == specs[i].key) { SetFocus(g_db.ed[i]); break; }
+            for (size_t i = 0; i < specs.size(); ++i) {
+                if (edit.field != specs[i].key) continue;
+                SetFocus(static_cast<int>(i) == g_db.big_row ? g_db.big : g_db.ed[i]);
+                break;
+            }
         }
         return false;
     }
@@ -11031,7 +11065,10 @@ bool db_apply(bool include_entry = true) {
             g_db.win,
             L"Diese Änderung ersetzt fehlerhafte oder nicht eindeutig darstellbare Altdaten. Fortfahren?",
             L"Datenbank", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) return false;
-    if (!database_form_commit(g_db.root, db_tab_key(g_db.tab), g_db.sel, edit)) {
+    const bool committed = object_area
+        ? database_system_commit(g_db.root, db_tab_key(g_db.tab), edit)
+        : database_form_commit(g_db.root, db_tab_key(g_db.tab), g_db.sel, edit);
+    if (!committed) {
         data_prompt(g_db.win, L"Der Eintrag ist nicht mehr verfügbar. Es wurde nichts übernommen.",
                     L"Datenbank", MB_OK | MB_ICONERROR);
         return false;
@@ -11045,6 +11082,7 @@ bool db_apply(bool include_entry = true) {
 }
 
 void db_add() {
+    if (db_is_object_area()) return;   // System ist ein einzelner Datensatz
     if (!db_apply()) return;
     const char* key = db_tab_key(g_db.tab);
     JsonValue* arr = db_array(key);
@@ -11054,60 +11092,8 @@ void db_add() {
                 L"Datenbank", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) return;
         arr = &g_db.root.set(key, JsonValue::make_arr());
     }
-    const char* prefix = "held";
-    if (g_db.tab == 1) prefix = "item";
-    if (g_db.tab == 2) prefix = "gegner";
-    if (g_db.tab == 3) prefix = "trupp";
-    int n = 1;
-    std::string id;
-    for (;;) {
-        id = std::string(prefix) + "_" + std::to_string(n);
-        bool used = false;
-        for (const JsonValue& e : arr->arr) {
-            if (ev_str_of(e, "id") == id) { used = true; break; }
-        }
-        if (!used) break;
-        ++n;
-    }
-    JsonValue e = JsonValue::make_obj();
-    e.set("id", JsonValue::make_str(id));
-    e.set("name", JsonValue::make_str(id));
-    switch (g_db.tab) {
-        case 1:
-            e.set("kind", JsonValue::make_str("heal"));
-            e.set("power", JsonValue::make_num(20, true));
-            e.set("price", JsonValue::make_num(10, true));
-            e.set("start", JsonValue::make_num(0, true));
-            e.set("desc", JsonValue::make_str(""));
-            break;
-        case 2:   // Gegner (19i-Felder; color/desc bleiben optional im JSON)
-            e.set("hp", JsonValue::make_num(30, true));
-            e.set("mp", JsonValue::make_num(0, true));
-            e.set("atk", JsonValue::make_num(10, true));
-            e.set("def", JsonValue::make_num(8, true));
-            e.set("spi", JsonValue::make_num(5, true));
-            e.set("agi", JsonValue::make_num(8, true));
-            e.set("exp", JsonValue::make_num(10, true));
-            e.set("gold", JsonValue::make_num(0, true));
-            e.set("drop", JsonValue::make_str(""));
-            e.set("drop_rate", JsonValue::make_num(0.0, false));
-            break;
-        case 3:   // Truppen
-            e.set("enemies", JsonValue::make_arr());
-            e.set("desc", JsonValue::make_str(""));
-            break;
-        default:  // Helden
-            e.set("class", JsonValue::make_str("Krieger"));
-            e.set("level", JsonValue::make_num(1, true));
-            e.set("hp", JsonValue::make_num(100, true));
-            e.set("mp", JsonValue::make_num(20, true));
-            e.set("atk", JsonValue::make_num(10, true));
-            e.set("def", JsonValue::make_num(8, true));
-            e.set("spi", JsonValue::make_num(6, true));
-            e.set("agi", JsonValue::make_num(8, true));
-            e.set("exp", JsonValue::make_num(0, true));
-            break;
-    }
+    // Vorgaben und freie ID kommen aus dem portablen Katalog (Etappe 41).
+    JsonValue e = database_default_entry(g_db.tab, arr);
     arr->arr.push_back(std::move(e));
     g_db.sel = static_cast<int>(arr->arr.size()) - 1;
     g_db.dirty = true;
@@ -11116,6 +11102,7 @@ void db_add() {
 }
 
 void db_delete() {
+    if (db_is_object_area()) return;   // System: nichts zu löschen
     JsonValue* arr = db_array(db_tab_key(g_db.tab));
     if (!arr || g_db.sel < 0 || static_cast<size_t>(g_db.sel) >= arr->arr.size()) return;
     if (data_prompt(g_db.win, L"Diesen Eintrag und seine Zusatzdaten wirklich löschen?",
@@ -11194,24 +11181,45 @@ HWND db_control(const wchar_t* cls, const wchar_t* text, DWORD style,
 LRESULT CALLBACK database_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     if (g.data_prompt_active || (g.props_dlg && g.dlg_mode != 1)) {
         if (msg == WM_CLOSE) return 0;
+        // Eine Registerwahl, die schon vor der Sperre ankam, zurücksetzen.
+        if (msg == WM_NOTIFY && g_db.tabs) {
+            const NMHDR* nm = reinterpret_cast<const NMHDR*>(lp);
+            if (nm && nm->idFrom == IDDB_TABS && nm->code == TCN_SELCHANGE)
+                TabCtrl_SetCurSel(g_db.tabs, g_db.tab);
+            return 0;
+        }
         if (msg == WM_COMMAND) {
             const int id = LOWORD(wp), code = HIWORD(wp);
-            // Falls eine Listen-/Reiterauswahl schon vor der Sperre im nativen
+            // Falls eine Listenauswahl schon vor der Sperre im nativen
             // Control ankam, auf den noch gültigen Modellzustand zurücksetzen.
             if (id == IDDB_LIST && code == LBN_SELCHANGE && g_db.list)
                 listbox_select_data(g_db.list, static_cast<LPARAM>(g_db.sel));
-            if (code == BN_CLICKED && (id == IDDB_TAB_H || id == IDDB_TAB_I ||
-                                       id == IDDB_TAB_E || id == IDDB_TAB_T)) {
-                const int current = g_db.tab == 1 ? IDDB_TAB_I : g_db.tab == 2 ? IDDB_TAB_E
-                                  : g_db.tab == 3 ? IDDB_TAB_T : IDDB_TAB_H;
-                for (const int button : {IDDB_TAB_H, IDDB_TAB_I, IDDB_TAB_E, IDDB_TAB_T})
-                    SendMessageW(GetDlgItem(g_db.win, button), BM_SETCHECK,
-                                 button == current ? BST_CHECKED : BST_UNCHECKED, 0);
-            }
             return 0;
         }
     }
     switch (msg) {
+        case WM_NOTIFY: {
+            const NMHDR* nm = reinterpret_cast<const NMHDR*>(lp);
+            if (nm && nm->idFrom == IDDB_TABS && nm->code == TCN_SELCHANGE && g_db.tabs) {
+                if (g_db.syncing) return 0;
+                const int wanted = TabCtrl_GetCurSel(g_db.tabs);
+                if (wanted < 0 || wanted >= DATABASE_AREA_COUNT || wanted == g_db.tab) return 0;
+                // Erst das offene Formular übernehmen; scheitert es, bleibt
+                // das alte Register sichtbar und die Eingaben stehen weiter da.
+                if (!db_apply()) {
+                    g_db.syncing = true;
+                    TabCtrl_SetCurSel(g_db.tabs, g_db.tab);
+                    g_db.syncing = false;
+                    return 0;
+                }
+                g_db.tab = wanted;
+                const JsonValue* array = db_is_object_area() ? nullptr : db_array(db_tab_key(wanted));
+                g_db.sel = array && !array->arr.empty() ? 0 : -1;
+                db_refresh();
+                return 0;
+            }
+            break;
+        }
         case WM_COMMAND: {
             const int id = LOWORD(wp);
             const int code = HIWORD(wp);
@@ -11230,24 +11238,8 @@ LRESULT CALLBACK database_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 db_refresh();
                 return 0;
             }
-            if (code == BN_CLICKED && (id == IDDB_TAB_H || id == IDDB_TAB_I ||
-                                       id == IDDB_TAB_E || id == IDDB_TAB_T)) {
-                if (!db_apply()) {
-                    const int old_id = g_db.tab == 1 ? IDDB_TAB_I : g_db.tab == 2 ? IDDB_TAB_E
-                                     : g_db.tab == 3 ? IDDB_TAB_T : IDDB_TAB_H;
-                    for (const int button : {IDDB_TAB_H, IDDB_TAB_I, IDDB_TAB_E, IDDB_TAB_T})
-                        SendMessageW(GetDlgItem(g_db.win, button), BM_SETCHECK,
-                                     button == old_id ? BST_CHECKED : BST_UNCHECKED, 0);
-                    return 0;
-                }
-                g_db.tab = (id == IDDB_TAB_I) ? 1
-                         : (id == IDDB_TAB_E) ? 2
-                         : (id == IDDB_TAB_T) ? 3 : 0;
-                g_db.sel = -1;
-                db_refresh();
-                return 0;
-            }
-            if (code == EN_CHANGE && (id == IDDB_GOLD || (id >= IDDB_F1 && id < IDDB_F1 + DB_MAX_ROWS))) {
+            if (code == EN_CHANGE && (id == IDDB_GOLD || id == IDDB_BIG ||
+                                      (id >= IDDB_F1 && id < IDDB_F1 + DB_MAX_ROWS))) {
                 db_status("Eingabe geändert - noch nicht gespeichert");
                 return 0;
             }
@@ -11275,14 +11267,20 @@ LRESULT CALLBACK database_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_DESTROY:
             if (g_db.win == h) {
                 g_db.win = nullptr;
+                g_db.tabs = nullptr;
                 g_db.list = nullptr;
                 g_db.ed_gold = nullptr;
+                g_db.big = nullptr;
+                g_db.lbl_big = nullptr;
+                g_db.lbl_info = nullptr;
+                g_db.lbl_hint = nullptr;
                 for (int i = 0; i < DB_MAX_ROWS; ++i) {
                     g_db.ed[i] = nullptr;
                     g_db.lbl[i] = nullptr;
                 }
                 g_db.lbl_status = nullptr;
                 g_db.sel = -1;
+                g_db.big_row = -1;
                 g_db.before = DatabaseForm{};
                 g_db.gold_editable = false;
                 for (bool& editable : g_db.field_editable) editable = false;
@@ -11312,54 +11310,95 @@ void open_database_dialog() {
     wc.hbrBackground = GetSysColorBrush(COLOR_BTNFACE);
     RegisterClassW(&wc);
 
+    // Größe auf die Arbeitsfläche des aktuellen Monitors begrenzen und am
+    // Hauptfenster zentrieren (dieselbe portable Rechnung wie beim F6-Fenster).
+    EventLayoutRect work{};
+    EventLayoutRect owner{};
     RECT mr;
     GetWindowRect(g.main, &mr);
+    owner = { mr.left, mr.top, mr.right, mr.bottom };
+    HMONITOR monitor = MonitorFromWindow(g.main, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO mi{ sizeof(mi), {}, {}, 0 };
+    if (monitor && GetMonitorInfoW(monitor, &mi))
+        work = { mi.rcWork.left, mi.rcWork.top, mi.rcWork.right, mi.rcWork.bottom };
+    else
+        work = owner;
+    const EventLayoutRect fit = event_layout_center(work, owner,
+        ui_px(DATABASE_WINDOW_WIDTH), ui_px(DATABASE_WINDOW_HEIGHT));
+
     g_db.win = CreateWindowExW(WS_EX_DLGMODALFRAME, L"RuneEditorDbDlg",
-                               L"Datenbank (Helden / Items / Gegner / Truppen)",
+                               L"Datenbank - Rune3D (13 Register wie RPG Maker XP)",
                                WS_POPUP | WS_CAPTION | WS_SYSMENU,
-                               mr.left + ui_px(140), mr.top + ui_px(40), ui_px(716), ui_px(768),
+                               fit.left, fit.top, fit.right - fit.left, fit.bottom - fit.top,
                                g.main, nullptr, GetModuleHandleW(nullptr), nullptr);
 
     if (!g_db.win) return;
     if (!db_load()) { DestroyWindow(g_db.win); return; }
 
-    // Reiter + Gold
-    db_control(L"Button", L"Helden", BS_AUTORADIOBUTTON | WS_GROUP,
-               12, 10, 90, 24, IDDB_TAB_H);
-    db_control(L"Button", L"Items", BS_AUTORADIOBUTTON,
-               104, 10, 80, 24, IDDB_TAB_I);
-    db_control(L"Button", L"Gegner", BS_AUTORADIOBUTTON,
-               186, 10, 90, 24, IDDB_TAB_E);
-    db_control(L"Button", L"Truppen", BS_AUTORADIOBUTTON,
-               278, 10, 90, 24, IDDB_TAB_T);
-    db_control(L"Static", L"Gold:", 0, 396, 13, 40, 20, 0);
+    const DatabaseLayout layout = database_layout(DB_MAX_ROWS, false);
+
+    // Registerkarten: 13 Bereiche in XP-Reihenfolge. TCS_MULTILINE bricht bei
+    // wenig Breite (oder hoher DPI) in mehrere Zeilen um statt zu schneiden.
+    g_db.tabs = db_control(WC_TABCONTROLW, nullptr, WS_CLIPSIBLINGS | TCS_MULTILINE | TCS_FOCUSNEVER,
+                           layout.tabs.x, layout.tabs.y, layout.tabs.w, layout.tabs.h, IDDB_TABS);
+    for (int i = 0; i < DATABASE_AREA_COUNT; ++i) {
+        const std::wstring label = utf8_to_wide(database_area(i).label);
+        TCITEMW item{};
+        item.mask = TCIF_TEXT;
+        item.pszText = const_cast<wchar_t*>(label.c_str());
+        TabCtrl_InsertItem(g_db.tabs, i, &item);
+    }
+
+    g_db.lbl_info = db_control(L"Static", L"", 0, layout.info.x, layout.info.y,
+                               layout.info.w, layout.info.h, IDDB_INFO);
+    db_control(L"Static", L"Startgold:", 0, layout.gold_label.x, layout.gold_label.y,
+               layout.gold_label.w, layout.gold_label.h, 0);
     g_db.ed_gold = db_control(L"Edit", L"0", WS_BORDER | ES_RIGHT | ES_AUTOHSCROLL,
-                              438, 10, 80, 24, IDDB_GOLD);
-    SendMessageW(GetDlgItem(g_db.win, IDDB_TAB_H), BM_SETCHECK, BST_CHECKED, 0);
+                              layout.gold.x, layout.gold.y, layout.gold.w, layout.gold.h, IDDB_GOLD);
 
     // Liste links
     g_db.list = db_control(L"ListBox", nullptr,
                            WS_VSCROLL | WS_BORDER | LBS_NOTIFY | LBS_HASSTRINGS,
-                           12, 44, 260, 560, IDDB_LIST);
-    db_control(L"Button", L"Neu", BS_PUSHBUTTON, 12, 612, 80, 28, IDDB_NEW);
-    db_control(L"Button", L"Löschen", BS_PUSHBUTTON, 96, 612, 90, 28, IDDB_DEL);
-    db_control(L"Button", L"Schließen", BS_PUSHBUTTON, 192, 612, 80, 28, IDDB_CLOSE);
+                           layout.list.x, layout.list.y, layout.list.w, layout.list.h, IDDB_LIST);
+    db_control(L"Button", L"Neu", BS_PUSHBUTTON, layout.button_new.x, layout.button_new.y,
+               layout.button_new.w, layout.button_new.h, IDDB_NEW);
+    db_control(L"Button", L"Löschen", BS_PUSHBUTTON, layout.button_delete.x, layout.button_delete.y,
+               layout.button_delete.w, layout.button_delete.h, IDDB_DEL);
+    db_control(L"Button", L"Schließen", BS_PUSHBUTTON, layout.button_close.x, layout.button_close.y,
+               layout.button_close.w, layout.button_close.h, IDDB_CLOSE);
 
-    // Formular rechts: DB_MAX_ROWS Zeilen Label + Edit (Tabelle je Reiter)
+    // Formular rechts: zwei Spalten mit je acht Zeilen (Position setzt
+    // db_form_layout je Register, weil das JSON-Feld herausgerechnet wird).
     for (int i = 0; i < DB_MAX_ROWS; ++i) {
-        const int y = 44 + i * 46;
-        g_db.lbl[i] = db_control(L"Static", L"", 0, 292, y, 250, 18, IDDB_L1 + i);
+        const DatabaseRect& l = layout.label[i];
+        const DatabaseRect& f = layout.field[i];
+        g_db.lbl[i] = db_control(L"Static", L"", 0, l.x, l.y, l.w, l.h, IDDB_L1 + i);
         g_db.ed[i] = db_control(L"Edit", nullptr, WS_BORDER | ES_LEFT | ES_AUTOHSCROLL,
-                                292, y + 18, 380, 24, IDDB_F1 + i);
+                                f.x, f.y, f.w, f.h, IDDB_F1 + i);
     }
 
-    g_db.lbl_status = db_control(L"Static", L"", 0, 292, 648, 396, 20, IDDB_STATUS);
-    db_control(L"Button", L"Speichern", BS_PUSHBUTTON, 292, 674, 120, 30, IDDB_SAVE);
-    db_control(L"Button", L"Neu laden", BS_PUSHBUTTON, 420, 674, 120, 30, IDDB_RELOAD);
+    // Großes JSON-Feld für verschachtelte Daten (Befehle gemeinsamer Events).
+    g_db.lbl_big = db_control(L"Static", L"", 0, layout.big_label.x, layout.big_label.y,
+                              layout.big_label.w, layout.big_label.h, IDDB_BIGLBL);
+    g_db.big = db_control(L"Edit", nullptr,
+                          WS_BORDER | WS_VSCROLL | WS_HSCROLL | ES_LEFT | ES_MULTILINE |
+                          ES_AUTOVSCROLL | ES_AUTOHSCROLL | ES_WANTRETURN,
+                          layout.big.x, layout.big.y, layout.big.w, layout.big.h, IDDB_BIG);
+
+    g_db.lbl_hint = db_control(L"Static", L"", 0, layout.hint.x, layout.hint.y,
+                               layout.hint.w, layout.hint.h, IDDB_HINT);
+    g_db.lbl_status = db_control(L"Static", L"", 0, layout.status.x, layout.status.y,
+                                 layout.status.w, layout.status.h, IDDB_STATUS);
+    db_control(L"Button", L"Speichern", BS_PUSHBUTTON, layout.button_save.x, layout.button_save.y,
+               layout.button_save.w, layout.button_save.h, IDDB_SAVE);
+    db_control(L"Button", L"Neu laden", BS_PUSHBUTTON, layout.button_reload.x, layout.button_reload.y,
+               layout.button_reload.w, layout.button_reload.h, IDDB_RELOAD);
 
     g_db.tab = 0;
+    g_db.big_row = -1;
     const JsonValue* actors = db_array("actors");
     g_db.sel = actors && !actors->arr.empty() ? 0 : -1;
+    TabCtrl_SetCurSel(g_db.tabs, 0);
     db_refresh();
 
     ShowWindow(g_db.win, SW_SHOW);
@@ -11685,7 +11724,7 @@ int main(int argc, char** argv) {
 
     // Gemeinsame Steuerelemente (Win32-Design)
     INITCOMMONCONTROLSEX icc{ sizeof(icc), ICC_STANDARD_CLASSES | ICC_BAR_CLASSES |
-                                             ICC_TREEVIEW_CLASSES |
+                                             ICC_TREEVIEW_CLASSES | ICC_TAB_CLASSES |
                                              ICC_LISTVIEW_CLASSES };
     InitCommonControlsEx(&icc);
 

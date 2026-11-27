@@ -1,5 +1,41 @@
 # Handoff für die nächste KI - Rune3D, Stand nach Implementierung 19y
 
+**Etappe 41 (F9-Datenbank wie XP) — Code fertig, Live-Test offen.** Der Nutzer
+hat aus vier Vorschlägen ausdrücklich **B) Editor-Datenbank F9 wie XP**
+gewählt. F9 hat jetzt alle **13 XP-Register** als echte Registerkarten
+(`SysTabControl32`, `TCS_MULTILINE`) in XP-Reihenfolge: Helden, Klassen,
+Fertigkeiten, Items, Waffen, Rüstungen, Gegner, Truppen, Zustände,
+Animationen, Tilesets, Gem. Events, System. Neu ist der portable Katalog
+`src/editor/database_catalog.h` (Register, Felder, Auswahlwerte, Vorgaben,
+Listenzeilen) plus `src/editor/database_layout.h` (zwei Spalten à acht Zeilen,
+großes JSON-Feld, 96-DPI-Einheiten); die alten `DB_FIELDS_*`-Tabellen und
+`db_fields`/`db_tab_key`-Kaskaden sind damit abgelöst. `database_form.h` kennt
+zusätzlich `Choice` und `Json` sowie `database_system_prepare/commit` für den
+Einzeldatensatz „System" (Objekt `system` in `database.json`, **nicht**
+`system.json`). Gemeinsame Events sind damit vollständig editierbar (Nummer,
+Name, Auslöser, Schalter, Befehlsliste als JSON) — der seit 20c offene
+Editor-Reiter ist geschlossen. **Wichtig für die nächste Etappe:** sechs
+Register (`classes`, `weapons`, `armors`, `animations`, `tilesets`, `system`)
+sind bewusst **ohne Engine-Wirkung**; die Hinweiszeile im Dialog sagt das, und
+der Backlog führt die Anschlüsse einzeln auf. Neu ist außerdem
+`tools/database_register_test.rb` (26 Checks): eine Datenbank mit allen 13
+Registern lädt, die vorbereiteten Register bleiben wirkungslos, die
+F9-Vorgaben sind spielbar und alte Projekte laufen unverändert. Dabei kam die
+einzige Engine-Änderung heraus: `MapCheck` behandelte ein leeres
+Schalterfeld (`"switch": ""`, wie F9 es schreibt) als Fehler, obwohl
+`CommonEvents.aktiv?` es als „kein Schalter" gilt — jetzt ist nur ein
+Nicht-Text ungültig. Prüfungen lokal: `json_test`
+**1031 Checks/0 Fehler** (56 neu), `sync_test` 0 Fehler (12 neue
+Register-/Vokabelchecks gegen `battle.rb` und `CommonEvents::TRIGGER`),
+`database_register_test` 26/0, Gegenprobe `common_events_test`/`party_test`/
+`battle_test`/`zustand_test`/`event_test` grün,
+`lint_repo` ohne Befund (Git-Abschnitt nur mit echtem System), und
+`zig c++ -target x86_64-windows-gnu -c` baut `editor_main.cpp` als Objekt mit
+nur der bestehenden Warnung in Zeile 3588. Kein Windows-Lauf, kein GUI-/DPI-
+Test: Anleitung und Abhakliste in `docs/ETAPPE_41_F9_DATENBANK.md`. Weitere
+offene Punkte dort und im Backlog: F9 hat keine Scrollleisten (auf kleinen
+Schirmen/hoher DPI können untere Knöpfe fehlen) und kein „Change Maximum".
+
 **Stand:** 19y RGSS-Editor, Kartenmarker, Projektstart und eigene EXE-Metadaten implementiert; **Runde 12 (AB): Scene_Title/Scene_File statt Launcher** (launcher.rb entfernt, interne Projekt-Auflösung, Y3/Y4 im Editor); **Runde 13 (Y1/Y2): Datenpflege Demo** (`tools/sync_demo.rb`, Truppen+encounters im Demo nachgezogen, Script-Befehle in beiden Bäumen); **Runde 14 (Z4): Sichtbarkeit** (echte `Scene_Gameover`, Karte+Spielzeit im Menü/Scene_File, ▾-Blinkzeiger, Menü-Item-Cache, Playtime/Steps im Panel, `'system'`-Snapshot ins Savegame); **Runde 16 (Z5): Wahl-Abbruch** (`cancel`/`cancel_branch` XP-403 in Engine+Editor+MapCheck/Issue-Scan, Esc-Routing Menü↔Eingabe gesperrt, Kombi-Fenster Text+Wahl (M) bewusst offen; Runde 15 = Z4-CI-Fix); **Runde 17 (Z6): Trigger-Design D1/D2** (auto = XP-Autorun-Neustart bis Seitenwechsel, touch = Wiederbetreten mit Rearm beim Verlassen der Nähe; Tests D1/D2 in `encounter_test`, Auto-Save/Load-Check angepasst). **Runde 18 (Z7/Z8): Roadmap + Befehls-Register + atomares Schreiben** (XP_VERGLEICH §8 um 20i–20l/D4/`$game_temp` erweitert; `docs/befehle.json` als Quellen-Register mit `tools/befehle_test.rb` gegen CMD_TYPES/EV_TYPES/ISSUE_CMD_TYPES/interpreter.rb; `Project.write_json` und Editor-`write_file` schreiben Temp+Rename). **Runde 22 (D4): XP-Stufenaufstieg** (`Party.gain_exp`/`set_exp`/`level_up!`, Kurve 2.7, Gesamt-Exp, Höchststufe 99, RGSS-Route `actor.exp = n`, Kampf nutzt `gain_exp`, Heldenwerte live; `tools/level_up_test.rb` 19 Checks). **Runde 23 (20a): Fertigkeiten und Zustände** (Datenbank `skills`/`states` + Startlisten je Held über `tools/add_skills23.rb`, `Party.skills`/`learn_skill` inkl. Spielstand, Kampfbefehl `Fertigkeit` mit MP-Kosten und Zielwahl, Schaden/Heilung/Buff, Zustände mit Dauer/Werte-Boni und Runden-Tick, `$data_skills`/`$data_states`, Script-Helfer `skills`/`learn_skill`; `tools/skills_test.rb` 70 Checks). **Runde 24 (20b): Menü wie XP** (Befehlsliste Gegenstand/Fertigkeit/Status/Speichern/Laden/Zurück/Titel, Unterfenster `@menu_screen` mit Item-Zielwahl, Fertigkeiten- und Statusseite, Esc Ebene für Ebene; `tools/menu_test.rb` 40 Checks). **Runde 26 (W): Encounter-Kadenz wie XP** (Begegnungen zählen pro Kachel = 1 m statt pro Schritt-Sound, `Game::KACHEL_METER`, Teleports/Sprünge ausgenommen; Schritt-Sound und `$game_party.steps` unverändert). **Runde 27 (20c Welle 1): Ablauf-Befehle** (`loop`/`break`, `label`/`jump`, `exit_event`, `erase_event`, `button_input`, `text_options`; 34 Befehlstypen in Register/CMD_TYPES/ISSUE_CMD_TYPES/EV_TYPES/interpreter.rb, Baumkopf „Schleife:“ und eigener Einfügepunkt im F6-Dialog, `Event#erase!` samt Darstellung/Picking, Fenster-Optionen im Modul `MessageWindow`, MapCheck-Prüfungen für Schleife ohne Ausgang/Marke/Tasten/Position; `tools/ablauf_test.rb` 30 Checks, `json_test` 717 Checks). Zweiter Teil derselben Runde: **Gemeinsame Events** (`database.json` → `common_events`, Befehl `common_event` mit Aufruftiefe 8, `CommonEvents.tick` für autorun/parallel mit Schalter, `$data_common_events`, `MapCheck.scan_database` inkl. Datenbank-Prüfung in der CLI; `tools/common_events_test.rb` 27 Checks, `json_test` 720 Checks). Offen: eigener Editor-Reiter für Gemeinsame Events. **Runde 28 (20d Teil 1+2): erweiterte Bedingungen, Sperren und Timer** (`if_gold`/`if_item`/`if_script`, `save_access`/`menu_access`/`encounter_access`, `timer` mit Anzeige oben rechts; **42 Befehlstypen**, Operator-Combo für alle Wenn-Typen, `Scripts.eval_code`, Zweige in Baum/Issue-Scan/MapCheck; `tools/bedingungen_test.rb` 26 Checks, `tools/timer_test.rb` 20 Checks, `json_test` 741 Checks). **Abhakliste für 20d: `docs/ETAPPE_20D_CHECKLISTE.md`** (Register / Definition of Done je Befehl / offene Punkte / bekannte Eigenheiten) — dort steht der aktuelle Stand, bitte zuerst lesen.
 
 **20f Teil 2: Bildschirm-Bilder (XP 231–235) — fertig.** `game/engine/image_loader.rb` dekodiert PNG (8 Bit, Farbtypen 0/2/3/4/6, tRNS) und BMP (24/32 Bit) in Ruby und meldet die Pixel über `Rune::Gfx.image`; `game/engine/pictures.rb` hält die Bilder 1–50 (show/move/rotate/tint/erase, Dauer in Frames, Zeichnen nach Nummer). `src/gfx/ui.*` hat dafür einen Bild-Durchgang (eigene Texturen, linearer Sampler, Tint × Deckkraft, Drehung um die Mitte); gezeichnet wird über der Welt und `Graphics.draw`, unter HUD/Fenstern. Register **61 Typen**; `tools/image_loader_test.rb` 19 Checks, `tools/pictures_test.rb` 39, `json_test` 838; der WARP-Test (`build.ps1 -WarpTest`) prüft zusätzlich, dass ein Bild über den 2D-Durchgang wirklich rot gerendert wird und unbekannte Namen übersprungen werden. Abweichungen: kein JPEG, Tint multipliziert (Gegenkanäle dämpfen), Blend 1/2 = 0. **20f ist damit inhaltlich fertig.**

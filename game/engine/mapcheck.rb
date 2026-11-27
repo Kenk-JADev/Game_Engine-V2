@@ -350,8 +350,11 @@ module MapCheck
           melde(WARNUNG, w,
                 "#{trig} ohne 'switch': läuft dauerhaft und blockiert andere Events")
         end
-        if e.key?('switch') && !text?(e['switch'])
-          melde(FEHLER, w, "'switch' muss ein Name sein")
+        # Etappe 41: F9 schreibt ein leeres Schalterfeld als "" (leer = immer).
+        # CommonEvents.aktiv? wertet "" wie "kein Schalter" - das ist kein
+        # Fehler. Nur ein Nicht-Text (Zahl/Objekt/null) bleibt ungültig.
+        if e.key?('switch') && !e['switch'].is_a?(String)
+          melde(FEHLER, w, "'switch' muss ein Name sein (leer = kein Schalter)")
         end
         befehle = e['commands']
         if !befehle.is_a?(Array)

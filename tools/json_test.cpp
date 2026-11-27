@@ -20,6 +20,8 @@
 #include "editor/json.h"
 #include "editor/atomic_file_win.h"
 #include "editor/database_form.h"
+#include "editor/database_catalog.h"
+#include "editor/database_layout.h"
 #include "editor/encounter_check.h"
 #include "editor/encounter_form.h"
 #include "editor/event_form.h"
@@ -1173,6 +1175,359 @@ void database_form_tests(const std::string& wurzel) {
     } else {
         check("Demo-Datenbank zum F9-Test lesbar", false);
     }
+}
+
+// Etappe 41: Register-Katalog des F9-Dialogs (13 Bereiche wie RPG Maker XP).
+void database_catalog_tests(const std::string& wurzel) {
+    using namespace rune::editor;
+    std::printf("== Editor: F9-Register wie XP (Katalog, Etappe 41) ==\n");
+
+    check("13 Register in XP-Reihenfolge",
+          DATABASE_AREA_COUNT == 13 &&
+          std::string(database_area(0).key) == "actors" &&
+          std::string(database_area(1).key) == "classes" &&
+          std::string(database_area(2).key) == "skills" &&
+          std::string(database_area(3).key) == "items" &&
+          std::string(database_area(4).key) == "weapons" &&
+          std::string(database_area(5).key) == "armors" &&
+          std::string(database_area(6).key) == "enemies" &&
+          std::string(database_area(7).key) == "troops" &&
+          std::string(database_area(8).key) == "states" &&
+          std::string(database_area(9).key) == "animations" &&
+          std::string(database_area(10).key) == "tilesets" &&
+          std::string(database_area(11).key) == "common_events" &&
+          std::string(database_area(12).key) == "system");
+
+    bool unique_keys = true, fields_ok = true, choices_ok = true, labels_ok = true;
+    bool fits = true, object_only_system = true, ids_ok = true;
+    for (int i = 0; i < DATABASE_AREA_COUNT; ++i) {
+        const DatabaseArea& area = database_area(i);
+        for (int j = 0; j < i; ++j)
+            if (std::string(database_area(j).key) == area.key) unique_keys = false;
+        if (database_area_index(area.key) != i) unique_keys = false;
+        const std::vector<DatabaseFieldSpec>& specs = database_area_fields(i);
+        if (specs.empty() || specs.size() > static_cast<size_t>(DATABASE_FORM_FIELDS)) fits = false;
+        if ((area.kind == DatabaseAreaKind::Object) != (i == 12)) object_only_system = false;
+        if (area.kind == DatabaseAreaKind::List && std::string(specs[0].key) != "id") ids_ok = false;
+        for (size_t f = 0; f < specs.size(); ++f) {
+            if (!specs[f].label || !*specs[f].label) labels_ok = false;
+            for (size_t g = 0; g < f; ++g)
+                if (std::string(specs[g].key) == specs[f].key) fields_ok = false;
+            if (specs[f].kind != DatabaseFieldKind::Choice) continue;
+            if (specs[f].choices.size() < 2) choices_ok = false;
+            for (size_t c = 0; c < specs[f].choices.size(); ++c) {
+                if (specs[f].choices[c].empty()) choices_ok = false;
+                for (size_t d = 0; d < c; ++d)
+                    if (specs[f].choices[c] == specs[f].choices[d]) choices_ok = false;
+            }
+        }
+    }
+    check("Register-Schlüssel sind eindeutig und auffindbar", unique_keys);
+    check("unbekanntes Register ergibt -1", database_area_index("gibtsnicht") == -1);
+    check("jedes Register hat eindeutige Feldschlüssel", fields_ok);
+    check("jedes Feld hat eine Beschriftung", labels_ok);
+    check("Auswahlfelder bieten mindestens zwei verschiedene Werte", choices_ok);
+    check("kein Register braucht mehr als 16 Felder", fits);
+    check("nur System ist ein Einzeldatensatz", object_only_system);
+    check("jede Liste beginnt mit der ID", ids_ok);
+    check("Register ausserhalb des Katalogs fallen auf Helden zurück",
+          std::string(database_area(-4).key) == "actors" &&
+          std::string(database_area(99).key) == "actors" &&
+          database_area_fields(99).size() == database_area_fields(0).size());
+
+    // Vorgaben: jeder neue Eintrag muss die eigene Feldprüfung bestehen.
+    bool defaults_ok = true, defaults_roundtrip = true, defaults_changed = true;
+    for (int i = 0; i < DATABASE_AREA_COUNT; ++i) {
+        const DatabaseArea& area = database_area(i);
+        if (area.kind != DatabaseAreaKind::List) continue;
+        JsonValue root = JsonValue::make_obj();
+        JsonValue list = JsonValue::make_arr();
+        list.arr.push_back(database_default_entry(i, &list));
+        root.set(area.key, list);
+        const std::vector<DatabaseFieldSpec>& specs = database_area_fields(i);
+        const JsonValue* entry = &root.find(area.key)->arr[0];
+        const DatabaseForm before = database_form_read(root, entry, specs);
+        const DatabaseEdit same = database_form_prepare(root, entry, specs, before, before);
+        if (!same.ok || same.changed) defaults_roundtrip = false;
+        const std::string original = json_write(root);
+        if (!database_form_commit(root, area.key, 0, same) || json_write(root) != original)
+            defaults_roundtrip = false;
+        for (size_t f = 0; f < specs.size(); ++f) {
+            const DatabaseFieldSpec& spec = specs[f];
+            const std::string text = before.fields[f];
+            JsonValue parsed;
+            bool ok = false;
+            switch (spec.kind) {
+                case DatabaseFieldKind::Text: ok = database_single_line(text); break;
+                case DatabaseFieldKind::Integer: ok = database_integer(text, parsed); break;
+                case DatabaseFieldKind::Decimal: ok = database_decimal(text, parsed); break;
+                case DatabaseFieldKind::IdList: ok = database_ids_parse(text, parsed); break;
+                case DatabaseFieldKind::Choice: ok = database_choice_valid(spec, text); break;
+                case DatabaseFieldKind::Json: ok = database_json_parse(text, parsed); break;
+            }
+            if (!ok) defaults_ok = false;
+            // Jede Vorgabe einmal ausdrücklich schreiben: muss gültig sein und
+            // darf keine Rückfrage über ersetzte Altdaten auslösen.
+            DatabaseForm after = before;
+            after.fields[f] = text;
+            if (f == 0 && area.numeric_id) after.fields[f] = "7";
+            const DatabaseEdit edit = database_form_prepare(root, entry, specs, before, after);
+            if (!edit.ok || edit.replaces_invalid) defaults_changed = false;
+        }
+    }
+    check("Vorgaben neuer Einträge sind gültige Feldwerte", defaults_ok);
+    check("Vorgaben bleiben beim Übernehmen unverändert (keine Diff-Flut)", defaults_roundtrip);
+    check("Vorgaben lösen keine Rückfrage über Altdaten aus", defaults_changed);
+
+    // Freie IDs: Namen zählen hoch, Common Events wie XP numerisch.
+    JsonValue named = json_parse(R"({"actors":[{"id":"held_1"},{"id":"held_2"},{"id":"held_9"}]})");
+    check("freie Helden-ID überspringt belegte Nummern",
+          database_free_id(0, named.find("actors")) == "held_3");
+    JsonValue numbered = json_parse(R"({"common_events":[{"id":1},{"id":2},{"id":4}]})");
+    check("freie Common-Event-Nummer ist die erste Lücke",
+          database_free_id(11, numbered.find("common_events")) == "3");
+    JsonValue huge_ids = json_parse(R"({"common_events":[{"id":9007199254740993}]})");
+    check("große vorhandene Nummern bleiben exakt und blockieren nichts",
+          database_free_id(11, huge_ids.find("common_events")) == "1" &&
+          json_write(huge_ids).find("9007199254740993") != std::string::npos);
+    JsonValue fresh = database_default_entry(11, nullptr);
+    check("neues gemeinsames Event hat Nummer, Namen und leere Befehlsliste",
+          fresh.find("id")->is_int && fresh.find("id")->integer_text() == "1" &&
+          fresh.find("name")->str == "ereignis_1" &&
+          fresh.find("trigger")->str == "none" &&
+          fresh.find("commands")->is_arr() && fresh.find("commands")->arr.empty());
+    check("neue Vorgaben erzeugen keine unbekannten Zusatzfelder",
+          database_default_entry(3, nullptr).obj.size() == database_area_fields(3).size());
+
+    // Listenbeschriftungen (portabel, damit CI sie prüfen kann).
+    check("ungültiger Eintrag wird als solcher benannt",
+          database_list_label(0, 0, JsonValue::make_num(5, true)) == "1. [ungültiger Eintrag]");
+    check("Heldenzeile nennt die Klasse",
+          database_list_label(0, 0, json_parse(R"({"name":"Arik","class":"Krieger"})")) == "1. Arik (Krieger)");
+    check("Truppenzeile zählt die Gegner",
+          database_list_label(7, 2, json_parse(R"({"name":"Waldweg","enemies":["goblin","wolf"]})")) ==
+          "3. Waldweg (2 Gegner)");
+    check("Common-Event-Zeile nennt Auslöser und Befehlszahl",
+          database_list_label(11, 0, json_parse(R"({"name":"hinweis","trigger":"autorun","commands":[{},{}]})")) ==
+          "1. hinweis [autorun, 2 Befehle]");
+    check("fehlende Werte ergeben Platzhalter statt Absturz",
+          database_list_label(6, 0, JsonValue::make_obj()) == "1. ? (HP 0)");
+
+    // Auswahlwerte müssen zur Engine passen (Wortlaut aus battle.rb/party.rb).
+    check("Fertigkeitsarten und Ziele wie in der Engine",
+          database_skill_kinds() == std::vector<std::string>{"damage", "heal", "buff"} &&
+          database_skill_scopes() == std::vector<std::string>{"enemy", "ally", "self"});
+    check("Zustandsarten decken Gift, Regeneration und alle Wert-Boni",
+          database_state_kinds().size() == 10 &&
+          database_choice_valid(database_area_fields(8)[2], "agi_down") &&
+          !database_choice_valid(database_area_fields(8)[2], "mp_up"));
+    check("Common-Event-Auslöser wie CommonEvents::TRIGGER",
+          database_common_triggers() == std::vector<std::string>{"none", "autorun", "parallel"});
+
+    // Echte Demo-Datenbank: alle nicht optionalen Felder kommen wirklich vor.
+    std::string data;
+    if (datei_lesen(wurzel + "/game/data/database.json", data)) {
+        const JsonValue demo = json_parse(data);
+        bool covered = true, wired_present = true;
+        for (int i = 0; i < DATABASE_AREA_COUNT; ++i) {
+            const DatabaseArea& area = database_area(i);
+            if (area.engine != DatabaseEngineState::Wired) continue;
+            const JsonValue* list = demo.find(area.key);
+            if (!list || !list->is_arr() || list->arr.empty()) { wired_present = false; continue; }
+            for (const DatabaseFieldSpec& spec : database_area_fields(i)) {
+                if (spec.optional) continue;
+                bool found = false;
+                for (const JsonValue& entry : list->arr)
+                    if (entry.is_obj() && entry.find(spec.key)) { found = true; break; }
+                if (!found) covered = false;
+            }
+        }
+        check("verdrahtete Register sind in der Demo vorhanden", wired_present);
+        check("Katalogfelder der verdrahteten Register editieren echte Daten", covered);
+    } else {
+        check("Demo-Datenbank für den Register-Test lesbar", false);
+    }
+}
+
+// Etappe 41: Auswahlfelder, JSON-Felder und der System-Einzeldatensatz.
+void database_area_form_tests() {
+    using namespace rune::editor;
+    std::printf("== Editor: F9-Auswahl-, JSON- und System-Felder (Etappe 41) ==\n");
+
+    const std::vector<DatabaseFieldSpec> skills = database_area_fields(2);
+    JsonValue root = json_parse(R"({"gold":10,"skills":[{"id":"feuer","name":"Feuer","kind":"damage","scope":"enemy","mp":6,"power":16,"state":"","state_rate":1.0,"turns":3,"desc":"alt","extra":7}]})");
+    const std::string original = json_write(root);
+    const JsonValue* entry = &root.find("skills")->arr[0];
+    DatabaseForm before = database_form_read(root, entry, skills);
+    DatabaseForm after = before;
+    after.fields[2] = "heal";
+    DatabaseEdit edit = database_form_prepare(root, entry, skills, before, after);
+    check("Auswahlfeld nimmt einen erlaubten Wert an",
+          edit.ok && edit.entry_changed && !edit.replaces_invalid &&
+          database_form_commit(root, "skills", 0, edit) &&
+          root.find("skills")->arr[0].find("kind")->str == "heal");
+    check("Zusatzdaten des Eintrags bleiben beim Auswahlwechsel erhalten",
+          root.find("skills")->arr[0].find("extra")->number() == 7.0);
+
+    before = database_form_read(root, &root.find("skills")->arr[0], skills);
+    after = before;
+    after.fields[3] = "everyone";
+    edit = database_form_prepare(root, &root.find("skills")->arr[0], skills, before, after);
+    const std::string guarded = json_write(root);
+    check("unbekannter Auswahlwert wird abgelehnt und ändert nichts",
+          !edit.ok && edit.field == "scope" &&
+          edit.error.find("enemy/ally/self") != std::string::npos &&
+          !database_form_commit(root, "skills", 0, edit) && json_write(root) == guarded);
+
+    JsonValue legacy = json_parse(R"({"skills":[{"id":"x","kind":"uralt","scope":"enemy"}]})");
+    const std::vector<DatabaseFieldSpec> two = { database_choice("kind", "Art", database_skill_kinds()) };
+    DatabaseForm was = database_form_read(legacy, &legacy.find("skills")->arr[0], two);
+    DatabaseEdit untouched = database_form_prepare(legacy, &legacy.find("skills")->arr[0], two, was, was);
+    check("unbekannter Altwert bleibt ohne Änderung stehen",
+          untouched.ok && !untouched.changed && legacy.find("skills")->arr[0].find("kind")->str == "uralt");
+    DatabaseForm now = was;
+    now.fields[0] = "buff";
+    DatabaseEdit replaced = database_form_prepare(legacy, &legacy.find("skills")->arr[0], two, was, now);
+    check("Ersetzen eines unbekannten Altwerts fragt nach", replaced.ok && replaced.replaces_invalid);
+
+    // JSON-Feld: Befehle gemeinsamer Events.
+    const std::vector<DatabaseFieldSpec> common = database_area_fields(11);
+    JsonValue events = json_parse(R"({"common_events":[{"id":1,"name":"hinweis","trigger":"none","commands":[{"cmd":"text","lines":["Hallo"]}]}]})");
+    const JsonValue* ce = &events.find("common_events")->arr[0];
+    DatabaseForm cbefore = database_form_read(events, ce, common);
+    JsonValue probe;
+    check("Befehlsliste wird als JSON angezeigt",
+          cbefore.fields[4].find("\"cmd\": \"text\"") != std::string::npos &&
+          database_json_parse(cbefore.fields[4], probe) && probe.is_arr());
+    DatabaseForm cafter = cbefore;
+    cafter.fields[4] = "[{\"cmd\":\"text\",\"lines\":[\"Neu\"]},{\"cmd\":\"wait\",\"frames\":10}]";
+    DatabaseEdit cedit = database_form_prepare(events, ce, common, cbefore, cafter);
+    check("geänderte Befehlsliste wird übernommen",
+          cedit.ok && database_form_commit(events, "common_events", 0, cedit) &&
+          events.find("common_events")->arr[0].find("commands")->arr.size() == 2);
+    cbefore = database_form_read(events, &events.find("common_events")->arr[0], common);
+    cafter = cbefore;
+    cafter.fields[4] = "[{\"cmd\":]";
+    const std::string events_guarded = json_write(events);
+    cedit = database_form_prepare(events, &events.find("common_events")->arr[0], common, cbefore, cafter);
+    check("kaputtes JSON ändert die Befehlsliste nicht",
+          !cedit.ok && cedit.field == "commands" && json_write(events) == events_guarded);
+    cafter.fields[4] = "\"nur Text\"";
+    check("JSON-Feld verlangt Liste oder Objekt",
+          !database_form_prepare(events, &events.find("common_events")->arr[0], common, cbefore, cafter).ok);
+    cafter.fields[4] = database_lines_lf("[\r\n  {\"cmd\":\"text\"}\r\n]");
+    check("CRLF aus dem Mehrzeiler wird zu LF normalisiert",
+          database_form_prepare(events, &events.find("common_events")->arr[0], common, cbefore, cafter).ok);
+    JsonValue broken = json_parse(R"({"common_events":[{"id":1,"commands":"kaputt"}]})");
+    DatabaseForm bwas = database_form_read(broken, &broken.find("common_events")->arr[0], common);
+    check("nicht darstellbare Befehlsliste wird gesperrt angezeigt",
+          bwas.fields[4] == "[ungültig]" &&
+          !database_json_representable(broken.find("common_events")->arr[0].find("commands")));
+    DatabaseForm bnow = bwas;
+    bnow.fields[4] = "[]";
+    check("Ersetzen einer kaputten Befehlsliste fragt nach",
+          database_form_prepare(broken, &broken.find("common_events")->arr[0], common, bwas, bnow).replaces_invalid);
+
+    // System: ein Datensatz, keine Liste.
+    const std::vector<DatabaseFieldSpec> system = database_area_fields(12);
+    JsonValue plain = json_parse(R"({"gold":120,"actors":[{"id":"arik","name":"Arik"}]})");
+    const std::string plain_text = json_write(plain);
+    DatabaseForm swas = database_form_read(plain, plain.find("system"), system);
+    DatabaseEdit sedit = database_system_prepare(plain, plain.find("system"), system, swas, swas);
+    check("fehlendes System entsteht nicht durch blosses Ansehen",
+          sedit.ok && !sedit.changed && !plain.find("system") &&
+          database_system_commit(plain, "system", sedit) && json_write(plain) == plain_text);
+    DatabaseForm snow = swas;
+    snow.fields[0] = "arik, mira";
+    snow.fields[1] = "bgm/titel";
+    sedit = database_system_prepare(plain, plain.find("system"), system, swas, snow);
+    check("Systemfelder legen den Datensatz gezielt an",
+          sedit.ok && sedit.entry_changed && database_system_commit(plain, "system", sedit) &&
+          plain.find("system")->find("party")->arr.size() == 2 &&
+          plain.find("system")->find("title_bgm")->str == "bgm/titel" &&
+          plain.find("gold")->number() == 120.0 &&
+          plain.find("actors")->arr[0].find("name")->str == "Arik");
+    check("nicht geänderte Systemfelder entstehen nicht",
+          !plain.find("system")->find("battle_bgm") && plain.find("system")->obj.size() == 2);
+
+    JsonValue kept = json_parse(R"({"system":{"title_bgm":"alt","fremd":{"tief":[1,2]}}})");
+    DatabaseForm kwas = database_form_read(kept, kept.find("system"), system);
+    DatabaseForm know = kwas;
+    know.fields[1] = "bgm/neu";
+    DatabaseEdit kedit = database_system_prepare(kept, kept.find("system"), system, kwas, know);
+    check("System ändert nur das bearbeitete Feld und behält Zusatzdaten",
+          kedit.ok && database_system_commit(kept, "system", kedit) &&
+          kept.find("system")->find("title_bgm")->str == "bgm/neu" &&
+          kept.find("system")->find("fremd")->find("tief")->arr.size() == 2);
+
+    JsonValue bad_system = json_parse(R"({"system":"kaputt","gold":5})");
+    DatabaseForm bad_was = database_form_read(bad_system, bad_system.find("system"), system);
+    DatabaseEdit bad_same = database_system_prepare(bad_system, bad_system.find("system"), system, bad_was, bad_was);
+    check("kaputtes System bleibt ohne Änderung stehen",
+          bad_same.ok && !bad_same.changed && bad_system.find("system")->str == "kaputt");
+    DatabaseForm bad_now = bad_was;
+    bad_now.fields[1] = "bgm/titel";
+    DatabaseEdit bad_edit = database_system_prepare(bad_system, bad_system.find("system"), system, bad_was, bad_now);
+    check("kaputtes System wird nur nach Rückfrage ersetzt",
+          bad_edit.ok && bad_edit.replaces_invalid &&
+          database_system_commit(bad_system, "system", bad_edit) &&
+          bad_system.find("system")->is_obj() && bad_system.find("gold")->number() == 5.0);
+
+    JsonValue transaction = json_parse(R"({"system":{"cursor_se":"klick"}})");
+    DatabaseForm twas = database_form_read(transaction, transaction.find("system"), system);
+    DatabaseForm tnow = twas;
+    tnow.fields[4] = "klick2";
+    tnow.gold = "kein Gold";
+    const std::string transaction_text = json_write(transaction);
+    DatabaseEdit tedit = database_system_prepare(transaction, transaction.find("system"), system, twas, tnow);
+    check("Fehler in Gold verwirft auch die Systemänderung",
+          !tedit.ok && tedit.gold_error && !tedit.entry_changed &&
+          !database_system_commit(transaction, "system", tedit) &&
+          json_write(transaction) == transaction_text);
+}
+
+// Etappe 41: Geometrie des neuen F9-Fensters (zwei Spalten, großes JSON-Feld).
+void database_layout_tests() {
+    using namespace rune::editor;
+    std::printf("== Editor: F9-Geometrie (Etappe 41) ==\n");
+
+    const DatabaseLayout full = database_layout(DATABASE_FORM_FIELDS, false);
+    bool inside = true, no_overlap = true, columns = true;
+    for (int i = 0; i < DATABASE_FORM_FIELDS; ++i) {
+        const DatabaseRect& l = full.label[i];
+        const DatabaseRect& f = full.field[i];
+        if (l.x < 0 || l.y < 0 || l.right() > DATABASE_CLIENT_WIDTH || l.bottom() > DATABASE_CLIENT_HEIGHT) inside = false;
+        if (f.x < 0 || f.y < 0 || f.right() > DATABASE_CLIENT_WIDTH || f.bottom() > DATABASE_CLIENT_HEIGHT) inside = false;
+        if (database_rect_overlap(l, f)) no_overlap = false;
+        if (i % DATABASE_FORM_ROWS != 0 && database_rect_overlap(full.field[i - 1], f)) no_overlap = false;
+        if (i >= DATABASE_FORM_ROWS && full.field[i].x <= full.field[i - DATABASE_FORM_ROWS].x) columns = false;
+        for (int j = 0; j < i; ++j)
+            if (database_rect_overlap(full.field[i], full.field[j])) no_overlap = false;
+    }
+    check("alle 16 Formularfelder liegen in der Arbeitsfläche", inside);
+    check("Beschriftungen und Felder überlappen nicht", no_overlap);
+    check("die zweite Spalte liegt rechts der ersten", columns);
+    check("Registerleiste, Liste und Knöpfe liegen im Fenster",
+          full.tabs.right() <= DATABASE_CLIENT_WIDTH && full.list.bottom() < full.button_new.y &&
+          full.button_close.right() <= full.list.right() &&
+          full.button_save.bottom() <= DATABASE_CLIENT_HEIGHT &&
+          full.button_reload.bottom() <= DATABASE_CLIENT_HEIGHT &&
+          full.status.bottom() < full.button_save.y);
+    check("Fenster ist größer als die nutzbare Fläche",
+          DATABASE_WINDOW_WIDTH > DATABASE_CLIENT_WIDTH && DATABASE_WINDOW_HEIGHT > DATABASE_CLIENT_HEIGHT);
+
+    const DatabaseLayout big = database_layout(4, true, true);
+    check("großes JSON-Feld liegt unter den Spalten und über dem Hinweis",
+          big.big.y > big.field[3].bottom() && big.big.bottom() <= big.hint.y &&
+          big.big.right() <= DATABASE_CLIENT_WIDTH && big.has_big &&
+          !database_rect_overlap(big.big, big.hint) && !database_rect_overlap(big.big, big.field[3]));
+    check("ohne JSON-Feld nutzt der Hinweis die freie Fläche",
+          !full.has_big && full.hint.h > big.hint.h && full.hint.bottom() <= full.status.y);
+    check("System blendet die Liste ab, behält aber die Knöpfe",
+          !database_layout(6, false, false).has_list && database_layout(6, false, true).has_list);
+    check("Feldanzahl wird auf den möglichen Bereich begrenzt",
+          database_layout(-3, false).used == 0 &&
+          database_layout(99, false).used == DATABASE_FORM_FIELDS);
 }
 
 void object_props_tests(const std::string& wurzel) {
@@ -3618,6 +3973,9 @@ int main(int argc, char** argv) {
     texture_path_tests();
     placement_form_tests();
     database_form_tests(wurzel);
+    database_catalog_tests(wurzel);
+    database_area_form_tests();
+    database_layout_tests();
     map_document_tests(wurzel);
     object_props_tests(wurzel);
     event_form_tests(wurzel);

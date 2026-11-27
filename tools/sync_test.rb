@@ -142,27 +142,109 @@ check('Effekt-Beschriftung (C++) nennt alle MapCheck::EFFEKTE') do
   MapCheck::EFFEKTE.all? { |e| beschriftung.include?(e) }
 end
 
-puts '== Datenbank-Dialog =='
-# Seit 19k.1 ist das Formular feldgesteuert: DB_FIELDS_ACTOR/ITEM/ENEMY/TROOP
-# = { "json_key", L"Label", num, prec }. Jeder Schlüssel muss in den echten
-# database.json-Einträgen vorkommen (sonst editiert der Dialog ins Leere).
-def db_fields(name)
-  treffer = CPP.match(/DB_FIELDS_#{name}\[\d+\]\s*=\s*\{(.*?)\};/m)
-  raise "C++-Feldtabelle DB_FIELDS_#{name} nicht gefunden" unless treffer
-  treffer[1].scan(/\{\s*"([a-z_]+)"/).flatten
-end
+puts '== Datenbank-Dialog (F9) =='
+# Seit Etappe 41 steht der Register-Katalog portabel in database_catalog.h:
+# 13 Bereiche wie RPG Maker XP, pro Bereich eine Feldtabelle. Dieser Test
+# vergleicht sie mit der echten database.json und mit dem Vokabular der
+# Engine (battle.rb, common_events.rb), damit der Dialog nichts ins Leere
+# editiert und keine Auswahl anbietet, die das Spiel nicht versteht.
+KATALOG = File.read(File.join(ROOT, 'src', 'editor', 'database_catalog.h'), encoding: 'utf-8')
+BATTLE  = File.read(File.join(ROOT, 'game', 'engine', 'battle.rb'), encoding: 'utf-8')
+require 'common_events'
 
-{ 'ACTOR' => 'actors', 'ITEM' => 'items',
-  'ENEMY' => 'enemies', 'TROOP' => 'troops' }.each do |tabelle, sammlung|
-  check("DB_FIELDS_#{tabelle} (C++) editiert nur echte #{sammlung}-Schlüssel") do
-    felder = db_fields(tabelle)
-    daten_keys = DATEN.fetch(sammlung, []).flat_map(&:keys).uniq
-    !felder.empty? && felder.first == 'id' &&
-      felder.all? { |k| daten_keys.include?(k) }
+XP_REIHENFOLGE = %w[actors classes skills items weapons armors enemies troops
+                    states animations tilesets common_events system].freeze
+
+def katalog_bereiche
+  KATALOG.scan(/\{\s*"([a-z_]+)",\s*"([^"]+)",\s*DatabaseAreaKind::(\w+),\s*
+                 DatabaseEngineState::(\w+),\s*"([a-z_]+)",\s*(true|false),/x)
+         .map do |key, label, art, engine, prefix, numerisch|
+    { key: key, label: label, art: art, engine: engine,
+      prefix: prefix, numerisch: numerisch == 'true' }
   end
 end
-check('jede Reiter-Tabelle landet als db_tab_key in database.json') do
-  %w[actors items enemies troops].all? { |k| DATEN.key?(k) }
+
+# Feldtabelle eines Bereichs; der Kommentar "// <Nummer> <Name>" trennt sie.
+def katalog_felder(index)
+  block = KATALOG[/\/\/ #{index} [^\n]*\n\s*\{\n(.*?)\n\s*\},/m, 1]
+  raise "Feldtabelle #{index} nicht gefunden" unless block
+  block.scan(/database_(text|int|decimal|ids|json|choice)\("([a-z_]+)"/)
+       .map { |art, key| { art: art, key: key, optional: false } }
+       .each_with_index do |feld, i|
+    zeile = block.lines.reject { |z| z.strip.start_with?('//') }[i].to_s
+    feld[:optional] = zeile.include?('database_optional(')
+  end
+end
+
+def katalog_werte(name)
+  treffer = KATALOG[/#{name}\(\)\s*\{\s*static const std::vector<std::string> values\{(.*?)\};/m, 1]
+  raise "Werteliste #{name} nicht gefunden" unless treffer
+  treffer.scan(/"([a-z_]+)"/).flatten
+end
+
+BEREICHE = katalog_bereiche
+
+check('F9 hat alle 13 XP-Register in XP-Reihenfolge') do
+  BEREICHE.map { |b| b[:key] } == XP_REIHENFOLGE
+end
+check('nur System ist ein Einzeldatensatz, alle anderen sind Listen') do
+  BEREICHE.select { |b| b[:art] == 'Object' }.map { |b| b[:key] } == ['system']
+end
+check('jedes Register hat Felder, Listen beginnen mit der ID') do
+  BEREICHE.each_with_index.all? do |bereich, index|
+    felder = katalog_felder(index)
+    !felder.empty? && (bereich[:art] == 'Object' || felder.first[:key] == 'id')
+  end
+end
+check('Common Events zählen numerisch wie XP, alle anderen benennen IDs') do
+  BEREICHE.select { |b| b[:numerisch] }.map { |b| b[:key] } == ['common_events']
+end
+check('verdrahtete Register editieren nur echte database.json-Schlüssel') do
+  BEREICHE.each_with_index.all? do |bereich, index|
+    next true unless bereich[:engine] == 'Wired'
+
+    daten_keys = DATEN.fetch(bereich[:key], []).flat_map(&:keys).uniq
+    katalog_felder(index).all? { |f| f[:optional] || daten_keys.include?(f[:key]) }
+  end
+end
+check('optionale Felder sind ausdrücklich als optional markiert') do
+  optional = BEREICHE.each_with_index.flat_map do |_b, index|
+    katalog_felder(index).select { |f| f[:optional] }.map { |f| f[:key] }
+  end
+  optional == ['switch']
+end
+check('jedes verdrahtete Register existiert in der Demo-Datenbank') do
+  BEREICHE.select { |b| b[:engine] == 'Wired' }.all? { |b| DATEN.key?(b[:key]) }
+end
+
+puts '== F9-Auswahlwerte gegen die Engine =='
+check('Fertigkeitsziele == Battle.skill_scope (enemy/ally/self)') do
+  ziele = BATTLE[/%w\[([a-z ]+)\]\.include\?\(art\)/, 1].to_s.split + ['enemy']
+  katalog_werte('database_skill_scopes').sort == ziele.sort
+end
+check('Zustandsarten == Gift/Regeneration + Boni aus Battler#state_bonus') do
+  werte = BATTLE.scan(/state_bonus\('([a-z]+)'\)/).flatten.uniq
+  erwartet = %w[poison regen] + werte.flat_map { |w| ["#{w}_up", "#{w}_down"] }
+  katalog_werte('database_state_kinds').sort == erwartet.sort
+end
+check('Common-Event-Auslöser == CommonEvents::TRIGGER') do
+  katalog_werte('database_common_triggers') == CommonEvents::TRIGGER
+end
+check('Katalog bietet jede Art/Ziel/Auslöser der Demo-Daten an') do
+  paare = { 'skills' => { 'kind' => 'database_skill_kinds', 'scope' => 'database_skill_scopes' },
+            'items' => { 'kind' => 'database_item_kinds' },
+            'states' => { 'kind' => 'database_state_kinds' },
+            'common_events' => { 'trigger' => 'database_common_triggers' } }
+  paare.all? do |sammlung, felder|
+    felder.all? do |feld, liste|
+      benutzt = DATEN.fetch(sammlung, []).map { |e| e[feld] }.compact.uniq
+      (benutzt - katalog_werte(liste)).empty?
+    end
+  end
+end
+check('F9 nennt für jede Demo-Fertigkeit einen bekannten Zustand oder keinen') do
+  zustaende = DATEN.fetch('states', []).map { |s| s['id'] }
+  DATEN.fetch('skills', []).all? { |s| s['state'].to_s.empty? || zustaende.include?(s['state']) }
 end
 
 puts '== Gegner/Truppen seit 19i =='

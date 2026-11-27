@@ -20,11 +20,17 @@
 
 namespace rune::editor {
 
-enum class DatabaseFieldKind { Text, Integer, Decimal, IdList };
+// Etappe 41: zusätzlich Auswahlfelder (XP-Dropdowns wie scope/occasion) und
+// ein JSON-Feld für verschachtelte Daten (Common Events: commands). Beide
+// bleiben verlustfrei: unbekannte Altdaten werden angezeigt, nicht ersetzt.
+enum class DatabaseFieldKind { Text, Integer, Decimal, IdList, Choice, Json };
 
 struct DatabaseFieldSpec {
     const char* key;
     DatabaseFieldKind kind;
+    std::vector<std::string> choices;   // nur Choice: erlaubte Werte
+    const char* label = nullptr;        // Beschriftung (UTF-8), sonst Schlüssel
+    bool optional = false;              // darf in alten Projekten fehlen
 };
 
 struct DatabaseForm {
@@ -92,8 +98,82 @@ inline std::string database_ids_text(const JsonValue* value) {
     return result;
 }
 
+// Verschachtelte Daten (Common-Event-Befehle) zeigt F9 als JSON-Text. Die
+// Anzeige ist die kanonische Schreibweise des Editors; ein unverändertes
+// Feld schreibt deshalb nichts zurück. Nicht darstellbare Altdaten werden
+// gesperrt statt ersetzt.
+inline bool database_json_representable(const JsonValue* value) {
+    if (!value || value->is_null()) return true;
+    if (!value->is_arr() && !value->is_obj()) return false;
+    return editor_json_utf8(*value) && editor_json_serializable(*value) &&
+           !editor_json_duplicates(*value);
+}
+
+inline std::string database_json_text(const JsonValue* value) {
+    if (!value || value->is_null()) return "[]";
+    if (!value->is_arr() && !value->is_obj()) return "[ungültig]";
+    if (!database_json_representable(value)) return "[nicht darstellbar]";
+    std::string text = json_write(*value);
+    if (!text.empty() && text.back() == '\n') text.pop_back();
+    return text;
+}
+
+// Win32-Mehrzeiler liefern CRLF. Für den Vergleich und für JSON zählt LF.
+inline std::string database_lines_lf(const std::string& text) {
+    std::string out;
+    out.reserve(text.size());
+    for (size_t i = 0; i < text.size(); ++i) {
+        if (text[i] == '\r') {
+            if (i + 1 < text.size() && text[i + 1] == '\n') continue;
+            out += '\n';
+        } else out += text[i];
+    }
+    return out;
+}
+
+inline bool database_json_parse(const std::string& input, JsonValue& value) {
+    const std::string text = database_lines_lf(input);
+    if (text.empty() || !editor_json_raw_strings_valid(text)) return false;
+    JsonValue parsed;
+    try {
+        parsed = json_parse(text);
+    } catch (const std::exception&) {
+        return false;
+    }
+    if (!parsed.is_arr() && !parsed.is_obj()) return false;
+    if (!editor_json_utf8(parsed) || editor_json_duplicates(parsed) ||
+        !editor_json_serializable(parsed)) return false;
+    value = std::move(parsed);
+    return true;
+}
+
+// Auswahlfelder prüfen nur echte Änderungen: ein unbekannter Altwert bleibt
+// stehen, solange ihn niemand anfasst (wie bei allen anderen Feldarten).
+inline bool database_choice_valid(const DatabaseFieldSpec& spec, const std::string& text) {
+    if (!database_single_line(text)) return false;
+    for (const std::string& choice : spec.choices)
+        if (choice == text) return true;
+    return false;
+}
+
+inline bool database_choice_known(const DatabaseFieldSpec& spec, const std::string& text) {
+    for (const std::string& choice : spec.choices)
+        if (choice == text) return true;
+    return false;
+}
+
+inline std::string database_choice_list(const DatabaseFieldSpec& spec) {
+    std::string text;
+    for (const std::string& choice : spec.choices) {
+        if (!text.empty()) text += "/";
+        text += choice;
+    }
+    return text;
+}
+
 inline std::string database_field_text(const JsonValue* value, DatabaseFieldKind kind) {
     if (kind == DatabaseFieldKind::IdList) return database_ids_text(value);
+    if (kind == DatabaseFieldKind::Json) return database_json_text(value);
     if (kind == DatabaseFieldKind::Integer || kind == DatabaseFieldKind::Decimal)
         return database_number_text(value);
     if (!value || value->is_null()) return {};
@@ -162,8 +242,82 @@ inline bool database_ids_parse(const std::string& text, JsonValue& value) {
 inline bool database_value_compatible(const JsonValue* old, DatabaseFieldKind kind) {
     if (!old || old->is_null()) return true;
     if (kind == DatabaseFieldKind::IdList) return database_ids_representable(old);
-    if (kind == DatabaseFieldKind::Text) return old->is_str();
+    if (kind == DatabaseFieldKind::Json)
+        return (old->is_arr() || old->is_obj()) && editor_json_utf8(*old) &&
+               editor_json_serializable(*old) && !editor_json_duplicates(*old);
+    if (kind == DatabaseFieldKind::Text || kind == DatabaseFieldKind::Choice) return old->is_str();
     return old->is_num();
+}
+
+// Ein Auswahlfeld mit unbekanntem Altwert gilt zusätzlich als Ersatz alter
+// Daten: der Nutzer soll die Rückfrage sehen, bevor er ihn überschreibt.
+inline bool database_spec_compatible(const JsonValue* old, const DatabaseFieldSpec& spec) {
+    if (!database_value_compatible(old, spec.kind)) return false;
+    if (spec.kind == DatabaseFieldKind::Choice && old && old->is_str() &&
+        !database_choice_known(spec, old->str)) return false;
+    return true;
+}
+
+// Feldweise Änderung eines Eintrags. Wird von der Listen- und der
+// System-Variante benutzt; bei einem Fehler bleibt `result` unverändert nutzlos
+// (ok = false) und der Aufrufer schreibt nichts.
+inline bool database_entry_fields(const JsonValue* entry,
+                                  const std::vector<DatabaseFieldSpec>& specs,
+                                  const DatabaseForm& before, const DatabaseForm& after,
+                                  DatabaseEdit& result) {
+    for (size_t i = 0; i < specs.size(); ++i) {
+        if (before.fields[i] == after.fields[i]) continue;
+        const DatabaseFieldSpec& spec = specs[i];
+        if (!entry || !entry->is_obj()) {
+            result.ok = false;
+            result.changed = result.entry_changed = result.gold_changed = false;
+            result.field = spec.key;
+            result.error = "Kein bearbeitbarer Eintrag ausgewählt.";
+            return false;
+        }
+        JsonValue replacement;
+        bool valid = true;
+        switch (spec.kind) {
+            case DatabaseFieldKind::Text:
+                valid = database_single_line(after.fields[i]);
+                replacement = JsonValue::make_str(after.fields[i]);
+                break;
+            case DatabaseFieldKind::Integer:
+                valid = database_integer(after.fields[i], replacement);
+                break;
+            case DatabaseFieldKind::Decimal:
+                valid = database_decimal(after.fields[i], replacement);
+                break;
+            case DatabaseFieldKind::IdList:
+                valid = database_ids_parse(after.fields[i], replacement);
+                break;
+            case DatabaseFieldKind::Choice:
+                valid = database_choice_valid(spec, after.fields[i]);
+                replacement = JsonValue::make_str(after.fields[i]);
+                break;
+            case DatabaseFieldKind::Json:
+                valid = database_json_parse(after.fields[i], replacement);
+                break;
+        }
+        if (!valid) {
+            const char* message = spec.kind == DatabaseFieldKind::Integer ? "Eine ganze Zahl eingeben."
+                : spec.kind == DatabaseFieldKind::Decimal ? "Eine endliche Zahl eingeben."
+                : spec.kind == DatabaseFieldKind::Choice ? "Einen der angebotenen Werte eingeben."
+                : spec.kind == DatabaseFieldKind::Json ? "Gültiges JSON (Liste oder Objekt) eingeben."
+                : "Einzeiligen Text ohne Steuerzeichen eingeben.";
+            result.ok = false;
+            result.changed = result.entry_changed = result.gold_changed = false;
+            result.field = spec.key;
+            result.error = spec.kind == DatabaseFieldKind::Choice
+                ? std::string(message) + " Erlaubt: " + database_choice_list(spec)
+                : std::string(message);
+            return false;
+        }
+        if (!database_spec_compatible(entry->find(spec.key), spec)) result.replaces_invalid = true;
+        result.entry.set(spec.key, std::move(replacement));
+        result.entry_changed = result.changed = true;
+    }
+    return true;
 }
 
 // Erst vorbereiten und gegebenenfalls bestätigen, danach database_form_commit.
@@ -193,42 +347,53 @@ inline DatabaseEdit database_form_prepare(const JsonValue& root, const JsonValue
             result.replaces_invalid = true;
     }
     if (entry && entry->is_obj()) result.entry = *entry;
-    for (size_t i = 0; i < specs.size(); ++i) {
-        if (before.fields[i] == after.fields[i]) continue;
-        const DatabaseFieldSpec& spec = specs[i];
-        if (!entry || !entry->is_obj()) {
-            fail(spec.key, "Kein bearbeitbarer Eintrag ausgewählt.");
-            return result;
-        }
-        JsonValue replacement;
-        bool valid = true;
-        switch (spec.kind) {
-            case DatabaseFieldKind::Text:
-                valid = database_single_line(after.fields[i]);
-                replacement = JsonValue::make_str(after.fields[i]);
-                break;
-            case DatabaseFieldKind::Integer:
-                valid = database_integer(after.fields[i], replacement);
-                break;
-            case DatabaseFieldKind::Decimal:
-                valid = database_decimal(after.fields[i], replacement);
-                break;
-            case DatabaseFieldKind::IdList:
-                valid = database_ids_parse(after.fields[i], replacement);
-                break;
-        }
-        if (!valid) {
-            const char* message = spec.kind == DatabaseFieldKind::Integer ? "Eine ganze Zahl eingeben."
-                : spec.kind == DatabaseFieldKind::Decimal ? "Eine endliche Zahl eingeben."
-                : "Einzeiligen Text ohne Steuerzeichen eingeben.";
-            fail(spec.key, message);
-            return result;
-        }
-        if (!database_value_compatible(entry->find(spec.key), spec.kind)) result.replaces_invalid = true;
-        result.entry.set(spec.key, std::move(replacement));
-        result.entry_changed = result.changed = true;
-    }
+    database_entry_fields(entry, specs, before, after, result);
     return result;
+}
+
+// System ist wie in XP ein einzelner Datensatz statt einer Liste. Er liegt
+// als Objekt unter "system" in database.json; fehlende Schlüssel entstehen
+// erst, wenn ein Feld wirklich geändert wird.
+inline DatabaseEdit database_system_prepare(const JsonValue& root, const JsonValue* entry,
+                                              const std::vector<DatabaseFieldSpec>& specs,
+                                              const DatabaseForm& before, const DatabaseForm& after) {
+    DatabaseEdit result;
+    if (!root.is_obj() || before.fields.size() != specs.size() || after.fields.size() != specs.size()) {
+        result.ok = false;
+        result.error = "Das Datenbankformular ist nicht mehr gültig.";
+        return result;
+    }
+    if (before.gold != after.gold) {
+        if (!database_integer(after.gold, result.gold)) {
+            result.ok = false;
+            result.gold_error = true;
+            result.field = "gold";
+            result.error = "Gold muss eine ganze Zahl sein.";
+            return result;
+        }
+        result.gold_changed = result.changed = true;
+        if (!database_value_compatible(root.find("gold"), DatabaseFieldKind::Integer))
+            result.replaces_invalid = true;
+    }
+    const bool present = entry && !entry->is_null();
+    if (present && !entry->is_obj()) result.replaces_invalid = true;
+    if (entry && entry->is_obj()) result.entry = *entry;
+    else result.entry = JsonValue::make_obj();
+    // Ein fehlendes oder kaputtes Objekt darf Felder aufnehmen; die Rückfrage
+    // über replaces_invalid deckt das Ersetzen alter Daten ab. Jedes Feld wird
+    // genau einmal geprüft, deshalb liest die Prüfung hier noch den Altwert.
+    database_entry_fields(&result.entry, specs, before, after, result);
+    return result;
+}
+
+inline bool database_system_commit(JsonValue& root, const char* key, const DatabaseEdit& edit) {
+    if (!edit.ok || !root.is_obj()) return false;
+    if (edit.entry_changed) {
+        if (!edit.entry.is_obj()) return false;
+        root.set(key, edit.entry);
+    }
+    if (edit.gold_changed) root.set("gold", edit.gold);
+    return true;
 }
 
 inline bool database_form_commit(JsonValue& root, const char* key, int index, const DatabaseEdit& edit) {

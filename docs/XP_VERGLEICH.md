@@ -139,23 +139,34 @@ XP hat **92 Top-Level-Ereignis-Codes** (101–355 plus 601–603). Rune3D hat
 
 ---
 
-## 2. Datenbank — XP: 13 Sammlungen, Rune3D: 4 vollständig (+3 teilweise)
+## 2. Datenbank — XP: 13 Register, Rune3D: 13 Register (7 mit Engine-Wirkung)
 
-| XP (`$data_*`) | Rune3D (F9, `database.json`) | Status |
-|---|---|---|
-| Actors | Helden (9 Felder) | ✅ |
-| Classes | — (Klasse nur als Textfeld) | ❌ |
-| Skills | — | ⚠️ Datenbank `skills`/`states` (20a), F9-Reiter fehlt |
-| Items | Items (7 Felder) | ✅ |
-| Weapons | — | ❌ |
-| Armors | — | ❌ |
-| Enemies | Gegner (12 Felder) | ✅ |
-| Troops | Truppen (4 Felder) | ✅ |
-| States | Datenbank `states` (20a) | ⚠️ Datenbank + Kampf + Event-Befehl (R42), F9-Reiter fehlt |
-| Animations | — | ❌ |
-| Tilesets | eigener Tileset-Editor (F7) | ⚠️ andere Mechanik (3D-Splat) |
-| Common Events | `common_events` + `common_event`-Befehl (20c) | ⚠️ Datenbank + Laufzeit, F9-Reiter fehlt |
-| System | `system.json` | ⚠️ Teilmenge |
+Seit **Etappe 41** hat F9 alle 13 XP-Register als Registerkarten in
+XP-Reihenfolge, mit Liste links und Formular rechts. „Engine" sagt, ob das
+Spiel die Daten heute auswertet; „vorbereitet" heißt: vollständig gepflegt und
+gespeichert, aber noch ohne Spielwirkung (siehe `docs/BACKLOG.md`).
+Details: `docs/ETAPPE_41_F9_DATENBANK.md`.
+
+| XP (`$data_*`) | Rune3D (F9, `database.json`) | Engine | Status |
+|---|---|---|---|
+| Actors | Helden (12 Felder, neu: Stufe/Exp/Fertigkeiten) | liest | ✅ |
+| Classes | Klassen (6 Felder, Kampfposition, erlaubte Ausrüstung) | vorbereitet | ⚠️ |
+| Skills | Fertigkeiten (10 Felder, Art/Ziel als Auswahl) | liest | ✅ |
+| Items | Items (7 Felder, Art als Auswahl) | liest | ✅ |
+| Weapons | Waffen (9 Felder) | vorbereitet | ⚠️ |
+| Armors | Rüstungen (9 Felder, Platz: shield/head/body/accessory) | vorbereitet | ⚠️ |
+| Enemies | Gegner (14 Felder, neu: Farbe/Beschreibung) | liest | ✅ |
+| Troops | Truppen (4 Felder) | liest | ✅ |
+| States | Zustände (6 Felder, 10 Arten) | liest | ✅ |
+| Animations | Animationen (8 Felder) | vorbereitet | ⚠️ |
+| Tilesets | Tilesets (6 Felder); Karten-Gelände weiter in F7 | vorbereitet | ⚠️ |
+| Common Events | Gem. Events (5 Felder inkl. Befehlsliste als JSON) | liest | ✅ |
+| System | System als Einzeldatensatz (6 Felder); Projektstart weiter in `system.json` | vorbereitet | ⚠️ |
+
+Bewusste Abweichungen: Rune3D adressiert Daten beim Namen (nur gemeinsame
+Events zählen numerisch wie XP), Auswahlfelder sind Textfelder mit Werteliste
+statt Dropdowns (unbekannte Altdaten bleiben sichtbar), und ein „Change
+Maximum" für die Listengröße gibt es nicht — Neu/Löschen bleibt der Weg.
 
 ---
 

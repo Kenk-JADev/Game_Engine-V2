@@ -3672,3 +3672,38 @@ Beschriftung per WM_GETTEXT vollständig, Button-Unterkante == Statusleisten-
 Oberkante (keine Überlappung); 1800x1040 -> Prefabliste 198->264,
 Objektliste 242->322, Viewport 536->1166; Rückkehr auf 1280x800 ohne
 Fehler; `editor.log` ohne ResizeBuffers-Fehler.
+
+## Datenbank-Dialog mit 13 XP-Registern (Etappe 41)
+
+F9 bearbeitet weiter nur `projekte/<name>/data/database.json`, hat aber jetzt
+alle 13 Register von RPG Maker XP. Drei portable Schichten tragen den Dialog:
+
+- `src/editor/database_catalog.h` — Register (Schlüssel, Beschriftung,
+  Listen-/Objektart, Engine-Stand, ID-Präfix), Feldtabellen mit Beschriftungen
+  und Auswahlwerten, Vorgaben für neue Einträge (`database_default_entry`),
+  freie IDs (`database_free_id`) und Listenzeilen (`database_list_label`).
+  Keine Win32-Abhängigkeit, deshalb in `tools/json_test.cpp` prüfbar.
+- `src/editor/database_layout.h` — Geometrie in 96-DPI-Einheiten: Registerleiste,
+  Liste links, zwei Formularspalten à acht Zeilen, großes JSON-Feld darunter,
+  Hinweis-/Statuszeile und Knöpfe. `database_rect_overlap` erlaubt Überlappungs-
+  tests ohne Fenster.
+- `src/editor/database_form.h` — zusätzlich `DatabaseFieldKind::Choice` und
+  `::Json` sowie `database_system_prepare`/`database_system_commit` für den
+  Einzeldatensatz „System". Die Feldschleife (`database_entry_fields`) wird von
+  Listen- und System-Variante gemeinsam benutzt; unveränderte Felder werden
+  nie zurückgeschrieben.
+
+Die Oberfläche (`editor_main.cpp`, Abschnitt F9) nutzt `SysTabControl32` mit
+`TCS_MULTILINE`. Ein Registerwechsel läuft über `WM_NOTIFY`/`TCN_SELCHANGE`
+und übernimmt zuerst das offene Formular; bei Ablehnung setzt
+`TabCtrl_SetCurSel` die alte Karte zurück. Während einer Rückfrage
+(`g.data_prompt_active`) wird jede ankommende Registerwahl sofort zurückgesetzt.
+
+Das JSON-Feld (Befehle gemeinsamer Events) ist ein Mehrzeiler: Anzeige über
+`event_multiline_view` (LF → CRLF), Rücklesen über `database_lines_lf`. Nur
+wenn die Anzeige den Wert verlustfrei wiedergibt, ist das Feld bearbeitbar;
+nicht darstellbare Altdaten bleiben gesperrt stehen.
+
+Register ohne Engine-Wirkung (`classes`, `weapons`, `armors`, `animations`,
+`tilesets`, `system`) sagen das in der Hinweiszeile. Ihre Daten werden
+vollständig gespeichert; die Anschlüsse stehen in `docs/BACKLOG.md`.
