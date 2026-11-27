@@ -19,6 +19,8 @@ Wahlzweige bekommen keinen Stack-Rahmen mehr. Neuer Test
 Native-Attrappen und tickt pro Frame auch `Mover`/`Fade`/`Pictures`/`ScreenFx`/
 `$game_system`. Bestehende Suiten bleiben grün (`event_commands_arch_test`
 1542/0, `event_commands_test` 107/0). Doku: `docs/ETAPPE_43_ENGINE_PORTS.md`.
+**CI grün:** Lauf [45994399716](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45994399716)
+(`55b3357`), alle vier Jobs; Ruby-Engine 60 OK/0/1.
 **Nächster Schritt: Etappe 44 — F6 als drei XP-Registerkarten** (C++/Win32,
 in der Sandbox nur cross-kompilierbar; Sicht-/DPI-Test auf dem Windows-Rechner).
 

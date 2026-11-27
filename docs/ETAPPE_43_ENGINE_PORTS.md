@@ -162,6 +162,15 @@ Bestehende Suiten bleiben grün:
 | `battle_test.rb`, `actor_wert_test.rb`, `actor_skill_test.rb` | grün |
 | alle übrigen `tools/*_test.rb` | grün (12 WASI-Grenzen wie gehabt) |
 
+## CI-Ergebnis
+
+Commit `55b3357`, Lauf
+[45994399716](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45994399716):
+**alle vier Jobs grün** (C++-Logik, Repo-Hygiene, Windows-Build, Ruby-Engine).
+Ruby-Engine: **60 OK, 0 fehlgeschlagen, 1 übersprungen** (`tex_import_test`
+braucht `build/RuneEditor.exe`). Windows-Build inklusive D3D11-WARP,
+Texturbrücke und Editor-UI-Smoke.
+
 ## Bewusst nicht verändert / offen
 
 - Der bestehende `interpreter.rb` führt weiter die Karten-Events; die neue
