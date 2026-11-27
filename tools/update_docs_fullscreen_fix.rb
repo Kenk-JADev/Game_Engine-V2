@@ -25,11 +25,11 @@ section = <<~MD
 
   **Geprüft:** log/live_fullscreen.ps1 (9 Checks: SC_MAXIMIZE/
   SC_RESTORE programmatisch, Viewport-Log 937x828 -> 1300x937, Prozess
-  lebt, kein [ERROR]). Visuelle Verifikation durch User im Vordergrund-
+  lebt, kein [ERROR]). Visülle Verifikation durch User im Vordergrund-
   Fenster (Drossel-Falle aus 18j gilt nicht für echtes Maximieren).
 
 MD
 
 text = text.sub(anchor, section + anchor)
 File.write(path, text, mode: 'wb')
-puts 'architecture.md: Fullbild-Fix ergaenzt'
+puts 'architecture.md: Fullbild-Fix ergänzt'

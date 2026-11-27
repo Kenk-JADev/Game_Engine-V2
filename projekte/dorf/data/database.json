@@ -12,7 +12,12 @@
       "def": 10,
       "spi": 4,
       "agi": 8,
-      "exp": 0
+      "exp": 0,
+      "skills": [
+        "kraftschlag",
+        "wutausbruch",
+        "schutzhaltung"
+      ]
     },
     {
       "id": "mira",
@@ -25,7 +30,13 @@
       "def": 6,
       "spi": 15,
       "agi": 10,
-      "exp": 0
+      "exp": 0,
+      "skills": [
+        "feuerball",
+        "eisspeer",
+        "heilung",
+        "regeneration"
+      ]
     }
   ],
   "items": [
@@ -63,7 +74,235 @@
       "power": 50,
       "price": 0,
       "start": 0,
-      "desc": "Bringt 50 Gold beim Oeffnen."
+      "desc": "Bringt 50 Gold beim Öffnen."
+    }
+  ],
+  "enemies": [
+    {
+      "id": "goblin",
+      "name": "Goblin",
+      "hp": 35,
+      "mp": 0,
+      "atk": 9,
+      "def": 4,
+      "spi": 3,
+      "agi": 7,
+      "exp": 12,
+      "gold": 8,
+      "drop": "heiltrank",
+      "drop_rate": 0.3,
+      "color": 13209632,
+      "desc": "Kleiner grüner Plünderer vom Waldweg."
+    },
+    {
+      "id": "wolf",
+      "name": "Wolf",
+      "hp": 45,
+      "mp": 0,
+      "atk": 12,
+      "def": 5,
+      "spi": 3,
+      "agi": 11,
+      "exp": 18,
+      "gold": 0,
+      "drop": "goldbeutel",
+      "drop_rate": 0.15,
+      "color": 8421504,
+      "desc": "Grauer Jäger mit schnellen Pfoten."
+    },
+    {
+      "id": "bandit",
+      "name": "Bandit",
+      "hp": 60,
+      "mp": 0,
+      "atk": 14,
+      "def": 8,
+      "spi": 4,
+      "agi": 9,
+      "exp": 30,
+      "gold": 25,
+      "drop": "manatrank",
+      "drop_rate": 0.2,
+      "color": 12632256,
+      "desc": "Wegelagerer mit rostigem Schwert."
+    },
+    {
+      "id": "kristallwache",
+      "name": "Kristallwache",
+      "hp": 120,
+      "mp": 30,
+      "atk": 18,
+      "def": 14,
+      "spi": 12,
+      "agi": 6,
+      "exp": 80,
+      "gold": 60,
+      "drop": "kristall",
+      "drop_rate": 0.5,
+      "color": 5734399,
+      "desc": "Wächter des Brunnens - Körper aus blauem Kristall."
+    }
+  ],
+  "troops": [
+    {
+      "id": "waldweg",
+      "name": "Waldweg",
+      "enemies": [
+        "goblin",
+        "wolf"
+      ],
+      "desc": "Goblin und Wolf - die erste Begegnung am Waldrand."
+    },
+    {
+      "id": "banditen",
+      "name": "Banditen",
+      "enemies": [
+        "bandit",
+        "goblin"
+      ],
+      "desc": "Ein Bandit mit Handlanger."
+    },
+    {
+      "id": "brunnen",
+      "name": "Brunnenwache",
+      "enemies": [
+        "kristallwache"
+      ],
+      "desc": "Die Kristallwache allein - schwer, aber reich an Beute."
+    }
+  ],
+  "states": [
+    {
+      "id": "gift",
+      "name": "Gift",
+      "kind": "poison",
+      "power": 6,
+      "turns": 3,
+      "desc": "Verliert 6 HP pro Runde (3 Runden)."
+    },
+    {
+      "id": "brand",
+      "name": "Brand",
+      "kind": "poison",
+      "power": 4,
+      "turns": 2,
+      "desc": "Verliert 4 HP pro Runde (2 Runden)."
+    },
+    {
+      "id": "regen",
+      "name": "Regeneration",
+      "kind": "regen",
+      "power": 10,
+      "turns": 3,
+      "desc": "Heilt 10 HP pro Runde (3 Runden)."
+    },
+    {
+      "id": "schutz",
+      "name": "Schutz",
+      "kind": "def_up",
+      "power": 5,
+      "turns": 3,
+      "desc": "+5 Verteidigung (3 Runden)."
+    },
+    {
+      "id": "wut",
+      "name": "Wut",
+      "kind": "atk_up",
+      "power": 6,
+      "turns": 3,
+      "desc": "+6 Angriff (3 Runden)."
+    }
+  ],
+  "skills": [
+    {
+      "id": "kraftschlag",
+      "name": "Kraftschlag",
+      "kind": "damage",
+      "scope": "enemy",
+      "mp": 5,
+      "power": 20,
+      "desc": "Wuchtiger Hieb mit 20 Grundschaden."
+    },
+    {
+      "id": "wutausbruch",
+      "name": "Wutausbruch",
+      "kind": "buff",
+      "scope": "self",
+      "mp": 3,
+      "power": 0,
+      "state": "wut",
+      "state_rate": 1.0,
+      "turns": 3,
+      "desc": "Steigert den eigenen Angriff um 6 (3 Runden)."
+    },
+    {
+      "id": "schutzhaltung",
+      "name": "Schutzhaltung",
+      "kind": "buff",
+      "scope": "ally",
+      "mp": 4,
+      "power": 0,
+      "state": "schutz",
+      "state_rate": 1.0,
+      "turns": 3,
+      "desc": "Erhöht die Verteidigung eines Helden um 5 (3 Runden)."
+    },
+    {
+      "id": "feuerball",
+      "name": "Feuerball",
+      "kind": "damage",
+      "scope": "enemy",
+      "mp": 6,
+      "power": 16,
+      "state": "brand",
+      "state_rate": 0.4,
+      "turns": 2,
+      "desc": "Feuerschaden; 40 % Chance auf Brand."
+    },
+    {
+      "id": "eisspeer",
+      "name": "Eisspeer",
+      "kind": "damage",
+      "scope": "enemy",
+      "mp": 4,
+      "power": 12,
+      "desc": "Günstiger Eiszauber mit 12 Grundschaden."
+    },
+    {
+      "id": "heilung",
+      "name": "Heilung",
+      "kind": "heal",
+      "scope": "ally",
+      "mp": 5,
+      "power": 40,
+      "desc": "Heilt 40 HP plus halbe Weisheit."
+    },
+    {
+      "id": "regeneration",
+      "name": "Regeneration",
+      "kind": "buff",
+      "scope": "ally",
+      "mp": 6,
+      "power": 0,
+      "state": "regen",
+      "state_rate": 1.0,
+      "turns": 3,
+      "desc": "Heilt 10 HP pro Runde (3 Runden)."
+    }
+  ],
+  "common_events": [
+    {
+      "id": 1,
+      "name": "hinweis_speichern",
+      "trigger": "none",
+      "commands": [
+        {
+          "cmd": "text",
+          "lines": [
+            "Vergiss nicht zu speichern - F5 startet den Playtest neu."
+          ]
+        }
+      ]
     }
   ]
 }

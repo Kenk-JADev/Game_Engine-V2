@@ -1,5 +1,8 @@
 #include "core/sound.h"
 #include "core/log.h"
+#include "core/wav.h"   // Etappe 21: portabler WAV-Leser
+#include "core/ogg.h"   // Etappe 21: OGG Vorbis (stb_vorbis, mitgeliefert)
+#include "core/mp3.h"   // Etappe 22: MP3 (minimp3, mitgeliefert)
 
 #include <atomic>
 #include <cstring>
@@ -12,10 +15,10 @@ namespace {
 constexpr int kRate = 44100;
 constexpr int kBuffers = 3;
 constexpr int kSamplesPerBuffer = 1024;   // ~23 ms pro Puffer
-// WICHTIG: Die Startverzoegerung eines neuen Sounds entspricht der Menge
+// WICHTIG: Die Startverzögerung eines neuen Sounds entspricht der Menge
 // vorgequeueter Stille (kBuffers * Pufferdauer). 3 x 23 ms = max ~70 ms,
-// im Schnitt ~35 ms — hoert sich sofort an. Groessere Puffer fuehlen
-// sich traeg an (4 x 8192 waren ~740 ms Vorlauf!).
+// im Schnitt ~35 ms — hört sich sofort an. Grössere Puffer fühlen
+// sich träg an (4 x 8192 waren ~740 ms Vorlauf!).
 constexpr int kMaxVoices = 12;
 
 struct Voice {
@@ -84,7 +87,7 @@ void register_sound(const std::string& name, int rate, const int16_t* samples, s
         g_sounds[name].assign(samples, samples + count);
         return;
     }
-    // Linear hoch/runter sampeln auf die Geraeterate.
+    // Linear hoch/runter sampeln auf die Geräterate.
     const double step = static_cast<double>(rate) / kRate;
     const size_t out_count = static_cast<size_t>(static_cast<double>(count) / step);
     std::vector<int16_t>& out = g_sounds[name];
@@ -96,6 +99,62 @@ void register_sound(const std::string& name, int rate, const int16_t* samples, s
         const float f = static_cast<float>(src - static_cast<double>(i0));
         out[i] = static_cast<int16_t>(samples[i0] * (1.0f - f) + samples[i1] * f + 0.5f);
     }
+}
+
+// Etappe 21: WAV-Bytes kommen aus Ruby (sichere Assets-Brücke), werden hier
+// geparst, auf mono heruntergemischt und mit Pitch auf die Geräterate
+// gebracht. register_sound übernimmt den Rest (Resampling auf 44100 Hz).
+bool load_audio(const std::string& name, const unsigned char* bytes, size_t size, int pitch) {
+    if (!bytes || size == 0) {
+        log_warn("Sound: leere Audiodaten für '" + name + "'");
+        return false;
+    }
+    wav::Clip clip;
+    std::string fehler;
+    // Etappe 21/22: OGG Vorbis (XP-Standard), MP3 und WAV teilen sich den
+    // Weg; die Kennung entscheidet, nicht die Dateiendung.
+    bool gelesen = false;
+    if (ogg::ist_ogg(bytes, size)) {
+        gelesen = ogg::parse(bytes, size, clip, &fehler);
+    } else if (mp3::ist_mp3(bytes, size)) {
+        gelesen = mp3::parse(bytes, size, clip, &fehler);
+    } else {
+        gelesen = wav::parse(bytes, size, clip, &fehler);
+    }
+    if (!gelesen) {
+        log_warn("Sound: '" + name + "': " + fehler);
+        return false;
+    }
+    if (pitch != 100) clip = wav::resample(clip, wav::rate_fuer_pitch(clip.sample_rate, pitch));
+    register_sound(name, clip.sample_rate, clip.samples.data(), clip.samples.size());
+    char info[160];
+    std::snprintf(info, sizeof(info), "Sound: '%s' geladen (%d Hz, %.2f s, Pitch %d%%)",
+                  name.c_str(), clip.sample_rate,
+                  clip.sample_rate > 0
+                      ? static_cast<double>(clip.samples.size()) / clip.sample_rate
+                      : 0.0,
+                  pitch);
+    log_info(info);
+    return true;
+}
+
+bool has(const std::string& name) {
+    const auto it = g_sounds.find(name);
+    return it != g_sounds.end() && !it->second.empty();
+}
+
+void set_volume(const std::string& name, float volume) {
+    const float v = volume < 0.0f ? 0.0f : (volume > 1.0f ? 1.0f : volume);
+    for (int i = 0; i < g_voice_count; ++i) {
+        if (g_voices[i].name == name) g_voices[i].vol = v;
+    }
+}
+
+float volume_of(const std::string& name) {
+    for (int i = 0; i < g_voice_count; ++i) {
+        if (g_voices[i].name == name) return g_voices[i].vol;
+    }
+    return 0.0f;
 }
 
 void play(const std::string& name, float volume) {
@@ -151,7 +210,7 @@ void update() {
     }
     g_voice_count = w;
 
-    // Freie Puffer neu fuellen und an waveOut uebergeben.
+    // Freie Puffer neu füllen und an waveOut übergeben.
     for (int b = 0; b < kBuffers; ++b) {
         bool free_now = !g_started[b] || g_done[b].exchange(false);
         if (!free_now) continue;

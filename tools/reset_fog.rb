@@ -1,4 +1,4 @@
-# Setzt den Test-Nebel in der Projekt-Karte dorf.json zurueck (aus fuer sauberen Zustand).
+# Setzt den Test-Nebel in der Projekt-Karte dorf.json zurück (aus für sauberen Zustand).
 require 'json'
 pfad = 'projekte/dorf/data/maps/dorf.json'
 j = JSON.parse(File.read(pfad, encoding: 'UTF-8'))

@@ -11,7 +11,7 @@ scripts = {
       'name' => 'dorf_begruessung',
       'code' => "# Projekt-Script: wird aus einem Event mit\n" \
                 "# {\"cmd\":\"script\",\"name\":\"dorf_begruessung\"} aufgerufen.\n" \
-                "log 'dorf_begruessung laeuft'\n" \
+                "log 'dorf_begruessung läuft'\n" \
                 "add_variable 'script_aufrufe', 1\n" \
                 "say ['Das ist ein Projekt-Script.',\n" \
                 "     'Bearbeitet wird es im Script-Editor des Editors.']\n"

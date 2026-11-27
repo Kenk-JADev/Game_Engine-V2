@@ -3,7 +3,7 @@
 #  Effekte: leichtgewichtiges Partikelsystem (Etappe 14c), komplett in Ruby.
 #
 #  Partikel sind kleine Boxen (Gfx.box) mit Lebenszeit, Geschwindigkeit und
-#  Schwerkraft; das Verblassen passiert ueber die Groesse (Gfx.box hat kein
+#  Schwerkraft; das Verblassen passiert über die Grösse (Gfx.box hat kein
 #  Alpha). Update/Draw werden von main.rb pro Frame aufgerufen.
 #
 #  Kopflos testbar: ruby -I game/engine tools/effects_test.rb
@@ -35,7 +35,7 @@ module Effects
           life: 0.8, gravity: 3.5)
   end
 
-  # Staubwolke (Landung, Sprung): grau, traege.
+  # Staubwolke (Landung, Sprung): grau, träge.
   def dust(x, y, z)
     burst(x, y, z, color: 0xB8AFA0, count: 12, speed: 1.6, size: 0.17,
           life: 0.45, gravity: 1.0)

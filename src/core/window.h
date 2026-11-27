@@ -27,8 +27,8 @@ struct InputState {
     bool mouse_captured = false;
     bool quit_requested = false;
 
-    // Druckbare Zeichen (und '\b' fuer Backspace), die seit dem letzten Frame
-    // eingegangen sind - fuer Texteingaben im Titelbildschirm/Editor.
+    // Druckbare Zeichen (und '\b' für Backspace), die seit dem letzten Frame
+    // eingegangen sind - für Texteingaben im Titelbildschirm/Editor.
     std::string typed;
     void push_char(char c) { if (typed.size() < 64) typed.push_back(c); }
     std::string take_typed() { std::string out; out.swap(typed); return out; }
@@ -58,7 +58,7 @@ public:
     bool create(const wchar_t* title, int width, int height);
     void destroy();
 
-    // Verarbeitet Nachrichten, aktualisiert Input. Rueckgabe false = Fenster zu.
+    // Verarbeitet Nachrichten, aktualisiert Input. Rückgabe false = Fenster zu.
     bool pump();
 
     void toggle_mouse_capture();
@@ -68,7 +68,7 @@ public:
     int   width() const { return m_width; }
     int   height() const { return m_height; }
 
-    // true, wenn sich die Fenstergroesse seit dem letzten Aufruf geaendert hat.
+    // true, wenn sich die Fenstergrösse seit dem letzten Aufruf geändert hat.
     bool consume_resize();
 
     InputState& input() { return m_input; }

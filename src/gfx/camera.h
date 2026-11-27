@@ -36,19 +36,26 @@ public:
     // Kamera-Kollision (Etappe 14a): vom Spielerkopf zur Wunschposition
     // gecastet; < 0 = frei. Wird pro Frame von main.cpp gesetzt.
     float collision_dist = -1.0f;
-    // > 0: Kamera wurde ueber ein niedriges Hindernis gehoben (Zaun, Brunnen).
+    // > 0: Kamera wurde über ein niedriges Hindernis gehoben (Zaun, Brunnen).
     float collision_lift = 0.0f;
 
-    // Blickrichtung (auch fuer den Kamera-Kollisions-Check in main.cpp).
+    // Bildschirmwackeln (Etappe 20f, XP 225): Versatz in Metern entlang der
+    // Kamera-Rechts- und -Hochachse. Wird nur beim Bildaufbau addiert, damit
+    // Picking und Spielerposition unberührt bleiben; ScreenFx setzt die Werte
+    // pro Frame aus Stärke/Speed/Dauer.
+    float shake_x = 0.0f;
+    float shake_y = 0.0f;
+
+    // Blickrichtung (auch für den Kamera-Kollisions-Check in main.cpp).
     math::Vec3 forward() const;
 
-    // Ist-Zustand fuer HUD/Debug (Etappe 14a).
+    // Ist-Zustand für HUD/Debug (Etappe 14a).
     float applied_dist() const { return m_applied_dist; }
     float applied_lift() const { return m_applied_lift; }
 
 private:
-    float m_applied_dist = 6.0f;   // gegaetteter Abstand (Kollision/Kamera-Zoom)
-    float m_applied_lift = 0.0f;   // gegaettete Anhebung ueber Hindernisse
+    float m_applied_dist = 6.0f;   // geglätteter Abstand (Kollision/Kamera-Zoom)
+    float m_applied_lift = 0.0f;   // geglättete Anhebung über Hindernisse
 };
 
 } // namespace rune::gfx

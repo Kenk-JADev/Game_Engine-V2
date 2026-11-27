@@ -1,0 +1,2163 @@
+{
+  "version": 1,
+  "actors": [
+    {
+      "id": 101,
+      "name": "Kael",
+      "class_id": 1,
+      "initial_level": 1,
+      "final_level": 99,
+      "exp_basis": 32,
+      "exp_inflation": 28,
+      "character_key": "char/kael_field",
+      "character_hue": 12,
+      "battler_key": "battler/kael",
+      "battler_hue": 8,
+      "growth": {
+        "maxhp": {
+          "base": 46,
+          "per_level": 21.5
+        },
+        "maxsp": {
+          "base": 18,
+          "per_level": 6.5
+        },
+        "str": {
+          "base": 13,
+          "per_level": 3.2
+        },
+        "dex": {
+          "base": 11,
+          "per_level": 2.4
+        },
+        "agi": {
+          "base": 9,
+          "per_level": 2.1
+        },
+        "int": {
+          "base": 7,
+          "per_level": 1.8
+        }
+      },
+      "start_equipment": [
+        {
+          "slot": "weapon",
+          "item_id": 401,
+          "fixed": false
+        },
+        {
+          "slot": "shield",
+          "item_id": 501,
+          "fixed": true
+        },
+        {
+          "slot": "helmet",
+          "item_id": null,
+          "fixed": false
+        },
+        {
+          "slot": "body",
+          "item_id": 503,
+          "fixed": false
+        },
+        {
+          "slot": "accessory",
+          "item_id": null,
+          "fixed": false
+        }
+      ]
+    },
+    {
+      "id": 104,
+      "name": "Mira",
+      "class_id": 2,
+      "initial_level": 1,
+      "final_level": 99,
+      "exp_basis": 30,
+      "exp_inflation": 26,
+      "character_key": "char/mira_field",
+      "character_hue": 30,
+      "battler_key": "battler/mira",
+      "battler_hue": 24,
+      "growth": {
+        "maxhp": {
+          "base": 32,
+          "per_level": 13.0
+        },
+        "maxsp": {
+          "base": 34,
+          "per_level": 12.0
+        },
+        "str": {
+          "base": 7,
+          "per_level": 1.6
+        },
+        "dex": {
+          "base": 12,
+          "per_level": 2.6
+        },
+        "agi": {
+          "base": 10,
+          "per_level": 2.2
+        },
+        "int": {
+          "base": 16,
+          "per_level": 4.1
+        }
+      },
+      "start_equipment": [
+        {
+          "slot": "weapon",
+          "item_id": 402,
+          "fixed": false
+        },
+        {
+          "slot": "shield",
+          "item_id": null,
+          "fixed": false
+        },
+        {
+          "slot": "helmet",
+          "item_id": 502,
+          "fixed": false
+        },
+        {
+          "slot": "body",
+          "item_id": null,
+          "fixed": false
+        },
+        {
+          "slot": "accessory",
+          "item_id": 504,
+          "fixed": false
+        }
+      ]
+    },
+    {
+      "id": 109,
+      "name": "Orin",
+      "class_id": 3,
+      "initial_level": 1,
+      "final_level": 99,
+      "exp_basis": 34,
+      "exp_inflation": 30,
+      "character_key": "char/orin_field",
+      "character_hue": 48,
+      "battler_key": "battler/orin",
+      "battler_hue": 40,
+      "growth": {
+        "maxhp": {
+          "base": 58,
+          "per_level": 25.0
+        },
+        "maxsp": {
+          "base": 15,
+          "per_level": 5.0
+        },
+        "str": {
+          "base": 15,
+          "per_level": 3.4
+        },
+        "dex": {
+          "base": 9,
+          "per_level": 1.9
+        },
+        "agi": {
+          "base": 7,
+          "per_level": 1.5
+        },
+        "int": {
+          "base": 6,
+          "per_level": 1.4
+        }
+      },
+      "start_equipment": [
+        {
+          "slot": "weapon",
+          "item_id": 403,
+          "fixed": false
+        },
+        {
+          "slot": "shield",
+          "item_id": 501,
+          "fixed": false
+        },
+        {
+          "slot": "helmet",
+          "item_id": 502,
+          "fixed": false
+        },
+        {
+          "slot": "body",
+          "item_id": 505,
+          "fixed": false
+        },
+        {
+          "slot": "accessory",
+          "item_id": null,
+          "fixed": false
+        }
+      ]
+    }
+  ],
+  "classes": [
+    {
+      "id": 1,
+      "name": "Vanguard",
+      "position": 0,
+      "weapon_ids": [
+        401,
+        404
+      ],
+      "armor_ids": [
+        501,
+        503,
+        504
+      ],
+      "element_multipliers": {
+        "1": 1.15,
+        "3": 1.1,
+        "6": 0.85
+      },
+      "state_multipliers": {
+        "2": 1.2,
+        "4": 0.9
+      },
+      "learnings": [
+        {
+          "level": 1,
+          "skill_id": 201
+        },
+        {
+          "level": 8,
+          "skill_id": 204
+        },
+        {
+          "level": 16,
+          "skill_id": 205
+        },
+        {
+          "level": 24,
+          "skill_id": 203
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Arcanist",
+      "position": 2,
+      "weapon_ids": [
+        402
+      ],
+      "armor_ids": [
+        502,
+        504,
+        505
+      ],
+      "element_multipliers": {
+        "1": 1.35,
+        "2": 1.3,
+        "4": 0.75
+      },
+      "state_multipliers": {
+        "1": 1.25,
+        "3": 1.1
+      },
+      "learnings": [
+        {
+          "level": 1,
+          "skill_id": 202
+        },
+        {
+          "level": 8,
+          "skill_id": 206
+        },
+        {
+          "level": 16,
+          "skill_id": 204
+        },
+        {
+          "level": 24,
+          "skill_id": 205
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Warden",
+      "position": 1,
+      "weapon_ids": [
+        403,
+        401
+      ],
+      "armor_ids": [
+        501,
+        502,
+        503,
+        505
+      ],
+      "element_multipliers": {
+        "4": 1.3,
+        "5": 1.15,
+        "2": 0.8
+      },
+      "state_multipliers": {
+        "3": 1.3,
+        "5": 1.15
+      },
+      "learnings": [
+        {
+          "level": 1,
+          "skill_id": 205
+        },
+        {
+          "level": 8,
+          "skill_id": 204
+        },
+        {
+          "level": 16,
+          "skill_id": 203
+        },
+        {
+          "level": 24,
+          "skill_id": 206
+        }
+      ]
+    }
+  ],
+  "skills": [
+    {
+      "id": 201,
+      "name": "Ember Lash",
+      "icon_key": "icon/ember_lash",
+      "description": "Eine glühende Peitsche, die Pyro-Schaden bündelt.",
+      "scope": 1,
+      "occasion": 0,
+      "animation1_id": 901,
+      "animation2_id": 902,
+      "menu_se_key": "se/skill_select",
+      "common_event_id": 0,
+      "sp_cost": 6,
+      "power": 28,
+      "atk_f": 60,
+      "eva_f": 0,
+      "str_f": 40,
+      "dex_f": 30,
+      "agi_f": 0,
+      "int_f": 55,
+      "hit": 95,
+      "pdef_f": 20,
+      "mdef_f": 100,
+      "variance": 12,
+      "element_ids": [
+        1
+      ],
+      "plus_state_ids": [
+        1
+      ],
+      "minus_state_ids": []
+    },
+    {
+      "id": 202,
+      "name": "Frostbind",
+      "icon_key": "icon/frostbind",
+      "description": "Frostrunen hemmen die Beweglichkeit des Ziels.",
+      "scope": 1,
+      "occasion": 0,
+      "animation1_id": 902,
+      "animation2_id": 902,
+      "menu_se_key": "se/skill_select",
+      "common_event_id": 0,
+      "sp_cost": 8,
+      "power": 22,
+      "atk_f": 0,
+      "eva_f": 0,
+      "str_f": 0,
+      "dex_f": 20,
+      "agi_f": 0,
+      "int_f": 85,
+      "hit": 90,
+      "pdef_f": 0,
+      "mdef_f": 100,
+      "variance": 10,
+      "element_ids": [
+        2
+      ],
+      "plus_state_ids": [
+        2
+      ],
+      "minus_state_ids": [
+        1
+      ]
+    },
+    {
+      "id": 203,
+      "name": "Gale Rend",
+      "icon_key": "icon/gale_rend",
+      "description": "Ein Sturmzug trifft alle Gegner gleichzeitig.",
+      "scope": 2,
+      "occasion": 0,
+      "animation1_id": 903,
+      "animation2_id": 903,
+      "menu_se_key": "se/skill_select",
+      "common_event_id": 0,
+      "sp_cost": 14,
+      "power": 18,
+      "atk_f": 45,
+      "eva_f": 0,
+      "str_f": 20,
+      "dex_f": 55,
+      "agi_f": 45,
+      "int_f": 20,
+      "hit": 85,
+      "pdef_f": 40,
+      "mdef_f": 80,
+      "variance": 18,
+      "element_ids": [
+        3
+      ],
+      "plus_state_ids": [],
+      "minus_state_ids": []
+    },
+    {
+      "id": 204,
+      "name": "Stone Mend",
+      "icon_key": "icon/stone_mend",
+      "description": "Terra-Runen schliessen Wunden eines Verbündeten.",
+      "scope": 3,
+      "occasion": 0,
+      "animation1_id": 904,
+      "animation2_id": 904,
+      "menu_se_key": "se/skill_select",
+      "common_event_id": 0,
+      "sp_cost": 9,
+      "power": 34,
+      "atk_f": 0,
+      "eva_f": 0,
+      "str_f": 0,
+      "dex_f": 0,
+      "agi_f": 0,
+      "int_f": 100,
+      "hit": 100,
+      "pdef_f": 0,
+      "mdef_f": 0,
+      "variance": 5,
+      "element_ids": [
+        4
+      ],
+      "plus_state_ids": [
+        5
+      ],
+      "minus_state_ids": [
+        1,
+        2
+      ]
+    },
+    {
+      "id": 205,
+      "name": "Runic Ward",
+      "icon_key": "icon/runic_ward",
+      "description": "Ein schützendes Siegel für die ganze Gruppe.",
+      "scope": 4,
+      "occasion": 0,
+      "animation1_id": 905,
+      "animation2_id": 905,
+      "menu_se_key": "se/skill_select",
+      "common_event_id": 1101,
+      "sp_cost": 12,
+      "power": 0,
+      "atk_f": 0,
+      "eva_f": 0,
+      "str_f": 0,
+      "dex_f": 0,
+      "agi_f": 0,
+      "int_f": 0,
+      "hit": 100,
+      "pdef_f": 0,
+      "mdef_f": 0,
+      "variance": 0,
+      "element_ids": [
+        5
+      ],
+      "plus_state_ids": [
+        3
+      ],
+      "minus_state_ids": [
+        4
+      ]
+    },
+    {
+      "id": 206,
+      "name": "Void Pulse",
+      "icon_key": "icon/void_pulse",
+      "description": "Ein dunkler Impuls, der Schattenresistenz bricht.",
+      "scope": 1,
+      "occasion": 0,
+      "animation1_id": 906,
+      "animation2_id": 906,
+      "menu_se_key": "se/skill_select",
+      "common_event_id": 1102,
+      "sp_cost": 18,
+      "power": 46,
+      "atk_f": 0,
+      "eva_f": 0,
+      "str_f": 0,
+      "dex_f": 10,
+      "agi_f": 0,
+      "int_f": 130,
+      "hit": 88,
+      "pdef_f": 0,
+      "mdef_f": 120,
+      "variance": 20,
+      "element_ids": [
+        6
+      ],
+      "plus_state_ids": [
+        4
+      ],
+      "minus_state_ids": [
+        3
+      ]
+    }
+  ],
+  "items": [
+    {
+      "id": 301,
+      "name": "Vital Tonic",
+      "icon_key": "icon/vital_tonic",
+      "description": "Stellt 60 Vitalität wieder her.",
+      "scope": 3,
+      "occasion": 0,
+      "animation1_id": 904,
+      "animation2_id": 904,
+      "menu_se_key": "se/skill_select",
+      "common_event_id": 0,
+      "price": 45,
+      "consumable": true,
+      "hp_recovery_rate": 0,
+      "sp_recovery_rate": 0,
+      "hp_recovery_value": 60,
+      "sp_recovery_value": 0,
+      "param_inc": {
+        "parameter": "maxhp",
+        "amount": 0
+      },
+      "element_ids": [],
+      "plus_state_ids": [
+        5
+      ],
+      "minus_state_ids": []
+    },
+    {
+      "id": 302,
+      "name": "Ether Vial",
+      "icon_key": "icon/ether_vial",
+      "description": "Ersetzt 35 Runenkraft.",
+      "scope": 3,
+      "occasion": 0,
+      "animation1_id": 905,
+      "animation2_id": 905,
+      "menu_se_key": "se/skill_select",
+      "common_event_id": 0,
+      "price": 55,
+      "consumable": true,
+      "hp_recovery_rate": 0,
+      "sp_recovery_rate": 0,
+      "hp_recovery_value": 0,
+      "sp_recovery_value": 35,
+      "param_inc": {
+        "parameter": "maxsp",
+        "amount": 0
+      },
+      "element_ids": [],
+      "plus_state_ids": [],
+      "minus_state_ids": []
+    },
+    {
+      "id": 303,
+      "name": "Rune Salve",
+      "icon_key": "icon/rune_salve",
+      "description": "Erhöht die maximale Vitalität dauerhaft um 8.",
+      "scope": 3,
+      "occasion": 1,
+      "animation1_id": 905,
+      "animation2_id": 905,
+      "menu_se_key": "se/skill_select",
+      "common_event_id": 0,
+      "price": 320,
+      "consumable": false,
+      "hp_recovery_rate": 0,
+      "sp_recovery_rate": 0,
+      "hp_recovery_value": 0,
+      "sp_recovery_value": 0,
+      "param_inc": {
+        "parameter": "maxhp",
+        "amount": 8
+      },
+      "element_ids": [],
+      "plus_state_ids": [],
+      "minus_state_ids": []
+    },
+    {
+      "id": 304,
+      "name": "Antidote Charm",
+      "icon_key": "icon/antidote_charm",
+      "description": "Löst Searing und Frostbind, heilt 25 % Vitalität.",
+      "scope": 3,
+      "occasion": 0,
+      "animation1_id": 904,
+      "animation2_id": 904,
+      "menu_se_key": "se/skill_select",
+      "common_event_id": 0,
+      "price": 80,
+      "consumable": true,
+      "hp_recovery_rate": 25,
+      "sp_recovery_rate": 0,
+      "hp_recovery_value": 0,
+      "sp_recovery_value": 0,
+      "param_inc": {
+        "parameter": "maxhp",
+        "amount": 0
+      },
+      "element_ids": [],
+      "plus_state_ids": [],
+      "minus_state_ids": [
+        1,
+        2
+      ]
+    }
+  ],
+  "weapons": [
+    {
+      "id": 401,
+      "name": "Vanguard Edge",
+      "icon_key": "icon/vanguard_edge",
+      "description": "Ausgewogene Klinge für den Frontkampf.",
+      "animation1_id": 901,
+      "animation2_id": 902,
+      "price": 180,
+      "atk": 24,
+      "pdef": 3,
+      "mdef": 0,
+      "eva": 0,
+      "str_plus": 3,
+      "dex_plus": 1,
+      "agi_plus": 0,
+      "int_plus": 0,
+      "element_ids": [
+        1
+      ],
+      "plus_state_ids": []
+    },
+    {
+      "id": 402,
+      "name": "Arcanist Rod",
+      "icon_key": "icon/arcanist_rod",
+      "description": "Verstärkt Runenkraft und INT-basierte Fertigkeiten.",
+      "animation1_id": 905,
+      "animation2_id": 906,
+      "price": 210,
+      "atk": 9,
+      "pdef": 0,
+      "mdef": 8,
+      "eva": 0,
+      "str_plus": 0,
+      "dex_plus": 2,
+      "agi_plus": 0,
+      "int_plus": 5,
+      "element_ids": [
+        5
+      ],
+      "plus_state_ids": []
+    },
+    {
+      "id": 403,
+      "name": "Warden Hammer",
+      "icon_key": "icon/warden_hammer",
+      "description": "Schwerer Hammer mit hoher Rüstungsdurchdringung.",
+      "animation1_id": 904,
+      "animation2_id": 902,
+      "price": 260,
+      "atk": 34,
+      "pdef": 2,
+      "mdef": 0,
+      "eva": -4,
+      "str_plus": 5,
+      "dex_plus": 0,
+      "agi_plus": -1,
+      "int_plus": 0,
+      "element_ids": [
+        4
+      ],
+      "plus_state_ids": []
+    },
+    {
+      "id": 404,
+      "name": "Scout Dagger",
+      "icon_key": "icon/scout_dagger",
+      "description": "Leichte Klinge für schnelle Gegenstösse.",
+      "animation1_id": 903,
+      "animation2_id": 903,
+      "price": 150,
+      "atk": 15,
+      "pdef": 0,
+      "mdef": 0,
+      "eva": 6,
+      "str_plus": 1,
+      "dex_plus": 4,
+      "agi_plus": 4,
+      "int_plus": 0,
+      "element_ids": [
+        3
+      ],
+      "plus_state_ids": []
+    }
+  ],
+  "armors": [
+    {
+      "id": 501,
+      "name": "Warden Buckler",
+      "icon_key": "icon/warden_buckler",
+      "description": "Schild mit Terra-Siegel.",
+      "kind": "shield",
+      "auto_state_id": 3,
+      "price": 140,
+      "pdef": 12,
+      "mdef": 2,
+      "eva": 0,
+      "str_plus": 1,
+      "dex_plus": 0,
+      "agi_plus": 0,
+      "int_plus": 0,
+      "element_resistances": {
+        "4": 1.25,
+        "1": 0.85
+      },
+      "state_resistances": {
+        "4": 1.2
+      }
+    },
+    {
+      "id": 502,
+      "name": "Runed Circlet",
+      "icon_key": "icon/runed_circlet",
+      "description": "Verstärkt Frost- und Aether-Widerstand.",
+      "kind": "helmet",
+      "auto_state_id": 0,
+      "price": 190,
+      "pdef": 4,
+      "mdef": 10,
+      "eva": 1,
+      "str_plus": 0,
+      "dex_plus": 1,
+      "agi_plus": 0,
+      "int_plus": 3,
+      "element_resistances": {
+        "2": 1.3,
+        "5": 1.2
+      },
+      "state_resistances": {
+        "2": 1.25
+      }
+    },
+    {
+      "id": 503,
+      "name": "Aegis Cuirass",
+      "icon_key": "icon/aegis_cuirass",
+      "description": "Schwere Brustplatte der Vanguard-Garde.",
+      "kind": "body",
+      "auto_state_id": 0,
+      "price": 290,
+      "pdef": 22,
+      "mdef": 4,
+      "eva": -3,
+      "str_plus": 3,
+      "dex_plus": 0,
+      "agi_plus": -2,
+      "int_plus": 0,
+      "element_resistances": {
+        "1": 1.2,
+        "3": 0.9
+      },
+      "state_resistances": {
+        "1": 1.15
+      }
+    },
+    {
+      "id": 504,
+      "name": "Ember Sigil",
+      "icon_key": "icon/ember_sigil",
+      "description": "Accessoire, das Pyro-Schaden verstärkt.",
+      "kind": "accessory",
+      "auto_state_id": 0,
+      "price": 240,
+      "pdef": 1,
+      "mdef": 5,
+      "eva": 2,
+      "str_plus": 1,
+      "dex_plus": 2,
+      "agi_plus": 1,
+      "int_plus": 2,
+      "element_resistances": {
+        "1": 1.35,
+        "2": 0.8
+      },
+      "state_resistances": {
+        "1": 1.2
+      }
+    },
+    {
+      "id": 505,
+      "name": "Shadow Cloak",
+      "icon_key": "icon/shadow_cloak",
+      "description": "Umhang mit hoher Ausweichrate.",
+      "kind": "body",
+      "auto_state_id": 0,
+      "price": 275,
+      "pdef": 11,
+      "mdef": 9,
+      "eva": 12,
+      "str_plus": 0,
+      "dex_plus": 3,
+      "agi_plus": 5,
+      "int_plus": 1,
+      "element_resistances": {
+        "6": 1.35,
+        "4": 0.85
+      },
+      "state_resistances": {
+        "4": 1.3
+      }
+    }
+  ],
+  "enemies": [
+    {
+      "id": 701,
+      "name": "Ashen Wraith",
+      "battler_key": "battler/ashen_wraith",
+      "battler_hue": 15,
+      "maxhp": 420,
+      "maxsp": 90,
+      "str": 34,
+      "dex": 42,
+      "agi": 38,
+      "int": 48,
+      "atk": 86,
+      "pdef": 54,
+      "mdef": 78,
+      "eva": 8,
+      "animation1_id": 906,
+      "animation2_id": 902,
+      "element_multipliers": {
+        "1": 0.75,
+        "2": 1.25,
+        "5": 1.2
+      },
+      "state_multipliers": {
+        "1": 0.6,
+        "2": 1.3
+      },
+      "actions": [
+        {
+          "skill_id": 206,
+          "priority": 1,
+          "condition": {
+            "type": "always",
+            "value": 0
+          }
+        },
+        {
+          "skill_id": 201,
+          "priority": 2,
+          "condition": {
+            "type": "hp_below",
+            "value": 40
+          }
+        }
+      ],
+      "exp": 95,
+      "gold": 72,
+      "treasure": {
+        "item_id": 302,
+        "weapon_id": 0,
+        "armor_id": 0,
+        "probability": 25
+      }
+    },
+    {
+      "id": 702,
+      "name": "Rift Drake",
+      "battler_key": "battler/rift_drake",
+      "battler_hue": 32,
+      "maxhp": 980,
+      "maxsp": 140,
+      "str": 62,
+      "dex": 38,
+      "agi": 26,
+      "int": 44,
+      "atk": 130,
+      "pdef": 112,
+      "mdef": 70,
+      "eva": 3,
+      "animation1_id": 901,
+      "animation2_id": 903,
+      "element_multipliers": {
+        "2": 1.4,
+        "4": 0.7,
+        "6": 1.15
+      },
+      "state_multipliers": {
+        "2": 0.8,
+        "4": 1.25
+      },
+      "actions": [
+        {
+          "skill_id": 201,
+          "priority": 1,
+          "condition": {
+            "type": "always",
+            "value": 0
+          }
+        },
+        {
+          "skill_id": 203,
+          "priority": 2,
+          "condition": {
+            "type": "turn_multiple",
+            "value": 3
+          }
+        }
+      ],
+      "exp": 260,
+      "gold": 210,
+      "treasure": {
+        "item_id": 303,
+        "weapon_id": 0,
+        "armor_id": 0,
+        "probability": 12
+      }
+    },
+    {
+      "id": 703,
+      "name": "Construct Sentinel",
+      "battler_key": "battler/construct_sentinel",
+      "battler_hue": 0,
+      "maxhp": 760,
+      "maxsp": 40,
+      "str": 58,
+      "dex": 22,
+      "agi": 12,
+      "int": 16,
+      "atk": 118,
+      "pdef": 150,
+      "mdef": 38,
+      "eva": 0,
+      "animation1_id": 904,
+      "animation2_id": 902,
+      "element_multipliers": {
+        "3": 1.35,
+        "4": 0.6,
+        "6": 0.85
+      },
+      "state_multipliers": {
+        "1": 0.4,
+        "3": 0.5,
+        "4": 0.3
+      },
+      "actions": [
+        {
+          "skill_id": 0,
+          "priority": 1,
+          "condition": {
+            "type": "always",
+            "value": 0
+          }
+        },
+        {
+          "skill_id": 205,
+          "priority": 2,
+          "condition": {
+            "type": "state",
+            "value": 3
+          }
+        }
+      ],
+      "exp": 180,
+      "gold": 165,
+      "treasure": {
+        "item_id": 0,
+        "weapon_id": 403,
+        "armor_id": 0,
+        "probability": 18
+      }
+    },
+    {
+      "id": 704,
+      "name": "Ash Hound",
+      "battler_key": "battler/ash_hound",
+      "battler_hue": 20,
+      "maxhp": 210,
+      "maxsp": 30,
+      "str": 28,
+      "dex": 36,
+      "agi": 52,
+      "int": 12,
+      "atk": 64,
+      "pdef": 32,
+      "mdef": 22,
+      "eva": 16,
+      "animation1_id": 903,
+      "animation2_id": 902,
+      "element_multipliers": {
+        "1": 0.9,
+        "2": 1.2,
+        "3": 1.3
+      },
+      "state_multipliers": {
+        "2": 1.1,
+        "5": 0.7
+      },
+      "actions": [
+        {
+          "skill_id": 0,
+          "priority": 1,
+          "condition": {
+            "type": "always",
+            "value": 0
+          }
+        },
+        {
+          "skill_id": 203,
+          "priority": 2,
+          "condition": {
+            "type": "hp_below",
+            "value": 30
+          }
+        }
+      ],
+      "exp": 48,
+      "gold": 34,
+      "treasure": {
+        "item_id": 301,
+        "weapon_id": 0,
+        "armor_id": 0,
+        "probability": 30
+      }
+    }
+  ],
+  "troops": [
+    {
+      "id": 801,
+      "name": "Wraith Patrol",
+      "background_key": "bg/battleback_ruins",
+      "members": [
+        {
+          "enemy_id": 701,
+          "x": 2,
+          "z": 1
+        },
+        {
+          "enemy_id": 704,
+          "x": 5,
+          "z": 2
+        },
+        {
+          "enemy_id": 704,
+          "x": 7,
+          "z": 0
+        }
+      ],
+      "events": [
+        {
+          "id": 1,
+          "name": "Flüstern der Asche",
+          "condition": {
+            "span": "turn",
+            "comparator": "==",
+            "value": 2
+          },
+          "switch_id": 1,
+          "commands": [
+            {
+              "code": 121,
+              "params": {
+                "switch_id": 1,
+                "value": true
+              }
+            },
+            {
+              "code": 101,
+              "params": {
+                "text": "Die Asche flüstert: \"Zurück, Wanderer.\""
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 802,
+      "name": "Drake Ambush",
+      "background_key": "bg/battleback_sky",
+      "members": [
+        {
+          "enemy_id": 702,
+          "x": 4,
+          "z": 2
+        },
+        {
+          "enemy_id": 701,
+          "x": 6,
+          "z": 0
+        }
+      ],
+      "events": [
+        {
+          "id": 1,
+          "name": "Riss im Himmel",
+          "condition": {
+            "span": "hp_below",
+            "comparator": "<=",
+            "value": 40
+          },
+          "switch_id": 2,
+          "commands": [
+            {
+              "code": 117,
+              "params": {
+                "common_event_id": 1102
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 803,
+      "name": "Sentinel Guard",
+      "background_key": "bg/battleback_frost",
+      "members": [
+        {
+          "enemy_id": 703,
+          "x": 3,
+          "z": 1
+        },
+        {
+          "enemy_id": 703,
+          "x": 6,
+          "z": 1
+        }
+      ],
+      "events": [
+        {
+          "id": 1,
+          "name": "Letzter Schutz",
+          "condition": {
+            "span": "moment",
+            "comparator": "==",
+            "value": 1
+          },
+          "switch_id": 0,
+          "commands": [
+            {
+              "code": 101,
+              "params": {
+                "text": "Die Wächter aktivieren ihre Runen."
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "states": [
+    {
+      "id": 1,
+      "name": "Searing",
+      "animation_id": 901,
+      "restriction": 0,
+      "nonresistance": true,
+      "zero_hp": false,
+      "cant_get_exp": false,
+      "cant_evade": false,
+      "slip_damage": true,
+      "rating": 6,
+      "hit_rate": 100,
+      "rates": {
+        "maxhp": 100,
+        "maxsp": 100,
+        "str": 110,
+        "dex": 100,
+        "agi": 90,
+        "int": 100,
+        "atk": 115,
+        "pdef": 90,
+        "mdef": 85,
+        "eva": 0
+      },
+      "battle_only": true,
+      "hold_turn": 4,
+      "auto_release_prob": 25,
+      "shock_release_prob": 0,
+      "guard_element_ids": [],
+      "plus_state_ids": [],
+      "minus_state_ids": []
+    },
+    {
+      "id": 2,
+      "name": "Frostbound",
+      "animation_id": 902,
+      "restriction": 1,
+      "nonresistance": false,
+      "zero_hp": false,
+      "cant_get_exp": false,
+      "cant_evade": false,
+      "slip_damage": false,
+      "rating": 7,
+      "hit_rate": 100,
+      "rates": {
+        "maxhp": 100,
+        "maxsp": 100,
+        "str": 85,
+        "dex": 80,
+        "agi": 55,
+        "int": 100,
+        "atk": 85,
+        "pdef": 105,
+        "mdef": 105,
+        "eva": -10
+      },
+      "battle_only": true,
+      "hold_turn": 3,
+      "auto_release_prob": 30,
+      "shock_release_prob": 20,
+      "guard_element_ids": [
+        2
+      ],
+      "plus_state_ids": [],
+      "minus_state_ids": [
+        1
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Rune Guarded",
+      "animation_id": 905,
+      "restriction": 0,
+      "nonresistance": false,
+      "zero_hp": false,
+      "cant_get_exp": false,
+      "cant_evade": false,
+      "slip_damage": false,
+      "rating": 2,
+      "hit_rate": 100,
+      "rates": {
+        "maxhp": 100,
+        "maxsp": 100,
+        "str": 100,
+        "dex": 100,
+        "agi": 100,
+        "int": 105,
+        "atk": 100,
+        "pdef": 135,
+        "mdef": 130,
+        "eva": 5
+      },
+      "battle_only": true,
+      "hold_turn": 5,
+      "auto_release_prob": 0,
+      "shock_release_prob": 0,
+      "guard_element_ids": [
+        4,
+        5
+      ],
+      "plus_state_ids": [],
+      "minus_state_ids": []
+    },
+    {
+      "id": 4,
+      "name": "Void Marked",
+      "animation_id": 906,
+      "restriction": 2,
+      "nonresistance": true,
+      "zero_hp": false,
+      "cant_get_exp": false,
+      "cant_evade": true,
+      "slip_damage": false,
+      "rating": 9,
+      "hit_rate": 100,
+      "rates": {
+        "maxhp": 90,
+        "maxsp": 110,
+        "str": 95,
+        "dex": 90,
+        "agi": 90,
+        "int": 120,
+        "atk": 105,
+        "pdef": 80,
+        "mdef": 70,
+        "eva": -20
+      },
+      "battle_only": true,
+      "hold_turn": 3,
+      "auto_release_prob": 15,
+      "shock_release_prob": 10,
+      "guard_element_ids": [],
+      "plus_state_ids": [],
+      "minus_state_ids": [
+        3
+      ]
+    },
+    {
+      "id": 5,
+      "name": "Stone Regen",
+      "animation_id": 904,
+      "restriction": 0,
+      "nonresistance": false,
+      "zero_hp": false,
+      "cant_get_exp": false,
+      "cant_evade": false,
+      "slip_damage": false,
+      "rating": 1,
+      "hit_rate": 100,
+      "rates": {
+        "maxhp": 110,
+        "maxsp": 100,
+        "str": 100,
+        "dex": 100,
+        "agi": 100,
+        "int": 100,
+        "atk": 100,
+        "pdef": 110,
+        "mdef": 110,
+        "eva": 0
+      },
+      "battle_only": false,
+      "hold_turn": 6,
+      "auto_release_prob": 0,
+      "shock_release_prob": 0,
+      "guard_element_ids": [],
+      "plus_state_ids": [],
+      "minus_state_ids": [
+        1,
+        2
+      ]
+    }
+  ],
+  "animations": [
+    {
+      "id": 901,
+      "name": "Ember Burst",
+      "sheet_key": "fx/ember_burst",
+      "position": 1,
+      "frame_max": 6,
+      "frames": [
+        {
+          "cell_x": 0,
+          "cell_y": 0,
+          "width": 64,
+          "height": 64
+        },
+        {
+          "cell_x": 64,
+          "cell_y": 0,
+          "width": 64,
+          "height": 64
+        },
+        {
+          "cell_x": 128,
+          "cell_y": 0,
+          "width": 64,
+          "height": 64
+        },
+        {
+          "cell_x": 0,
+          "cell_y": 64,
+          "width": 64,
+          "height": 64
+        },
+        {
+          "cell_x": 64,
+          "cell_y": 64,
+          "width": 64,
+          "height": 64
+        },
+        {
+          "cell_x": 128,
+          "cell_y": 64,
+          "width": 64,
+          "height": 64
+        }
+      ],
+      "timings": [
+        {
+          "frame": 2,
+          "se_key": "se/ember_tick",
+          "flash_target": "target",
+          "color": {
+            "r": 255,
+            "g": 132,
+            "b": 44
+          },
+          "duration": 6,
+          "condition": "always"
+        }
+      ]
+    },
+    {
+      "id": 902,
+      "name": "Frost Bloom",
+      "sheet_key": "fx/frost_bloom",
+      "position": 2,
+      "frame_max": 5,
+      "frames": [
+        {
+          "cell_x": 0,
+          "cell_y": 0,
+          "width": 64,
+          "height": 64
+        },
+        {
+          "cell_x": 64,
+          "cell_y": 0,
+          "width": 64,
+          "height": 64
+        },
+        {
+          "cell_x": 128,
+          "cell_y": 0,
+          "width": 64,
+          "height": 64
+        },
+        {
+          "cell_x": 0,
+          "cell_y": 64,
+          "width": 64,
+          "height": 64
+        },
+        {
+          "cell_x": 64,
+          "cell_y": 64,
+          "width": 64,
+          "height": 64
+        }
+      ],
+      "timings": [
+        {
+          "frame": 1,
+          "se_key": "se/frost_tick",
+          "flash_target": "target",
+          "color": {
+            "r": 96,
+            "g": 200,
+            "b": 255
+          },
+          "duration": 8,
+          "condition": "always"
+        }
+      ]
+    },
+    {
+      "id": 903,
+      "name": "Gale Slash",
+      "sheet_key": "fx/gale_slash",
+      "position": 1,
+      "frame_max": 4,
+      "frames": [
+        {
+          "cell_x": 0,
+          "cell_y": 0,
+          "width": 64,
+          "height": 64
+        },
+        {
+          "cell_x": 64,
+          "cell_y": 0,
+          "width": 64,
+          "height": 64
+        },
+        {
+          "cell_x": 128,
+          "cell_y": 0,
+          "width": 64,
+          "height": 64
+        },
+        {
+          "cell_x": 192,
+          "cell_y": 0,
+          "width": 64,
+          "height": 64
+        }
+      ],
+      "timings": [
+        {
+          "frame": 0,
+          "se_key": "se/gale_tick",
+          "flash_target": "user",
+          "color": {
+            "r": 180,
+            "g": 235,
+            "b": 255
+          },
+          "duration": 4,
+          "condition": "always"
+        }
+      ]
+    },
+    {
+      "id": 904,
+      "name": "Stone Guard",
+      "sheet_key": "fx/stone_guard",
+      "position": 2,
+      "frame_max": 3,
+      "frames": [
+        {
+          "cell_x": 0,
+          "cell_y": 0,
+          "width": 64,
+          "height": 64
+        },
+        {
+          "cell_x": 64,
+          "cell_y": 0,
+          "width": 64,
+          "height": 64
+        },
+        {
+          "cell_x": 128,
+          "cell_y": 0,
+          "width": 64,
+          "height": 64
+        }
+      ],
+      "timings": [
+        {
+          "frame": 1,
+          "se_key": "se/stone_tick",
+          "flash_target": "target",
+          "color": {
+            "r": 210,
+            "g": 190,
+            "b": 140
+          },
+          "duration": 5,
+          "condition": "heal"
+        }
+      ]
+    },
+    {
+      "id": 905,
+      "name": "Runic Glow",
+      "sheet_key": "fx/runic_glow",
+      "position": 3,
+      "frame_max": 4,
+      "frames": [
+        {
+          "cell_x": 0,
+          "cell_y": 0,
+          "width": 96,
+          "height": 96
+        },
+        {
+          "cell_x": 96,
+          "cell_y": 0,
+          "width": 96,
+          "height": 96
+        },
+        {
+          "cell_x": 0,
+          "cell_y": 96,
+          "width": 96,
+          "height": 96
+        },
+        {
+          "cell_x": 96,
+          "cell_y": 96,
+          "width": 96,
+          "height": 96
+        }
+      ],
+      "timings": [
+        {
+          "frame": 2,
+          "se_key": "se/rune_tick",
+          "flash_target": "screen",
+          "color": {
+            "r": 140,
+            "g": 180,
+            "b": 255
+          },
+          "duration": 10,
+          "condition": "always"
+        }
+      ]
+    },
+    {
+      "id": 906,
+      "name": "Void Ripple",
+      "sheet_key": "fx/void_ripple",
+      "position": 1,
+      "frame_max": 5,
+      "frames": [
+        {
+          "cell_x": 0,
+          "cell_y": 0,
+          "width": 72,
+          "height": 72
+        },
+        {
+          "cell_x": 72,
+          "cell_y": 0,
+          "width": 72,
+          "height": 72
+        },
+        {
+          "cell_x": 144,
+          "cell_y": 0,
+          "width": 72,
+          "height": 72
+        },
+        {
+          "cell_x": 0,
+          "cell_y": 72,
+          "width": 72,
+          "height": 72
+        },
+        {
+          "cell_x": 72,
+          "cell_y": 72,
+          "width": 72,
+          "height": 72
+        }
+      ],
+      "timings": [
+        {
+          "frame": 3,
+          "se_key": "se/void_tick",
+          "flash_target": "target",
+          "color": {
+            "r": 120,
+            "g": 60,
+            "b": 180
+          },
+          "duration": 7,
+          "condition": "always"
+        }
+      ]
+    }
+  ],
+  "tilesets": [
+    {
+      "id": 1001,
+      "name": "Ember Ruins",
+      "tileset_key": "tileset/ember_ruins",
+      "autotile_keys": [
+        "auto/stone_floor",
+        "auto/ember_cracks"
+      ],
+      "panorama_key": "bg/panorama_ruins",
+      "fog_key": "fx/fog_ash",
+      "battleback_key": "bg/battleback_ruins",
+      "fog_opacity": 72,
+      "fog_blend_type": 1,
+      "fog_zoom": 180,
+      "fog_sx": 1,
+      "fog_sy": 0,
+      "tile_properties": [
+        {
+          "index": 0,
+          "passable": true,
+          "passable_4dirs": [
+            true,
+            true,
+            true,
+            true
+          ],
+          "priority": 0,
+          "bush": false,
+          "counter": false,
+          "terrain_tag": 0
+        },
+        {
+          "index": 1,
+          "passable": false,
+          "passable_4dirs": [
+            false,
+            false,
+            false,
+            false
+          ],
+          "priority": 5,
+          "bush": false,
+          "counter": false,
+          "terrain_tag": 0
+        },
+        {
+          "index": 2,
+          "passable": true,
+          "passable_4dirs": [
+            true,
+            false,
+            true,
+            true
+          ],
+          "priority": 1,
+          "bush": false,
+          "counter": true,
+          "terrain_tag": 2
+        },
+        {
+          "index": 3,
+          "passable": true,
+          "passable_4dirs": [
+            true,
+            true,
+            true,
+            true
+          ],
+          "priority": 0,
+          "bush": true,
+          "counter": false,
+          "terrain_tag": 3
+        },
+        {
+          "index": 4,
+          "passable": false,
+          "passable_4dirs": [
+            true,
+            true,
+            false,
+            true
+          ],
+          "priority": 2,
+          "bush": false,
+          "counter": false,
+          "terrain_tag": 0
+        }
+      ]
+    },
+    {
+      "id": 1002,
+      "name": "Frost Hollow",
+      "tileset_key": "tileset/frost_hollow",
+      "autotile_keys": [
+        "auto/frost_ice",
+        "auto/stone_floor"
+      ],
+      "panorama_key": "bg/panorama_frost",
+      "fog_key": "fx/fog_mist",
+      "battleback_key": "bg/battleback_frost",
+      "fog_opacity": 96,
+      "fog_blend_type": 0,
+      "fog_zoom": 220,
+      "fog_sx": 0,
+      "fog_sy": 1,
+      "tile_properties": [
+        {
+          "index": 0,
+          "passable": true,
+          "passable_4dirs": [
+            true,
+            true,
+            true,
+            true
+          ],
+          "priority": 0,
+          "bush": false,
+          "counter": false,
+          "terrain_tag": 0
+        },
+        {
+          "index": 1,
+          "passable": false,
+          "passable_4dirs": [
+            false,
+            false,
+            false,
+            false
+          ],
+          "priority": 5,
+          "bush": false,
+          "counter": false,
+          "terrain_tag": 0
+        },
+        {
+          "index": 2,
+          "passable": true,
+          "passable_4dirs": [
+            true,
+            true,
+            true,
+            false
+          ],
+          "priority": 1,
+          "bush": false,
+          "counter": false,
+          "terrain_tag": 4
+        },
+        {
+          "index": 3,
+          "passable": true,
+          "passable_4dirs": [
+            true,
+            true,
+            true,
+            true
+          ],
+          "priority": 0,
+          "bush": true,
+          "counter": false,
+          "terrain_tag": 3
+        }
+      ]
+    },
+    {
+      "id": 1003,
+      "name": "Skyward Keep",
+      "tileset_key": "tileset/skyward_keep",
+      "autotile_keys": [
+        "auto/metal_grate",
+        "auto/stone_floor"
+      ],
+      "panorama_key": "bg/panorama_sky",
+      "fog_key": "fx/fog_clouds",
+      "battleback_key": "bg/battleback_sky",
+      "fog_opacity": 48,
+      "fog_blend_type": 2,
+      "fog_zoom": 150,
+      "fog_sx": 2,
+      "fog_sy": 1,
+      "tile_properties": [
+        {
+          "index": 0,
+          "passable": true,
+          "passable_4dirs": [
+            true,
+            true,
+            true,
+            true
+          ],
+          "priority": 0,
+          "bush": false,
+          "counter": false,
+          "terrain_tag": 0
+        },
+        {
+          "index": 1,
+          "passable": false,
+          "passable_4dirs": [
+            false,
+            false,
+            false,
+            false
+          ],
+          "priority": 5,
+          "bush": false,
+          "counter": false,
+          "terrain_tag": 0
+        },
+        {
+          "index": 2,
+          "passable": true,
+          "passable_4dirs": [
+            false,
+            true,
+            true,
+            true
+          ],
+          "priority": 2,
+          "bush": false,
+          "counter": true,
+          "terrain_tag": 5
+        },
+        {
+          "index": 3,
+          "passable": false,
+          "passable_4dirs": [
+            true,
+            true,
+            true,
+            true
+          ],
+          "priority": 3,
+          "bush": false,
+          "counter": false,
+          "terrain_tag": 0
+        }
+      ]
+    }
+  ],
+  "common_events": [
+    {
+      "id": 1101,
+      "name": "Rune Awakening",
+      "trigger": "none",
+      "condition_switch_id": 1,
+      "commands": [
+        {
+          "code": 121,
+          "params": {
+            "switch_id": 1,
+            "value": true
+          }
+        },
+        {
+          "code": 122,
+          "params": {
+            "variable_id": 1,
+            "operation": "+",
+            "value": 5
+          }
+        },
+        {
+          "code": 101,
+          "params": {
+            "text": "Die Runen erwachen."
+          }
+        }
+      ]
+    },
+    {
+      "id": 1102,
+      "name": "Wraith Whisper",
+      "trigger": "parallel",
+      "condition_switch_id": 2,
+      "commands": [
+        {
+          "code": 101,
+          "params": {
+            "text": "Eine Stimme ruft aus dem Riss."
+          }
+        },
+        {
+          "code": 117,
+          "params": {
+            "common_event_id": 1101
+          }
+        }
+      ]
+    }
+  ],
+  "system": {
+    "magic_number": 20261126,
+    "initial_party": [
+      101,
+      104,
+      109
+    ],
+    "start_map_id": "dorf",
+    "start_x": 12,
+    "start_y": 9,
+    "elements": [
+      {
+        "id": 1,
+        "name": "Pyro"
+      },
+      {
+        "id": 2,
+        "name": "Frost"
+      },
+      {
+        "id": 3,
+        "name": "Storm"
+      },
+      {
+        "id": 4,
+        "name": "Terra"
+      },
+      {
+        "id": 5,
+        "name": "Aether"
+      },
+      {
+        "id": 6,
+        "name": "Shadow"
+      }
+    ],
+    "species": [
+      {
+        "id": 1,
+        "name": "Konstrukte"
+      },
+      {
+        "id": 2,
+        "name": "Drachen"
+      },
+      {
+        "id": 3,
+        "name": "Wraiths"
+      },
+      {
+        "id": 4,
+        "name": "Bestien"
+      }
+    ],
+    "switches": [
+      {
+        "id": 1,
+        "name": "Runen erwacht"
+      },
+      {
+        "id": 2,
+        "name": "Riss offen"
+      },
+      {
+        "id": 3,
+        "name": "Wächter besiegt"
+      }
+    ],
+    "variables": [
+      {
+        "id": 1,
+        "name": "Sturmstärke"
+      },
+      {
+        "id": 2,
+        "name": "Aschezähler"
+      }
+    ],
+    "graphics": {
+      "windowskin_key": "ui/window_ember",
+      "title_key": "bg/title_ember",
+      "gameover_key": "bg/gameover_ember",
+      "battle_transition_key": "fx/battle_transition_ember",
+      "battleback_key": "bg/battleback_ruins"
+    },
+    "audio": {
+      "title_bgm": "bgm/ember_theme",
+      "battle_bgm": "bgm/ruins_clash",
+      "battle_end_me": "me/victory_ember",
+      "gameover_me": "me/defeat_ember",
+      "cursor_se": "se/menu_cursor",
+      "decision_se": "se/menu_confirm",
+      "cancel_se": "se/menu_cancel",
+      "buzzer_se": "se/menu_error",
+      "equip_se": "se/equip_clink",
+      "shop_se": "se/coin_drop",
+      "save_se": "se/rune_save",
+      "load_se": "se/rune_load",
+      "battle_start_se": "se/battle_gong",
+      "escape_se": "se/escape_swish",
+      "actor_collapse_se": "se/actor_fall",
+      "enemy_collapse_se": "se/enemy_shatter"
+    },
+    "sound_cues": {
+      "confirm": "se/menu_confirm",
+      "cancel": "se/menu_cancel",
+      "jump": "se/jump_soft",
+      "hit": "se/hit_ember",
+      "heal": "se/heal_rune",
+      "guard": "se/guard_raise",
+      "victory": "me/victory_ember",
+      "defeat": "me/defeat_ember"
+    },
+    "vocabulary": {
+      "hp": "Vitalität",
+      "sp": "Runenkraft",
+      "atk": "Angriff",
+      "pdef": "Rüstung",
+      "mdef": "Resistenz",
+      "eva": "Ausweichen",
+      "str": "Stärke",
+      "dex": "Geschick",
+      "agi": "Beweglichkeit",
+      "int": "Verstand",
+      "exp": "Erfahrung",
+      "gold": "Kronen",
+      "level": "Rang",
+      "item": "Gegenstand",
+      "skill": "Fertigkeit",
+      "weapon": "Waffe",
+      "armor": "Rüstung",
+      "equip": "Ausrüsten",
+      "status": "Zustand",
+      "save": "Sichern",
+      "load": "Laden",
+      "gameover": "Niederlage"
+    },
+    "asset_catalog": {
+      "ui/window_ember": "window_skin",
+      "bg/title_ember": "title",
+      "bg/gameover_ember": "gameover",
+      "fx/battle_transition_ember": "transition",
+      "bg/battleback_ruins": "battleback",
+      "bgm/ember_theme": "bgm",
+      "bgm/ruins_clash": "bgm",
+      "me/victory_ember": "me",
+      "me/defeat_ember": "me",
+      "se/menu_cursor": "se",
+      "se/menu_confirm": "se",
+      "se/menu_cancel": "se",
+      "se/menu_error": "se",
+      "se/equip_clink": "se",
+      "se/coin_drop": "se",
+      "se/rune_save": "se",
+      "se/rune_load": "se",
+      "se/battle_gong": "se",
+      "se/escape_swish": "se",
+      "se/actor_fall": "se",
+      "se/enemy_shatter": "se",
+      "se/jump_soft": "se",
+      "se/hit_ember": "se",
+      "se/heal_rune": "se",
+      "se/guard_raise": "se",
+      "char/kael_field": "character",
+      "battler/kael": "battler",
+      "char/mira_field": "character",
+      "battler/mira": "battler",
+      "char/orin_field": "character",
+      "battler/orin": "battler",
+      "icon/ember_lash": "icon",
+      "se/skill_select": "se",
+      "icon/frostbind": "icon",
+      "icon/gale_rend": "icon",
+      "icon/stone_mend": "icon",
+      "icon/runic_ward": "icon",
+      "icon/void_pulse": "icon",
+      "icon/vital_tonic": "icon",
+      "icon/ether_vial": "icon",
+      "icon/rune_salve": "icon",
+      "icon/antidote_charm": "icon",
+      "icon/vanguard_edge": "icon",
+      "icon/arcanist_rod": "icon",
+      "icon/warden_hammer": "icon",
+      "icon/scout_dagger": "icon",
+      "icon/warden_buckler": "icon",
+      "icon/runed_circlet": "icon",
+      "icon/aegis_cuirass": "icon",
+      "icon/ember_sigil": "icon",
+      "icon/shadow_cloak": "icon",
+      "battler/ashen_wraith": "battler",
+      "battler/rift_drake": "battler",
+      "battler/construct_sentinel": "battler",
+      "battler/ash_hound": "battler",
+      "bg/battleback_sky": "battleback",
+      "bg/battleback_frost": "battleback",
+      "fx/ember_burst": "animation",
+      "se/ember_tick": "se",
+      "fx/frost_bloom": "animation",
+      "se/frost_tick": "se",
+      "fx/gale_slash": "animation",
+      "se/gale_tick": "se",
+      "fx/stone_guard": "animation",
+      "se/stone_tick": "se",
+      "fx/runic_glow": "animation",
+      "se/rune_tick": "se",
+      "fx/void_ripple": "animation",
+      "se/void_tick": "se",
+      "tileset/ember_ruins": "tileset",
+      "auto/stone_floor": "autotile",
+      "auto/ember_cracks": "autotile",
+      "bg/panorama_ruins": "panorama",
+      "fx/fog_ash": "fog",
+      "tileset/frost_hollow": "tileset",
+      "auto/frost_ice": "autotile",
+      "bg/panorama_frost": "panorama",
+      "fx/fog_mist": "fog",
+      "tileset/skyward_keep": "tileset",
+      "auto/metal_grate": "autotile",
+      "bg/panorama_sky": "panorama",
+      "fx/fog_clouds": "fog"
+    }
+  }
+}

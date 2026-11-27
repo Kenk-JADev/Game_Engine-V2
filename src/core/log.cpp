@@ -55,9 +55,9 @@ void log_open(const std::string& path) {
         g_file = nullptr;
     }
     // Etappe 18j: _wfsopen mit _SH_DENYNO statt fopen_s("w") - fopen_s
-    // sperrt die Datei exklusiv, weshalb Live-Tests das Log waehrend des
+    // sperrt die Datei exklusiv, weshalb Live-Tests das Log während des
     // Editor-Laufs nicht lesen konnten (alle bisherigen Live-Skripte mussten
-    // den Editor erst beenden). So bleibt die Datei fuer Leser offen.
+    // den Editor erst beenden). So bleibt die Datei für Leser offen.
     std::wstring wide(path.size() + 1, L'\0');
     const int n = MultiByteToWideChar(CP_UTF8, 0, path.c_str(),
                                       static_cast<int>(path.size()), &wide[0],
@@ -65,7 +65,7 @@ void log_open(const std::string& path) {
     wide.resize(n > 0 ? n : 0);
     // (MinGW-Signatur: _wfsopen liefert FILE*, anders als MSVCs errno_t-Variante)
     if (!(g_file = _wfsopen(wide.c_str(), L"w", _SH_DENYNO))) {
-        std::fprintf(stderr, "Logdatei konnte nicht geoeffnet werden: %s\n", path.c_str());
+        std::fprintf(stderr, "Logdatei konnte nicht geöffnet werden: %s\n", path.c_str());
     }
 }
 

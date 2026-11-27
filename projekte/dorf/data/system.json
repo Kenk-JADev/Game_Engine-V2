@@ -1,10 +1,11 @@
 {
   "name": "Rune3D - Dorf der Kristalle",
   "start": {
-    "map": "dorf",
-    "x": 0.0,
-    "z": 8.0,
-    "yaw": 3.14159
+    "map": "welt01",
+    "x": 12.0,
+    "z": 3.0,
+    "yaw": 3.14159,
+    "use_project_position": true
   },
   "switches": {
     "kristall_aktiv": false,
@@ -15,5 +16,9 @@
   "variables": {
     "kristalle": 0
   },
-  "last_played": "2026-11-19 10:05"
+  "last_played": "2026-11-27 08:13",
+  "map_tree": {
+    "dorf": 0,
+    "welt01": 0
+  }
 }

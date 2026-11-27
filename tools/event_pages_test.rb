@@ -1,16 +1,16 @@
 #encoding: utf-8
 # ============================================================================
-#  Kopfloser Test fuer Event-Seiten (Etappe 18g, RPG-Maker-XP-Feature).
-#  Laesst sich ohne Engine starten:
+#  Kopfloser Test für Event-Seiten (Etappe 18g, RPG-Maker-XP-Feature).
+#  Lässt sich ohne Engine starten:
 #     ruby -I game/engine tools/event_pages_test.rb
-#  Exit-Code 0 = alles gruen.
+#  Exit-Code 0 = alles grün.
 #
-#  Geprueft wird die Spielseite (game/engine/event.rb + main.rb-Logik):
-#    - altes Format ohne 'pages' laeuft weiter (implizite Seite 0)
-#    - Seiten-Normalisierung (fehlende Felder, kaputte Eintraege)
-#    - hoechste Seite mit erfuellten Bedingungen gewinnt
+#  Geprüft wird die Spielseite (game/engine/event.rb + main.rb-Logik):
+#    - altes Format ohne 'pages' läuft weiter (implizite Seite 0)
+#    - Seiten-Normalisierung (fehlende Felder, kaputte Einträge)
+#    - höchste Seite mit erfüllten Bedingungen gewinnt
 #    - Bedingungen: Schalter (an/aus), Variable (alle Operatoren)
-#    - Seitenwechsel setzt 'fired' zurueck (touch feuert erneut)
+#    - Seitenwechsel setzt 'fired' zurück (touch feuert erneut)
 #    - manual_fire startet die Kommandos der aktiven Seite
 # ============================================================================
 
@@ -69,7 +69,7 @@ end
 check('kaputte Seiten: trigger 42 -> action') { kaputt.pages[3].trigger == 'action' }
 check('kaputte Seiten: commands kein Array -> leer') { kaputt.pages[2].commands.empty? }
 
-# --- hoechste erfuellte Seite gewinnt --------------------------------------
+# --- höchste erfüllte Seite gewinnt --------------------------------------
 ev = Event.new(
   'id' => 1, 'name' => 'Wache', 'x' => 0, 'z' => 0,
   'pages' => [
@@ -90,19 +90,19 @@ check('ohne Bedingungen: Seite 0 aktiv') { ev.page_index == 0 && ev.trigger == '
 
 GameState.set_switch('auftrag', true)
 ev.refresh_page!
-check('Schalter erfuellt: Seite 1 aktiv') { ev.page_index == 1 }
+check('Schalter erfüllt: Seite 1 aktiv') { ev.page_index == 1 }
 
 GameState.set_variable('kristalle', 3)
 ev.refresh_page!
-check('Schalter + Variable erfuellt: Seite 2 aktiv') { ev.page_index == 2 && ev.trigger == 'auto' }
+check('Schalter + Variable erfüllt: Seite 2 aktiv') { ev.page_index == 2 && ev.trigger == 'auto' }
 
 GameState.set_variable('kristalle', 2)
 ev.refresh_page!
-check('Variable wieder zu niedrig: zurueck auf Seite 1') { ev.page_index == 1 }
+check('Variable wieder zu niedrig: zurück auf Seite 1') { ev.page_index == 1 }
 
 GameState.set_switch('auftrag', false)
 ev.refresh_page!
-check('Schalter aus: zurueck auf Seite 0') { ev.page_index == 0 }
+check('Schalter aus: zurück auf Seite 0') { ev.page_index == 0 }
 
 # --- Bedingungen-Operatoren -------------------------------------------------
 GameState.set_variable('gold', 50)
@@ -114,8 +114,8 @@ GameState.set_variable('gold', 50)
   c = { 'variable' => { 'name' => 'gold', 'op' => op, 'value' => val } }
   check("Variable #{op} #{val} -> #{soll}") { Event.conditions_met?(c) == soll }
 end
-check('leere Bedingungen immer erfuellt') { Event.conditions_met?({}) }
-check('nil-Bedingungen immer erfuellt') { Event.conditions_met?(nil) }
+check('leere Bedingungen immer erfüllt') { Event.conditions_met?({}) }
+check('nil-Bedingungen immer erfüllt') { Event.conditions_met?(nil) }
 check('unbekannter Operator blockiert nicht') do
   Event.conditions_met?('variable' => { 'name' => 'gold', 'op' => '~', 'value' => 1 })
 end
@@ -146,9 +146,9 @@ check('Seitenwechsel resettet fired') { !touch.fired && touch.page_index == 1 }
 touch.fired = true
 GameState.set_switch('auftrag', false)
 touch.refresh_page!
-check('Rueckwechsel resettet fired ebenfalls') { !touch.fired && touch.page_index == 0 }
+check('Rückwechsel resettet fired ebenfalls') { !touch.fired && touch.page_index == 0 }
 touch.refresh_page!
-check('gleiche Seite laesst fired unangetastet') { !touch.fired }
+check('gleiche Seite lässt fired unangetastet') { !touch.fired }
 touch.fired = true
 touch.refresh_page!
 check('refresh ohne Wechsel: fired bleibt true') { touch.fired }
@@ -170,7 +170,7 @@ ev.manual_fire(interp)
 interp.update(0.016)
 check('manual_fire: Kommandos von Seite 0') { interp.message == ['Seite 0: Wer bist du?'] }
 
-# --- Interpreter laeuft ueber Seitenkommandos (Integration) ----------------
+# --- Interpreter läuft über Seitenkommandos (Integration) ----------------
 GameState.reset!({})
 seq = Event.new(
   'id' => 3, 'name' => 'Kiste', 'x' => 0, 'z' => 0,
@@ -179,7 +179,7 @@ seq = Event.new(
       'trigger' => 'action',
       'commands' => [
         { 'cmd' => 'switch', 'name' => 'kiste_offen', 'value' => true },
-        { 'cmd' => 'text', 'lines' => ['Du oeffnest die Kiste.'] }
+        { 'cmd' => 'text', 'lines' => ['Du öffnest die Kiste.'] }
       ] },
     { 'conditions' => { 'switch' => { 'name' => 'kiste_offen', 'value' => true } },
       'trigger' => 'action',
@@ -190,14 +190,14 @@ seq.refresh_page!
 interp = Interpreter.new
 seq.manual_fire(interp)
 interp.update(0.016)
-check('Kiste: erster Text') { interp.message == ['Du oeffnest die Kiste.'] }
+check('Kiste: erster Text') { interp.message == ['Du öffnest die Kiste.'] }
 press_like = lambda {
   interp.update(0.016) # Textfenster wartet auf E
 }
 # Eingabe simulieren: Interpreter liest Rune::Input.pressed? - hier per
 # direktem Vortreiben der Nachrichtenschlange (letzte Zeile schliesst).
 until interp.message.nil?
-  # advance_text benoetigt pressed? - ohne Stub-Input schliessen wir direkt:
+  # advance_text benötigt pressed? - ohne Stub-Input schliessen wir direkt:
   interp.instance_variable_set(:@message, nil)
   interp.update(0.016)
 end
@@ -209,6 +209,40 @@ interp = Interpreter.new
 seq.manual_fire(interp)
 interp.update(0.016)
 check('Kiste: zweite Seite spricht') { interp.message == ['Die Kiste ist leer.'] }
+
+# --- F2: keine erfüllte Bedingung -> Event inaktiv --------------------------
+# XP: existiert keine aktive Seite (page nil), hat das Event keinen Trigger
+# und keine Kommandos - es wird schlicht übersprungen (statt fälschlich
+# Seite 0 mit leeren Bedingungen zu erzwingen).
+inaktiv = Event.new(
+  'id' => 30, 'name' => 'Schloss', 'x' => 0, 'z' => 0,
+  'pages' => [
+    { 'conditions' => { 'switch' => { 'name' => 'nie_gesetzt', 'value' => true } },
+      'trigger' => 'action',
+      'commands' => [{ 'cmd' => 'text', 'lines' => ['soll nie laufen'] }] },
+    { 'conditions' => { 'switch' => { 'name' => 'auch_nie', 'value' => true } },
+      'trigger' => 'touch',
+      'commands' => [{ 'cmd' => 'text', 'lines' => ['ebenfalls nie'] }] }
+  ]
+)
+inaktiv.refresh_page!
+check('F2: page_index nil, wenn keine Seite passt') { inaktiv.page_index.nil? }
+check('F2: active? false') { !inaktiv.active? }
+check('F2: trigger nil') { inaktiv.trigger.nil? }
+check('F2: commands leer') { inaktiv.commands.empty? }
+check('F2: manual_fire startet nichts') do
+  i = Interpreter.new
+  inaktiv.manual_fire(i)
+  !i.running?
+end
+GameState.set_switch('nie_gesetzt', true)
+inaktiv.refresh_page!
+check('F2: nach Schalter-ON wieder aktiv (Seite 0)') do
+  inaktiv.active? && inaktiv.page_index == 0 && inaktiv.trigger == 'action'
+end
+GameState.set_switch('nie_gesetzt', false)
+inaktiv.refresh_page!
+check('F2: zurückschalten -> wieder inaktiv') { inaktiv.page_index.nil? }
 
 puts($fail.zero? ? 'EVENT-PAGES-TEST OK (0 Fehler)' : "EVENT-PAGES-TEST FEHLGESCHLAGEN (#{$fail} Fehler)")
 exit($fail.zero? ? 0 : 1)

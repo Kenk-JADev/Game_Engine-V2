@@ -7,6 +7,12 @@
     {
       "name": "kristalle_zaehlen",
       "code": "# Liest eine Variable und schreibt sie ins Log.\nn = variable('kristalle')\nlog \"kristalle=#{n}\"\n"
+    },
+    {
+      "name": "089 - Main",
+      "xp_default": "089",
+      "autoload": false,
+      "code": "# Rune3D-Systemeinstieg (Etappe 39, XP 089 - Main).\n# Die C++-Schleife gibt den Frame vor; Scene_Base#main und\n# Graphics.update liefern den guarded Yield des Fibers.\nbegin\n  Graphics.freeze\n  $scene ||= Scene_Title.new\n  while $scene != nil\n    $scene.main\n  end\n  Graphics.transition(20)\nrescue Errno::ENOENT => e\n  Rune::Log.error(\"Main: #{e.message}\")\nend\n"
     }
   ]
 }

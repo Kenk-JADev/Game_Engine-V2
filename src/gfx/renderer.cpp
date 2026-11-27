@@ -1,10 +1,14 @@
 #include "gfx/renderer.h"
 #include "core/log.h"
+#include "core/win_path.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <limits>
+#include <new>
+#include <stdexcept>
 #include <string>
 
 #include <d3dcompiler.h>
@@ -15,6 +19,11 @@ using namespace rune::math;
 namespace rune::gfx {
 namespace {
 
+// Protokollieren darf insbesondere im Speicher-/GPU-Fehlerpfad nicht selbst
+// einen zweiten C++-Ausnahmefehler aus dem Renderer herauswerfen.
+void log_warn_safely(const char* message) noexcept { try { log_warn(message); } catch (...) {} }
+void log_error_safely(const char* message) noexcept { try { log_error(message); } catch (...) {} }
+
 const char* kShaderSource = R"(
 cbuffer FrameCB : register(b0)
 {
@@ -24,13 +33,61 @@ cbuffer FrameCB : register(b0)
     float4   gShadow;   // x = an (0/1), y = Tiefen-Bias
     float4   gFog;      // x = an (0/1), y = Distanz, zw = Nebelfarbe R,G
     float4   gCamPos;   // xyz = Kameraposition, w = Nebelfarbe B
+    // Etappe 35: Himmel/Tag-Nacht (world/sky_settings.h)
+    float4   gSunColor; // rgb = Direktlicht, w = Wolkenschatten-Stärke
+    float4   gAmbColor; // rgb = Umgebungslicht-Farbe, w = Schatten-Texel (1/Auflösung)
+    float4   gCloud;    // x = Bedeckung, yz = Tempo m/s, w = Zeit s
+    float4   gTone;     // rgb = XP-Tönung -1..1, w = Grau 0..1
 };
+
+// --- Etappe 35: Wolken-Rauschen (gleich für Himmel und Wolkenschatten) ----
+static const float CLOUD_HEIGHT = 160.0f;
+
+float hash21(float2 p)
+{
+    p = frac(p * float2(123.34f, 456.21f));
+    p += dot(p, p + 45.32f);
+    return frac(p.x * p.y);
+}
+
+float vnoise(float2 p)
+{
+    float2 i = floor(p), f = frac(p);
+    float2 u = f * f * (3.0f - 2.0f * f);
+    float a = hash21(i), b = hash21(i + float2(1, 0));
+    float c = hash21(i + float2(0, 1)), d = hash21(i + float2(1, 1));
+    return lerp(lerp(a, b, u.x), lerp(c, d, u.x), u.y);
+}
+
+float fbm(float2 p)
+{
+    float v = 0.0f, a = 0.5f;
+    [unroll] for (int k = 0; k < 5; ++k) { v += a * vnoise(p); p = p * 2.03f + 17.1f; a *= 0.5f; }
+    return v;
+}
+
+// Wolkendichte 0..1 an einer Stelle der Wolkenebene (x/z in Metern).
+float cloud_density(float2 xz, float4 cloud)
+{
+    if (cloud.x <= 0.001f) return 0.0f;
+    float n = fbm((xz + cloud.yz * cloud.w) / 220.0f);
+    float edge = lerp(0.78f, 0.28f, saturate(cloud.x));
+    return smoothstep(edge, edge + 0.18f, n);
+}
+
+// XP-Screen-Tone: Farbe verschieben, dann Richtung Grau entsättigen.
+float3 apply_tone(float3 c, float4 tone)
+{
+    c = saturate(c + tone.rgb);
+    float l = dot(c, float3(0.299f, 0.587f, 0.114f));
+    return lerp(c, float3(l, l, l), saturate(tone.w));
+}
 
 cbuffer ObjectCB : register(b1)
 {
     float4x4 gWorld;
     float4   gColor;
-    float4   gSize;     // xyz = Groesse der Box in Metern
+    float4   gSize;     // xyz = Grösse der Box in Metern
     float4   gParams;   // x = Textur-Slot (<0 = keine), y = Kachel in Metern (<=0 = UV roh)
 };
 
@@ -72,8 +129,8 @@ VSOut VSMain(VSIn i)
     o.lpos = mul(gLightVP, float4(worldPos.xyz + n * 0.06f, 1.0f));
     o.wpos = worldPos.xyz;
 
-    // Boxen: UV an der Flaeche in Weltmetern skalieren, damit Texturen
-    // ueberall gleichmassig kacheln (Hauswand wie Zaunlatte).
+    // Boxen: UV an der Fläche in Weltmetern skalieren, damit Texturen
+    // überall gleichmassig kacheln (Hauswand wie Zaunlatte).
     if (gParams.y > 0.0f)
     {
         float3 an = abs(n);
@@ -83,8 +140,8 @@ VSOut VSMain(VSIn i)
                                            : float2(gSize.x, gSize.y));
         o.uv = i.uv * ext / gParams.y;
     }
-    // Gelaende (Etappe 18c): UV-Faktor in gParams.z - 1.0 = Standard
-    // (2 m pro Kachel, gebacken), kleiner = groessere Kacheln.
+    // Gelände (Etappe 18c): UV-Faktor in gParams.z - 1.0 = Standard
+    // (2 m pro Kachel, gebacken), kleiner = grössere Kacheln.
     if (gParams.z > 0.0f)
     {
         o.uv = i.uv * gParams.z;
@@ -103,28 +160,44 @@ float4 PSMain(VSOut i) : SV_TARGET
     float3 L = normalize(gSun.xyz);
     float ndl = saturate(dot(normalize(i.nrm), L));
 
-    // Schatten: Tiefenvergleich im Licht-Raum, 2x2-PCF durch bilineares
-    // SampleCmp. Ausserhalb der Licht-Abdeckung: beleuchtet.
+    // Schatten (Etappe 35): Tiefenvergleich im Licht-Raum, 3x3-PCF aus
+    // bilinearen SampleCmp-Abgriffen (weich, aber scharf begrenzt). Zum Rand
+    // der kameranahen Schattenkarte sanft ausblenden statt hart abzuschneiden.
     float shadow = 1.0f;
     if (gShadow.x > 0.5f)
     {
         float3 p = i.lpos.xyz / i.lpos.w;
         float2 suv = float2(p.x * 0.5f + 0.5f, 0.5f - p.y * 0.5f);
-        if (suv.x > 0.0f && suv.x < 1.0f && suv.y > 0.0f && suv.y < 1.0f)
+        if (suv.x > 0.0f && suv.x < 1.0f && suv.y > 0.0f && suv.y < 1.0f && p.z < 1.0f)
         {
-            shadow = gShadowMap.SampleCmp(gShadowSamp, suv, p.z - gShadow.y);
+            float texel = gAmbColor.w;
+            float acc = 0.0f;
+            [unroll] for (int sy = -1; sy <= 1; ++sy)
+                [unroll] for (int sx = -1; sx <= 1; ++sx)
+                    acc += gShadowMap.SampleCmp(gShadowSamp, suv + float2(sx, sy) * texel, p.z - gShadow.y);
+            float edge = saturate(min(min(suv.x, 1.0f - suv.x), min(suv.y, 1.0f - suv.y)) * 12.0f);
+            shadow = lerp(1.0f, acc / 9.0f, edge);
         }
     }
 
-    float lit = gSun.w + (1.0f - gSun.w) * ndl * shadow;
+    // Wolkenschatten: Punkt entlang der Sonnenrichtung auf die Wolkenebene
+    // projizieren; dieselbe Dichte wie am Himmel, daher wandern sie mit.
+    float cloud_shade = 1.0f;
+    if (gCloud.x > 0.001f && L.y > 0.05f)
+    {
+        float3 cp = i.wpos + L * ((CLOUD_HEIGHT - i.wpos.y) / L.y);
+        cloud_shade = 1.0f - gSunColor.w * cloud_density(cp.xz, gCloud);
+    }
 
-    // Dezente Himmels-/Bodenstreuung: von oben kuehl, von unten warm.
+    float direct = (1.0f - gSun.w) * ndl * shadow * cloud_shade;
+
+    // Dezente Himmels-/Bodenstreuung: von oben kühl, von unten warm.
     float hemi = i.nrm.y * 0.5f + 0.5f;
     float3 bounce = lerp(float3(0.06f, 0.05f, 0.03f), float3(0.07f, 0.09f, 0.13f), hemi);
 
-    float3 outc = base * (lit + bounce);
+    float3 outc = base * (gSun.w * gAmbColor.rgb + direct * gSunColor.rgb + bounce);
 
-    // Distanznebel (Etappe 17b): sanfte Ueberblendung zur Nebelfarbe.
+    // Distanznebel (Etappe 17b): sanfte Überblendung zur Nebelfarbe.
     if (gFog.x > 0.5f)
     {
         float d = distance(i.wpos, gCamPos.xyz);
@@ -132,15 +205,25 @@ float4 PSMain(VSOut i) : SV_TARGET
         outc = lerp(outc, float3(gFog.z, gFog.w, gCamPos.w), f);
     }
 
-    return float4(outc, 1.0f);
+    return float4(apply_tone(outc, gTone), 1.0f);
 }
 
 // ---------------------------------------------------------------- Himmel
 
+// Etappe 35: Himmel mit Blickrichtung (Verlauf Zenit->Horizont), Sonne mit
+// Hof, Sternen bei Nacht und derselben Wolkendecke wie der Wolkenschatten.
 cbuffer SkyCB : register(b0)
 {
-    float4 gTop;
-    float4 gBottom;
+    float4   gTop;
+    float4   gBottom;     // Horizontfarbe
+    float4x4 gInvViewProj;
+    float4   gSkyCam;     // xyz = Kamera
+    float4   gSkySun;     // xyz = Richtung zur Sonne, w = Nacht 0..1
+    float4   gSkySunRgb;  // rgb = Sonnenfarbe
+    float4   gSkyCloud;   // wie gCloud
+    float4   gSkyCloudRgb;
+    float4   gSkyTone;
+    float4   gSkyFog;     // rgb = Nebelfarbe, w = an (0/1) - Etappe 36
 };
 
 struct SkyVSOut
@@ -160,7 +243,51 @@ SkyVSOut SkyVS(uint id : SV_VertexID)
 
 float4 SkyPS(SkyVSOut i) : SV_TARGET
 {
-    return lerp(gTop, gBottom, saturate(i.uv.y));
+    float2 ndc = float2(i.uv.x * 2.0f - 1.0f, 1.0f - i.uv.y * 2.0f);
+    float4 wp = mul(gInvViewProj, float4(ndc, 1.0f, 1.0f));
+    float3 dir = normalize(wp.xyz / wp.w - gSkyCam.xyz);
+    float up = dir.y;
+
+    // Verlauf: am Horizont hell/dunstig, zum Zenit kräftig; unter dem
+    // Horizont leicht abgedunkelt (falls kein Gelände davor liegt).
+    float3 col = lerp(gBottom.rgb, gTop.rgb, pow(saturate(up), 0.5f));
+    if (up < 0.0f) col = gBottom.rgb * (0.85f + 0.15f * saturate(1.0f + up * 4.0f));
+
+    // Sonne: scharfe Scheibe + weicher Hof (bei Nacht schwächer = Mond).
+    float3 S = normalize(gSkySun.xyz);
+    float sd = saturate(dot(dir, S));
+    col += gSkySunRgb.rgb * (pow(sd, 1400.0f) * 3.0f + pow(sd, 14.0f) * 0.22f);
+
+    // Sterne nachts (nur über dem Horizont, ohne Wolken davor).
+    float night = gSkySun.w;
+    float cloud = 0.0f;
+    if (up > 0.02f && gSkyCloud.x > 0.001f && gSkyCam.y < CLOUD_HEIGHT - 2.0f)
+    {
+        float t = (CLOUD_HEIGHT - gSkyCam.y) / up;
+        float2 xz = gSkyCam.xz + dir.xz * t;
+        cloud = cloud_density(xz, gSkyCloud) * saturate(up * 6.0f);
+    }
+    if (night > 0.01f && up > 0.0f)
+    {
+        float2 sp = dir.xz / (up + 0.2f) * 220.0f;
+        float star = step(0.9965f, hash21(floor(sp)));
+        col += star * night * (1.0f - cloud) * saturate(up * 3.0f) * 0.9f;
+    }
+
+    // Wolken: zur Sonne hin heller angeleuchtet.
+    float3 ccol = gSkyCloudRgb.rgb * (0.78f + 0.22f * sd);
+    col = lerp(col, ccol, cloud * 0.92f);
+
+    // Etappe 36: Nebel auch am Himmel - aber NUR horizontnah. Weit entferntes
+    // Gelände wird im Szenen-Shader ganz zur Nebelfarbe; ohne diesen Übergang
+    // stand eine harte weiße Bergsilhouette vor kräftigem Blau. Der Zenit
+    // bleibt Himmel, Sonne und Wolken verschwinden zum Horizont im Dunst.
+    if (gSkyFog.w > 0.5f)
+    {
+        float haze = 1.0f - smoothstep(-0.02f, 0.32f, up);
+        col = lerp(col, gSkyFog.rgb, haze);
+    }
+    return float4(apply_tone(col, gSkyTone), 1.0f);
 }
 
 // ---------------------------------------------------------------- Schatten
@@ -193,6 +320,10 @@ struct FrameCB {
     float shadow[4];
     float fog[4];
     float cam_pos[4];
+    float sun_color[4];   // Etappe 35 (Reihenfolge = HLSL-FrameCB)
+    float amb_color[4];
+    float cloud[4];
+    float tone[4];
 };
 
 struct ObjectCB {
@@ -205,7 +336,19 @@ struct ObjectCB {
 struct SkyCB {
     float top[4];
     float bottom[4];
+    float inv_view_proj[16];   // Etappe 35 (Reihenfolge = HLSL-SkyCB)
+    float cam[4];
+    float sun[4];
+    float sun_rgb[4];
+    float cloud[4];
+    float cloud_rgb[4];
+    float tone[4];
+    float fog[4];              // Etappe 36: Nebel am Horizont
 };
+
+// Schattenkarte (Etappe 35): Auflösung als Konstante, damit Viewport,
+// Textur und Shader-Texel nicht auseinanderlaufen.
+constexpr int kShadowSize = 2048;
 
 std::string hresult_text(HRESULT hr) {
     char buf[32];
@@ -234,7 +377,7 @@ bool compile_stage(const char* entry, const char* target, ID3DBlob** out) {
     return true;
 }
 
-// Wuerfel mit UV 0..1 je Flaeche (Reihenfolge wie die Indizes darunter).
+// Würfel mit UV 0..1 je Fläche (Reihenfolge wie die Indizes darunter).
 const BoxVertex kCubeVertices[24] = {
     // +Z
     {{-0.5f, -0.5f,  0.5f}, { 0.0f,  0.0f,  1.0f}, {0.0f, 1.0f}},
@@ -279,15 +422,23 @@ const uint16_t kCubeIndices[36] = {
 
 } // namespace
 
-bool Renderer::init(HWND hwnd, int width, int height) {
+bool Renderer::init(HWND hwnd, int width, int height, bool warp) {
     m_hwnd = hwnd;
     m_width = width;
     m_height = height;
 
+    // Für den isolierten Starttest der echten EXEs und als langsamer
+    // Diagnosemodus: nur ein ausdrücklich gesetztes "1" erzwingt WARP.
+    wchar_t software[2]{};
+    if (GetEnvironmentVariableW(L"RUNE_D3D_WARP", software, 2) == 1 && software[0] == L'1')
+        warp = true;
+    if (warp) log_info("D3D11: WARP-Software-Renderer");
+
     D3D_FEATURE_LEVEL wanted[] = {D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_1, D3D_FEATURE_LEVEL_10_0};
     D3D_FEATURE_LEVEL got = D3D_FEATURE_LEVEL_10_0;
 
-    HRESULT hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, wanted,
+    HRESULT hr = D3D11CreateDevice(nullptr, warp ? D3D_DRIVER_TYPE_WARP : D3D_DRIVER_TYPE_HARDWARE,
+                                   nullptr, 0, wanted,
                                    static_cast<UINT>(sizeof(wanted) / sizeof(wanted[0])),
                                    D3D11_SDK_VERSION, &m_device, &got, &m_context);
     if (FAILED(hr)) {
@@ -302,7 +453,7 @@ bool Renderer::init(HWND hwnd, int width, int height) {
 
     IDXGIDevice* dxgi_device = nullptr;
     if (FAILED(m_device->QueryInterface(IID_IDXGIDevice, reinterpret_cast<void**>(&dxgi_device)))) {
-        log_error("IDXGIDevice nicht verfuegbar");
+        log_error("IDXGIDevice nicht verfügbar");
         return false;
     }
 
@@ -316,7 +467,7 @@ bool Renderer::init(HWND hwnd, int width, int height) {
         adapter->Release();
     }
     if (!factory) {
-        log_error("DXGI-Factory nicht verfuegbar");
+        log_error("DXGI-Factory nicht verfügbar");
         return false;
     }
 
@@ -411,7 +562,7 @@ bool Renderer::create_shaders() {
     }
 
     D3D11_SAMPLER_DESC sd{};
-    // Pixel-Schaerfe (Etappe 14b): Point-Filterung mit harten Mip-Wechseln —
+    // Pixel-Schärfe (Etappe 14b): Point-Filterung mit harten Mip-Wechseln —
     // Texel bleiben auch aus der Ferne krisselig sichtbar (Retro-Look),
     // statt linear zu verschwimmen.
     sd.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
@@ -488,8 +639,8 @@ bool Renderer::create_shaders() {
     }
 
     D3D11_TEXTURE2D_DESC std_{};
-    std_.Width = 2048;
-    std_.Height = 2048;
+    std_.Width = kShadowSize;
+    std_.Height = kShadowSize;
     std_.MipLevels = 1;
     std_.ArraySize = 1;
     std_.Format = DXGI_FORMAT_R32_TYPELESS;
@@ -555,7 +706,7 @@ bool Renderer::create_targets(int width, int height) {
     ID3D11Texture2D* back_buffer = nullptr;
     HRESULT hr = m_swap->GetBuffer(0, IID_ID3D11Texture2D, reinterpret_cast<void**>(&back_buffer));
     if (FAILED(hr) || !back_buffer) {
-        log_error("Backbuffer nicht verfuegbar: " + hresult_text(hr));
+        log_error("Backbuffer nicht verfügbar: " + hresult_text(hr));
         return false;
     }
     hr = m_device->CreateRenderTargetView(back_buffer, nullptr, &m_rtv);
@@ -624,8 +775,8 @@ void Renderer::resize(int width, int height) {
 
     // Etappe 18j: Nach ResizeBuffers ist der Inhalt des Backbuffers UNDEFINIERT.
     // Beim Ziehen der Fensterkante (Windows-Modalschleife) pausiert unsere
-    // Render-Schleife, deshalb blieben schwarze/garbage-Flaechen stehen.
-    // Einmal leeren + praesentieren liefert sofort ein sauberes Bild.
+    // Render-Schleife, deshalb blieben schwarze/garbage-Flächen stehen.
+    // Einmal leeren + präsentieren liefert sofort ein sauberes Bild.
     if (m_rtv) {
         const float c[4] = {
             ((m_clear_rgb >> 16) & 0xFF) / 255.0f,
@@ -644,7 +795,7 @@ void Renderer::apply_pipeline() {
     const UINT stride = sizeof(MeshVertex);
     const UINT offset = 0;
 
-    // Zustand zuruecksetzen, den die UI-Schicht aendern kann (Blend, Tiefe, Raster).
+    // Zustand zurücksetzen, den die UI-Schicht ändern kann (Blend, Tiefe, Raster).
     m_context->OMSetDepthStencilState(nullptr, 0);
     m_context->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
     m_context->RSSetState(nullptr);
@@ -685,16 +836,41 @@ void Renderer::begin_frame(const Mat4& view_proj, const Vec3& eye) {
         cb.sun[0] = sun.x; cb.sun[1] = sun.y; cb.sun[2] = sun.z;
         cb.sun[3] = m_ambient;
 
-        // Licht-Kamera: Sonne scheint auf die Terrainmitte, Ortho ueberdeckt
-        // das ganze Gelaende (bis 250 m Kantenlaenge).
-        Vec3 center{0.0f, 10.0f, 0.0f};
-        Vec3 eye = add(center, scale(sun, 180.0f));
+        // Licht-Kamera (Etappe 35): folgt der KAMERA statt fest auf die
+        // Kartenmitte. Der Bereich wächst mit der Kamerahöhe (nah = scharf,
+        // Übersicht = größer); vorher deckten 2048 Texel fest 360 m ab
+        // (~18 cm pro Texel, breite weiche Kanten, weit weg gar kein Schatten).
+        m_view_proj = view_proj;
+        bool inv_ok = false;
+        const Mat4 inv_vp = inverse(view_proj, &inv_ok);
+        Vec3 center{m_eye.x, 10.0f, m_eye.z};
+        if (inv_ok) {
+            // Schattenmitte etwas in Blickrichtung vorschieben (Bildmitte am Boden).
+            const float* iv = inv_vp.m;
+            const float fx = iv[8] + iv[12], fy = iv[9] + iv[13], fz = iv[10] + iv[14], fw = iv[11] + iv[15];
+            if (std::fabs(fw) > 1e-6f) {
+                Vec3 far_pt{fx / fw, fy / fw, fz / fw};
+                Vec3 fwd = normalize(sub(far_pt, m_eye));
+                Vec3 flat = normalize(Vec3{fwd.x, 0.0f, fwd.z});
+                center = add(center, scale(flat, 25.0f));
+            }
+        }
+        const float range = std::clamp(std::fabs(m_eye.y - 10.0f) * 2.5f + 90.0f, 110.0f, 360.0f);
+        Vec3 eye = add(center, scale(sun, 200.0f));
         Mat4 lview = look_at_lh(eye, center, Vec3{0.0f, 1.0f, 0.0f});
-        Mat4 lproj = orthographic_lh(360.0f, 360.0f, 1.0f, 400.0f);
+        Mat4 lproj = orthographic_lh(range, range, 1.0f, 420.0f);
         m_light_vp = mul(lview, lproj);
+        // Auf ganze Schatten-Texel einrasten: verhindert Flimmern der
+        // Schattenkanten, wenn die Kamera sich bewegt.
+        {
+            const float ox = m_light_vp.m[12] * (kShadowSize * 0.5f);
+            const float oy = m_light_vp.m[13] * (kShadowSize * 0.5f);
+            m_light_vp.m[12] += (std::round(ox) - ox) / (kShadowSize * 0.5f);
+            m_light_vp.m[13] += (std::round(oy) - oy) / (kShadowSize * 0.5f);
+        }
         std::memcpy(cb.light_vp, m_light_vp.m, sizeof(cb.light_vp));
         cb.shadow[0] = (m_shadows_on && m_shadow_dsv && m_shadow_srv) ? 1.0f : 0.0f;
-        cb.shadow[1] = 0.00035f;
+        cb.shadow[1] = 0.00025f;
         cb.shadow[2] = cb.shadow[3] = 0.0f;
         cb.fog[0] = m_fog_on ? 1.0f : 0.0f;
         cb.fog[1] = m_fog_far;
@@ -702,6 +878,19 @@ void Renderer::begin_frame(const Mat4& view_proj, const Vec3& eye) {
         cb.fog[3] = ((m_fog_rgb >> 8) & 0xFF) / 255.0f;
         cb.cam_pos[0] = m_eye.x; cb.cam_pos[1] = m_eye.y; cb.cam_pos[2] = m_eye.z;
         cb.cam_pos[3] = (m_fog_rgb & 0xFF) / 255.0f;
+        // Etappe 35: Licht-/Wolken-/Tönungswerte.
+        for (int k = 0; k < 3; ++k) {
+            cb.sun_color[k] = m_look.sun_rgb[k];
+            cb.amb_color[k] = m_look.ambient_rgb[k];
+            cb.tone[k] = m_look.tone[k];
+        }
+        cb.sun_color[3] = m_look.cloud_shadow;
+        cb.amb_color[3] = 1.0f / static_cast<float>(kShadowSize);
+        cb.cloud[0] = m_look.clouds;
+        cb.cloud[1] = m_look.cloud_speed[0];
+        cb.cloud[2] = m_look.cloud_speed[1];
+        cb.cloud[3] = sky_time_seconds();
+        cb.tone[3] = m_look.tone[3];
         std::memcpy(mapped.pData, &cb, sizeof(cb));
         m_context->Unmap(m_frame_cb, 0);
     }
@@ -712,7 +901,37 @@ void Renderer::begin_frame(const Mat4& view_proj, const Vec3& eye) {
 }
 
 int Renderer::add_texture(const std::string& name, int w, int h, const uint8_t* rgba) {
-    if (!m_device || w <= 0 || h <= 0 || !rgba) return -1;
+    return add_texture_impl(name, w, h, rgba, false);
+}
+
+int Renderer::add_texture_impl(const std::string& name, int w, int h, const uint8_t* rgba, bool internal_atlas) {
+    std::size_t byte_count = 0;
+    if (!m_device || !world::terrain_valid_texture_name(name) || !rgba ||
+        !world::texture_byte_count(w, h, byte_count)) return -1;
+
+    // Ein neu hinzukommender Override kann den bisher verwendeten Basis-Slot
+    // ersetzen; Atlas-UV sind bei jeder Änderung der Namensmenge veraltet.
+    const int previous_effective = internal_atlas ? -1 : texture_index(name);
+    auto& ids = m_project_textures ? m_project_tex_ids : m_base_tex_ids;
+    const auto found = ids.find(name);
+    const int existing = internal_atlas ? m_atlas_slot : found == ids.end() ? -1 : found->second;
+    const bool replace_slot = existing >= 0 && static_cast<size_t>(existing) < m_tex_srvs.size() &&
+        static_cast<size_t>(existing) < m_tex_pixels.size() &&
+        static_cast<size_t>(existing) < m_tex_sizes.size() && m_tex_srvs[static_cast<size_t>(existing)];
+    if (replace_slot && m_tex_sizes[static_cast<size_t>(existing)] == std::pair<int, int>{w, h} &&
+        m_tex_pixels[static_cast<size_t>(existing)].size() == byte_count &&
+        std::memcmp(m_tex_pixels[static_cast<size_t>(existing)].data(), rgba, byte_count) == 0)
+        return existing;
+    const std::size_t old_bytes = replace_slot ? m_tex_pixels[static_cast<size_t>(existing)].size() : 0;
+    if (m_tex_resident_bytes < old_bytes ||
+        byte_count > world::TEXTURE_MAX_RESIDENT_BYTES - (m_tex_resident_bytes - old_bytes)) {
+        log_warn_safely("Textur-Speicherbudget erreicht");
+        return -1;
+    }
+    if (!replace_slot && m_tex_free.empty() && m_tex_srvs.size() >= world::TEXTURE_MAX_SLOTS) {
+        log_warn_safely("Textur-Slotbudget erreicht");
+        return -1;
+    }
 
     D3D11_TEXTURE2D_DESC td{};
     td.Width = static_cast<UINT>(w);
@@ -723,72 +942,186 @@ int Renderer::add_texture(const std::string& name, int w, int h, const uint8_t* 
     td.SampleDesc.Count = 1;
     td.Usage = D3D11_USAGE_IMMUTABLE;
     td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-
     D3D11_SUBRESOURCE_DATA sd{};
     sd.pSysMem = rgba;
     sd.SysMemPitch = static_cast<UINT>(w) * 4;
 
     ID3D11Texture2D* tex = nullptr;
     if (FAILED(m_device->CreateTexture2D(&td, &sd, &tex)) || !tex) {
-        log_error("Textur '" + name + "' konnte nicht erstellt werden");
+        if (tex) tex->Release();
+        try { log_error("Textur '" + name + "' konnte nicht erstellt werden"); } catch (...) {}
         return -1;
     }
-
     ID3D11ShaderResourceView* srv = nullptr;
-    HRESULT hr = m_device->CreateShaderResourceView(tex, nullptr, &srv);
+    const HRESULT hr = m_device->CreateShaderResourceView(tex, nullptr, &srv);
     tex->Release();
     if (FAILED(hr) || !srv) {
-        log_error("Textur-View '" + name + "' konnte nicht erstellt werden");
+        if (srv) srv->Release();
+        try { log_error("Textur-View '" + name + "' konnte nicht erstellt werden"); } catch (...) {}
         return -1;
     }
 
-    const int index = static_cast<int>(m_tex_srvs.size());
-    m_tex_srvs.push_back(srv);
-    m_tex_ids[name] = index;
-    // Etappe 18c: Pixel fuer Tileset-Vorschau mitfuehren.
-    m_tex_pixels.emplace_back(rgba, rgba + static_cast<size_t>(w) * h * 4);
-    m_tex_sizes.emplace_back(w, h);
-    log_info("Textur '" + name + "' registriert (" + std::to_string(w) + "x" + std::to_string(h) + ")");
+    const bool reuse = !replace_slot && !m_tex_free.empty();
+    const int index = replace_slot ? existing : reuse ? m_tex_free.back() : static_cast<int>(m_tex_srvs.size());
+    try {
+        // Vor dem Einfügen alle potenziellen Allokationen erledigen. Die
+        // parallelen Vektoren und die Freiliste behalten so denselben Stand.
+        std::vector<uint8_t> copy(rgba, rgba + byte_count);
+        if (!replace_slot && !reuse) {
+            const size_t next = m_tex_srvs.size() + 1;
+            auto reserve_slot = [next](auto& slots) {
+                if (slots.capacity() >= next) return;
+                size_t grow = slots.capacity() ? slots.capacity() + slots.capacity() / 2 + 1 : 8;
+                if (grow < slots.capacity() || grow > slots.max_size()) grow = next;
+                slots.reserve(std::max(next, grow));
+            };
+            reserve_slot(m_tex_srvs);
+            reserve_slot(m_tex_pixels);
+            reserve_slot(m_tex_sizes);
+            reserve_slot(m_tex_free); // auch Freigabe darf nicht allokieren
+        }
+        if (!replace_slot && !internal_atlas) ids.emplace(name, index);
+        if (replace_slot || reuse) {
+            if (replace_slot && m_tex_srvs[static_cast<size_t>(index)])
+                m_tex_srvs[static_cast<size_t>(index)]->Release();
+            m_tex_srvs[static_cast<size_t>(index)] = srv;
+            m_tex_pixels[static_cast<size_t>(index)] = std::move(copy);
+            m_tex_sizes[static_cast<size_t>(index)] = {w, h};
+            if (reuse) m_tex_free.pop_back();
+        } else {
+            m_tex_srvs.push_back(srv);
+            m_tex_pixels.push_back(std::move(copy));
+            m_tex_sizes.emplace_back(w, h);
+        }
+        if (internal_atlas) m_atlas_slot = index;
+        m_tex_resident_bytes = m_tex_resident_bytes - old_bytes + byte_count;
+    } catch (const std::bad_alloc&) {
+        srv->Release();
+        log_error_safely("Nicht genügend Speicher für Texturpixel");
+        return -1;
+    } catch (const std::length_error&) {
+        srv->Release();
+        log_error_safely("Texturpixel überschreiten den Speicherbereich");
+        return -1;
+    }
+    if (!internal_atlas && m_terrain_tex >= 0 &&
+        (m_terrain_tex == m_atlas_slot ||
+         (previous_effective >= 0 && m_terrain_tex == previous_effective && previous_effective != index))) {
+        // Keine alten Atlas-UV mit einem neu gebauten Atlas mischen. Der
+        // Aufrufer baut das Terrain nach der Änderung ausdrücklich neu auf.
+        clear_terrain();
+        m_terrain_tex = -1;
+    }
+    m_atlas_dirty = true;
+    try { log_info("Textur '" + name + "' registriert (" + std::to_string(w) + "x" + std::to_string(h) + ")"); }
+    catch (...) {}
     return index;
 }
 
+void Renderer::unbind_texture() {
+    if (m_context) {
+        ID3D11ShaderResourceView* empty = nullptr;
+        m_context->PSSetShaderResources(0, 1, &empty);
+    }
+}
+
+void Renderer::release_texture_slot(int index) {
+    if (index < 0 || static_cast<size_t>(index) >= m_tex_srvs.size() || !m_tex_srvs[index]) return;
+    m_tex_srvs[index]->Release();
+    m_tex_srvs[index] = nullptr;
+    m_tex_resident_bytes -= m_tex_pixels[index].size();
+    std::vector<uint8_t>().swap(m_tex_pixels[index]);
+    m_tex_sizes[index] = {0, 0};
+    m_tex_free.push_back(index); // beim Anlegen des Slots bereits reserviert
+}
+
+void Renderer::end_project_textures() {
+    unbind_texture();
+    // Ein zuvor gebautes Terrain kann Atlas-UV oder einen jetzt freigegebenen
+    // Slot enthalten. Der Aufrufer baut es für das nächste Projekt neu auf.
+    clear_terrain();
+    m_terrain_tex = -1;
+    m_cmds.clear();
+    for (const auto& entry : m_project_tex_ids) release_texture_slot(entry.second);
+    m_project_tex_ids.clear();
+    release_texture_slot(m_atlas_slot);
+    m_atlas_slot = -1;
+    m_atlas_cache = {};
+    m_atlas_dirty = true;
+    m_project_textures = false;
+}
+
+void Renderer::begin_project_textures() {
+    end_project_textures();
+    m_project_textures = true;
+}
+
+bool Renderer::remove_project_texture(const std::string& name) {
+    const auto it = m_project_tex_ids.find(name);
+    if (it == m_project_tex_ids.end()) return false;
+    unbind_texture();
+    if (m_terrain_tex == it->second || (m_atlas_slot >= 0 && m_terrain_tex == m_atlas_slot)) {
+        clear_terrain();
+        m_terrain_tex = -1;
+    }
+    m_cmds.clear();
+    release_texture_slot(it->second);
+    m_project_tex_ids.erase(it);
+    m_atlas_cache = {};
+    m_atlas_dirty = true;
+    return true;
+}
+
 int Renderer::texture_index(const std::string& name) const {
-    auto it = m_tex_ids.find(name);
-    return it == m_tex_ids.end() ? -1 : it->second;
+    const auto project = m_project_tex_ids.find(name);
+    if (project != m_project_tex_ids.end()) return project->second;
+    const auto base = m_base_tex_ids.find(name);
+    return base == m_base_tex_ids.end() ? -1 : base->second;
+}
+
+std::vector<std::string> Renderer::texture_names() const {
+    std::vector<std::string> names;
+    names.reserve(m_base_tex_ids.size() + m_project_tex_ids.size());
+    for (const auto& entry : m_base_tex_ids) names.push_back(entry.first);
+    for (const auto& entry : m_project_tex_ids)
+        if (m_base_tex_ids.find(entry.first) == m_base_tex_ids.end()) names.push_back(entry.first);
+    std::sort(names.begin(), names.end());
+    return names;
 }
 
 bool Renderer::texture_rgba(const std::string& name, std::vector<uint8_t>& out,
                            int& w, int& h) const {
-    auto it = m_tex_ids.find(name);
-    if (it == m_tex_ids.end()) return false;
-    const int index = it->second;
-    if (index < 0 || index >= static_cast<int>(m_tex_pixels.size())) return false;
+    const int index = texture_index(name);
+    if (index < 0 || index >= static_cast<int>(m_tex_pixels.size()) || !m_tex_srvs[index]) return false;
     out = m_tex_pixels[index];
     w = m_tex_sizes[index].first;
     h = m_tex_sizes[index].second;
     return true;
 }
 
-// Etappe 18d: Atlas aller 64x64-Texturen. Zellen 64 px, Raster ~quadratisch;
-// der Atlas meldet sich unter "atlas" an (F5 => neuer Slot, wie alle Texturen).
+// Atlas aller 64x64-Texturen. Bei unveränderten Texturen wiederverwenden;
+// bei Änderungen den bisherigen Atlas-Slot ersetzen statt Speicher zu häufen.
 world::AtlasInfo Renderer::update_atlas() {
+    try {
+    if (!m_atlas_dirty && m_atlas_cache.valid) return m_atlas_cache;
     world::AtlasInfo info;
-    std::vector<std::pair<std::string, int>> entries;   // Name -> Pixelindex
-    for (const auto& [name, idx] : m_tex_ids) {
-        if (idx < 0 || idx >= static_cast<int>(m_tex_sizes.size())) continue;
-        if (m_tex_sizes[idx].first == 64 && m_tex_sizes[idx].second == 64) {
-            entries.emplace_back(name, idx);
-        }
+    // Projekt-Overrides gewinnen auch im Atlas. Eingebaute Texturen bleiben
+    // in eigenen Slots erhalten und erscheinen nach dem Projektende wieder.
+    std::map<std::string, int> effective = m_base_tex_ids;
+    for (const auto& entry : m_project_tex_ids) effective.insert_or_assign(entry.first, entry.second);
+    const world::AtlasSources sources = world::atlas_sources(effective, m_tex_sizes);
+    if (sources.too_many) {
+        log_warn_safely("Atlas: mehr als 1024 Kacheln; Einzeltextur als Ersatz");
+        return info;
     }
-    if (entries.empty()) return info;
+    const auto& entries = sources.entries; // map bereits nach Namen sortiert
+    const world::AtlasPlan plan = world::atlas_plan(entries.size());
+    if (!plan.ok()) return info;
 
-    std::sort(entries.begin(), entries.end(),
-              [](const auto& a, const auto& b) { return a.first < b.first; });
     const int n = static_cast<int>(entries.size());
-    const int cols = std::max(1, static_cast<int>(std::ceil(std::sqrt(static_cast<double>(n)))));
-    const int rows = (n + cols - 1) / cols;
+    const int cols = plan.cols, rows = plan.rows;
 
-    std::vector<uint8_t> px(static_cast<size_t>(cols * 64) * rows * 64 * 4, 0);
+    std::vector<uint8_t> px(plan.rgba_bytes, 0);
     for (int e = 0; e < n; ++e) {
         const auto& pixels = m_tex_pixels[entries[e].second];
         const int col = e % cols, row = e / cols;
@@ -799,20 +1132,39 @@ world::AtlasInfo Renderer::update_atlas() {
         info.cell_of[entries[e].first] = e;
     }
 
-    info.tex_index = add_texture("atlas", cols * 64, rows * 64, px.data());
+    info.tex_index = add_texture_impl("atlas", cols * 64, rows * 64, px.data(), true);
     info.cols = cols;
     info.rows = rows;
     info.valid = info.tex_index >= 0;
     if (info.valid) {
-        log_info("Atlas gebaut: " + std::to_string(n) + " Kacheln, " +
-                 std::to_string(cols * 64) + "x" + std::to_string(rows * 64) + " px");
+        m_atlas_cache = std::move(info);
+        m_atlas_dirty = false;
+        try {
+            log_info("Atlas gebaut: " + std::to_string(n) + " Kacheln, " +
+                     std::to_string(cols * 64) + "x" + std::to_string(rows * 64) + " px");
+        } catch (...) {}
+        return m_atlas_cache;
     }
     return info;
+    } catch (const std::bad_alloc&) {
+        log_warn_safely("Nicht genügend Speicher für den Atlas; Einzeltextur als Ersatz");
+        return {};
+    } catch (const std::length_error&) {
+        log_warn_safely("Atlas überschreitet den Speicherbereich; Einzeltextur als Ersatz");
+        return {};
+    }
 }
 
 bool Renderer::set_terrain(const std::vector<MeshVertex>& verts, const std::vector<uint32_t>& indices) {
     clear_terrain();
     if (!m_device || verts.empty() || indices.empty()) return false;
+    // D3D11 ByteWidth ist UINT, die Draw-Anzahl wird als int gespeichert.
+    if (verts.size() > std::numeric_limits<UINT>::max() / sizeof(MeshVertex) ||
+        indices.size() > std::numeric_limits<UINT>::max() / sizeof(uint32_t) ||
+        indices.size() > static_cast<size_t>(std::numeric_limits<int>::max())) {
+        log_error_safely("Gelände-Mesh ist für den Renderer zu groß");
+        return false;
+    }
 
     D3D11_BUFFER_DESC bd{};
     bd.Usage = D3D11_USAGE_IMMUTABLE;
@@ -821,7 +1173,8 @@ bool Renderer::set_terrain(const std::vector<MeshVertex>& verts, const std::vect
     D3D11_SUBRESOURCE_DATA vd{};
     vd.pSysMem = verts.data();
     if (FAILED(m_device->CreateBuffer(&bd, &vd, &m_terrain_vb))) {
-        log_error("Gelaende-Vertexbuffer konnte nicht erstellt werden");
+        clear_terrain();
+        log_error_safely("Gelände-Vertexbuffer konnte nicht erstellt werden");
         return false;
     }
 
@@ -832,8 +1185,8 @@ bool Renderer::set_terrain(const std::vector<MeshVertex>& verts, const std::vect
     D3D11_SUBRESOURCE_DATA id{};
     id.pSysMem = indices.data();
     if (FAILED(m_device->CreateBuffer(&ibd, &id, &m_terrain_ib))) {
-        log_error("Gelaende-Indexbuffer konnte nicht erstellt werden");
         clear_terrain();
+        log_error_safely("Gelände-Indexbuffer konnte nicht erstellt werden");
         return false;
     }
 
@@ -852,7 +1205,7 @@ bool Renderer::save_screenshot(const std::string& path) {
 
     ID3D11Texture2D* back = nullptr;
     if (FAILED(m_swap->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&back))) || !back) {
-        log_error("Screenshot: Backbuffer nicht verfuegbar");
+        log_error("Screenshot: Backbuffer nicht verfügbar");
         return false;
     }
 
@@ -903,7 +1256,10 @@ bool Renderer::save_screenshot(const std::string& path) {
     ih.biSizeImage = row_bytes * static_cast<uint32_t>(h);
 
     bool ok = false;
-    if (std::FILE* f = std::fopen(path.c_str(), "wb")) {
+    std::wstring wide_path;
+    FILE* f = nullptr;
+    if (core::win_path::to_wide(path, wide_path) &&
+        _wfopen_s(&f, wide_path.c_str(), L"wb") == 0 && f) {
         std::fwrite(&fh, sizeof(fh), 1, f);
         std::fwrite(&ih, sizeof(ih), 1, f);
 
@@ -956,7 +1312,7 @@ void Renderer::end_frame() {
     // --- Schatten-Pass: Szene aus Sicht der Sonne in die Tiefenkarte ---
     if (m_shadows_on && m_shadow_dsv && m_shadow_vs &&
         (m_terrain_index_count > 0 || !m_cmds.empty())) {
-        D3D11_VIEWPORT svp{0.0f, 0.0f, 2048.0f, 2048.0f, 0.0f, 1.0f};
+        D3D11_VIEWPORT svp{0.0f, 0.0f, static_cast<float>(kShadowSize), static_cast<float>(kShadowSize), 0.0f, 1.0f};
         m_context->RSSetViewports(1, &svp);
         m_context->OMSetRenderTargets(0, nullptr, m_shadow_dsv);
         m_context->ClearDepthStencilView(m_shadow_dsv, D3D11_CLEAR_DEPTH, 1.0f, 0);
@@ -998,7 +1354,7 @@ void Renderer::end_frame() {
             m_context->DrawIndexed(static_cast<UINT>(m_index_count), 0, 0);
         }
 
-        // Haupt-Renderziel + Pipeline zurueck.
+        // Haupt-Renderziel + Pipeline zurück.
         m_context->OMSetRenderTargets(1, &m_rtv, m_dsv);
         D3D11_VIEWPORT vp{0.0f, 0.0f, static_cast<float>(m_width),
                           static_cast<float>(m_height), 0.0f, 1.0f};
@@ -1006,7 +1362,7 @@ void Renderer::end_frame() {
         apply_pipeline();
     }
 
-    // Himmel zuerst: Fullscreen-Dreieck ohne Tiefentest, danach normale Pipeline.
+    // Himmel zürst: Fullscreen-Dreieck ohne Tiefentest, danach normale Pipeline.
     if (m_sky_on && m_sky_vs && m_sky_ps) {
         D3D11_MAPPED_SUBRESOURCE mapped{};
         if (SUCCEEDED(m_context->Map(m_sky_cb, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
@@ -1019,6 +1375,27 @@ void Renderer::end_frame() {
             cb.bottom[1] = ((m_sky_bottom >> 8) & 0xFF) / 255.0f;
             cb.bottom[2] = (m_sky_bottom & 0xFF) / 255.0f;
             cb.bottom[3] = 1.0f;
+            // Etappe 35: Blickstrahl, Sonne, Wolken, Tönung.
+            const Mat4 inv = inverse(m_view_proj);
+            std::memcpy(cb.inv_view_proj, inv.m, sizeof(cb.inv_view_proj));
+            cb.cam[0] = m_eye.x; cb.cam[1] = m_eye.y; cb.cam[2] = m_eye.z; cb.cam[3] = 0.0f;
+            const Vec3 sun = normalize(m_sun);
+            cb.sun[0] = sun.x; cb.sun[1] = sun.y; cb.sun[2] = sun.z; cb.sun[3] = m_look.night;
+            for (int k = 0; k < 3; ++k) {
+                cb.sun_rgb[k] = m_look.sun_rgb[k];
+                cb.cloud_rgb[k] = m_look.cloud_rgb[k];
+                cb.tone[k] = m_look.tone[k];
+            }
+            cb.sun_rgb[3] = cb.cloud_rgb[3] = 1.0f;
+            cb.cloud[0] = m_look.clouds;
+            cb.cloud[1] = m_look.cloud_speed[0];
+            cb.cloud[2] = m_look.cloud_speed[1];
+            cb.cloud[3] = sky_time_seconds();
+            cb.tone[3] = m_look.tone[3];
+            cb.fog[0] = ((m_fog_rgb >> 16) & 0xFF) / 255.0f;
+            cb.fog[1] = ((m_fog_rgb >> 8) & 0xFF) / 255.0f;
+            cb.fog[2] = (m_fog_rgb & 0xFF) / 255.0f;
+            cb.fog[3] = m_fog_on ? 1.0f : 0.0f;
             std::memcpy(mapped.pData, &cb, sizeof(cb));
             m_context->Unmap(m_sky_cb, 0);
         }
@@ -1030,11 +1407,11 @@ void Renderer::end_frame() {
         m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         m_context->Draw(3, 0);
 
-        // Szenen-Pipeline zurueck (Shader, CBs, Tiefe).
+        // Szenen-Pipeline zurück (Shader, CBs, Tiefe).
         apply_pipeline();
     }
 
-    // Gelaende zuerst (eigenes Mesh, Weltmatrix = Identitaet, Farbe weiss).
+    // Gelände zürst (eigenes Mesh, Weltmatrix = Identität, Farbe weiss).
     if (m_terrain_vb && m_terrain_ib && m_terrain_index_count > 0) {
         const UINT stride = sizeof(MeshVertex);
         const UINT offset = 0;
@@ -1050,9 +1427,9 @@ void Renderer::end_frame() {
             cb.size[0] = cb.size[1] = cb.size[2] = cb.size[3] = 0.0f;
             cb.params[0] = static_cast<float>(m_terrain_tex);  // UV steckt in den Vertices
             cb.params[1] = 0.0f;
-            // Etappe 18c: Kachelgroesse des Bodens (Terrain-UV ist auf
-            // 2 m gebacken; Faktor 2/tile skaliert auf die Wunschgroesse).
-            cb.params[2] = 2.0f / (m_terrain_tile > 0.0f ? m_terrain_tile : 2.0f);
+            // Etappe 18c: Kachelgrösse des Bodens (Terrain-UV ist auf
+            // 2 m gebacken; Faktor 2/tile skaliert auf die Wunschgrösse).
+            cb.params[2] = world::terrain_uv_scale(m_terrain_tile);
             cb.params[3] = 0.0f;
             std::memcpy(mapped.pData, &cb, sizeof(cb));
             m_context->Unmap(m_object_cb, 0);
@@ -1068,7 +1445,7 @@ void Renderer::end_frame() {
         m_context->IASetIndexBuffer(m_ib, DXGI_FORMAT_R16_UINT, 0);
     }
 
-    int bound_tex = -2;  // ungueltig, damit der erste Draw bindet
+    int bound_tex = -2;  // ungültig, damit der erste Draw bindet
     for (const DrawCmd& cmd : m_cmds) {
         const Mat4 world = mul(mul(scaling(cmd.size.x, cmd.size.y, cmd.size.z),
                                    rotation_roll_pitch_yaw(cmd.rot.x, cmd.rot.y, cmd.rot.z)),
@@ -1124,7 +1501,16 @@ void Renderer::shutdown() {
     if (m_shadow_vs) { m_shadow_vs->Release(); m_shadow_vs = nullptr; }
     for (ID3D11ShaderResourceView* srv : m_tex_srvs) if (srv) srv->Release();
     m_tex_srvs.clear();
-    m_tex_ids.clear();
+    m_base_tex_ids.clear();
+    m_project_tex_ids.clear();
+    m_tex_free.clear();
+    m_tex_resident_bytes = 0;
+    m_project_textures = false;
+    m_tex_pixels.clear();
+    m_tex_sizes.clear();
+    m_atlas_cache = {};
+    m_atlas_slot = -1;
+    m_atlas_dirty = true;
     if (m_sky_dss) { m_sky_dss->Release(); m_sky_dss = nullptr; }
     if (m_sky_cb) { m_sky_cb->Release(); m_sky_cb = nullptr; }
     if (m_sky_ps) { m_sky_ps->Release(); m_sky_ps = nullptr; }

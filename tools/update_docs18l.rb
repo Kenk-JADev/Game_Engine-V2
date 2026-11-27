@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-# Ergaenzt docs/architecture.md um den Abschnitt zu Etappe 18l
-# (Hoehen-Malwerkzeug + Kartengrenze). Legt die Aenderungen VOR dem
+# Ergänzt docs/architecture.md um den Abschnitt zu Etappe 18l
+# (Höhen-Malwerkzeug + Kartengrenze). Legt die Änderungen VOR dem
 # Ruby-API-Anker ab, wie in den vorherigen Etappen.
 
 ANCHOR  = "## Ruby-API (Stand Etappe 2)"

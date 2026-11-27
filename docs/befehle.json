@@ -1,0 +1,809 @@
+{
+  "version": 1,
+  "stand": "Etappe 25 (Runde 44): 73 Befehle",
+  "zweck": "Quellen-Register der Event-Befehlstypen. Vier Stellen im Baum müssen zu dieser Liste passen: CMD_TYPES (game/engine/mapcheck.rb), die Ausführung (game/engine/interpreter.rb), ISSUE_CMD_TYPES (src/editor/editor_main.cpp) und EvType/EV_TYPES (src/editor/event_form.h). Ein neuer Befehl ist erst fertig, wenn er hier UND in allen vier Stellen steht; tools/befehle_test.rb meldet die Lücke vor dem Commit.",
+  "reihenfolge": "Die Reihenfolge ist die des Registers; die vier Stellen halten dieselbe Reihenfolge ein, damit Diffs lesbar bleiben.",
+  "bereiche": [
+    "Text",
+    "Ablauf",
+    "Zustand",
+    "Verzweigung",
+    "Bewegung",
+    "Welt",
+    "Ton",
+    "Bild",
+    "Inventar",
+    "System",
+    "Party"
+  ],
+  "befehle": [
+    {
+      "typ": "text",
+      "bereich": "Text",
+      "pflicht": [
+        "lines"
+      ],
+      "optional": [],
+      "beschreibung": "Nachrichtenfenster mit einer Zeile je Eintrag; blockiert bis E, danach läuft die Liste weiter."
+    },
+    {
+      "typ": "choices",
+      "bereich": "Text",
+      "pflicht": [
+        "options",
+        "branches"
+      ],
+      "optional": [
+        "cancel",
+        "cancel_branch"
+      ],
+      "beschreibung": "Auswahlfenster; je Option ein Zweig. Esc laut cancel: aus (Default), verzweigung (eigener Abbruch-Zweig) oder Optionsnummer (Z5)."
+    },
+    {
+      "typ": "log",
+      "bereich": "Ablauf",
+      "pflicht": [
+        "text"
+      ],
+      "optional": [],
+      "beschreibung": "Schreibt eine Zeile ins Spiel-Log, ohne den Spieler zu unterbrechen."
+    },
+    {
+      "typ": "wait",
+      "bereich": "Ablauf",
+      "pflicht": [
+        "seconds"
+      ],
+      "optional": [],
+      "beschreibung": "Hält den Interpreter für die angegebene Zeit an; die Karte läuft weiter."
+    },
+    {
+      "typ": "switch",
+      "bereich": "Zustand",
+      "pflicht": [
+        "name",
+        "value"
+      ],
+      "optional": [],
+      "beschreibung": "Setzt einen globalen Schalter auf wahr oder falsch."
+    },
+    {
+      "typ": "toggle_switch",
+      "bereich": "Zustand",
+      "pflicht": [
+        "name"
+      ],
+      "optional": [],
+      "beschreibung": "Kehrt einen globalen Schalter um — typisch für Türen und Autorun-Schleifen mit Self-Switch-Abbruch."
+    },
+    {
+      "typ": "variable",
+      "bereich": "Zustand",
+      "pflicht": [
+        "name"
+      ],
+      "optional": [
+        "op",
+        "value",
+        "source",
+        "src"
+      ],
+      "beschreibung": "Setzt oder rechnet eine Variable. op = set/add/sub/mul/div/mod (XP 122), Quelle des Operanden ueber source (const/variable/random/item/self) mit src als Name bei variable/item; die Altform value/add bleibt gueltig."
+    },
+    {
+      "typ": "if_switch",
+      "bereich": "Verzweigung",
+      "pflicht": [
+        "name",
+        "value",
+        "then"
+      ],
+      "optional": [
+        "else"
+      ],
+      "beschreibung": "Zweig nach Schalterzustand: then bei Gleichheit, sonst else (fehlendes else = nichts)."
+    },
+    {
+      "typ": "if_variable",
+      "bereich": "Verzweigung",
+      "pflicht": [
+        "name",
+        "op",
+        "value",
+        "then"
+      ],
+      "optional": [
+        "else"
+      ],
+      "beschreibung": "Zweig nach Variablenvergleich; op ist einer von ==, !=, <, <=, >, >= (MapCheck::VERGLEICH)."
+    },
+    {
+      "typ": "script",
+      "bereich": "Ablauf",
+      "pflicht": [
+        "code"
+      ],
+      "optional": [
+        "name"
+      ],
+      "beschreibung": "Führt Ruby im Interpreter-Kontext aus (code) oder ruft ein Script aus scripts.json per name auf."
+    },
+    {
+      "typ": "teleport",
+      "bereich": "Bewegung",
+      "pflicht": [
+        "x",
+        "z"
+      ],
+      "optional": [
+        "yaw"
+      ],
+      "beschreibung": "Setzt den Spieler absolut auf die Karte; yaw dreht die Kamera (Default PI). Der Zufallskampf-Zähler wird neu gewürfelt."
+    },
+    {
+      "typ": "move_player",
+      "bereich": "Bewegung",
+      "pflicht": [
+        "x",
+        "z"
+      ],
+      "optional": [
+        "relative"
+      ],
+      "beschreibung": "Bewegt den Spieler absolut oder mit relative=true um x/z versetzt; die Höhe folgt dem Terrain."
+    },
+    {
+      "typ": "heal",
+      "bereich": "Inventar",
+      "pflicht": [],
+      "optional": [
+        "amount"
+      ],
+      "beschreibung": "Heilt die Party vollständig; mit amount nur um diesen Betrag."
+    },
+    {
+      "typ": "weather",
+      "bereich": "Welt",
+      "pflicht": [],
+      "optional": [
+        "name",
+        "intensity"
+      ],
+      "beschreibung": "Schaltet das Wetter (kein, regen, schnee …) mit Stärke; ohne name bleibt es trocken."
+    },
+    {
+      "typ": "effect",
+      "bereich": "Welt",
+      "pflicht": [],
+      "optional": [
+        "name",
+        "color",
+        "height"
+      ],
+      "beschreibung": "Partikeleffekt am Event (sparkle, dust, sonst Burst) mit Farbe und Höhe über dem Boden."
+    },
+    {
+      "typ": "sound",
+      "bereich": "Ton",
+      "pflicht": [
+        "name"
+      ],
+      "optional": [
+        "volume"
+      ],
+      "beschreibung": "Spielt einen Prozedur-Sound einmal ab; volume 0..1."
+    },
+    {
+      "typ": "item",
+      "bereich": "Inventar",
+      "pflicht": [
+        "name"
+      ],
+      "optional": [
+        "count",
+        "take"
+      ],
+      "beschreibung": "Gibt count Items (Default 1) oder nimmt mit take wieder weg."
+    },
+    {
+      "typ": "gold",
+      "bereich": "Inventar",
+      "pflicht": [
+        "amount"
+      ],
+      "optional": [],
+      "beschreibung": "Ändert das Gold der Party; negative Beträge ziehen ab."
+    },
+    {
+      "typ": "save_game",
+      "bereich": "System",
+      "pflicht": [],
+      "optional": [
+        "slot"
+      ],
+      "beschreibung": "Speichert in den Slot 1..3 (Default 1), atomar über Project.save."
+    },
+    {
+      "typ": "load_game",
+      "bereich": "System",
+      "pflicht": [],
+      "optional": [
+        "slot"
+      ],
+      "beschreibung": "Lädt einen Slot und baut die Karte neu auf; der laufende Interpreter endet damit — Befehle danach laufen nicht mehr."
+    },
+    {
+      "typ": "self_switch",
+      "bereich": "Zustand",
+      "pflicht": [
+        "letter",
+        "value"
+      ],
+      "optional": [],
+      "beschreibung": "Setzt Self-Switch A–D des auslösenden Events; ohne Event-Besitzer wird gewarnt und übersprungen."
+    },
+    {
+      "typ": "if_self_switch",
+      "bereich": "Verzweigung",
+      "pflicht": [
+        "letter",
+        "value",
+        "then"
+      ],
+      "optional": [
+        "else"
+      ],
+      "beschreibung": "Zweig nach Self-Switch A–D; ohne Event-Besitzer immer der else-Zweig."
+    },
+    {
+      "typ": "fade",
+      "bereich": "Bild",
+      "pflicht": [],
+      "optional": [
+        "direction",
+        "seconds"
+      ],
+      "beschreibung": "Bildschirm aus- oder einblenden (direction aus/ein) in der angegebenen Dauer."
+    },
+    {
+      "typ": "move_route",
+      "bereich": "Bewegung",
+      "pflicht": [
+        "target",
+        "steps"
+      ],
+      "optional": [
+        "repeat",
+        "speed",
+        "code",
+        "wait"
+      ],
+      "beschreibung": "Bewegungsroute für Event, NPC oder Spieler; wait blockiert bis zum Ende (nicht mit repeat)."
+    },
+    {
+      "typ": "input_number",
+      "bereich": "System",
+      "pflicht": [
+        "name"
+      ],
+      "optional": [
+        "digits",
+        "initial",
+        "cancel"
+      ],
+      "beschreibung": "Zahleneingabe in eine Variable; 1..6 Stellen, Startwert und Esc-Erlaubnis (cancel=false sperrt)."
+    },
+    {
+      "typ": "battle",
+      "bereich": "System",
+      "pflicht": [
+        "name"
+      ],
+      "optional": [
+        "can_escape",
+        "can_lose"
+      ],
+      "beschreibung": "Startet den Kampf gegen eine Truppe aus der Datenbank und wartet auf das Ergebnis."
+    },
+    {
+      "typ": "loop",
+      "bereich": "Ablauf",
+      "pflicht": [
+        "commands"
+      ],
+      "optional": [],
+      "beschreibung": "Wiederholt die Befehle im Schleifenkörper, bis ein break, ein Sprung aus dem Block oder das Event-Ende ihn verlässt (XP 112/413)."
+    },
+    {
+      "typ": "break",
+      "bereich": "Ablauf",
+      "pflicht": [],
+      "optional": [],
+      "beschreibung": "Verlässt die innerste Schleife; danach läuft der Befehl nach der Schleife weiter (XP 113)."
+    },
+    {
+      "typ": "label",
+      "bereich": "Ablauf",
+      "pflicht": [
+        "name"
+      ],
+      "optional": [],
+      "beschreibung": "Setzt eine Sprungmarke im aktuellen Befehlsblock; zur Laufzeit passiert nichts (XP 118)."
+    },
+    {
+      "typ": "jump",
+      "bereich": "Ablauf",
+      "pflicht": [
+        "name"
+      ],
+      "optional": [],
+      "beschreibung": "Springt zur gleichnamigen Marke im selben Befehlsblock und läuft hinter ihr weiter (XP 119)."
+    },
+    {
+      "typ": "exit_event",
+      "bereich": "Ablauf",
+      "pflicht": [],
+      "optional": [],
+      "beschreibung": "Beendet dieses Event sofort; die restlichen Befehle der Liste laufen nicht mehr (XP 115)."
+    },
+    {
+      "typ": "erase_event",
+      "bereich": "Ablauf",
+      "pflicht": [],
+      "optional": [],
+      "beschreibung": "Löscht dieses Event bis zum nächsten Kartenwechsel - keine Auslöser, kein Anklicken, keine Darstellung (XP 116)."
+    },
+    {
+      "typ": "button_input",
+      "bereich": "Zustand",
+      "pflicht": [
+        "name",
+        "keys"
+      ],
+      "optional": [],
+      "beschreibung": "Wartet auf eine der genannten Tasten und schreibt ihre 1-basierte Position in der Liste in die Variable (XP 105)."
+    },
+    {
+      "typ": "text_options",
+      "bereich": "Text",
+      "pflicht": [],
+      "optional": [
+        "position",
+        "frame",
+        "transparent"
+      ],
+      "beschreibung": "Stellt Position, Rahmen und Transparenz des Nachrichtenfensters ein; gilt bis zum nächsten Aufruf und über Kartenwechsel (XP 104)."
+    },
+    {
+      "typ": "common_event",
+      "bereich": "Ablauf",
+      "pflicht": [
+        "name"
+      ],
+      "optional": [],
+      "beschreibung": "Ruft ein Gemeinsames Event aus database.json auf und führt dessen Befehle im laufenden Interpreter aus (XP 117)."
+    },
+    {
+      "typ": "if_gold",
+      "bereich": "Verzweigung",
+      "pflicht": [
+        "op",
+        "value"
+      ],
+      "optional": [
+        "then",
+        "else"
+      ],
+      "beschreibung": "Verzweigt je nach Gold der Party; Vergleich wie bei Variablen (XP 111, Quelle Gold)."
+    },
+    {
+      "typ": "if_item",
+      "bereich": "Verzweigung",
+      "pflicht": [
+        "name",
+        "op",
+        "value"
+      ],
+      "optional": [
+        "then",
+        "else"
+      ],
+      "beschreibung": "Verzweigt je nach Menge eines Items im Inventar (XP 111, Quelle Item)."
+    },
+    {
+      "typ": "if_script",
+      "bereich": "Verzweigung",
+      "pflicht": [
+        "code"
+      ],
+      "optional": [
+        "then",
+        "else"
+      ],
+      "beschreibung": "Wertet einen Ruby-Ausdruck aus; alles ausser false/nil gilt als wahr (XP 111, Quelle Script)."
+    },
+    {
+      "typ": "if_actor",
+      "bereich": "Verzweigung",
+      "pflicht": [
+        "name"
+      ],
+      "optional": [
+        "then",
+        "else"
+      ],
+      "beschreibung": "Verzweigt je nach Team-Mitgliedschaft (XP 111, Quelle Actor); Rune3D fuehrt alle Datenbank-Helden im Team."
+    },
+    {
+      "typ": "if_button",
+      "bereich": "Verzweigung",
+      "pflicht": [
+        "name"
+      ],
+      "optional": [
+        "then",
+        "else"
+      ],
+      "beschreibung": "Verzweigt im Frame des Tastendrucks (XP 111, Quelle Button); Tastenname wie bei der Tasteneingabe."
+    },
+    {
+      "typ": "save_access",
+      "bereich": "System",
+      "pflicht": [],
+      "optional": [
+        "allowed"
+      ],
+      "beschreibung": "Erlaubt oder sperrt das Speichern ueber $game_system.save_disabled (XP 134)."
+    },
+    {
+      "typ": "menu_access",
+      "bereich": "System",
+      "pflicht": [],
+      "optional": [
+        "allowed"
+      ],
+      "beschreibung": "Erlaubt oder sperrt das Esc-Menue ueber $game_system.menu_disabled (XP 135)."
+    },
+    {
+      "typ": "encounter_access",
+      "bereich": "System",
+      "pflicht": [],
+      "optional": [
+        "allowed"
+      ],
+      "beschreibung": "Erlaubt oder sperrt Zufallskaempfe ueber $game_system.encounter_disabled (XP 136)."
+    },
+    {
+      "typ": "timer",
+      "bereich": "System",
+      "pflicht": [
+        "mode"
+      ],
+      "optional": [
+        "seconds"
+      ],
+      "beschreibung": "Startet oder stoppt den Spieltimer; waehrend er laeuft, zeigt der Bildschirm die Restzeit oben rechts (XP 124)."
+    },
+    {
+      "typ": "actor_hp",
+      "bereich": "Party",
+      "pflicht": [],
+      "optional": [
+        "target",
+        "amount",
+        "source",
+        "src"
+      ],
+      "beschreibung": "Aendert den Heldenwert (XP 311); ohne source ist amount die Konstante, source=variable liest die Ganzzahl aus src."
+    },
+    {
+      "typ": "actor_sp",
+      "bereich": "Party",
+      "pflicht": [],
+      "optional": [
+        "target",
+        "amount",
+        "source",
+        "src"
+      ],
+      "beschreibung": "Aendert den Heldenwert (XP 312); ohne source ist amount die Konstante, source=variable liest die Ganzzahl aus src."
+    },
+    {
+      "typ": "actor_exp",
+      "bereich": "Party",
+      "pflicht": [],
+      "optional": [
+        "target",
+        "amount",
+        "source",
+        "src"
+      ],
+      "beschreibung": "Aendert den Heldenwert (XP 315); ohne source ist amount die Konstante, source=variable liest die Ganzzahl aus src."
+    },
+    {
+      "typ": "actor_level",
+      "bereich": "Party",
+      "pflicht": [],
+      "optional": [
+        "target",
+        "amount",
+        "source",
+        "src"
+      ],
+      "beschreibung": "Aendert den Heldenwert (XP 316); ohne source ist amount die Konstante, source=variable liest die Ganzzahl aus src."
+    },
+    {
+      "typ": "party_member",
+      "bereich": "Party",
+      "pflicht": [
+        "name"
+      ],
+      "optional": [
+        "mode"
+      ],
+      "beschreibung": "Nimmt einen Helden ins Team auf oder entfernt ihn (XP 129); das letzte Mitglied bleibt, damit Kampf und Menue immer einen Helden haben."
+    },
+    {
+      "typ": "shop",
+      "bereich": "Party",
+      "pflicht": [
+        "goods"
+      ],
+      "optional": [],
+      "beschreibung": "Oeffnet einen Laden mit dieser Warenliste (XP 302); price ist der Ladenpreis, ohne price gilt der Datenbankpreis, Verkauf bringt den halben Preis."
+    },
+    {
+      "typ": "name_input",
+      "bereich": "Party",
+      "pflicht": [
+        "actor"
+      ],
+      "optional": [
+        "max",
+        "cancel"
+      ],
+      "beschreibung": "Laesst den Spieler den Namen eines Helden eintippen (XP 303); max begrenzt die Laenge (1-16, Default 8), cancel erlaubt Esc."
+    },
+    {
+      "typ": "screen_tone",
+      "bereich": "Bild",
+      "pflicht": [],
+      "optional": [
+        "r",
+        "g",
+        "b",
+        "gray",
+        "frames"
+      ],
+      "beschreibung": "Legt einen Bildschirmton ueber die Szene und blendet ihn ueber frames (XP 223) hin; r/g/b/gray je -255..255, ohne Angabe 0."
+    },
+    {
+      "typ": "flash",
+      "bereich": "Bild",
+      "pflicht": [],
+      "optional": [
+        "color",
+        "strength",
+        "frames"
+      ],
+      "beschreibung": "Blitzt den Bildschirm in weiss/rot/gruen/blau/gelb (XP 224); strength 0..255, frames ist die Abklingzeit, Default 20."
+    },
+    {
+      "typ": "menu",
+      "bereich": "System",
+      "pflicht": [],
+      "optional": [],
+      "beschreibung": "Oeffnet das Spielmenue aus einem Event heraus (XP 351); laeuft ueber $game_temp.menu_calling wie ein Script."
+    },
+    {
+      "typ": "if_battle_result",
+      "bereich": "Verzweigung",
+      "pflicht": [
+        "result"
+      ],
+      "optional": [],
+      "beschreibung": "Verzweigt nach dem Ergebnis des letzten Kampfs: sieg, flucht oder niederlage (XP 601/602/603). Ohne Kampf gilt der Sonst-Zweig."
+    },
+    {
+      "typ": "shake",
+      "bereich": "Bild",
+      "pflicht": [],
+      "optional": [
+        "power",
+        "speed",
+        "frames"
+      ],
+      "beschreibung": "Schuettelt die Kamera (XP 225): Staerke und Tempo 1..9, Dauer in Frames (40/s); ohne Angaben 5/5/40."
+    },
+    {
+      "typ": "show_picture",
+      "bereich": "Bild",
+      "pflicht": [
+        "name"
+      ],
+      "optional": [
+        "number",
+        "x",
+        "y",
+        "zoom_x",
+        "zoom_y",
+        "opacity",
+        "blend",
+        "origin"
+      ],
+      "beschreibung": "Zeigt ein Bild (XP 231): Datei, Nummer 1..50, Position in Pixeln, Zoom in Prozent, Deckkraft 0..255, Blend 0..3, Ursprung 0=oben links/1=Mitte."
+    },
+    {
+      "typ": "move_picture",
+      "bereich": "Bild",
+      "pflicht": [
+        "number"
+      ],
+      "optional": [
+        "x",
+        "y",
+        "zoom_x",
+        "zoom_y",
+        "opacity",
+        "blend",
+        "origin",
+        "frames"
+      ],
+      "beschreibung": "Bewegt/skaliert/blendet ein Bild ueber die angegebenen Frames (XP 232); weggelassene Werte bleiben stehen."
+    },
+    {
+      "typ": "rotate_picture",
+      "bereich": "Bild",
+      "pflicht": [
+        "number"
+      ],
+      "optional": [
+        "speed"
+      ],
+      "beschreibung": "Dreht ein Bild fortlaufend mit speed Grad pro Frame (XP 233); 0 stoppt die Drehung."
+    },
+    {
+      "typ": "tint_picture",
+      "bereich": "Bild",
+      "pflicht": [
+        "number"
+      ],
+      "optional": [
+        "r",
+        "g",
+        "b",
+        "gray",
+        "frames"
+      ],
+      "beschreibung": "Toent ein Bild (XP 234): Kanaele je -255..255, Uebergang ueber frames. Genaehert als Multiplikation (Gegenkanaele werden gedaempft)."
+    },
+    {
+      "typ": "erase_picture",
+      "bereich": "Bild",
+      "pflicht": [
+        "number"
+      ],
+      "optional": [],
+      "beschreibung": "Loescht ein angezeigtes Bild (XP 235)."
+    },
+    {
+      "typ": "play_bgm",
+      "bereich": "Ton",
+      "pflicht": [
+        "name"
+      ],
+      "optional": [
+        "volume",
+        "pitch"
+      ],
+      "beschreibung": "Spielt Musik aus einer Datei (XP 241) als Schleife; volume 0..100, pitch 50..150. Eine laufende Musik wird ersetzt."
+    },
+    {
+      "typ": "fadeout_bgm",
+      "bereich": "Ton",
+      "pflicht": [],
+      "optional": [
+        "seconds"
+      ],
+      "beschreibung": "Blendet die laufende Musik ueber seconds aus (XP 242), ohne den Interpreter zu blockieren; 0 stoppt sofort."
+    },
+    {
+      "typ": "play_bgs",
+      "bereich": "Ton",
+      "pflicht": [
+        "name"
+      ],
+      "optional": [
+        "volume",
+        "pitch"
+      ],
+      "beschreibung": "Spielt einen Hintergrundklang aus einer Datei (XP 245) als Schleife; volume 0..100, pitch 50..150."
+    },
+    {
+      "typ": "fadeout_bgs",
+      "bereich": "Ton",
+      "pflicht": [],
+      "optional": [
+        "seconds"
+      ],
+      "beschreibung": "Blendet den laufenden Hintergrundklang ueber seconds aus (XP 246); 0 stoppt sofort."
+    },
+    {
+      "typ": "save_bgm",
+      "bereich": "Ton",
+      "pflicht": [],
+      "optional": [],
+      "beschreibung": "Merkt die laufende Musik (XP 243, $game_system.bgm_memorize); resume_bgm holt sie zurueck. Der Merker ist fluechtig und ueberschreibt den vorigen."
+    },
+    {
+      "typ": "resume_bgm",
+      "bereich": "Ton",
+      "pflicht": [],
+      "optional": [],
+      "beschreibung": "Spielt die mit save_bgm gemerkte Musik wieder (XP 244); ohne Merker stoppt sie - ein ME bleibt verstummt."
+    },
+    {
+      "typ": "memorize_audio",
+      "bereich": "Ton",
+      "pflicht": [],
+      "optional": [],
+      "beschreibung": "Merkt Musik und Hintergrundklang gleichzeitig (XP 247); restore_audio holt beide zurueck."
+    },
+    {
+      "typ": "restore_audio",
+      "bereich": "Ton",
+      "pflicht": [],
+      "optional": [],
+      "beschreibung": "Holt Musik und Hintergrundklang aus dem Merker zurueck (XP 248); ohne Merker stoppen beide."
+    },
+    {
+      "typ": "state",
+      "bereich": "Party",
+      "pflicht": [
+        "name"
+      ],
+      "optional": [
+        "actor",
+        "mode",
+        "turns"
+      ],
+      "beschreibung": "Setzt oder entfernt einen Zustand (XP 313); 'name' ist ID oder Name aus der Datenbank, 'actor' wahlweise ein Held oder 'alle', 'mode' add/remove, 'turns' optional die Dauer in Kampfrunden."
+    },
+    {
+      "typ": "actor_param",
+      "bereich": "Party",
+      "pflicht": [
+        "param"
+      ],
+      "optional": [
+        "actor",
+        "amount",
+        "source",
+        "src"
+      ],
+      "beschreibung": "Aendert max_hp/max_mp/atk/def/spi/agi (XP 317); Operand ist amount oder mit source=variable der Ganzzahlwert aus src."
+    },
+    {
+      "typ": "actor_name",
+      "bereich": "Party",
+      "pflicht": [
+        "actor",
+        "name"
+      ],
+      "optional": [],
+      "beschreibung": "Benennt genau einen Helden um (XP 320); der neue Name steht anschliessend in Menue, Kampf und Spielstand."
+    },
+    {
+      "typ": "actor_skill",
+      "bereich": "Party",
+      "pflicht": [
+        "name"
+      ],
+      "optional": [
+        "actor",
+        "mode"
+      ],
+      "beschreibung": "Lernt oder vergisst eine Fertigkeit (XP 318); name ist Skill-ID oder Name, actor fehlt/fuer alle oder ein Held, mode add/remove (Default add)."
+    }
+  ]
+}

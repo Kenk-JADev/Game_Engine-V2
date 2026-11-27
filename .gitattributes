@@ -1,3 +1,35 @@
-# Keine Zeilenende-Konvertierung: Die Dateien werden so committet, wie sie
-# auf der Platte liegen (Windows-Projekt, handgeschriebener Build).
-* -text
+# ============================================================================
+#  Zeilenenden (seit Etappe 19a einheitlich — vorher: "* -text", also keine
+#  Umwandlung, mit dem Ergebnis, dass 12 Dateien CRLF und der Rest LF hatten).
+#
+#  Warum LF? Der Editor schreibt JSON mit json_write() und darin steht '\n'.
+#  Ruby JSON.pretty_generate tut dasselbe. Lag eine Karte als CRLF im Repo,
+#  kippte jedes Speichern die komplette Datei um — die Versionsverwaltung zeigt
+#  dann jede Zeile als Aenderung, und Review ist unmoeglich.
+#
+#  Windows-Skripte bleiben CRLF (PowerShell-Konvention), Binaeres wird nie
+#  angefasst. Pruefen laeuft automatisch: ruby tools/lint_repo.rb
+# ============================================================================
+* text=auto eol=lf
+
+*.ps1      text eol=crlf
+*.psm1     text eol=crlf
+*.manifest text eol=crlf
+
+*.exe   binary
+*.dll   binary
+*.o     binary
+*.obj   binary
+*.a     binary
+*.lib   binary
+*.pdb   binary
+*.png   binary
+*.bmp   binary
+*.jpg   binary
+*.jpeg  binary
+*.ico   binary
+*.rgba  binary
+*.wav   binary
+*.ogg   binary
+*.zip   binary
+*.7z    binary

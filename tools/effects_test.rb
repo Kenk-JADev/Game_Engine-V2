@@ -1,6 +1,6 @@
 #encoding: utf-8
 # ============================================================================
-#  Kopfloser Test fuer das Partikelsystem (Etappe 14c): Spawn, Bewegung,
+#  Kopfloser Test für das Partikelsystem (Etappe 14c): Spawn, Bewegung,
 #  Schwerkraft, Lebenszeit, Clear.
 #     ruby -I game/engine tools/effects_test.rb
 # ============================================================================
@@ -43,7 +43,7 @@ p = Effects::PARTS.first
 vy0 = p[:vy]
 Effects.update(0.5)
 check('Schwerkraft wirkt') { p[:vy] < vy0 }
-check('Position veraendert sich') { p[:y] < 0.0 }
+check('Position verändert sich') { p[:y] < 0.0 }
 
 # Lebenszeit: Partikel verschwinden
 Effects.clear
@@ -54,10 +54,10 @@ check('Partikel sterben ab') { Effects.count.zero? }
 # draw ohne Engine darf nicht crashen
 Effects.burst(0.0, 0.0, 0.0, count: 3)
 Effects.draw
-check('draw ohne Engine unschaedlich') { true }
+check('draw ohne Engine unschädlich') { true }
 
 Effects.clear
-check('clear raeumt auf') { Effects.count.zero? }
+check('clear räumt auf') { Effects.count.zero? }
 
 # --- Integration: Interpreter-Befehl 'effect' -------------------------------
 module Game

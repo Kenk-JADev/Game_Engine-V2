@@ -1,4 +1,4 @@
-﻿# Test-Hilfsmittel: Klicks/Tasten an RuneEditor-Fenster (nur fuer Live-Tests).
+﻿# Test-Hilfsmittel: Klicks/Tasten an RuneEditor-Fenster (nur für Live-Tests).
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
@@ -70,29 +70,33 @@ function Save-Shot([string]$path) {
     $b.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
     $g.Dispose(); $b.Dispose()
 }
-# Objektliste des Editors auslesen (IDC_OBJ_LIST = 3010)
+# Objektliste des Editors auslesen. Seit Etappe 19c ist die Liste ein ListView
+# (Spalten, sortierbar); Texte lassen sich prozessfremd nicht per SendMessage
+# lesen. Der Editor schreibt deshalb bei jeder Aenderung einen Schnappschuss
+# nach log/editor_objects.json - den liest diese Funktion (Format wie frueher:
+# "1. Name  (x / z)", damit bestehende Live-Skripte laufen).
 function Get-ObjList {
-    $h = (Get-Process RuneEditor).MainWindowHandle
-    $lb = [EdClick]::GetDlgItem($h, 3010)
-    $n = [int][EdClick]::SendMessageInt($lb, 0x018B, [IntPtr]::Zero, [IntPtr]::Zero)
-    $out = @()
-    for ($i = 0; $i -lt $n; $i++) {
-        $len = [int][EdClick]::SendMessageInt($lb, 0x018A, [IntPtr]$i, [IntPtr]::Zero)
-        $sb = New-Object System.Text.StringBuilder ($len + 2)
-        [EdClick]::SendMessageStr($lb, 0x0189, [IntPtr]$i, $sb) | Out-Null
-        $out += $sb.ToString()
-    }
-    return $out
+    $exe = (Get-Process RuneEditor -ErrorAction SilentlyContinue).Path
+    if (-not $exe) { return @() }
+    $root = Split-Path (Split-Path $exe -Parent) -Parent
+    $pfad = Join-Path $root 'log\editor_objects.json'
+    if (-not (Test-Path $pfad)) { return @() }
+    $arr = Get-Content -Raw -Encoding UTF8 $pfad | ConvertFrom-Json
+    return @($arr | ForEach-Object {
+        '{0}. {1}  ({2} / {3})' -f ($_.i + 1), $_.name, $_.x, $_.z
+    })
 }
 function Get-PropField([int]$id) {
     $h = (Get-Process RuneEditor).MainWindowHandle
-    $ed = [EdClick]::GetDlgItem($h, $id)
+    # Seit dem scrollbaren Hauptfenster liegen die Felder im Inspektor (3035).
+    $panel = [EdClick]::GetDlgItem($h, 3035)
+    $ed = if ($panel -ne [IntPtr]::Zero) { [EdClick]::GetDlgItem($panel, $id) } else { [EdClick]::GetDlgItem($h, $id) }
     $sb = New-Object System.Text.StringBuilder 64
     [EdClick]::SendMessageStr($ed, 0x000D, [IntPtr]64, $sb) | Out-Null   # WM_GETTEXT
     return $sb.ToString()
 }
 
-# Fenster in den Vordergrund holen und Klick in Client-Koordinaten ausloesen
+# Fenster in den Vordergrund holen und Klick in Client-Koordinaten auslösen
 function Focus-Ed {
     $h = (Get-Process RuneEditor).MainWindowHandle
     [EdClick]::SetForegroundWindow($h) | Out-Null
@@ -110,7 +114,7 @@ function Click-Client([int]$cx, [int]$cy) {
     [EdClick]::Click($p.X, $p.Y)
 }
 
-# Direkte Mausnachrichten an das Viewport-Child (unabhaengig vom Fokus)
+# Direkte Mausnachrichten an das Viewport-Child (unabhängig vom Fokus)
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
@@ -152,6 +156,6 @@ function Get-StatusText([int]$part) {
     $h = (Get-Process RuneEditor).MainWindowHandle
     $sb = [EdClick]::GetDlgItem($h, 3016)
     $buf = New-Object System.Text.StringBuilder 256
-    [EdClick]::SendMessageStr($sb, 0x040D, [IntPtr]$part, $buf) | Out-Null   # SB_GETTEXTW = WM_USER+13 (A-Variante waere WM_USER+2)
+    [EdClick]::SendMessageStr($sb, 0x040D, [IntPtr]$part, $buf) | Out-Null   # SB_GETTEXTW = WM_USER+13 (A-Variante wäre WM_USER+2)
     return $buf.ToString()
 }

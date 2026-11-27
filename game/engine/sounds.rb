@@ -9,7 +9,7 @@
 
 module Sounds
   RATE = 44_100
-  MUSIK_RATE = 11_025   # Musik wird in Viertel-Aufloesung erzeugt und von
+  MUSIK_RATE = 11_025   # Musik wird in Viertel-Auflösung erzeugt und von
                         # der Engine linear auf 44100 Hz hochgesampelt
   module_function
 
@@ -19,7 +19,7 @@ module Sounds
     -> { s = (s * 1103515245 + 12345) & 0x7FFFFFFF; s / 2147483647.0 - 0.5 }
   end
 
-  # Sinus mit Huellkurve (attack/decay in Sekunden).
+  # Sinus mit Hüllkurve (attack/decay in Sekunden).
   def ton(freq, seconds, vol: 0.8, attack: 0.005, decay: nil, slide: 0.0)
     n = (seconds * RATE).to_i
     decay ||= seconds
@@ -35,13 +35,13 @@ module Sounds
     out
   end
 
-  # Rauschen mit Tiefpass (gleitender Mittelwert) und Abkling-Huellkurve.
+  # Rauschen mit Tiefpass (gleitender Mittelwert) und Abkling-Hüllkurve.
   def rauschen(seconds, vol: 0.5, decay: nil, glatt: 6, seed: 1234)
     n = (seconds * RATE).to_i
     decay ||= seconds
     rnd = lcg(seed)
     out = Array.new(n) { rnd.call }
-    # Einfacher Tiefpass: ueber glatt Nachbarn mitteln.
+    # Einfacher Tiefpass: über glatt Nachbarn mitteln.
     geg = Array.new(n, 0.0)
     sum = 0.0
     n.times do |i|
@@ -79,7 +79,7 @@ module Sounds
   end
 
   # Hintergrundmusik: 8-s-Loop, vier Akkord-Pads (Am - F - C - G), je 2 s
-  # mit weichem Anstieg/Abfall. Leicht verstimte zweite Stimme fuer Waerme.
+  # mit weichem Anstieg/Abfall. Leicht verstimte zweite Stimme für Wärme.
   # Bei MUSIK_RATE erzeugt, damit der Start schnell bleibt.
   def musik
     rate = MUSIK_RATE
@@ -120,7 +120,7 @@ module Sounds
     )
     Rune::Sound.register('schritt', RATE, to_bytes(schritt))
 
-    # Klick (Menue): kurzer heller Blip
+    # Klick (Menü): kurzer heller Blip
     klick = ton(1250, 0.05, vol: 0.45, decay: 0.04)
     Rune::Sound.register('klick', RATE, to_bytes(klick))
 

@@ -19,6 +19,108 @@ Rune3D.exe  ──┬── src/core    Win32-Fenster, Input, Log, Zeit
                             main.rb        dein Spiel (F5 = neu laden)
 ```
 
+## Mitgelieferte Ruby-Laufzeit (19x)
+
+Der gemeldete Editor-Startfehler `LoadError: cannot load such file -- json`
+entstand, weil DLLs allein keine Ruby-Standardbibliothek enthalten und der
+bisherige Fallback fest auf `C:/Ruby34-x64` zeigte. Dass die CI bisher grün
+war, belegte das Paket nicht: der Brückentest setzte dort `RUBYLIB` auf die
+Build-Installation. Auch das Spiel benutzt `json` und `fileutils`.
+
+`build.ps1` ermittelt Konfiguration und Architektur von genau dem zum Linken
+gewählten Ruby und kopiert dessen `rubylibdir` nach `build/lib/ruby/<API-Version>/`.
+Native `.so`-Erweiterungen liegen darin unter `<RUBY_PLATFORM>`; der Build kontrolliert JSON,
+Parser, Generator, `fileutils` und `encdb`. Die Konfigurationsabfrage gibt
+Pfade Base64-kodiert aus, damit auch PowerShell 5.1 Unicode erhält. Ein
+markierter Build-Ordner wird gestuft ersetzt; nicht markierte Bibliotheken
+werden verweigert. Wie beim bisherigen Build löscht `-Clean` ganz `build/`.
+Der Austausch ist nicht als atomare Transaktion bei Absturz garantiert.
+
+`vm.cpp` stellt die passende, EXE-relative Bibliothek an den Anfang des
+`$LOAD_PATH`; vorhandenes `RUBYLIB` bleibt als Zusatz erhalten. Ein teilweise
+vorhandenes Paket mit fehlenden Kernmodulen wird abgewiesen, damit keine
+fremde Ruby-Version hineingemischt wird. Ohne Paket bleibt ein explizit
+passender externer Load-Pfad als Kompatibilitätsweg möglich. Editor und
+Spiel benutzen dieselbe VM; der Editor zeigt bei Bootfehlern eine Warnung.
+Default-Gem-Spezifikationen, eigene Gems und zusätzliche DLLs für andere
+native Erweiterungen werden nicht vollständig paketiert oder garantiert.
+
+`-WarpTest` startet die echte eingebettete VM samt Editor-Boot in einer
+Unicode-Kopie, ohne Ruby im PATH und ohne `RUBYLIB`, anschließend mit fremdem
+`RUBYLIB` und mit absichtlich fehlenden JSON-Dateien. Der Test prüft Ursprung
+und Roundtrip der nativen JSON-Erweiterungen sowie `fileutils`. Zusätzlich
+startet `tools/windows_runtime_smoke.ps1` die echten Editor- und Spiel-EXEs
+aus einer isolierten Paketkopie bis zur Hauptschleife; dabei wird nur für
+die Grafik `RUNE_D3D_WARP=1` gesetzt. Die CI lädt das hochgeladene Artefakt
+erneut herunter und testet diese entpackten Dateien. Den aktuellen Lauf prüfen;
+Software-WARP ersetzt keinen interaktiven Zielrechner-/Hardware-GPU-Test.
+
+## Kartenmarker, Spielerstart und EXE-Metadaten (19y)
+
+`map_interaction.h` liefert datengeprüfte Marker für NPCs und Events. Der
+Viewport zeichnet die Marker und trifft nur unverdeckte Geometrie. Ein
+einfacher Klick selektiert; `CS_DBLCLKS` und `WM_LBUTTONDBLCLK` öffnen nur
+beim selben Typ, Index, Karten-Epoch und JSON-Snapshot. F6-Entwürfe werden
+vor dem gezielten Wechsel geklärt; F5 arbeitet weiterhin auf einer Kopie.
+Rechtsklickziehen bleibt Kamera, ein kurzer Rechtsklick öffnet das
+Kontextmenü am Geländetreffer. Raster und Kartengrenze gelten auch für den
+Start; gesperrte Zonen lösen eine Rückfrage aus.
+
+Der Projektstart wird gezielt und sofort über `DocumentStore` in
+`system.json` gespeichert (`start.map/x/z/use_project_position`), ohne
+Richtung und fremde Felder zu ersetzen. Er ist kein Karten-Undo. Nur beim
+Spielstart/F5 und nur für die angegebene Karte überschreibt er den lokalen
+Kartenstart. `Database.reload_system` liest dafür `system.json` bei F5 neu;
+andere Caches, Kartenwechsel und Savegames behalten ihre Regeln.
+`Project.touch` hält unter Windows beim Lesen/Schreiben von `last_played`
+denselben beschreibbaren Handle ohne Delete-Sharing; konkurrierende Spiele
+nutzen eine nichtblockierende Dateisperre. Ein Editor-Konflikt überspringt
+den optionalen Zeitstempel. Fehlerhafte, mehrdeutige oder nicht objektförmige
+Systemdaten werden nicht durch einen leeren Ersatz überschrieben. Der Ruby-
+Schreibvorgang selbst bleibt ein nicht absturzsicherer In-place-Write.
+
+`build.ps1` linkt eigene `VERSIONINFO`-Ressourcen für beide EXEs und eine
+lokale Kopie von `libwinpthread.a` ohne `version.o`: `--whole-archive`
+könnte sonst die fremde Beschreibung „POSIX WinThreads for Windows“ als
+EXE-Ressource übernehmen. Das Toolchain-Original bleibt unverändert und
+`objdump` prüft, dass keine dynamische winpthread-DLL importiert wird.
+Der isolierte Smoke-Test prüft zusätzlich die EXE-Versionseigenschaften;
+die konkrete Windows-Anzeige und interaktive Nutzung bleiben Live-Tests.
+
+## Hauptfenster und Karten (19w)
+
+Das separate `RuneEditor.exe` hat eine gruppierte Werkzeugleiste mit
+vorhandenen Funktionen, links die scrollbare Palette **über** dem Kartenbaum,
+in der Mitte den bestehenden D3D11-Viewport und rechts den scrollbaren
+Objektinspektor. Eine waagerechte Trennleiste verändert die Höhe der beiden
+linken Bereiche; die gleichen Schritte sind über **Ansicht** ohne Maus
+erreichbar. Die Wunschhöhe ist Sitzungszustand, keine gespeicherte Einstellung.
+Bei schmaler Fläche wird der Eigenschaftenknopf mit **F2** beschriftet.
+
+`main_layout.h` berechnet die Spalten und Kontrollrechtecke in DPI-skalierten
+Einheiten und klemmt kleine Fenster ohne Spaltenüberschneidung. Palette und
+Inspektor sind native Kinder (`main_panel_win.h`); `WM_COMMAND`, `WM_NOTIFY`
+und `WM_CONTEXTMENU` werden an das Hauptfenster durchgereicht. Scrollen,
+Tab-Fokus und DPI-Wechsel verändern die Position der Controls, nicht ihren
+Inhalt. Toolbar-Icons und Schrift werden beim DPI-Wechsel neu erzeugt. Der
+Renderer erhält die Viewport-**Clientgröße**; frühe Größenmeldungen vor der
+Rendererinitialisierung dürfen noch kein Bild rendern.
+
+`main_tree_win.h` erkennt die Wurzel auch ohne Karten und selektiert das
+Rechtsklickziel. Für Eigenschaften, Neu und Kontextmenü wartet eine
+vorgemerkte Aktion auf den bestehenden Auswahl-/Speicherabgleich. Auswahl,
+Projektepoch und Dateiname werden geprüft; nach dem Kontextmenü zusätzlich
+die Kartenepoch. Ein Abbruch oder verändertes Ziel verwirft die Aktion.
+Kartenformulare, Konfliktprüfung, Datentreue und Datei-Transaktionen bleiben
+die bestehenden Pfade. Das Undo erfasst seit Z8 die ganze Karte (siehe
+Abschnitt „Maus-Werkzeuge und Undo/Redo").
+
+Automatisiert: `tools/json_test.cpp` prüft portable Geometrie und Zielschutz;
+unter Windows kommen unsichtbare Win32-Panels, Nachrichten und TreeView
+hinzu. Lokal wurden die Windows-Quellen nur crosskompiliert, nicht ausgeführt.
+Weder diese Tests noch WARP ersetzen den noch offenen interaktiven
+[Windows-/DPI-/Hardwaretest](WINDOWS_MAIN_LIVE_TEST.md).
+
 ## Frame-Ablauf
 
 1. `Window::pump()` — Nachrichten, Tasten, Mausdelta
@@ -28,7 +130,7 @@ Rune3D.exe  ──┬── src/core    Win32-Fenster, Input, Log, Zeit
 4. `Renderer::begin_frame()` — Clear + Tiefe
 5. `Rune.tick(dt)` — Ruby: `Game.update(dt)` + `Game.draw` (Aufrufe von `Rune::Gfx.box`
    und `Rune::Gfx.rect/text` für das 2D-UI)
-6. `Renderer::end_frame()` — Gelaende-Mesh, dann Draw-List, dann 2D-Overlay, Present
+6. `Renderer::end_frame()` — Gelände-Mesh, dann Draw-List, dann 2D-Overlay, Present
    (ein `F12`-Screenshot wird direkt vor `Present` aus dem Backbuffer kopiert)
 
 ## Welt & Physik (Etappe 2)
@@ -42,7 +144,7 @@ Rune3D.exe  ──┬── src/core    Win32-Fenster, Input, Log, Zeit
   Schritte bis 0.35 m werden automatisch erklommen, Laufen mit Shift (+90%).
   `add_solid(center, size)` registriert Hindernisse; Terrain liefert den Boden.
 - `Scene#refresh_solids` bzw. `Node#solid = true` meldet Kisten an die Physik.
-- Das Gelaende wird einmal beim Start (und bei F5) neu aufgebaut:
+- Das Gelände wird einmal beim Start (und bei F5) neu aufgebaut:
   `terrain.generate()` → `renderer.set_terrain(verts, idx)` (eigene VB/IB).
 
 ## 2D-Oberflaeche (Text & Fenster)
@@ -51,12 +153,14 @@ Rune3D.exe  ──┬── src/core    Win32-Fenster, Input, Log, Zeit
   (eigener Shader, Tiefe aus, Alpha-Blending). Kein Font-Renderer, sondern GDI:
   Segoe UI wird mit `TextOutW` in eine DIB-Section gerastert (weisse Glyphen auf
   Schwarz), die Luminanz dient als Alpha. Damit ist echter Unicode-Text ohne
-  zusaetzliche Bibliothek moeglich.
+  zusätzliche Bibliothek möglich.
 - Die Textur ist bildschirmgross; alle Texte einer Frame landen in **einer**
   Textur (ein Draw-Call pro Frame statt einem pro Zeile).
-- `game/engine/ui.rb` — Ruby-Huelle: `UI.panel`, `UI.frame`, `UI.text`,
-  `UI.message(lines)` (RPG-Maker-Nachrichtenfenster unten) und `UI.hud`
-  (Position + FPS oben links).
+- `game/engine/ui.rb` — Ruby-Hülle: `UI.panel`, `UI.frame`, `UI.text`,
+  `UI.message(lines, choices = nil, wartet:)` (RPG-Maker-Nachrichtenfenster
+  unten, **Kombi-Fenster** seit Runde 21: optionale Wahl im selben Fenster
+  unter dem Text, Fenster wächst nach oben) und `UI.hud` (Position + FPS
+  oben links).
 - `Renderer::save_screenshot()` schreibt den Backbuffer als BMP (`F12`).
 
 ## Schatten (Etappe 9a)
@@ -64,39 +168,39 @@ Rune3D.exe  ──┬── src/core    Win32-Fenster, Input, Log, Zeit
 Die Sonne wirft jetzt Schatten: Vor jedem Frame rendert ein eigener
 **Depth-Pass** die Szene (Terrain + alle Boxen) aus Sicht der Sonne in eine
 2048er-Tiefenkarte (`DXGI_FORMAT_R32_TYPELESS`, DSV `D32_FLOAT`, SRV
-`R32_FLOAT`). Die Ortho-Matrix deckt das ganze Gelaende ab (360 m um den
-Ursprung, Licht-Kamera 180 m ueber der Mitte). Der Pixel-Shader vergleicht im
+`R32_FLOAT`). Die Ortho-Matrix deckt das ganze Gelände ab (360 m um den
+Ursprung, Licht-Kamera 180 m über der Mitte). Der Pixel-Shader vergleicht im
 Licht-Raum per `SampleCmp` (bilinearer 2x2-PCF), mit Normalen-Versatz
 (0.06 m) und Tiefen-Bias gegen Shadow-Acne; ausserhalb der Abdeckung gilt
 "beleuchtet". Der Schattenfaktor multipliziert nur den direkten
 Sonnenanteil, Ambient und Himmelsstreuung bleiben. Schatten lassen sich per
 `Rune::Gfx.shadows = false` abschalten.
 
-Die Default-Sonne steht bei (-0.55, 0.75, 0.25) — west-suedwestlich, damit
+Die Default-Sonne steht bei (-0.55, 0.75, 0.25) — west-südwestlich, damit
 die Schatten aus der Standard-Kameraperspektive (Blick nach Norden)
-**seitlich** ins Bild fallen. Eine Sonne hinter der Kamera wuerde die
+**seitlich** ins Bild fallen. Eine Sonne hinter der Kamera würde die
 Schatten hinter die Objekte werfen, wo sie unsichtbar sind.
 
 ## Sound (Etappe 9b)
 
-Sound laeuft ueber die klassische **waveOut-API** (winmm) als eigener
+Sound läuft über die klassische **waveOut-API** (winmm) als eigener
 Mixer-Thread: 44100 Hz, mono, 16 Bit, drei Ringpuffer zu je 1024 Samples
 (~23 ms), maximal 12 Stimmen. Der Callback markiert fertige Puffer,
 das Spiel ruft pro Frame `sound::update()` auf, das fertige Puffer neu mit
-den aktiven Stimmen fuellt (lineares Mischen, Clipping-Schutz).
+den aktiven Stimmen füllt (lineares Mischen, Clipping-Schutz).
 
 Sounds werden **aus Ruby heraus** erzeugt und angemeldet: `Rune::Sound.register(name,
 rate, bytes)` nimmt einen Byte-String (16 Bit mono, little-endian,
 `pack('v*')`), wird beim Anmelden linear auf 44100 Hz resampled.
-`game/engine/sounds.rb` baut alle Klaenge prozedural (Sinus-Toene mit
-Huellkurve, Rauschen fuer Schritte): `schritt`, `klick`, `jingle`,
+`game/engine/sounds.rb` baut alle Klänge prozedural (Sinus-Töne mit
+Hüllkurve, Rauschen für Schritte): `schritt`, `klick`, `jingle`,
 `ablehnen`, `sprung`, `landung`. Abspielen: `Rune::Sound.play(name, volume)`.
 
-Verkabelt sind: Menue-Klick (Launcher), Schrittgeraeusche nach Laufstrecke
-(0.6 m Gehen / 0.85 m Rennen, ueber `Input.down?(:shift)`), Sprung und
+Verkabelt sind: Menü-Klick (Esc-Menü), Schrittgeräusche nach Laufstrecke
+(0.6 m Gehen / 0.85 m Rennen, über `Input.down?(:shift)`), Sprung und
 Landung sowie der neue Event-Befehl `{'cmd' => 'sound', 'name' => ..., 'volume' => ...}`
 im Interpreter (z. B. Jingle beim Kristall-Bergen). Fehlt winmm oder
-schlaegt die Device-Oeffnung fehl, startet die Engine trotzdem (nur Warnung
+schlägt die Device-Öffnung fehl, startet die Engine trotzdem (nur Warnung
 im Log, `Rune::Sound.ready?` => false).
 
 **Musik:** `Rune::Sound.loop(name, volume)` startet eine Endlosschleife und
@@ -109,25 +213,70 @@ hochgesampelt — Titel 0.15, im Spiel 0.22.
 
 ## Speichern/Laden (Etappe 10)
 
-Spielstaende liegen als JSON unter `projekte/<name>/saves/slot1..3.json` und
+Spielstände liegen als JSON unter `projekte/<name>/saves/slot1..3.json` und
 enthalten: aktuelle Karte, Spielerposition + Blick + Kameramodus, alle
 Schalter und Variablen (`GameState.snapshot`), die Namen der bereits
-ausgeloesten Touch-/Auto-Events sowie die Spielzeit.
+ausgelösten Touch-/Auto-Events sowie die Spielzeit.
 
-Im Spiel oeffnet **Esc** ein Menue (Spiellogik friert ein): Zurueck,
-Speichern/Laden auf 3 Slots (belegte Slots zeigen den Zeitpunkt, leere
-Lade-Slots sind abgedunkelt) und Rueckkehr zum Titelbildschirm. Im
-Titelbildschirm zeigt jeder Projekteintrag die Anzahl der Spielstaende;
-**L** laedt den zuletzt gesicherten Slot des gewaehlten Projekts
+Im Spiel öffnet **Esc** ein Menü (Spiellogik friert ein): **Gegenstand**,
+**Fertigkeit**, **Status** (seit Etappe 20b, siehe unten), Speichern/Laden
+auf 3 Slots (belegte Slots zeigen den Zeitpunkt, leere Lade-Slots sind
+abgedunkelt), Zurück und Rückkehr zum Titelbildschirm. Im
+Titelbildschirm zeigt jeder Projekteintrag die Anzahl der Spielstände;
+**L** lädt den zuletzt gesicherten Slot des gewählten Projekts
 ("Fortsetzen"). Beim Laden wird die Karte neu aufgebaut, der Zustand
-wiederhergestellt und das Intro unterdrueckt.
+wiederhergestellt und das Intro unterdrückt.
+
+## Spielmenü wie XP (Etappe 20b)
+
+Die Esc-Befehlsliste folgt XP (`Scene_Menu`): **Gegenstand**, **Fertigkeit**,
+**Status**, dann Speichern/Laden je drei Slots, **Zurück zum Spiel** und
+**Zum Titelbildschirm**. Die Ziffern `1..8` springen weiterhin direkt in die
+ersten acht Einträge; Esc schließt das Hauptmenü.
+
+Jeder der drei oberen Punkte öffnet ein eigenes Unterfenster (XP:
+`Scene_Item`/`Scene_Skill`/`Scene_Status`), das rechts neben der
+Befehlsliste erscheint und eine Ebene je Esc zurückgeht:
+
+- **Gegenstand** (`@menu_screen = :item`): nur benutzbare Items in
+  Datenbank-Reihenfolge mit Bestand; Enter öffnet die Zielwahl auf die
+  Helden (`:item_target`), Enter wendet `Party.use_item` an. Ohne Wirkung
+  (voller HP-/MP-Stand) bleibt das Item erhalten und eine Meldung nennt den
+  Grund; nach dem Anwenden geht es zurück in die Liste.
+- **Fertigkeit** (`:skill` → `:skill_list`): Heldenliste, dann die gelernten
+  Fertigkeiten mit MP-Kosten und Beschreibung. Wie in XP werden
+  Fertigkeiten im Menü nur angesehen, nicht angewendet.
+- **Status** (`:status` → `:status_detail`): alle Werte eines Helden (HP/MP,
+  Angriff/Verteidigung/Weisheit/Beweglichkeit, EXP und nächste Stufe,
+  Anzahl Fertigkeiten, Gold).
+
+Der Zustand liegt in `@menu_screen`, `@menu_sub`, `@menu_hero`,
+`@menu_item` und `@menu_msg`; `menu_reset!` räumt alles beim Öffnen,
+Schließen, Titelwechsel und Game Over auf. `menu_back` geht eine Ebene
+zurück. Im Unterfenster behandelt die Unterfenster-Logik Esc selbst - nur
+im Hauptmenü schließt `Game.update` das Menü (sonst ginge Esc zwei Ebenen
+weit). Das Party-Panel links bleibt wie bisher, Spielzeit und Schritte
+stehen weiterhin darin.
+
+**Parteigesichter (Nacharbeit zu 20b):** XP zeigt Face-Grafiken aus
+`Graphics/Faces`; Rune3D lädt keine Bilddateien für Gesichter. `UI.gesicht`
+zeichnet deshalb ein prozedurales Gesicht: Farbfläche (`"face": 0xRRGGBB`
+in der Datenbank oder stabil aus dem Namen abgeleitet, `UI.gesicht_farbe`),
+Initialen und ein HP-Streifen, optional mit Auswahlrahmen. Es erscheint im
+Party-Panel des Menüs (24 px je Held) und auf der Statusseite (64 px). Das
+Party-Panel sitzt jetzt rechts neben der Befehlsliste (XP-Layout) und weicht
+dem offenen Unterfenster.
+
+**Tests:** `tools/menu_test.rb` (40 Checks: Befehlsliste, Itemliste und
+Zielwahl, wirkungslose Items, Esc-Ebenen, Fertigkeiten-/Statusseiten,
+Zeichnen aller Unterfenster, Gesichter, Zahlenkürzel).
 
 ## NPCs (Etappe 13)
 
-Karten koennen einen `"npcs"`-Block tragen: Name, Startposition, Geschwin-
+Karten können einen `"npcs"`-Block tragen: Name, Startposition, Geschwin-
 digkeit, Wegpunkt-Liste (`path`) und eigene Event-Kommandos. Jeder NPC
 patrouilliert seine Wegpunkte im Loop (Exakt-Positionieren am Punkt,
-Umschalten zum naechsten), rendert als braune Figur (Node) und besitzt ein
+Umschalten zum nächsten), rendert als braune Figur (Node) und besitzt ein
 **Event mit Live-Position** — Reden/Benutzen (E) funktioniert also wie bei
 statischen Events, nur dass die Reichweite mitwandert. NPCs erscheinen
 automatisch im Picking (`box_center`/`pick_radius` der Event-Schnittstelle).
@@ -135,88 +284,63 @@ Ohne Wegpunkte steht der NPC still; `speed` skaliert die Schrittdauer.
 ## Kamera-Kollision, Pixel-Look, Effekte (Etappe 14)
 
 **Kamera-Kollision (14a):** Die Third-Person-Kamera clippt nicht mehr durch
-Gelaende und Hindernisse. Pro Frame maerscht `camera_clearance()` in
+Gelände und Hindernisse. Pro Frame märscht `camera_clearance()` in
 `main.cpp` die Sichtlinie vom Spielerkopf zur Wunschposition (32 Schritte)
-und prueft jeden Punkt gegen Gelaendehoehe (+0.3 m Rand) und alle festen
+und prüft jeden Punkt gegen Geländehöhe (+0.3 m Rand) und alle festen
 Hindernisse (um 0.3 m aufgeblasen). Blockt die Linie, wird die Kamera
-sofort auf die freie Distanz gezogen (kein Rueckweg durch Geometrie), das
-Wieder-Herausziehen laeuft gegaettet (5/s). Ist das Hindernis naeher als
-1.2 m, hebt die Kamera sich lieber ueber es hinweg (`collision_lift`, in
-0.5-m-Schritten bis 2.5 m) — Zaun und Brunnen werden ueberflogen statt
+sofort auf die freie Distanz gezogen (kein Rückweg durch Geometrie), das
+Wieder-Herausziehen läuft geglättet (5/s). Ist das Hindernis näher als
+1.2 m, hebt die Kamera sich lieber über es hinweg (`collision_lift`, in
+0.5-m-Schritten bis 2.5 m) — Zaun und Brunnen werden überflogen statt
 dass das Bild in der Wand landet. Der Ist-Zustand steht im HUD
 (`third d=7.0 a=3.9 k=3.9 l=0.5`: Soll-, Ist-Distanz, Kollisionsdistanz,
-Anhebung) via `Rune::Camera.info`. Der Launcher-Ueberblicksabstand (28 m)
-gilt nur im Launcher — beim Spielstart stellt `Game.setup` auf 7 m.
+Anhebung) via `Rune::Camera.info`. Der Titel-Überblicksabstand (28 m)
+gilt nur auf dem `Scene_Title`-Titelbild — beim Spielstart stellt
+`Game.setup` auf 7 m.
 
-**Pixel-Schaerfe (14b):** Der Textur-Sampler nutzt
+**Pixel-Schärfe (14b):** Der Textur-Sampler nutzt
 `D3D11_FILTER_MIN_MAG_MIP_POINT` statt linear — Texel bleiben auch aus der
-Ferne krisselig sichtbar (Retro-Look), entfernte Flaechen verschwimmen
+Ferne krisselig sichtbar (Retro-Look), entfernte Flächen verschwimmen
 nicht mehr. Die prozeduralen Texturen haben nur ein Mip-Level, also
 entsteht der typische Pixel-Funkeln bei Distanz ganz ohne Mip-Verwaltung.
 
 **Effekte (14c):** `game/engine/effects.rb` ist ein leichtgewichtiges
 Partikelsystem in Ruby: kleine Boxen mit Lebenszeit, Geschwindigkeit und
-Schwerkraft; das Verblassen passiert ueber die Groesse (`Gfx.box` hat kein
+Schwerkraft; das Verblassen passiert über die Grösse (`Gfx.box` hat kein
 Alpha). Vorgefertigt: `Effects.sparkle` (Funken, Kristall/Belohnung),
-`Effects.dust` (Landung/Staub) und `Effects.burst` (frei faerbbar). Im
+`Effects.dust` (Landung/Staub) und `Effects.burst` (frei färbbar). Im
 Spiel: Landestaub beim Aufkommen, Funken beim Kristall-Bergen (neuer
 Interpreter-Befehl `{"cmd":"effect","name":"sparkle"}` — Ursprung ist
-die Event-Position, sonst der Spieler). Update/Draw haengt in `main.rb`
+die Event-Position, sonst der Spieler). Update/Draw hängt in `main.rb`
 vor bzw. nach dem Szenen-Zeichnen; Kopflos-Test: `tools/effects_test.rb`.
 ## NPCs im Savegame und Kollision (Etappe 15)
 
 **Speichern/Laden:** `Npc#snapshot` liefert Name, Position und Wegpunkt-
-Index; `Game.save_game` haengt die Liste unter `"npcs"` ins Savegame.
-Beim Laden werden die frisch gebauten NPCs ueber den Namen gesucht und
-`restore!` setzt Position, Node und Wegpunkt zurueck — die Patrouille
+Index; `Game.save_game` hängt die Liste unter `"npcs"` ins Savegame.
+Beim Laden werden die frisch gebauten NPCs über den Namen gesucht und
+`restore!` setzt Position, Node und Wegpunkt zurück — die Patrouille
 läuft ab dem gesicherten Punkt weiter. Im Log steht je NPC eine
 "Wiederhergestellt"-Zeile.
 
 **Kollision:** Der Spieler schiebt sich nicht mehr durch NPCs: die Physik
 bekam `Physics::push_out(cx, cz, radius)` (XZ-Kreis, Ruby-Binding
 `Rune::Player.push_out`); der Schub wird verworfen, wenn er den Spieler in
-ein Hindernis druecken wuerde. Umgekehrt wartet der NPC, wenn die naechste
-Teilposition innerhalb `block_radius` (0.8 m) des Spielers laege — er
+ein Hindernis drücken würde. Umgekehrt wartet der NPC, wenn die nächste
+Teilposition innerhalb `block_radius` (0.8 m) des Spielers läge — er
 stoppt also vor dem Spieler statt durch ihn zu laufen.
 
 
 
-## Scene-Editor: Editor-Engine und Playtest (Etappe 16)
+## Früherer Ingame-Szeneneditor (Etappe 16; entfernt in 19t)
 
-Der Editor ist ein **Scene-Editor**: Er arbeitet ausschliesslich auf den
-Kartendaten (JSON-Modell in `@objects`). Die 3D-Vorschau (Nodes mit
-Praefix `ed_*`) ist reine Anzeige, kein Spielzustand. Events, NPCs,
-Interpreter und GameState existieren im Editor-Modus nicht als
-Spielobjekte — sie werden erst beim Playtest aus den Daten gebaut.
-
-**Zwei Engines, eine Trennung:**
-
-| Scene-Editor                        | Game-Engine (Playtest)            |
-| ----------------------------------- | --------------------------------- |
-| editiert Kartendaten                | interpretiert Kartendaten         |
-| Simulation eingefroren              | Simulation laeuft                 |
-| Maus frei, UI klickbar              | Maus gefangen, WASD/Esc           |
-| Aenderungen landen im JSON          | Aenderungen werden verworfen      |
-
-**Einfrieren:** `Rune::Simulation.paused = true` stoppt in `main.cpp`
-komplett `physics.update` (Bewegung, Schwerkraft). Ruby-seitig ruft der
-Editor-Zweig `scene.update` nicht mehr auf — Animationen (z. B. der
-Kristall) stehen, NPCs und Events werden nicht aktualisiert. Wichtig:
-Ist der Spieler beim Umschalten noch in der Luft, laeuft die Physik
-erst weiter, bis `Player.on_ground?` erfuellt ist, und friert **dann**
-ein — sonst schwebt der Spieler eingefroren in der Luft (Fallstrick 38).
-
-**Playtest-Zyklus:** Der Button `▶ Testen` in der Tab-Leiste (oder F4
-aus dem Editor) startet den Test: ungespeicherte Aenderungen werden
-zuerst gesichert, `GameState` wird gesnapshottet, die Simulation
-startet. F4 im Playtest springt zurueck: `GameState.restore!`, Karte
-frisch per `enter_map` laden, Editor an. Alles, was der Test am Spiel
-geaendert hat (gelaufene NPCs, geschaltete Events, Variablen), wird
-verworfen — der Editierstand bleibt heilig.
-
-**UI-Bausteine:** `UI.button` kennt neben `active:` und `danger:` jetzt
-`ok:` (gruen, fuer Positive-Aktionen wie den Test-Button). Buttons mit
-gleicher Beschriftung brauchen eigene `id:`-Kennungen.
+Der historische Ruby-Szeneneditor mit F4-Editorzweig und internem
+Playtest-/Snapshot-Wechsel wurde in 19t entfernt. Karten werden im separaten
+`RuneEditor.exe` bearbeitet; dessen F4 startet einen eigenen Rune3D-Prozess.
+Der Laufzeit-Szenenbau für Spiel und Titelbildschirm lebt nun in
+`MapObjects`.
+Das bisherige interne `Editor` und `Game.playtest_start/stop` sind keine
+verfügbaren Ruby-APIs mehr. Der getrennte Prozess ist keine Sandbox und
+verwendet reguläre Spielstände und Script-Dateizugriffe.
 
 ## Scene-Editor als eigenes Programm (Etappe 17)
 
@@ -266,7 +390,7 @@ erhalten.
 **Rechteckige Karten:** `Terrain::generate(width, height, resolution,
 seed, amplitude)` baut jetzt Rechtecke (Zellen bleiben quadratisch,
 `res_z` wird proportional abgeleitet). Alte Karten mit `size` laufen
-weiter (Fallback in boot.rb, launcher.rb, main.rb, Editor).
+weiter (Fallback in boot.rb, main.rb, Editor).
 
 **Karten-JSON (neue Felder, alle optional):**
 
@@ -280,134 +404,150 @@ weiter (Fallback in boot.rb, launcher.rb, main.rb, Editor).
 
 `panorama.color` ersetzt den Himmelverlauf durch eine Vollfarbe,
 `fog` blendet die Ferne ab `0.45 * far` sanft zur Nebelfarbe
-(smoothstep, im Pixel-Shader ueber Weltposition minus Kameraposition).
+(smoothstep, im Pixel-Shader über Weltposition minus Kameraposition).
 `Project.create` legt neue Projekte **flach** an (amplitude 0) —
 Berge pro Karte im Eigenschaften-Dialog zuschaltbar.
 
-**Editor:** Menue Karte hat jetzt *Neue Karte...*,
-*Eigenschaften...* und *Karte loeschen* plus die dynamische Karten-
+**Editor:** Menü Karte hat jetzt *Neue Karte...*,
+*Eigenschaften...* und *Karte löschen* plus die dynamische Karten-
 Liste (Radio-Markierung der aktiven Karte). Der Eigenschaften-Dialog
-(natives Win32-Fenster, moduslos) editiert Name, Breite/Hoehe,
-Berge an/aus + Seed + Hoehe, Nebel an/aus + Sichtweite + Farbe,
+(natives Win32-Fenster, moduslos) editiert Name, Breite/Höhe,
+Berge an/aus + Seed + Höhe, Nebel an/aus + Sichtweite + Farbe,
 Panorama-Farbe und einen freien Kommentar; OK regeneriert das
-Gelaende sofort. Neue Karten heissen welt01, welt02, ...
+Gelände sofort. Neue Karten heissen welt01, welt02, ...
 
 **Geprüft:** Eigenschaften-Dialog (Nebel an, 120 m, 0xE8E8E8) →
 Nebel im Editor-Viewport sichtbar; Strg+S → fog/panorama/note in
 der JSON, events/npcs/objects unangetastet; Neue Karte 320x240
 ohne Berge → flache Ebene + welt01.json korrekt; Rune3D startet in
-dorf und zeigt denselben Nebel (Karten-Atmosphaere gilt im Spiel).
+dorf und zeigt denselben Nebel (Karten-Atmosphäre gilt im Spiel).
 
 ## Maus-Werkzeuge und Undo/Redo (Etappe 17c)
 
 **Verschieben-Werkzeug:** Der Button *Verschieben* (Checkbox, linke Spalte)
-schaltet den Drag-Modus. Ein Linksklick auf ein Objekt waehlt es aus und
+schaltet den Drag-Modus. Ein Linksklick auf ein Objekt wählt es aus und
 startet das Ziehen: `push_undo()` genau einmal beim Drag-Start, dann
 `SetCapture`. `WM_MOUSEMOVE` rechnet aus der Mausposition einen Strahl
 (fov 60 Grad, Aspect aus dem Viewport) und schneidet ihn mit der
-horizontalen Ebene `y = drag_y` (Terrainhoehe des Objekts beim Start);
+horizontalen Ebene `y = drag_y` (Terrainhöhe des Objekts beim Start);
 die neue X/Z-Position wird auf das Raster (`g.grid`, 1 m) gerundet und
 sofort in Eigenschaften-Feldern, Objektliste und Titel angezeigt.
 `WM_LBUTTONUP` beendet den Drag und gibt die Maus frei.
 
-**Undo/Redo:** Jede Mutation (`Setzen`, `Loeschen`, `Duplizieren`,
-`Eigenschaften uebernehmen`, Drag-Start) legt vorher einen
-JSON-Schnappschuss des kompletten `objects`-Arrays auf den Undo-Stapel
-(max. 50 Eintraege, Redo wird bei neuer Aktion geleert). `Strg+Z` /
-`Strg+Y` sowie die Buttons *Undo*/*Redo* tauschen Schnappschuesse
-zwischen den beiden Stapeln; nach dem Wiederherstellen werden Liste und
-Felder neu synchronisiert und die Karte als geaendert markiert.
+**Undo/Redo:** Seit Z8 ist der Schnappschuss die **ganze Karte**
+(`g.map_root` als JSON), nicht mehr nur `objects`. Damit sind auch Events,
+Seiten, Befehle, NPCs, Terrain/Splats, Block-Zonen, Encounter und die
+Karten-Eigenschaften rückholbar. Auf den Stapel kommt der Stand **vor** der
+Änderung (max. 50 Einträge, Redo wird bei neuer Aktion geleert);
+`Strg+Z` / `Strg+Y` sowie die Buttons *Undo*/*Redo* tauschen Schnappschüsse
+zwischen den beiden Stapeln.
 
-**Geprueft:** Objekt setzen -> Strg+Z entfernt es -> Strg+Y stellt es
-wieder her; Drag im Verschieben-Modus aendert X/Z rastergenau (Log:
+*Push-Orte:* Objekt setzen/löschen/drehen/duplizieren, Eigenschaften
+übernehmen, Drag-Start, Event übernehmen (F6: Event-, Seiten- und
+Befehlsfelder), Seite anlegen/löschen, Befehl einfügen/ändern/löschen/
+verschieben, Event anlegen/duplizieren/löschen, Platzier-Dialog (F5:
+NPCs/Schilder/Objekte), Karten-Eigenschaften (Name, Terrain, Nebel,
+Panorama, Wetter, Block-Zonen, Encounter, Notiz), Berg-/Boden-Pinsel,
+Bodenwechsel und Flächen in F7, Umbenennen im Kartenbaum.
+Für Änderungen, die auch scheitern können (Pinsel ins Leere, „OK" ohne
+Änderung), wird der Stand vorher nach `json_write()` gezogen und erst bei
+Erfolg abgelegt (`push_undo_text`) - ein wirkungsloser Klick hinterlässt
+kein Undo.
+
+*Wiederherstellen (`restore_map_snapshot`):* Schnappschuss parsen, Zeiger
+neu holen (`objects`, Markierung, Drag verwerfen), `regen_terrain()`,
+Atmosphäre, Projektstart-Marker, offene F7-Bodenliste und F6-Fenster neu
+aufbauen (`ev_refresh()` leitet Pfade und Formulare aus dem neuen Baum ab),
+Objektliste/Eigenschaften/F10/Kartenbaum/Menü/Titel nachziehen, Karte als
+geändert markieren. Karten- und Projektwechsel leeren beide Stapel.
+
+*Bewusste Grenzen:* Karten **anlegen/löschen** und F2/F5-Dateitransaktionen
+sind Dateioperationen und kein Undo-Schritt; der Projektstart (system.json)
+liegt außerhalb der Karte. Solange der Eigenschaften-Dialog offen ist oder
+der Event-Editor unübernommene Eingaben hat, verweigert Undo mit einem
+Hinweis in der Statusleiste, statt fremde Entwürfe zu verwerfen.
+
+**Geprüft:** Objekt setzen -> Strg+Z entfernt es -> Strg+Y stellt es
+wieder her; Drag im Verschieben-Modus ändert X/Z rastergenau (Log:
 `Drag-Ende: idx=… x=-9.000000 z=-12.000000`); Strg+S schreibt die neue
 Position in die Karten-JSON.
 
 ## Event-Editor (Etappe 17d)
 
 **Eigenes Fenster:** `Events -> Event-Editor...` (`ID_MENU_EVENTS = 107`)
-oeffnet ein modusloses Top-Level-Fenster der Klasse
+öffnet ein modusloses Top-Level-Fenster der Klasse
 `RuneEditorEventDlg` (kein modaler Loop, damit der D3D11-Flip-Model-
-Viewport weiterrendert). Beim Kartenwechsel wird es geschlossen, weil
-Zeiger in `map_root` ungueltig werden (`load_map` ruft
-`close_event_editor()`).
+Viewport weiterrendert). Beim Kartenwechsel werden seit 19o.5 zuerst offene
+Entwürfe geklärt und das Fenster anschließend geschlossen (`load_map` ruft
+`close_event_editor()`). Befehlsreferenzen verwenden inzwischen Pfade.
 
 **Daten:** Der Dialog arbeitet direkt auf `g.map_root["events"]` und
-schreibt dieselben Schluessel wie die Engine (`id`, `name`, `x`, `z`,
-`radius`, `trigger`, `commands`). Gespeichert wird unveraendert mit
-`Strg+S` im Hauptfenster; Undo/Redo deckt weiterhin nur `objects` ab.
+schreibt dieselben Schlüssel wie die Engine (`id`, `name`, `x`, `z`,
+`radius`, `trigger`, `commands`). Gespeichert wird unverändert mit
+`Strg+S` im Hauptfenster. Undo/Redo deckt seit Z8 auch Events, Seiten und
+Befehle ab (`push_undo()` vor jedem Commit; offene Eingaben müssen vorher
+übernommen oder verworfen werden).
 
 **Aufbau:** links Event-Liste mit *Neu* (setzt das Event auf die
-aktuelle Mausposition im Viewport), *Loeschen* und *Duplizieren*
-(neue ID, Name + " (Kopie)", X/Z + 1). Rechts die Event-Felder
+aktuelle Mausposition im Viewport), *Löschen* und *Duplizieren*
+(neue ID, eindeutiger Kopiename und, soweit möglich, X/Z + 1). Rechts die Event-Felder
 (Name, X, Z, Radius, Trigger `action`/`touch`/`auto`) mit
-*Event uebernehmen*, darunter die Befehlsliste.
+*Event übernehmen*, darunter die Befehlsliste.
 
-**Befehlsliste:** Der JSON-Baum wird flach mit Einrueckung angezeigt;
+**Befehlsliste:** Der JSON-Baum wird flach mit Einrückung angezeigt;
 `if_switch`/`if_variable` bekommen die Kopfzeilen `-> Dann:` und
 `-> Sonst:`. Ein Klick auf eine Kopfzeile bestimmt, wohin neue Befehle
-eingefuegt werden (Wurzel, Dann- oder Sonst-Zweig); die Statuszeile im
+eingefügt werden (Wurzel, Dann- oder Sonst-Zweig); die Statuszeile im
 Dialog zeigt das Ziel. *Hoch*/*Runter* tauscht Nachbarn derselben
-Ebene, *Befehl loeschen* entfernt inklusive Zweigen.
+Ebene, *Befehl löschen* entfernt inklusive Zweigen.
 
 **Formular:** Die Typauswahl bietet alle Interpreter-Kommandos:
 Text (mehrzeilig, eine Zeile pro Textfenster-Zeile), Warte, Schalter
 setzen, Variable (Wert und/oder Add), Wenn Schalter, Wenn Variable
 (Operator `==`, `!=`, `<`, `<=`, `>`, `>=`), Teleport (X, Z, Yaw),
-Log, Sound (Name, Lautstaerke) und Effekt (Name, Hoehe, Hexfarbe).
-*Einfuegen* baut ein neues Kommando, *Befehl uebernehmen* ersetzt das
-markierte; beim Aendern eines Wenn-Befehls bleiben Dann/Sonst erhalten,
-solange der Typ ein Wenn bleibt. Unbekannte Schluessel anderer Events
-ueberleben das Speichern, weil nur die bearbeiteten Felder gesetzt
-werden.
+Log, Sound (Name, Lautstärke) und Effekt (Name, Höhe, Hexfarbe).
+*Einfügen* baut ein neues Kommando; seit 19o.5 patcht *Befehl übernehmen*
+beim gleichen Typ nur geänderte Felder. Ein Typwechsel ersetzt den Befehl
+nach Warnung, einschließlich seiner Zweige; fremde Daten unberührter
+Befehle und Events bleiben erhalten.
 
 **Tastatur:** Solange das Event-Fenster den Fokus hat, sind die
 globalen Editor-Shortcuts (R, Entf, Strg+Z/Y, ...) abgeschaltet
 (`event_editor_focused()`), damit Tippen in Namens- und Textfeldern
-keine Objekte dreht oder loescht.
+keine Objekte dreht oder löscht.
 
-**Geprueft:** Build und alle acht Ruby-Tests gruen. Ein interaktiver
-Fenstertest war in der abgeschotteten Build-Umgebung nicht moeglich
+**Geprüft:** Build und alle acht Ruby-Tests grün. Ein interaktiver
+Fenstertest war in der abgeschotteten Build-Umgebung nicht möglich
 (der Editor landet auf einem nicht sichtbaren Desktop; `EnumWindows`
 sieht nur das Konsolenfenster).
 
-## Projekt-Scripts und Script-Editor (Etappe 17e)
+## Projekt-Scripts und Script-Editor (17e / 19y)
 
-**Datei:** Jedes Projekt darf `data/scripts.json` enthalten:
+Jedes Projekt darf `data/scripts.json` als Array oder Objekt mit `scripts`-
+Array enthalten. Benannte Event-Scripts werden über `Scripts.run` im
+`Scripts::Context` mit Helfern wie `say`, `switch`, `variable`, `teleport`
+und `party` ausgeführt; Inline-Code bleibt möglich. Ein `autoload: true`
+markiert ein Startscript: `Scripts.run_startup` führt diese nach
+`enter_map` und `RGSS.setup` in Dateireihenfolge über `TOPLEVEL_BINDING`
+aus, auch bei F5. Nicht markierte Altscripts starten nicht automatisch.
+Fehler werden protokolliert und folgende Einträge laufen weiter. Der
+Kontext ist **keine Sicherheits-Sandbox**; Ruby ist vertrauenswürdiger Code.
+Die vorhandene RGSS-Schicht ist teilweise XP-kompatibel, nicht vollständig.
 
-```json
-{ "scripts": [ { "name": "gruss", "code": "say ['Hallo!']" } ] }
-```
+F11 (`script_dialog_win.h`) ist moduslos und nutzt ein Edit-Control mit
+separater Zeilenspalte, Scroll-/Cursoranzeige, Tab/Shift+Tab, Strg+S und
+nicht ausführender CRuby-Syntaxprüfung (`RubyVM::InstructionSequence.compile`
+geschützt über `rb_protect`). Das portable `script_document.h` erhält
+unbekannte Felder und unveränderte Codezeilenenden; mehrdeutige, ungültige
+oder nicht vollständig darstellbare Felder werden geschützt. Auswahlwechsel
+übernimmt den alten Eintrag; bei Reload/Schließen/Projektwechsel werden
+Entwürfe geklärt. `DocumentStore` prüft den Dateistand und meldet Konflikte.
+Wie bei Karten ist die Sicherung/Promotion kein atomarer Namensaustausch.
 
-`Scripts.load_project` liest sie in `Game.setup` ein (also auch bei F5).
-Ein Event ruft ein Script mit `{"cmd":"script","name":"gruss"}` auf;
-`{"cmd":"script","code":"..."}` fuehrt Code direkt aus. Der Interpreter
-kennt dafuer das neue Kommando `script` und `Interpreter#say(lines)`.
-
-**Sandkasten:** Der Code laeuft in `Scripts::Context#instance_eval`, nicht
-im Interpreter. Helfer: `say` (oeffnet das Textfenster und blockiert wie
-`text`), `switch`, `set_switch`, `variable`, `set_variable`,
-`add_variable`, `teleport(x, z, yaw:)`, `sound`, `effect`, `log`,
-`player_position`, `game`. Fehler (auch Syntaxfehler) werden geloggt und
-brechen die restliche Kommandoliste nicht ab.
-
-**Editor:** `Scripts -> Script-Editor...` (`ID_MENU_SCRIPTS = 108`)
-oeffnet ein modusloses Fenster (`RuneEditorScriptDlg`) mit Script-Liste,
-Namensfeld und grossem Ruby-Codefeld (Consolas). *Neu*, *Loeschen*,
-*Uebernehmen*, *Speichern* (schreibt `projekte/<name>/data/scripts.json`)
-und *Neu laden*. Beim Wechsel wird der alte Eintrag automatisch
-uebernommen; die Statuszeile zeigt Zielpfad und Aenderungszustand.
-
-**Event-Editor:** Der Befehlstyp *Script* traegt den Script-Namen in
-`name`; die Befehlsliste zeigt `Script "gruss"`.
-
-**Demo:** `game/data/scripts.json` (Vorlage) und
-`projekte/dorf/data/scripts.json` enthalten `dorf_begruessung` und
-`kristalle_zaehlen` als Beispiele.
-
-**Geprueft:** `ruby -I game/engine tools/script_test.rb` (Schalter,
-Variablen, say-Blockade, fehlerhaftes Script, Inline-Code, effect und
-teleport) sowie alle acht bisherigen Tests gruen.
+`tools/editor_workflow_test.cpp` prüft Modelle portabel, Ruby-Tests prüfen
+opt-in Autoload und Fehlerisolierung; `tools/editor_ui_smoke.cpp` steuert
+die echte Windows-EXE mit synthetischen Nachrichten in einer isolierten
+Paketkopie. Das ersetzt keinen interaktiven DPI-/Hardware-Test.
 
 ## Grafik-Import und Materialbase (Etappe 17f)
 
@@ -423,26 +563,26 @@ oben nach unten, 4 Bytes pro Pixel). Die Metadaten stehen in
 ```
 
 **Editor:** `Grafik -> Grafik importieren...`
-(`ID_MENU_IMPORT_TEX = 109`) oeffnet den Windows-Dateidialog (PNG/BMP),
+(`ID_MENU_IMPORT_TEX = 109`) öffnet den Windows-Dateidialog (PNG/BMP),
 dekodiert per WIC (`decode_image_wic`, `-lwindowscodecs`) und schreibt
 `.rgba` + `textures.json` (`mat_import_file`). Der Name wird aus dem
 Dateinamen abgeleitet (`mat_slug`: klein, nur `a-z0-9_`, eindeutig).
 
-`Grafik -> Materialbase...` (`ID_MENU_MATERIALS = 110`) oeffnet das
+`Grafik -> Materialbase...` (`ID_MENU_MATERIALS = 110`) öffnet das
 moduslose Fenster `RuneEditorMatDlg` (IDs 7001-7013): Liste aller Prefab-
-und importierten Texturen, Kachelgroesse aendern, importieren, loeschen
-(nur importierte), auf das ausgewaehlte Objekt anwenden (`obj["tex"]`)
+und importierten Texturen, Kachelgrösse ändern, importieren, löschen
+(nur importierte), auf das ausgewählte Objekt anwenden (`obj["tex"]`)
 oder den Objekt-Override entfernen.
 
-Das Eigenschaften-Panel hat dafuer ein Feld **Material**
+Das Eigenschaften-Panel hat dafür ein Feld **Material**
 (`IDC_ED_TEX = 3023`); leer = Prefab-Texturen, sonst Materialname.
 `push_object` zeichnet dann alle Teile des Objekts mit dieser Textur.
 
-**Spiel:** `Textures.register_project` liest `textures.json`, prueft
-`w * h * 4` Bytes und meldet jede Datei ueber `Rune::Gfx.texture` an. Der
+**Spiel:** `Textures.register_project` liest `textures.json`, prüft
+`w * h * 4` Bytes und meldet jede Datei über `Rune::Gfx.texture` an. Der
 Aufruf steht in `Game.setup` direkt nach `Textures.register_all` (also
-auch nach F5). `Textures.tile_of(name)` liefert die Kachelgroesse aus den
-Metadaten. `Prefabs.instantiate` wertet `obj["tex"]` aus und ueberschreibt
+auch nach F5). `Textures.tile_of(name)` liefert die Kachelgrösse aus den
+Metadaten. `Prefabs.instantiate` wertet `obj["tex"]` aus und überschreibt
 Textur und Kachel aller Prefab-Teile.
 
 **Kopflos testen:** `build/RuneEditor.exe --import-tex <bild> [name]`
@@ -451,19 +591,19 @@ importiert ohne Fenster (Projekt `dorf`) und gibt `OK:`/`FEHLER:` aus.
 **Wichtig beim Linken:** Die Ruby-DLL exportiert eigene CRT-Symbole
 (`fclose`, `fwrite`, ...). Ohne `-lucrtbase` **vor** der
 Ruby-Importbibliothek werden unsere stdio-Aufrufe auf die Ruby-Exporte
-umgebogen; `fclose` stuerzt dann mit Access Violation ab. `build.ps1`
-linkt deshalb `-lucrtbase` zuerst.
+umgebogen; `fclose` stürzt dann mit Access Violation ab. `build.ps1`
+linkt deshalb `-lucrtbase` zürst.
 
-**Geprueft:** `ruby tools/tex_import_test.rb` (BMP -> RGBA, Zeilenordnung,
-Farben, Metadaten, Aufraeumen) und `ruby tools/project_tex_test.rb`
-(Spielseite: Metadaten, Groessenpruefung, Registrierung, `tile_of`) sowie
-alle bisherigen Tests gruen.
+**Geprüft:** `ruby tools/tex_import_test.rb` (BMP -> RGBA, Zeilenordnung,
+Farben, Metadaten, Aufräumen) und `ruby tools/project_tex_test.rb`
+(Spielseite: Metadaten, Grössenprüfung, Registrierung, `tile_of`) sowie
+alle bisherigen Tests grün.
 
 ## Problem-Backlog in den Programmen (Etappe 18h)
 
 Engine und Editor erkennen Fehler jetzt **selbst** und sammeln sie:
 
-**Editor — Probleme-Dialog (F10, Extras-Menü, ID 116):** Nach jedem
+**Editor — Probleme-Dialog (F10, Werkzeuge-Menü, ID 116):** Nach jedem
 Kartenladen läuft `issues_scan_map()` und füllt den Backlog
 (`g_issues`): Objekte ohne/mit unbekanntem Prefab-Typ, Material-Overrides
 ohne geladene Textur, Events mit unbekanntem Trigger, kaputte Seiten
@@ -494,11 +634,11 @@ grün, 8-s-Spielrun ohne Fehler und ohne issues.json (dorf ist sauber).
 
 ## Event-Seiten (Etappe 18g)
 
-Events koennen jetzt **mehrere Seiten** mit Bedingungen haben — das grosse
+Events können jetzt **mehrere Seiten** mit Bedingungen haben — das grosse
 RPG-Maker-XP-Feature. Eine Seite ist ein Block aus Bedingungen, Trigger und
-Befehlsliste; es gewinnt immer die Seite mit dem **hoechsten Index**, deren
-Bedingungen erfuellt sind (Seite 1/Index 0 = Standard, leere Bedingungen =
-immer erfuellt).
+Befehlsliste; es gewinnt immer die Seite mit dem **höchsten Index**, deren
+Bedingungen erfüllt sind (Seite 1/Index 0 = Standard, leere Bedingungen =
+immer erfüllt).
 
 **Karten-JSON:**
 
@@ -514,58 +654,76 @@ immer erfuellt).
 Bedingungen: `switch` (Name + an/aus) und `variable` (Name, Operator
 `== != < <= > >=`, Wert); beide kombiniert sind ein UND. Alte Karten ohne
 `pages` laufen weiter: `Event.build_pages` baut daraus eine implizite Seite 0
-aus den Top-Level-Feldern. Ungueltige Seiteneintraege (kein Hash, trigger
+aus den Top-Level-Feldern. Ungültige Seiteneinträge (kein Hash, trigger
 ausserhalb action/touch/auto/parallel, commands kein Array) werden beim
 Laden normalisiert.
 
 **Spiel (`game/engine/event.rb`):** `EventPage` ist ein Struct (conditions,
 trigger, commands). `refresh_page!` bestimmt die aktive Seite neu und setzt
-beim **Seitenwechsel** `fired` zurueck — touch/auto-Events feuern auf der
-neuen Seite erneut (klassisches RPG-Maker-Verhalten, z. B. eine Tuer, die
-nach dem Schalter-UMlegen beim zweiten Beruehren offen ist). `trigger` und
+beim **Seitenwechsel** `fired` zurück — touch-Events feuern auf der neuen
+Seite erneut (klassisches RPG-Maker-Verhalten, z. B. eine Tür, die nach dem
+Schalter-UMlegen beim zweiten Berühren offen ist); bei `auto` sperrt `fired`
+nicht mehr (Z6/D1: XP-Autorun), es merkt nur das erste Log je Seite.
+`trigger` und
 `commands` delegieren an die aktive Seite; `manual_fire` startet deren
-Kommandos. `main.rb` ruft `refresh_page!` fuer alle Events auf, bevor die
+Kommandos. `main.rb` ruft `refresh_page!` für alle Events auf, bevor die
 Trigger-Schleifen laufen.
+
+**Update-Reihenfolge im Spiel (Z8/D3, Runde 20):** `Game.update` dreht
+zuerst Seitenbedingungen, NPC-Bewegung und NPC-Kollision — **auch dann,
+wenn ein Textfenster offen ist** (XP aktualisiert die Karte während einer
+Nachricht weiter). Erst danach folgen die Auslöser `auto`/`touch`/`parallel`
+und das E-Angebot, und die brauchen einen **freien** Interpreter. Der
+Spieler selbst bleibt während Text/Wahl/Zahleneingabe eingefroren
+(`Rune::Simulation.paused`, F5); Menü und Kampf kehren vorher aus
+`Game.update` zurück (in XP eigene Szenen), dort steht die Karte still.
+Grenze: parallele Events können nicht *während* eines Textes laufen, weil
+es nur einen Interpreter gibt (Backlog). Geprüft von
+`tools/encounter_test.rb` (NPC läuft weiter, Seitenwechsel im Text,
+`auto` wartet, Spieler bleibt eingefroren).
 
 **Editor (Event-Dialog, F6):** Linke Spalte hat unter der Event-Liste jetzt
 eine **Seiten-Liste** (mit Bedingungs-Hinweis wie `[Schalter 'auftrag' = an]`)
-plus *Neue Seite* / *Seite loeschen* (die letzte Seite bleibt). Rechts ist
+plus *Neue Seite* / *Seite löschen* (die letzte Seite bleibt). Rechts ist
 der Trigger in eine eigene Gruppenbox **"Seite"** gezogen, zusammen mit den
 Bedingungsfeldern (Schalter-Name + an/aus, Variable + Operator + Wert);
 leere Felder entfernen die Bedingung. Die Befehlsliste und das Befehls-
-formular arbeiten auf der gewaehlten Seite. Oeffnet der Dialog ein altes
-Event ohne `pages`, migriert `ev_ensure_pages` es sofort (Top-Level-Felder
-werden zu Seite 0, Top-Level-Schluessel fallen weg); gespeichert wird nur
-das geoeffnete Event migriert.
+formular arbeiten auf der gewählten Seite. Seit 19o.5 zeigt F6 alte Events
+ohne `pages` zunächst als implizite Seite und materialisiert sie nur bei
+Bedarf; die Top-Level-Felder bleiben als Altdaten erhalten (siehe unten).
 
-**Geprueft:** `tools/event_pages_test.rb` (44 Checks: altes Format,
+**Geprüft:** `tools/event_pages_test.rb` (44 Checks: altes Format,
 Normalisierung, Seiten-Auswahl, alle Operatoren, fired-Reset,
 manual_fire je Seite), `log/live18g.ps1` (Seitenliste, neue Seite,
 Schalter-Bedingung, Befehl landet nur auf seiner Seite, Migration +
-Speichern in dorf.json), 15 Tests gruen, 8-s-Spielrun ohne Fehler.
+Speichern in dorf.json), 15 Tests grün, 8-s-Spielrun ohne Fehler.
 
 ## Event-Editor wie RPG Maker XP (Etappe 18f)
 
-Der Event-Editor (F6) ist deutlich naeher an RPG Maker XP gerueckt:
+Der Event-Editor (F6) ist deutlich näher an RPG Maker XP gerückt:
 
 **Befehlskategorien:** Die Befehls-ComboBox gruppiert jetzt 20 Typen
-mit Praefixen: [Nachricht] (Text, Wahlmöglichkeiten, Log),
+mit Präfixen: [Nachricht] (Text, Wahlmöglichkeiten, Log),
 [Steuerung] (Warte, Schalter setzen/umschalten, Variable, Wenn
 Schalter/Variable, Script), [Spieler] (Teleport, Spieler bewegen,
 Heilen), [Welt] (Wetter, Effekt, Sound), [Party] (Item, Gold),
-[Spiel] (Speichern, Laden). Das Enum EvType ersetzt die frueheren
-magischen Indexzahlen ueberall (Sicherheit bei 20 Typen).
+[Spiel] (Speichern, Laden). Das Enum EvType ersetzt die früheren
+magischen Indexzahlen überall (Sicherheit bei 20 Typen).
 
 **Neue Befehle (Interpreter + Editor):**
 - choices: Wahlmöglichkeiten (RPG-Maker-Show-Choices). JSON:
-  {"cmd":"choices","options":[...],"branches":[[...],[...]]}.
-  Der Interpreter blockiert (@choices), der Spieler waehlt mit
-  Pfeiltasten (wrap-around) + E/Enter; der gewaehlte Zweig kommt
-  auf den Stack. UI.choices zeichnet das Wahlfenster (Marker,
-  Hinterlegung, "↑↓ + E"-Hinweis). Editor: Optionen als Zeilen im
-  Textfeld, Zweige erscheinen als "Wenn [x]:"-Kopfzeilen im Baum
-  (ev_flatten wie Dann/Sonst); Zweige bleiben beim Bearbeiten
-  erhalten (ev_build_command uebernimmt alte branches).
+  {"cmd":"choices","options":[...],"branches":[[...],[...]],
+   "cancel":"aus"|"verzweigung"|n,"cancel_branch":[...]}.
+  Der Interpreter blockiert (@choices), der Spieler wählt mit
+  Pfeiltasten (wrap-around) + E/Enter; der gewählte Zweig kommt
+  auf den Stack. cancel (Z5, XP "When Cancel"): abwesend/aus =
+  Esc ignoriert (Default), "verzweigung" = eigener Abbruch-Zweig
+  (XP 403, Sound ablehnen), Zahl N = Esc wie Option N;
+  UI.choices zeigt bei erlaubtem Abbruch "Esc = Abbruch".
+  Editor: Optionen als Zeilen im Textfeld, Zweige erscheinen als
+  "Wenn [x]:"-Kopfzeilen im Baum (ev_flatten wie Dann/Sonst,
+  "Wenn Abbruch:" wenn cancel=verzweigung); Zweige bleiben beim
+  Bearbeiten erhalten (ev_build_command übernimmt alte branches).
 - toggle_switch: Schalter umschalten (GameState.toggle_switch).
 - move_player: Spieler bewegen, absolut oder relativ (Rune::Player
   .teleport + Game.gy).
@@ -577,20 +735,21 @@ magischen Indexzahlen ueberall (Sicherheit bei 20 Typen).
 **Trigger "parallel":** RPG-Maker-Parallel-Process. Das Event startet
 sich neu, sobald es fertig ist — aber nur, wenn der Interpreter frei
 ist (Single-Interpreter-Engine). Ein 'wait' im Event steuert das
-Tempo. Einschraenkung: blockiert wie andere Events die NPC-Logik,
-solange es laeuft (kein echter Hintergrund-Thread).
+Tempo. Einschränkung: blockiert wie andere Events die NPC-Logik,
+solange es läuft (kein echter Hintergrund-Thread).
 
 **Layout:** Fenster 1000x730 (vorher 960x700), Gruppenboxen
-"Event-Eigenschaften" und "Befehle", groessere Befehlsliste
-(260 statt 248 px), breitere Typ-ComboBox (250 px fuer Kategorie-
-Praefixe), "Ziel:"-Anzeige versteht jetzt auch "Wenn [x]:"-Zweige.
+"Event-Eigenschaften" und "Befehle", grössere Befehlsliste
+(260 statt 248 px), breitere Typ-ComboBox (250 px für Kategorie-
+Präfixe), "Ziel:"-Anzeige versteht jetzt auch "Wenn [x]:"-Zweige.
 
-**Geprueft:** tools/event18f_test.rb (23 Checks: toggle, move,
-weather, save/load, choices mit Wrap/Verschachtelung, parallel im
+**Geprüft:** tools/event18f_test.rb (38 Checks: toggle, move,
+weather, save/load, choices mit Wrap/Verschachtelung und cancel/Z5,
+  parallel im
 Datenmodell, unbekannter Befehl), log/live18f.ps1 (Editor: 20 Typen,
-Kategorie-Praefixe, choices einfuegen mit Liste+JSON, parallel-
+Kategorie-Präfixe, choices einfügen mit Liste+JSON, parallel-
 Trigger, Speichern — Achtung: Event-Dialog blockiert Strg+S, deshalb
-erst schliessen). 13 Bestandstests + live18e/18d/18c gruen, 8-s-
+erst schliessen). 13 Bestandstests + live18e/18d/18c grün, 8-s-
 Spielrun ohne Fehler.
 
 ## Mal-Werkzeug für den Boden (Etappe 18e)
@@ -663,7 +822,7 @@ Weich-Übergang); die Kacheldichte hängt an der Terrain-Auflösung
 **Geprüft:** Live-Test log/live18d.ps1 (Fläche hinzufügen/entfernen,
 Splat-Log, JSON-Checks, Editor lebt), Spiel-Smoke mit 2 Splats
 (Atlas + Splat-Boden im engine.log, 0 Fehler), alle 13 Tests grün,
-live18c-Regression grün (Log-Format angepasst: "Kachel N m, N Flaeche(n)").
+live18c-Regression grün (Log-Format angepasst: "Kachel N m, N Fläche(n)").
 
 ## Tileset-Editor (Etappe 18c)
 
@@ -672,14 +831,14 @@ ID_MENU_TILESET 115, Taste F7; IDs 4301-4312):
 
 **Boden pro Karte:** Das Karten-JSON bekommt zwei neue Felder in
 `terrain`: `texture` (Name der Boden-Textur, Standard "gras") und
-`tile` (Kachelgroesse in Metern, Standard 2.0; erst seit dieser Etappe
+`tile` (Kachelgrösse in Metern, Standard 2.0; erst seit dieser Etappe
 einstellbar, vorher auf 2 m in die Terrain-UVs gebacken). Der Shader
 skaliert die Terrain-UV mit 2.0/tile (gParams.z; Boxen nutzen weiter
 gParams.y, Shadow-Pass beide 0 - sauber getrennt).
 
 **Dialog:** Liste aller Texturen (8 prozedurale + Projekt-Importe,
 mat_all_names), links Vorschau (RGBA -> 32bpp-DIB -> StretchBlt) der
-angewaehlten Kachel, rechts Kachelgroesse + "Uebernehmen (Karte)":
+angewählten Kachel, rechts Kachelgrösse + "Übernehmen (Karte)":
 schreibt terrain.texture/tile, wendet sie live an (set_terrain_tex/
 set_terrain_tile), markiert die Karte dirty. Status "Boden übernommen".
 
@@ -688,38 +847,38 @@ set_terrain_tile), markiert die Karte dirty. Status "Boden übernommen".
 (deterministischer LCG gleicher Eingabe = gleiche Kachel), meldet sie
 im Renderer an (sofort in Vorschau und Viewport testbar). "Als
 Projekt-Textur speichern" schreibt sie als .rgba + textures.json-Eintrag
-(Materialimport-Syntax; das Spiel laedt sie beim Start ueber
+(Materialimport-Syntax; das Spiel lädt sie beim Start über
 Textures.register_project).
 
-**Renderer-Zugriff:** add_texture fuehrt jetzt Pixel + Groesse mit
+**Renderer-Zugriff:** add_texture führt jetzt Pixel + Grösse mit
 (m_tex_pixels/m_tex_sizes); texture_rgba(name, out, w, h) liefert sie
-fuer Vorschauen zurueck. Rune::Gfx.terrain_texture kennt ein zweites,
-optionales Argument (Kachelgroesse); game/main.rb liest terrain.texture/
+für Vorschauen zurück. Rune::Gfx.terrain_texture kennt ein zweites,
+optionales Argument (Kachelgrösse); game/main.rb liest terrain.texture/
 tile der Startkarte statt fix 'gras' zu setzen. Der Editor wendet beide
 Werte beim Laden einer Karte an.
 
 **Umlaut-Fix:** Die sichtbaren Fenstertexte (L"-Literale) sind jetzt
 einheitlich echte Umlaute ("Löschen", "Schließen", "Ausgewählt",
-"Uebernehmen (Karte)" zeigt korrekt "Übernehmen"); nur Log-Strings
+"Übernehmen (Karte)" zeigt korrekt "Übernehmen"); nur Log-Strings
 bleiben transliteriert, weil die Live-Tests darauf matchen. Die Quelle
-ist durchgaengig UTF-8, GDI/GDI-Text kommt korrekt als UTF-16 in die
+ist durchgängig UTF-8, GDI/GDI-Text kommt korrekt als UTF-16 in die
 EXE (Tools: scan_encoding.rb, check_binary_umlaute.rb, fix_umlaute.rb).
 
-**Geprueft:** Live-Test log/live18c.ps1 (Dialog offen, Liste,
+**Geprüft:** Live-Test log/live18c.ps1 (Dialog offen, Liste,
 Boden-Wechsel auf "weg" + 4-m-Kachel landet nach Strg+S im Karten-JSON,
-Kachel erzeugen + als Projekt-Textur speichern, Aufraeumen), alle 13
-Tests gruen, 8-s-Spielrun ohne engine.log-Fehler.
+Kachel erzeugen + als Projekt-Textur speichern, Aufräumen), alle 13
+Tests grün, 8-s-Spielrun ohne engine.log-Fehler.
 
 ## Projekt-Auswahl im Editor (Etappe 18b)
 
 Der Editor war bisher fest auf `projekte/dorf` eingestellt. Jetzt:
 
 **Projekt-Dialog:** Datei -> Projekt wechseln... (ID_MENU_PROJECT 114)
-oeffnet den moduslosen Dialog `RuneEditorProjectDlg` (IDs 4201-4205):
+öffnet den moduslosen Dialog `RuneEditorProjectDlg` (IDs 4201-4205):
 Liste aller `projekte/*/data/system.json`-Projekte, Doppelklick oder
-"Oeffnen" wechselt, Textfeld + "Anlegen" legt ein neues Projekt an.
+"Öffnen" wechselt, Textfeld + "Anlegen" legt ein neues Projekt an.
 
-**Neues Projekt:** create_project() baut das komplette Geruest:
+**Neues Projekt:** create_project() baut das komplette Gerüst:
 `projekte/<name>/{data/{maps,},saves}/`, `system.json` (Titel,
 Startpunkt auf die Startkarte), leere `scripts.json` und
 `database.json` (gold 0, leere actors/items), flache Startkarte
@@ -727,22 +886,22 @@ Startpunkt auf die Startkarte), leere `scripts.json` und
 Unterstrich.
 
 **switch_project(name):** schliesst offene Dialoge (Zeiger werden
-ungueltig), setzt project_dir/name zurueck, leert Undo/Redo und
-Karte, laedt textures.json (mat_load) und scannt/maps/Menue neu;
+ungültig), setzt project_dir/name zurück, leert Undo/Redo und
+Karte, lädt textures.json (mat_load) und scannt/maps/Menü neu;
 erste Karte wird geladen. Log: "Projekt gewechselt: <name> (N Karten)".
 
 **Start:** CLI `--project <name>` gewinnt; sonst Merker
 `log/last_project.txt` (schreibt switch_project); sonst "dorf".
-Ungueltiges Projekt faellt auf "dorf" zurueck (Log-Warnung).
+Ungültiges Projekt fällt auf "dorf" zurück (Log-Warnung).
 `--import-tex` kennt jetzt ebenfalls `--project <name>`.
 
-**Geprueft:** Live-Test log/live18b.ps1 (CLI-Start, Merker-Neustart,
-Rueckfall, Dialog-Doppelklick-Wechsel, Anlegen mit Datei-Checks,
-Aufraeumen; EnumWindows statt FindWindowW!), alle 13 Tests gruen.
+**Geprüft:** Live-Test log/live18b.ps1 (CLI-Start, Merker-Neustart,
+Rückfall, Dialog-Doppelklick-Wechsel, Anlegen mit Datei-Checks,
+Aufräumen; EnumWindows statt FindWindowW!), alle 13 Tests grün.
 
 ## Fenster-Bedienkomfort (Etappe 18a)
 
-**DPI-Schaerfe:** Beide Programme (Spiel und Editor) setzen beim Start
+**DPI-Schärfe:** Beide Programme (Spiel und Editor) setzen beim Start
 `SetProcessDpiAwarenessContext(PER_MONITOR_AWARE_V2)` - die Darstellung
 bleibt auf skalierten Displays (125 %/150 %) scharf, statt von Windows
 unscharf hochskaliert zu werden.
@@ -755,41 +914,41 @@ Wichtig: `CreateIconIndirect` verlangt eine ECHT monochrome Maske
 Farb-Bitmap als Maske ist undefiniert und brachte die Titelzeichnung
 zum Absturz (0xc0000005 im Live-Test gefunden und behoben).
 
-**Mindestfenster-Groesse:** WM_GETMINMAXINFO im Editor begrenzt das
+**Mindestfenster-Grösse (historisch 18a, in 19w ersetzt):** WM_GETMINMAXINFO im Editor begrenzte das
 Fenster auf mindestens 1024x640 - das Layout bricht beim Verkleinern
 nicht mehr.
 
-**Drag&Drop-Texturimport:** PNG/BMP-Dateien koennen direkt ins
+**Drag&Drop-Texturimport:** PNG/BMP-Dateien können direkt ins
 Editor-Fenster gezogen werden (WM_DROPFILES + DragAcceptFiles); jede
-Datei laeuft durch den bestehenden mat_import_file (WIC-Dekodierung,
+Datei läuft durch den bestehenden mat_import_file (WIC-Dekodierung,
 .rgba + textures.json, Duplikatnamen '_2', '_3' ...). Import wird im
 editor.log protokolliert.
 
 **Tastatur:** G schaltet das Fang-Raster (1.0 / 0.5 / 0.25 / 0.01 m),
-Esc hebt die Auswahl auf, Enter uebernimmt die Eigenschaften-Felder.
-Alles wird ins editor.log geschrieben (Live-Test verifiziert darueber).
+Esc hebt die Auswahl auf, Enter übernimmt die Eigenschaften-Felder.
+Alles wird ins editor.log geschrieben (Live-Test verifiziert darüber).
 
 **Doppelklick in der Objektliste** richtet die Kamera auf das Objekt
 (Position + Blickwinkel), Log: "Kamera auf Objekt #N gerichtet".
 
 **Statusleiste:** Feld 3 zeigt jetzt "Raster x.xx m | y FPS".
 
-**Grenze (fuer Live-Tests):** Statusleisten-/Textinhalte lassen sich
+**Grenze (für Live-Tests):** Statusleisten-/Textinhalte lassen sich
 per SendMessage von aussen NICHT lesen - WM_USER+-Meldungen werden
-ueber Prozessgrenzen nicht gemarshallt, der Zeiger zeigt in den
+über Prozessgrenzen nicht gemarshallt, der Zeiger zeigt in den
 fremden Adressraum (SB_GETTEXTW von aussen -> Absturz des Editors!).
-Live-Tests gehen deshalb nur ueber Log-Eintraege und Prozessleben.
+Live-Tests gehen deshalb nur über Log-Einträge und Prozessleben.
 
-**Geprueft:** Live-Test log/live18a.ps1 (Fenster-Icon via WM_GETICON,
-Mindestgroesse via WM_GETMINMAXINFO, G/Doppelklick/Esc via Log +
+**Geprüft:** Live-Test log/live18a.ps1 (Fenster-Icon via WM_GETICON,
+Mindestgrösse via WM_GETMINMAXINFO, G/Doppelklick/Esc via Log +
 Prozessleben, stderr leer, editor.log fehlerfrei), alle 13 Tests
-gruen, Spiel-Smoke-Run 8 s ohne Fehler (engine.log).
+grün, Spiel-Smoke-Run 8 s ohne Fehler (engine.log).
 
 ## Wetter, Werkzeugleiste, Sound-Test, Playtest (Etappe 17h)
 
 **Wetter (Spiel):** Karten-Feld `"weather": {"type":"kein|regen|schnee",
-"intensity":1.0}`. Das Modul `Weather` (game/engine/weather.rb) haelt ~40
-Partikel je Intensitaetsstufe um den Spieler im Leben (Regen = schnelle
+"intensity":1.0}`. Das Modul `Weather` (game/engine/weather.rb) hält ~40
+Partikel je Intensitätsstufe um den Spieler im Leben (Regen = schnelle
 blaue Straflen 22 m/s, Schnee = langsame weisse Flocken 2.6 m/s mit
 Drift). `Weather.load_map(map)` aktiviert es beim Kartenstart,
 `Weather.update(dt, px, py, pz)`/`Weather.draw` laufen in Game.update/draw.
@@ -798,40 +957,43 @@ Drift). `Weather.load_map(map)` aktiviert es beim Kartenstart,
 `{"cmd":"weather","name":"schnee","intensity":1.5}` bzw. Script-Helfer
 `weather('regen', 2.0)` (ohne Argument: Typ lesen).
 
-**Wetter im Editor:** Karten-Eigenschaften (F2) fuettern Combobox
-`kein/regen/schnee` (ID 4113) + Intensitaet (4114); OK schreibt das
+**Wetter im Editor:** Karten-Eigenschaften (F2) füttern Combobox
+`kein/regen/schnee` (ID 4113) + Intensität (4114); OK schreibt das
 `weather`-Objekt ins Karten-JSON (live per WM_COMMAND getestet, siehe
 log/live17h.ps1).
 
-**Editor-Werkzeugleiste:** Toolbar unter dem Menue mit 8 Buttons
+**Editor-Werkzeugleiste (historisch 17h; aktueller Stand siehe 19w):** Toolbar unter dem Menü mit 8 Buttons
 (Speichern, Karten-Eigenschaften, Events, Scripts, Materialbase,
 Datenbank, Sound-Test, Playtest). Die Icons zeichnet der Editor zur
 Laufzeit in GDI (16x16, keine Ressourcen-Datei - wie Texturen/Sounds
-komplett prozedural). Buttons senden dieselben IDs wie das Menue.
+komplett prozedural). Buttons senden dieselben IDs wie das Menü.
 F-Tasten: F1 Hilfe, F2 Eigenschaften, F3 Materialbase, F4 Playtest,
 F6 Events, F8 Sound-Test, F9 Datenbank, F11 Scripts.
 
 **Zoom:** Mausrad im Viewport = Dolly entlang der Blickrichtung
-(Shift+Rad = Hoete aendern, Altverhalten).
+(Shift+Rad = Höhe ändern, Altverhalten).
 
-**Sound-Test (Editor):** Extras -> Sound-Test... (F8) oeffnet den
+**Sound-Test (Editor):** Werkzeuge -> Sound-Test... (F8) öffnet den
 moduslosen Dialog `RuneEditorSoundDlg` (IDs 8101-8107): Liste der 7
-Spiel-Sounds, Abspielen mit Lautstaerke 0.0-1.0, Musik als Loop
-an/aus. Der Editor initialisiert dafuer die waveOut-Engine
+Spiel-Sounds, Abspielen mit Lautstärke 0.0-1.0, Musik als Loop
+an/aus. Der Editor initialisiert dafür die waveOut-Engine
 (core::sound) und meldet die Sounds per Ruby-Boot an
-(game/editor/boot.rb requires zusaetzlich sounds.rb).
+(game/editor/boot.rb requires zusätzlich sounds.rb).
 
-**Playtest:** Extras -> Playtest starten... (F4) speichert die Karte
-und startet `build\Rune3D.exe --project dorf` als eigenen Prozess.
-Das Spiel wertet `--project <name>` aus (main.cpp setzt
-RUNE_PROJECT), springt also ohne Titelbildschirm direkt ins Projekt
-(game/main.rb: ENV['RUNE_PROJECT'] in Game.setup). Ein unbekannter
-Projektname faellt auf den Titelbildschirm zurueck (mit Warnung).
+**Playtest (aktualisiert in 19u):** Werkzeuge -> Playtest starten... (F4)
+speichert die ausgewählte Karte und startet Rune3D als eigenen Prozess
+mit `--project <name> --map <karten-id>`. Ohne Kartenauswahl gilt die
+Projekt-Startkarte. Projekt und Karte werden unverändert über die Wide-CLI
+übergeben; eine ungültige ausdrückliche Auswahl zeigt einen Fehler. Ein
+unbekanntes Projekt mit `--project`-Karte bricht den Playtest ab (F4);
+ohne F4 wählt die Engine das Projekt intern (last_played → erstes) und
+startet auf dem `Scene_Title`.
 
-**Geprueft:** `ruby -I game/engine tools/weather_test.rb` (22 Checks),
-alle 13 Tests gruen, Live-Test log/live17h.ps1 (Toolbar, Zoom,
+**Geprüft:** `ruby -I game/engine tools/weather_test.rb` (22 Checks),
+alle 13 Tests grün, Live-Test log/live17h.ps1 (Toolbar, Zoom,
 Wetter-Dialog schreibt JSON, Sound-Dialog, Playtest-Prozess +
-engine.log-Vermerk, Aufraeumen).
+engine.log-Vermerk, Aufräumen). Dieser historische 17h-Test belegt nicht
+den späteren 19u-Ablauf mit zwei unterschiedlichen Karten.
 
 ## Datenbank: Helden, Items, Gold (Etappe 17g)
 
@@ -847,29 +1009,34 @@ gilt ein leerer Katalog):
                 "power": 40, "price": 25, "start": 2, "desc": "..." } ] }
 ```
 
-**Spiel:** `Database.database` laedt die Datei, `Party.setup` baut daraus
-die Party (HP/MP starten voll, `start` = Startmenge). `Party` haelt den
-veraenderlichen Zustand: `add_item/take_item/use_item` (heal/mana wirken auf
+**Spiel:** `Database.database` lädt die Datei, `Party.setup` baut daraus
+die Party (HP/MP starten voll, `start` = Startmenge). `Party` hält den
+veränderlichen Zustand: `add_item/take_item/use_item` (heal/mana wirken auf
 den ersten verletzten Helden, quest/money sind nicht benutzbar),
-`add_gold`, `heal_all`, `snapshot/restore!`. Spielstaende nehmen den
-Party-Snapshot mit (`'party'` in `save_game`/`load_game`). Im Esc-Menue
-zeigt ein Panel daneben Helden, Gold und Inventar (`Party.status_lines`).
+`add_gold`, `heal_all`, `snapshot/restore!`. Spielstände nehmen den
+Party-Snapshot mit (`'party'` in `save_game`/`load_game`). Im Esc-Menü
+zeigt ein Panel daneben Helden, Gold und Inventar (`Party.status_lines`);
+seit 20b lassen sich Heil- und Manatränke dort auch auf einen gewählten
+Helden anwenden.
 
-**Interpreter-Befehle** (zusaetzlich):
+**Interpreter-Befehle** (zusätzlich):
 `{"cmd":"item","name":"heiltrank","count":2}` bzw. `"take":1`,
 `{"cmd":"gold","amount":50}` (negativ = abziehen),
 `{"cmd":"heal"}` (voll) bzw. `{"cmd":"heal","amount":30}`.
 
-**Script-Sandbox** (`Scripts::Context`) kennt dafuer: `party`,
+**Script-Kontext** (`Scripts::Context`) kennt dafür: `party`,
 `gold(amount)`/`gold()`, `items`, `item_count`, `add_item`, `take_item`,
-`use_item`, `heal`.
+`use_item`, `heal`, **`gain_exp(id, amount)`** (Runde 22: XP-Stufenaufstieg,
+Rückgabe = Anzahl Stufen). Über RGSS geht derselbe Weg:
+`$game_party.actors[0].exp = n` (bzw. `+=`) löst `Party.set_exp` aus;
+`actor.next_exp`/`actor.level` lesen.
 
-**Editor:** Menue `Datenbank -> Datenbank (Helden/Items)...`
-(`ID_MENU_DATABASE = 111`) oeffnet das moduslose Fenster
+**Editor:** Menü `Datenbank -> Datenbank (Helden/Items)...`
+(`ID_MENU_DATABASE = 111`) öffnet das moduslose Fenster
 `RuneEditorDbDlg` (IDs 8001-8055): Reiter Helden/Items, Listen links,
 Formular rechts (ID/Name/Klasse/HP/MP/ATK/DEF/SPI/AGI bzw.
-ID/Name/Art/Staerke/Preis/Startmenge/Beschreibung), Gold-Feld,
-Neu/Loeschen/Speichern/Neu laden - schreibt `database.json`.
+ID/Name/Art/Stärke/Preis/Startmenge/Beschreibung), Gold-Feld,
+Neu/Löschen/Speichern/Neu laden - schreibt `database.json`.
 
 **Event-Editor:** drei neue Befehlstypen *Item geben/nehmen* (negative
 Menge = nehmen), *Gold +/-*, *Heilen* (leer = voll).
@@ -877,11 +1044,12 @@ Menge = nehmen), *Gold +/-*, *Heilen* (leer = voll).
 **Demo:** `game/data/database.json` (Vorlage, wandert per
 `Project.ensure_demo` in neue Projekte) und `projekte/dorf/data/database.json`
 mit Arik/Mira und Heiltrank/Manatrank/Wasserkristall/Goldbeutel, angelegt
-per `ruby tools/add_database17g.rb`.
+per `ruby tools/add_database17g.rb`; Gegner+Truppen stehen seit Runde 13
+auch in der Demo (nachgezogen per `ruby tools/sync_demo.rb`).
 
-**Geprueft:** `ruby -I game/engine tools/party_test.rb` (Setup, Inventar,
+**Geprüft:** `ruby -I game/engine tools/party_test.rb` (Setup, Inventar,
 Benutzen, Gold, Heilung, Snapshot/Restore, Interpreter-Befehle,
-Sandbox-Helfer - 39 Checks) sowie alle bisherigen Tests gruen.
+Kontext-Helfer - 39 Checks) sowie alle bisherigen Tests grün.
 
 
 ## Höhen-Malwerkzeug & Kartengrenze (Etappe 18l)
@@ -903,7 +1071,7 @@ Sandbox-Helfer - 39 Checks) sowie alle bisherigen Tests gruen.
   — sie wirken auch im sonst abgeflachten Dorfkern und sind vollständig
   deterministisch reproduzierbar (F5, Saveload, Playtest).
 - Default: Neue Karten sind flach (`amplitude` 0). `game/main.rb` und der
-  Launcher erzeugen ohne Angabe Amplitude 0 — Berge entstehen durch Malen.
+  Editor erzeugen ohne Angabe Amplitude 0 — Berge entstehen durch Malen.
 
 **Editor:** Fünftes Werkzeug „Höhe malen" (ID 3029). Linksklick hebt um
 +2 m pro Klick, Shift+Klick senkt um −2 m, Mehrfachklicken stapelt (klickt man
@@ -924,6 +1092,1975 @@ Pinsel in `compute_heights` ein; `height_at`/Kollision/sichtbare Geometrie
 stimmen automatisch.
 
 
+## Verifikation: CI, portabler Build und Daten-Validierung (Etappe 19a)
+
+Bis 18l stand die Prüfprozedur als Fließtext im Handoff: ein einzeiliger Befehl
+mit 16 Testnamen, `build.ps1` mit hart kodiertem `C:\Ruby34-x64`, und kein
+einziger automatischer Lauf. Etappe 19a macht daraus Werkzeug, das von selbst
+läuft — und findet dabei einen echten Datenfehler.
+
+### Vier Ebenen, vier Jobs
+
+`.github/workflows/ci.yml` läuft bei jedem Push und Pull Request:
+
+| Job | Runner | Was |
+|---|---|---|
+| `hygiene` | ubuntu | `tools/lint_repo.rb` |
+| `engine` | ubuntu | `tools/test_all.rb` + `game/engine/mapcheck.rb` |
+| `cpp-logik` | ubuntu | `tools/json_test.cpp` (`-Werror`) + `tools/json_bridge_check.rb` |
+| `windows` | windows-2022 | `build.ps1 -Clean` und `-Test`, EXEs als Artefakt |
+
+Getrennt statt in einem Job, damit ein Fehlschlag sofort sagt, WELCHE Ebene
+kaputt ist. Seit 19x startet der Windows-Job die echten EXEs mit WARP aus
+einer isolierten Paketkopie. Interaktive Bedienung und Hardware-GPU bleiben
+trotzdem am echten Rechner zu prüfen.
+
+### Portabler Build
+
+`build.ps1` suchte Ruby bisher nur unter `C:\Ruby34-x64` und rechnete fest mit
+`include/ruby-3.4.0` und `-lx64-ucrt-ruby340`. Jetzt:
+
+- **Ruby**: `-RubyRoot` > `$env:RUNE_RUBY_ROOT` > `ruby.exe` im PATH (via
+  `RbConfig::CONFIG['prefix']`) > `C:\Ruby34-x64`/`33`/`32`.
+- **Toolchain**: `$env:RUNE_MSYS_ROOT\ucrt64` > `<Ruby>\msys64\ucrt64` >
+  `C:\msys64\ucrt64` > ein `ucrt64`-g++ aus dem PATH.
+- **Header, libdir, Importbibliothek, DLL-Name und Stdlib** kommen aus
+  `RbConfig`; seit 19x bricht eine unvollständige Konfiguration ab, statt
+  fremde 3.4-Pfade zu raten. Die Ruby-DLL und die Kernmodule sind Pflicht;
+  bei anderen fehlenden Laufzeit-DLLs gibt der Build eine Warnung aus.
+- `-Test` prüft C++-Logik, Windows-Dateipfade und Ruby-Suite mit JSON-/
+  Event-Brücke; `-WarpTest` testet Renderer und eingebettetes Ruby isoliert.
+
+Die Reihenfolge `-lucrtbase` VOR der Ruby-Importbibliothek bleibt unantastbar
+(siehe `fclose`-Falle im Handoff).
+
+### Test-Runner mit Voraussetzungen
+
+`tools/test_all.rb` findet `tools/*_test.rb` per Glob, startet jeden Test als
+eigenen Prozess (`RbConfig.ruby -I game/engine <datei>`) und wertet den
+Exit-Code aus. `tex_import_test.rb` braucht `build/RuneEditor.exe` und wird ohne
+sie als ÜBERSPRUNGEN gemeldet statt mit `raise` umzukippen — deshalb läuft die
+Suite auf einem frischen Checkout und in CI auf Linux. `--strict` macht
+Übersprungene zu Fehlern (Windows-Job), `-v` zeigt Ausgaben auch bei Grün,
+`--only NAME` filtert.
+
+### Karten-Validierung in Ruby: MapCheck
+
+Der Editor prüft Karten seit 18h in C++ (`issues_scan_map`). Dieselben Regeln
+gab es nirgends sonst — das Spiel hat kaputte Daten still geschluckt, und CI
+konnte sie gar nicht sehen. `game/engine/mapcheck.rb` ist die
+plattformunabhängige Fassung:
+
+- **Befehle**: alle 20 Typen, rekursiv durch `then`/`else`/`branches`;
+  Pflichtfelder pro Typ (`lines`, `options`+`branches`, `name`, `amount`,
+  `slot` 1..3, `seconds` ≥ 0, `op` aus `== != < <= > >=`).
+- **Events**: Seiten, Trigger, Bedingungen (`switch`/`variable`), doppelte Ids,
+  fehlende Position.
+- **Terrain**: `width`/`height`/`resolution`/`amplitude`, Höhen-Pinsel
+  (`x,z,r,h`), Splat-Flächen (`tex,x,z,w,h`), Material gegen die geladene
+  Materialbase.
+- **NPCs**: Wegpunkte als `[x, z]`-Paare, `speed`, `radius`, eigene Befehle.
+- **Atmosphäre**: Nebel/Panorama-Farbe in `0x000000..0xFFFFFF`, Wettertyp,
+  Zielkarten von `teleport`.
+
+Schweregrade wie im Editor: 1 = Warnung, 2 = Fehler. Aufrufe: `MapCheck.scan`,
+`scan_file`, `scan_tree`, `report!` (→ `Issues.report`), `summary`; als CLI
+`ruby -I game/engine game/engine/mapcheck.rb` (Exit 1 bei Fehlern).
+`Game.enter_map` meldet seit 19a harte Fehler ins Laufzeit-Backlog
+(`log/issues.json`) — Warnungen bleiben Editor und CI vorbehalten, damit das
+Log nicht volläuft.
+
+**Zwei Implementierungen, eine Regel:** `ISSUE_CMD_TYPES`/`issues_scan_map`
+(C++) und `MapCheck::CMD_TYPES` (Ruby) müssen zusammenpassen. Beim Ergänzen
+eines Befehls also IMMER beide ändern (und `EV_TYPES` + `EvType` im
+Event-Editor). `tools/mapcheck_test.rb` prüft zusätzlich die mitgelieferten
+Karten, wodurch eine Regeländerung, die vorhandene Daten bricht, sofort rot wird.
+
+**Gemeinsame Zweig-Regel (Z8, Runde 20):** Welche Kommandos `then`/`else`
+haben und welche einen Self-Switch-Buchstaben tragen, steht portabel in
+`src/editor/event_rules.h` (`event_cmd_has_branches`,
+`event_cmd_uses_self_switch_letter`, `event_self_switch_letter_ok`). Der
+Editor-Scan prüft damit auch die Zweige von `if_self_switch` (vorher nur
+`if_switch`/`if_variable`, wie im Backlog vermerkt) und meldet Buchstaben
+außerhalb A–D; `tools/editor_workflow_test.cpp` hält die Liste fest.
+
+### JSON-Brücke und der %.12g-Fehler
+
+`tools/json_test.cpp` testet Parser und Schreiber der Editor-JSON-Schicht
+(88 Checks): Reihenfolge, doppelte Schlüssel, Escapes, Surrogatpaare,
+Fehlermeldungen mit Position, echte Karten, Idempotenz. Der Modus
+`--roundtrip ein.json aus.json` schreibt eine Datei genau so, wie der Editor sie
+speichern würde. `tools/json_bridge_check.rb` vergleicht das Ergebnis mit Rubys
+`JSON.pretty_generate`: erst semantisch (hart), dann bytegleich
+(`--strict-format`).
+
+**Dabei gefunden:** `write_number` nutzte `%.12g` und beschnitt still jede
+Kommazahl auf 12 signifikante Stellen. Aus dem Startblickwinkel
+`3.141592653589793` wurde beim Speichern im Editor `3.14159265359`, aus
+Spielstandskoordinaten `2.0040341041749343e-05` wurden `2.00403410417e-05`.
+Zusätzlich kippte `%g` schon kleine Werte in die Exponentenschreibweise — die
+Kartenbreite `240.0` wäre als `2.4e+02` gespeichert worden, obwohl der
+Kommentar im Code „wie Ruby JSON.pretty_generate" versprach.
+
+Neu: kürzeste Präzision 1..17 mit `strtod`-Gegenprobe, Festkomma bei Exponent
+`[-4, 16)` (Ruby/Python-Verhalten), `NaN`/`Unendlich` → `null` (bleibt lesbar
+und wird von MapCheck gemeldet), Ganzzahlen außerhalb `long long` stürzen nicht
+mehr ab. Alle 13 JSON-Dateien des Repos roundtrips jetzt bytegleich — CI prüft
+das mit `--strict-format`.
+
+### Repo-Hygiene
+
+`tools/lint_repo.rb` prüft JSON-Parsebarkeit, UTF-8 ohne BOM, Doppelkodierung
+(Mojibake-Muster, mit Whitelist für die Reparatur-/Scan-Werkzeuge),
+Zeilenenden-Konvention, `boot.rb`-Requires in beide Richtungen, ignorierte
+Dateien im Index, Binär-Artefakte, Grundausstattung und meldet übergroße
+Quellen als Info. Ohne Git lauffähig.
+
+**Zeilenenden:** `.gitattributes` stand auf `* -text` (keine Umwandlung),
+wodurch 12 Dateien CRLF und der Rest LF hatten. Der Editor schreibt LF, Ruby
+ebenso — jede CRLF-Karte kippte beim Speichern komplett um. Jetzt einheitlich
+LF, CRLF nur für `*.ps1`/`*.psm1`/`*.manifest`; 20 Dateien wurden umgestellt
+und die Regel wird von `lint_repo.rb` bewacht.
+
+### Repo-Hygiene: README
+
+Das Repo hatte keine Startseite. `README.md` nennt jetzt Zweck, den
+Vergleich mit RPG Maker XP (was da ist, was fehlt), Voraussetzungen, Build-,
+Test- und CI-Befehle, Projektstruktur, Bedienung und das Karten-Format.
+
+### Ergebnis: was CI am ersten Tag gefunden hat
+
+Der erste Lauf (`44498396607`) war rot in genau zwei Jobs — und beide Male war
+der Fund echt:
+
+| Job | Stand 1. Lauf | Ursache |
+|---|---|---|
+| `hygiene` | ✅ | — |
+| `cpp-logik` | ✅ | JSON-Fix bestätigt: 88 Checks, 13 Dateien bytegleich |
+| `engine` | ❌ | `mapcheck_test.rb`: 2 Assertionen suchten den Fundort im `message`-Feld statt in `Finding#to_s` (Test-Bug, Prüfregeln korrekt) |
+| `windows` | ❌ | `build.ps1 -Test` übergab g++ Argumente mit angehängtem Komma (PowerShell-Argument-Modus) |
+
+Der Windows-Job hat dabei schon im ersten Lauf den Hauptbeweis erbracht:
+`Rune3D.exe` (1106,7 KB) und `RuneEditor.exe` (1584,7 KB) warnungsfrei mit
+GCC 16.2 gebaut, Ruby 3.4.12 und Toolchain rein über `RbConfig` gefunden,
+die `msys2/setup-msys2`-Rücksprungschritte korrekt übersprungen.
+
+**Endstand (Lauf `44499944309`): alle vier Jobs grün.** Windows meldet
+`17 OK, 0 fehlgeschlagen, 0 uebersprungen` — dort läuft `tex_import_test.rb`
+dank `-Test` mit `--strict` gegen die wirklich gebaute EXE mit, und die
+JSON-Brücke prüft 13 Dateien ohne Format-Abweichung. Artefakt `Rune3D-Windows`
+(3,9 MB: beide EXEs, Ruby- und System-DLLs, Manifest).
+
+### Fallstricke dieser Etappe
+
+- **PowerShell-Argument-Modus:** `& $Gcc '-std=c++20', '-O1', ...` übergibt die
+  Kommas MIT — g++ bekommt `-std=c++20,` und der Linker sucht eine Datei dieses
+  Namens. Argumentlisten immer als Array bauen und mit `@` splatten
+  (`$flags = @('-std=c++20', '-O1'); & $Gcc @flags`), wie es `Build-Target` mit
+  `@CxxFlags`/`@Libs` schon immer tat.
+- **setup-ruby bringt das DevKit mit:** Auf `windows-2022` liegt Ruby unter
+  `C:\hostedtoolcache\windows\Ruby\3.4.x\x64` und MSYS2 darunter in
+  `msys64\ucrt64` (GCC 16.2). `RI_DEVKIT` zeigt darauf. Der
+  `msys2/setup-msys2`-Rücksprung im Workflow ist deshalb nur eine Versicherung
+  und bleibt normalerweise übersprungen.
+- **`%.12g` ist kein Format für Daten:** Wer Zahlen round-trippen will, braucht
+  die kürzeste exakt runde Darstellung mit Gegenprobe (`strtod`) und eine
+  Festkomma-Regel — sonst stimmt das Ergebnis nicht mit Ruby/Python überein.
+- **CI-Annotationen:** `tools/test_all.rb` gibt bei Fehlschlag
+  `::error title=…::…` aus, damit der Grund direkt in der Lauf-Übersicht steht —
+  und zwar mit GETRENNTem Escaping: Titel/Eigenschaften brauchen `%` → `%25`,
+  `:` → `%3A`, `,` → `%2C`, Zeilenumbruch → `%0A`; in der Nachricht selbst nur
+  `%`, CR und LF. Wer die Nachricht mit `%2C` escaped, sieht genau das später
+  lesbar in der Oberfläche stehen (`16 OK%2C 0 fehlgeschlagen`).
+- **Zeilenenden sind Daten:** Solange `.gitattributes` auf `* -text` steht,
+  entscheidet der Zufall (bzw. der letzte Editor) über CRLF/LF. `lint_repo.rb`
+  bewacht die Konvention jetzt bei jedem Lauf.
+
+
+## Echte Umlaute überall (Etappe 19b)
+
+Bis 19b stand Deutsch im Code und in den Daten als Ersatzschreibung: `Hoehe`,
+`fuer`, `loeschen` — und sichtbar für den Nutzer in Prefab-Liste („Huette",
+„Wegstueck"), Objektliste, Launcher-Zeile und Dialogtexten („Drei Kristalle
+traegt der Weg …"). Die UI-Strings des Editors hatten dagegen längst echte
+Umlaute; deswegen wirkte das Programm uneinheitlich.
+
+**Regel seit 19b:** Prosa (Kommentare, UI- und Spieltexte, Doku, Daten-Namen)
+schreibt echte Umlaute; Identifier (Funktionen, Variablen, JSON-Keys, Prefab-
+und Script-IDs, Pfade, API-Namen wie `JsonValue`/`issues_scan_map`) bleiben
+ASCII. Die Umstellung lief maskiert: pro Datei wurden nur Kommentar- und
+String-Bereiche (bzw. bei Doku/YAML der Fließtext) tokenweise ersetzt, Code
+außerhalb davon blieb unangetastet — 113 Dateien, ~1550 Zeilen.
+
+**Zweite Hälfte des Fundes:** Der Editor schickte datenhaltige Texte durch
+ANSI-Win32-Aufrufe (`SendMessageA`, `SetWindowTextA`, `GetWindowTextA`). Mit
+UTF-8-Namen wie „Hütte" wäre daraus in der Liste Doppelkodierung in Ã-Form geworden (CP1252
+liest die UTF-8-Bytes als Einzelzeichen). Alle 24 Textaufrufe in
+`editor_main.cpp`, `main.cpp` und `ruby/vm.cpp` nutzen jetzt die W-Varianten
+mit `utf8_to_wide`/`wide_to_utf8`; `ev_set_text` war bereits W-basiert. Damit
+ist der Textpfad durchgängig Unicode: JSON (UTF-8) → Wide → Win32/GDI.
+
+**PowerShell:** `build.ps1` trägt jetzt eine UTF-8-BOM, damit Windows
+PowerShell 5.1 die Umlaute in Meldungen korrekt liest (PS 7/CI stört die BOM
+nicht); `tools/edclick.psm1` hatte sie bereits. `ß` bleibt, wo es war — die
+Umstellung führt kein ß neu ein (schweizerische Schreibung wie „grösser"
+neben bestehendem „Löschen" ist bewusst akzeptiert).
+
+## Editor-Hauptfenster professionell (Etappe 19c)
+
+User-Vorgabe nach Screenshot: Das Hauptfenster war an mehreren Stellen
+unrund — Checkboxes für sich ausschließende Modi, ein Bedienblock ohne
+Gruppierung, tote Leerräume unter der Prefab-Liste, und die Objektliste als
+einanzeilige ListBox. Die anderen Dialoge des Editors (Events, Datenbank,
+Materialbase) sind dagegen sauber gruppiert; das Hauptfenster zieht jetzt
+nach, plus drei Dinge, die RPG Maker XP seinem Editor mitgibt: Kontextmenüs,
+sortierbare Listen und eine Platzier-Vorschau.
+
+**Linke Spalte, drei benannte Gruppen:** „Werkzeug (Modus)" mit fünf
+Radios (Setzen, Auswählen, Verschieben, Boden malen, Höhe malen — genau einer
+aktiv, `set_mode()` setzt Haken zentral, weil auch Prefab-Liste und
+Kontextmenü den Modus wechseln), „Objekt-Typ (Prefab)" mit der Liste, die den
+verbleibenden Raum füllt (kein toter Leerraum mehr), „Objekt-Aktionen"
+(Drehen/Löschen/Duplizieren) und Undo/Redo am Spaltenende.
+
+**Objektliste als ListView (Bericht-Modus):** Spalten `#`, `Objekt`, `X`, `Z`,
+`Drehung`, `Material`; Klick auf den Spaltenkopf sortiert (auf-/absteigend),
+ganze Zeile markierbar, Gitterlinien. Die Zeile trägt den Objektindex im
+`lParam`, Sortierung und Datenreihenfolge bleiben also getrennt
+(`g.obj_order`). Doppelklick richtet weiter die Kamera aus, Rechtsklick öffnet
+das Kontextmenü.
+
+**Platzier-Vorschau („Geist"):** Im Setzen-Modus folgt eine eingefärbte
+Fassung des gewählten Prefabs (Mischung Richtung Mintgrün, ohne Textur — der
+Renderer kennt kein Alpha) dem Cursor, eingerastet auf dasselbe Raster und
+mit derselben Drehung, die der Klick setzt. `R` dreht die Vorschau in
+15°-Schritten, das Statusfeld zeigt Rasterpunkt und Drehung. Aus der
+„Sofort-Einfügen"-Falle wird so ein bestätigtes Platzieren.
+
+**Kontextmenü** (Rechtsklick im Viewport und auf der Objektliste): Objekt
+hier setzen, Kamera darauf, duplizieren, löschen — dieselben Befehle wie
+Tastatur/Buttons, über `WM_COMMAND` verteilt.
+
+**Introspektion für Live-Tests:** Texte sind prozessfremd nicht per
+`SendMessage` lesbar (BACKLOG-Wissen). Der Editor schreibt deshalb bei jeder
+Änderung der Objektliste `log/editor_objects.json` (Index, Typ, Name, X, Z,
+Drehung, Material); `tools/edclick.psm1` liest die Liste daraus und liefert
+weiter das alte Zeilenformat, bestehende Live-Skripte laufen also unverändert.
+
+## Self-Switches und Bildschirmblende (Etappe 19d)
+
+Erste Nachschub-Welle der RPG-Maker-XP-Features (User-Wunsch nach 19c):
+Self-Switches und die Bildschirmblende — in XP die Kernwerkzeuge für
+Event-Regie („Schrank öffnet sich nur einmal", „Szene dunkelt ab").
+
+**Self-Switches (A-D pro Event):** `GameState` führt neben globalen Schaltern
+eine zweite Tabelle mit Schlüsseln `"karte|event|buchstabe"`. Der Schlüssel
+kommt vom Event (`Event#self_switch_key`, Karte = `Game.map_id`, Name statt
+ID — wie die Savegames es für Events schon tun). Die Self-Switches wandern
+in `snapshot`/`restore!` mit, Savegames bleiben also vollständig; alte
+Savegames ohne das Feld laden mit leeren Self-Switches.
+
+**Interpreter:** `self_switch` setzt den Buchstaben des Besitzer-Events
+(`@owner`), `if_self_switch` verzweigt Dann/Sonst darauf. Ohne Besitzer
+(Intro-Aufruf) wird gewarnt bzw. der Sonst-Zweig genommen — nie abgestürzt.
+Ungültige Buchstaben (nicht A-D) lehnt `GameState` mit Warnung ab.
+
+**Seiten-Bedingung:** Event-Seiten (18g) können jetzt zusätzlich zu
+`switch`/`variable` ein `"self_switch": {"letter":"A","value":true}`
+tragen; `Event.conditions_met?(c, ev)` bekommt dafür das Event als Kontext.
+`refresh_page!` läuft weiter jeden Frame — Seitenwechsel durch Self-Switches
+passieren damit automatisch (touch/auto feuern auf der neuen Seite erneut).
+
+**Bildschirmblende:** `game/engine/fade.rb` (Modul `Fade`) interpoliert eine
+Vollbild-Abdunklung (Alpha 0..1) mit Ziel und Rate; `Game.update` dreht sie
+weiter, `Game.draw` legt sie über Spiel und UI, aber unter das Menü-Overlay
+(damit ein abgedunkeltes Bild nie die Menü-Bedienung frisst). Kartenwechsel
+rufen `Fade.reset!` — man landet nie mit schwarzem
+Bildschirm in einer Karte. Der Interpreter-Befehl `fade`
+(`direction` ein/aus, `seconds`) ist nicht blockierend, wie bei XP läuft das
+Spiel während der Blende weiter.
+
+**Editor:** Der Event-Dialog kennt die drei neuen Befehlstypen
+(`EV_TYPES`/Labels/`ev_cmd_label`, Formular-Felder: Buchstabe im Namensfeld
++ an/aus-Combo bzw. Richtung + Sekunden). Der Seite-Kasten bekommt rechts
+neben der Schalter-Bedingung zwei Combos: „Self-Switch" (keins/A-D) und
+an/aus — Index 0 („keins") entfernt die Bedingung wieder.
+
+**Sync-Pflicht bleibt:** `MapCheck::CMD_TYPES` (Ruby) = `ISSUE_CMD_TYPES` =
+`EV_TYPES` (C++) — jetzt 26 Befehlstypen. Seit Z8 ist `docs/befehle.json` das
+**Quellen-Register** (Typ, Bereich, Pflicht-/optionalfelder, Beschreibung) und
+`tools/befehle_test.rb` vergleicht Register, `CMD_TYPES`, `EV_TYPES`/`EvType`,
+`ISSUE_CMD_TYPES` und die Ausführung in `interpreter.rb` — samt gemeinsamer
+Reihenfolge. `mapcheck_test.rb` zählt zusätzlich mit, damit Auseinanderlaufen
+auffällt. MapCheck prüft `letter` A-D (Fehler),
+fehlendes `value` (Warnung), Dann-/Sonst-Listen rekursiv und beim `fade`
+Richtung/Dauer.
+
+**Tests:** `tools/self_switch_test.rb` (GameState-Isolation, Savegame-Rundlauf,
+Seitenwahl, Interpreter-Zweige, MapCheck) und `tools/fade_test.rb`
+(Blendenverlauf, Minimaldauer, Reset, draw-Alpha, Interpreter, MapCheck),
+beide kopflos wie die übrigen Engine-Tests.
+
+## RGSS-Schicht und Ersteinrichtung (Etappe 19e)
+
+User-Vorgabe: Die Engine soll später wie RPG Maker XP über RGSS (Ruby Game
+Scripting System) in Ruby genutzt werden - Spieler schreiben ihr Custom-Game
+im Script-Editor (F11) in Ruby. Zweite Vorgabe: Existiert kein Projekt,
+muss der Spieler eines erstellen können (statt stiller Demo-Kopie).
+
+**RGSS-Kompatibilitätsschicht (`game/engine/rgss.rb`):** legt die XP-Namen
+über die Rune3D-Engine, initialisiert aus `Game.setup` (`RGSS.setup`, auch
+bei F5/Playtest):
+
+- `$game_system` — `menu_disabled`/`save_disabled` werden beachtet: Esc
+  öffnet das Menü dann nicht, `Game.save_game` verweigert sich (Log-Warnung).
+- `$game_switches`, `$game_variables` — delegieren auf `GameState`; RGSS
+  nutzt Integer-IDs, Rune3D Namen - beides geht (`to_s`).
+- `$game_self_switches` — versteht das XP-Schlüsselformat
+  `[karte, event, letter]` (Event als ID über `Game.events` aufgelöst oder
+  als Name) und den internen String `karte|event|letter`; delegiert auf die
+  Self-Switch-Tabelle aus 19d.
+- `$game_party` (gold/gain_gold/lose_gold/items/gain_item/lose_item/
+  use_item), `$game_player` (x/y/z/moveto — 3D: moveto setzt auf den Boden),
+  `$game_map` (map_id/display_name/events/npcs/event(id_oder_name)/width/
+  height), `$game_screen` (weather mit RGSS-Zahlen 0-3 ODER Rune3D-Namen;
+  Sturm=3 fällt auf dichten Schnee, weil es Sturm-Wetter noch nicht gibt).
+- `Graphics` — `fadeout(n)`/`fadein(n)` rechnen Frames (frame_rate,
+  RGSS-Default 40) in Sekunden der 19d-Bildschirmblende um;
+  `brightness=`/`brightness` (0..255) setzen `Fade.alpha=` direkt;
+  `freeze`/`transition` sind Zustandsmerker ohne Bild-Effekt, `update` zählt
+  nur `frame_count` — den Frame-Takt gibt `Rune.tick` vor, nicht das Script.
+- `Input` — RGSS1-Konstanten (DOWN=2 ... F9=29) und `trigger?/press?/
+  repeat?/dir4` auf `Rune::Input.pressed?/down?`; C (Bestätigen) liegt auf
+  Space/Enter/E, B (Abbrechen) auf Esc, A auf Shift; Symbol-Argumente
+  (`Input.trigger?(:e)`) gehen auch. `repeat?` = `trigger?` (kein
+  Auto-Repeat in der Engine), `update` ist No-Op.
+- `Audio` — `bgm_play/bgs_play` (Schleifen), `me_play/se_play` (Einmal),
+  `*_stop`; Lautstärke 0..100 wie RGSS, Pitch wird ignoriert, Pfad-/
+  Endungs-Kürzung (`Audio/BGM/musik.ogg` -> `musik`).
+- `load_data`/`save_data` — JSON statt Marshal (RxData-Format gibt es hier
+  nicht); Rundlauf inkl. Umlauten getestet.
+
+Bewusste Abweichungen stehen als Kopfdoku in rgss.rb und als Offener Eintrag
+im BACKLOG (u. a. `$game_temp`, `$data_*`, Sprite/Window/Tilemap-Klassen,
+`$scene`-Schleife). Wichtig für künftige Etappen: **neue Engine-Funktionen
+sollen immer auch einen RGSS-/Script-Zugang bekommen** (Context-Helfer oder
+$game_-Wrapper) - Ruby-Modding ist das Produktziel.
+
+**Context-Helfer (scripts.rb):** `fade(direction, seconds)` und
+`self_switch(letter, value = nil)` (lesen ohne, setzen mit Argument; nur mit
+Besitzer-Event) ergänzen say/switch/variable/teleport/sound/effect/log.
+
+**Titel ohne Projekt (AB, Runde 12):** `Scene_Title` erzeugt kein
+Projekt mehr selbst (die Launcher-Zustände `:first`/`:name`/`:del` sind
+entfallen; `Project.ensure_demo` läuft nur noch in Tests). Ohne Projekte
+zeigt der Titel den Hinweis „Noch kein Projekt - im Editor Neues
+Projekt anlegen" und blendet Neues Spiel/Fortsetzen aus; beenden geht
+über „Spiel beenden". Die Kulisse ist weiter die Demo-Welt aus
+game/data - sie braucht kein Projekt. Neuanlage ausschließlich im
+Editor (`create_project`, Y3/Y4: Slug wie Ruby, Startkarte `welt01`,
+Mini-Datenbank mit Start-Held).
+
+**Game-Zugriffe für die Wrapper:** `Game.events`/`Game.npcs` (neu) liefern
+die Events/NPCs der aktuellen Karte; `Game.map_id` kam mit 19d.
+
+**Tests:** `tools/rgss_test.rb` (Globalen, alle Wrapper, Input-Mapping,
+Graphics-Frame-Umrechnung, Audio-Kürzung, JSON-Rundlauf) und Abschnitt 6 in
+`tools/script_test.rb` (fade/self_switch-Context-Helfer), beide kopflos.
+
+## Bewegungsrouten (Etappe 19g)
+
+Zweites großes XP-Feature nach den Self-Switches: Bewegungsrouten
+("Bewegungsroute festlegen") für NPCs und Spieler.
+
+**Mover (`game/engine/mover.rb`):** eine Route ist eine Schrittliste, die
+ein Ziel abläuft - pro Sekunde `speed` Meter, ein Schritt ist 1 m. Schritte:
+`up/down/left/right` (3D: -z/+z/-x/+x), `zufall`, `spieler_nah`,
+`spieler_weg` (normiert zum Spieler), `warte` (0.5 s). Optionen: `repeat`
+(Endlosschleife) und im Interpreter `wait` (Befehlsliste blockiert, bis die
+Route fertig ist - mit repeat absichtlich NICHT, sonst Endlos-Falle; Warnung).
+
+**Ziele:** `"spieler"` (gleitet per `Rune::Player.teleport` wie der
+move_player-Befehl, inkl. Bodenhöhe) oder ein NPC-Name. NPCs brauchen
+dafür `move_to(x,z)` (Event-Position + Node folgen - Reden/Benutzen bleibt
+an der neuen Stelle möglich). `Npc#update` pausiert sein Wegpunkt-Laufen,
+solange `Mover.moving?(self)` - die Route hat Vorrang, danach läuft die
+Patrouille weiter. Eine neue Route ersetzt die alte desselben Ziels (wie XP
+`force_move_route`).
+
+**Unabhängigkeit:** `Game.update` dreht `Mover.update(dt)` neben
+Effects/Fade - Routen laufen auch während Textfenstern/Wahlen weiter (XP-
+Verhalten). Kartenwechsel (`enter_map`) rufen
+`Mover.reset!`: Routen sind flüchtig, Ziel-NPCs sind nach dem Neuaufbau
+andere Objekte (Savegames nehmen Routen nicht mit - wie bei XP).
+
+**Event-Befehl:** `{"cmd":"move_route","target":"Wanderer","steps":["up",
+"warte","spieler_nah"],"repeat":false,"wait":true,"speed":2.0}` - 24. Typ,
+synchron in `CMD_TYPES`/`ISSUE_CMD_TYPES`/`EV_TYPES`; MapCheck prüft
+target/steps-Pflicht, Schritt-Vokabular (eigene Konstante `MOVER_SCHRITTE`,
+weil mapcheck.rb vor mover.rb lädt - der Sync wird in move_route_test.rb
+gegen `Mover::SCHRITTE` assertet) und speed > 0.
+
+**Editor:** Befehlstyp "[Bewegung] Bewegungsroute" im Event-Dialog, ganz
+ohne neue Controls: Ziel im Namensfeld, Schritte als Zeilenliste im
+Textfeld (wie bei text/choices), Tempo in Wert 1, "Warten bis fertig"
+(1 = ja) in Wert 2, das an/aus-Combo = wiederholen (Default "an" wie im
+XP-Routen-Dialog).
+
+**Ruby-Zugang (RGSS-Leitlinie 19e):** `Mover.start('Wanderer', %w[up up],
+repeat: true)` aus jedem Script plus Context-Helfer
+`move_route(target, steps, repeat:, speed:)` für Event-Scripts.
+
+**Grenzen (Backlog):** keine Kollisionsprüfung unterwegs (Passierbarkeit
+fehlt insgesamt), keine Dreh-Schritte (turn_*) - Nodes rotieren sichtbar
+nicht, sichtbare Events ohne NPC-Körper können nicht laufen.
+
+**Tests:** `tools/move_route_test.rb` (Richtungen, Timing, warte/repeat/
+stop/Ersetzung, Spieler-Route, Interpreter wait/ohne wait/repeat+wait,
+MapCheck inkl. Sync-Assert), script_test.rb-Abschnitt 7 (Context-Helfer).
+
+## RGSS-Vertiefung (Etappe 19h)
+
+Die 19e-Schicht bekommt die fehlenden RGSS1-Bausteine: eigene Grafikobjekte,
+Szenen und flüchtige Systemwerte - Scripts im Script-Editor (F11) können jetzt
+eigene Fenster/Sprites bauen, wie im RPG Maker.
+
+**Bitmap/Sprite/Window/Viewport (`game/engine/graphics.rb`, neu):** Rune3D
+hat keine Pixel-Bitmaps; die Klassen legen die RGSS-Namen über die
+UI-Primitive (`Rune::Gfx.rect/text` via `UI.panel/text`). `Bitmap` merkt
+Größe/Farbe/Text (Dateien laden ist Backlog), `Sprite` zeichnet sein Bitmap
+als Rechteck (x/y/z/opacity/visible/Zoom, Viewport-Vererbung), `Window` ist
+ein Panel mit Titel, Zeilen und Cursor (`update` bewegt per `Input.dir4` und
+liefert `:ok`/`:cancel` auf C/B), `Viewport` gruppiert (z/visible/opacity
+gelten für Kinder). Alle Objekte registrieren sich in `RGSSGfx.objects`;
+`Game.draw` ruft einmal `Graphics.draw`, das nach `z_effective` sortiert
+zeichnet - über der Welt, unter dem Engine-UI und der Blende.
+
+**$scene:** Scripts dürfen eigene Szenen setzen (`$scene = MeineScene`);
+`Graphics.scene_update` (in `Game.update`) ruft pro Frame `Scene#main` -
+der XP-Szenen-Name. Die Engine-Schleife wird dabei NICHT ersetzt (bewusste
+Abweichung). Szenen-Fehler werden geloggt/gemeldet und werfen die Szene ab,
+damit das Spiel weiterläuft.
+
+**$game_temp:** `message_text/message_proc/common_event_id/player_passable/
+transition_processing/...` - flüchtig pro `RGSS.reset!`, das jetzt
+`Game.enter_map` ruft (Kartenwechsel/F5/Playtest: Sprites, Fenster und
+`$scene` sind nicht speicherbar).
+
+**$data_*:** `$data_actors/$data_items` als Hashes mit String-IDs aus
+`database.json` (XP: Arrays mit Integer-Indizes), `$data_system` =
+system.json; `$data_weapons/$data_armors` sind leer, bis die Datenbank
+Waffen/Rüstungen kennt (Backlog, vorbereitet für 19i Kampf).
+
+**passable? echt:** `$game_player.passable?(x, z, d = 2)` prüft Kartengrenzen
+(`$game_map.width/height`) und Geländestufe (max. 1.2 m über `Game.gy`);
+Richtungen wie XP (2=+z, 4=-x, 6=+x, 8=-z, 0/nil = Stelle selbst).
+`$game_temp.player_passable = false` schaltet die Prüfung ab (XP-Debug).
+Objekt-/Hindernis-Kollision fehlt weiter (keine blocked?-Abfrage, Backlog).
+
+**Referenz (User-Upload `d90c4cd`):** `XP-Defaultscript/` = die 90 originalen
+RGSS1-Default-Scripts (Game_Battler, Scene_Battle, Window_InputNumber, ...) -
+Referenzmaterial für 19i (Zahleneingabe + Kampf) und spätere RGSS-Arbeit.
+Liegt außerhalb der Quellverzeichnisse, kein Test/Lint lädt sie.
+
+### RGSS-Ausrichtung an den Default-Scripts (Etappe 19h.2)
+
+Seit dem User-Upload folgt die Schicht den Original-Dateien Feld für Feld:
+
+- **$game_temp** = komplette Feldliste + Defaultwerte aus `000 - Game_Temp.rb`
+  (choice_*, num_input_*, battle_*, shop_*, name_*, player_*, gameover,
+  to_title, ...). Rune3D-Erweiterung: `passable` (schaltet die Geländeprüfung
+  von `$game_player.passable?` ab). `gameover`/`to_title` werden von
+  `Game.update` beachtet (`Game.to_title!`).
+- **$game_system** nach `001 - Game_System.rb`: Timer in XP-Frames
+  (`timer_start/timer_seconds/update(dt)` aus `Game.update`), Audio-Delegation
+  (`bgm_play/se_play/...` mit Hash `{'name','volume','pitch'}` oder String),
+  message_position/message_frame/save_count/windowskin_name/battle_bgm/
+  battle_end_me/menu_bgm.
+- **$game_screen** nach `005 - Game_Screen.rb`: tone/flash_color/shake/
+  pictures als Zustände (Renderer fehlt noch, Backlog), `weather_type`
+  liefert jetzt die XP-Zahl (0/1/2), weather_max.
+- **$game_map.valid?(x, z)** wie XP; **$game_player** mit direction (2/4/6/8),
+  steps/increase_steps (hängt an der Schritt-Sound-Logik in Game.update) und
+  encounter_count/make_encounter_count (Grundlage für Zufallskämpfe, 19i).
+- **Window_Selectable** nach `030 - Window_Selectable.rb`: index=/cursor_up/
+  cursor_down/cursor_page_*/row_max/page_row_max/cursor_rect/help_window.
+- **Mover spricht XP** (Routen-Codes wie RPG Maker XP, `ROUTE_*`):
+  Schritte sind die Original-Namen (move_down .. move_backward, jump, wait,
+  turn_down .. turn_away_from_player, switch_on/off, change_speed,
+  move_animation_on/off, play_se, script, ...), XP-Befehls-Codes ('0' =
+  Ende-Marker bis '45' = script, F1-Tabelle in `mover.rb`) und die
+  deutschen 19g-Kurznamen (up/down/warte/...) werden als Aliase verstanden.
+  Blickrichtung (2/4/6/8) wird mitgeführt: Bewegungsschritte drehen,
+  turn_*-Schritte drehen nur - NPC per `Npc#turn_to` (Node-Yaw), Spieler per
+  Kamera-Yaw. Schritte mit Parameter tragen den Wert im neuen Route-Feld
+  `code` (switch_on/off: Schaltername, change_speed: m/s, play_se:
+  SE-Name, script: Ruby-Code);
+  Event-Befehl und Context-Helfer haben dafür `code`, MapCheck warnt bei
+  switch_on/play_se/script ohne `code` (auch bei numerischen Codes).
+  2D-only-Schritte (change_graphic/opacity/
+  blending, stop_animation_*, direction_fix_*, through_*, always_on_top_*,
+  change_freq) sind dokumentierte No-Ops mit Einmal-Warnung.
+- **Editor:** Bewegungsroute bekommt Wert 3 = Code-Parameter (Laden/Bauen/
+  Label), Schrittfeld bleibt freie Zeilenliste - XP-Namen, Codes und
+  deutsche Kurznamen gehen gleichermaßen.
+
+**Tests:** `tools/graphics_test.rb` (kopflos: Bitmap, Sprite-Sortierung/
+Viewport/dispose, Window-Cursor/-Zeichnen, $scene, reset!, passable?) +
+19h-Abschnitt in `rgss_test.rb` ($game_temp/$data_* gegen die echte
+database.json).
+
+## Zahleneingabe + Kampf-Grundgerüst (Etappe 19i)
+
+Die dritte Feature-Gruppe aus der 19e-Roadmap, orientiert an den
+Default-Scripts des User-Uploads (053 - Window_InputNumber.rb,
+081..084 - Scene_Battle.rb, 007..012 - Game_Battler/Actor/Enemy).
+
+**Zahleneingabe (XP "Input Number Processing"):** neuer Befehl
+`{"cmd":"input_number","name":"ziffern","digits":3,"initial":0,
+"cancel":true}` (25. Typ). Der Interpreter blockiert mit `@num_input`;
+`UI.nummer_eingabe(state)` zeichnet das Ziffernfeld und liest die Tasten:
+↑↓ ändert die Ziffer, ←→ wechselt die Stelle, 0-9 setzt direkt,
+E/Enter bestätigt, Esc bricht ab (nur mit `cancel`, sonst blockiert es
+weiter - wie XP "cancel not possible"). Bestätigen/Abbruch schreibt die
+Variable (Abbruch = 0) und die Befehlsliste läuft weiter. digits clamp 1..6.
+
+**Kampf (game/engine/battle.rb):** rundenbasiertes Grundgerüst Party gegen
+Truppe. Daten: `database.json` bekommt `enemies` (id/name/hp/mp/atk/def/spi/
+agi/exp/gold/drop/drop_rate/color) und `troops` (id/name/enemies[]) -
+vier Gegner (Goblin/Wolf/Bandit/Kristallwache) und drei Truppen
+(waldweg/banditen/brunnen) liegen bei. `Battle::Battler` ist die gemeinsame
+Game_Battler-Entsprechung für Helden und Gegner. Seit 19v sind HP/MP der
+Helden direkt an den jeweiligen Party::Actor gebunden (siehe oben).
+
+Ablauf (Scene_Battle-Phasen, vereinfacht): `start(troop_id, can_escape:,
+can_lose:)` -> Befehlsphase pro lebendem Helden (Angriff/Fertigkeit/Item/
+Flucht, Cursor ↑↓ + E wie XP) -> Angriff geht in die Zielwahl (←→ auf lebende
+Gegner), Fertigkeit öffnet seit 20a das Skill-Fenster mit MP-Kosten und
+danach die Zielwahl (Gegner bzw. Helden) -> Aktionsphase: Heldenaktionen
+nach Agilität sortiert (Items über `Party.use_item`, Fertigkeiten über
+`wende_skill_an`), dann Gegnerzug (zufälliger lebender Held), dann
+`zustaende_ticken` (Gift/Regeneration, Dauer -1, abgelaufene Zustände
+entfernen), dann Sieg-/Niederlage-Prüfung. Schaden = `atk - def/2`, ±15 % Streuung, min 1,
+Kritikchance `agi/64` (x3 Helden, +25 % Gegner). Sieg: Exp auf lebende
+Helden über `Party.gain_exp` (Stufenaufstieg wie XP, D4/Runde 22: Kurve
+`exp(n) = exp(n-1) + ((n-1) ** 2.7 + 0.5).to_i`, Gesamt-Exp, Höchststufe 99,
+Wachstum 8 % HP/MP und 5 % je Angriffswert, **HP/MP bleiben stehen** (XP
+heilt beim Aufstieg nicht, nur das Maximum steigt); Heldenwerte im Kampf
+lesen live aus dem Party-Actor, ein Aufstieg wirkt sofort), Gold an die Party, Drop-Würfe; Niederlage: `$game_temp.gameover`
+(-> `Game.to_title!` aus Game.update, 19h.2), außer `can_lose`. Flucht:
+50 %, ohne `can_escape` nicht möglich.
+
+**Darstellung:** Gegner stehen als 3D-Kästen (Farbe aus `color`/Palette)
+vor dem Spieler, HP-Balken + Namen als 2D-Overlay; Befehls-/Itemfenster,
+Party- und Gegnerstatus, Kampflog (letzte 6 Zeilen) zeichnet `Battle.draw`
+über dem abgedunkelten Bild. Während `Battle.active?` friert `Game.update`
+die Welt einschließlich der nativen Spielerphysik ein (`Rune::Simulation.paused`);
+nur Battle/Effects/Fade laufen, `Game.draw` zeigt das Kampf-Overlay. Nach
+Kampfende läuft die Physik wieder. Kartenwechsel bricht Kämpfe ab (`Battle.abort!` aus
+`enter_map`, neben `RGSS.reset!`).
+
+**Event-Befehl:** `{"cmd":"battle","name":"waldweg","can_escape":true,
+"can_lose":false}` (26. Typ) - der Interpreter blockiert bis zum Kampfende
+(`@battle_wait`); schlägt `start` fehl (Truppe unbekannt), läuft die Liste
+einfach weiter. Sync: CMD_TYPES/ISSUE_CMD_TYPES/EV_TYPES = 26,
+mapcheck_test-Zählung nachgezogen.
+
+**Editor:** "[Steuerung] Zahleneingabe" (Variable/Ziffern/Startwert,
+an/aus = Abbruch erlaubt) und "[Kampf] Kampf starten" (Truppe im
+Namensfeld, an/aus = Flucht möglich, Wert 2 = Niederlage ohne Game Over);
+C++-Issues-Scan prüft `name`-Pflicht beider Typen.
+
+**Ruby-Zugang (RGSS-Leitlinie):** `Battle.start('waldweg')` + Context-Helfer
+`battle('waldweg', can_escape: false)`; `$game_temp.in_battle` wird
+geführt, Zahleneingabe zusätzlich als RGSS-Zustand (`num_input_*` in
+`$game_temp` vorhanden, der Interpreter nutzt seinen eigenen State).
+
+**Grenzen (Backlog):** keine Gegner-Fertigkeiten/-KI außer "Angriff auf
+zufälligen Helden", keine Schlaf-/Stille-/Paralyse-Zustände und keine
+Sperr-Regeln, keine Heilung von KO-Helden per Fertigkeit, keine
+Formationen/Positionen, Kampfhintergrund = abgedunkelte Karte. Skills und
+Zustände selbst sind seit Etappe 20a vorhanden (siehe unten).
+Zufallskämpfe kamen später in Etappe 19l hinzu (siehe unten).
+
+**Tests:** `tools/battle_test.rb` (kopflos, ~45 Checks: Datenbank, Start/
+Absagen, Befehls-/Item-/Zielwahl-Cursor, Schaden, Sieg+Belohnung,
+Niederlage+gameover+can_lose, Formel, Interpreter-Blockade battle/
+input_number inkl. Abbruch und clamp) + `tools/skills_test.rb` (70 Checks,
+20a) + script_test-Abschnitt 8 (battle-Helfer) + mapcheck_test (26 Typen,
+input_number/battle-Regeln).
+
+## Fertigkeiten und Zustände (Etappe 20a)
+
+Die Datenbank hat zwei neue Bereiche: `skills` und `states`.
+
+`skills`-Eintrag: `id`, `name`, `kind` (`damage` | `heal` | `buff`), `scope`
+(`enemy` | `ally` | `self`), `mp`, `power`, optional `state` + `state_rate`
+und `turns`, dazu `desc`. `states`-Eintrag: `id`, `name`, `kind` (`poison`,
+`regen`, `atk_up`, `def_up`, ...), `power` (Schaden/Heilung pro Runde bzw.
+Werte-Bonus), `turns`, `desc`. Helden lernen ihre Start-Fertigkeiten über
+`"skills": ["feuerball", ...]` im Helden-Eintrag; `tools/add_skills23.rb`
+legt beide Bereiche samt Startlisten an (idempotent, eigene Einträge
+bleiben unangetastet).
+
+`Party` führt die gelernten IDs je Held (`Party.skills(actor)`,
+`Party.learn_skill(actor, id)`, `Actor#skills`/`#learn_skill` wie XP) und
+schreibt sie in den Spielstand (`snapshot['skills']`). Alte Spielstände
+ohne dieses Feld behalten die Liste aus der Datenbank; `restore!` ersetzt
+sie, wenn das Feld vorhanden ist.
+
+XP 318 ist als Event-Befehl `actor_skill` verfügbar:
+`{"cmd":"actor_skill","actor":"arik","name":"eisspeer","mode":"add"}`.
+`name` akzeptiert Skill-ID oder Namen, `actor` fehlt/`alle` oder einen Helden,
+`mode` ist `add`/`remove` (Default `add`). `Party.change_skill` löst den Skill
+gegen `database.json` auf; `Party.learn_skill`/`forget_skill` und die Actor-/
+RGSS-/Script-Helfer halten die Skill-IDs im bestehenden Spielstand-Snapshot.
+MapCheck validiert Skill, Ziel und Modus. Tests: `tools/actor_skill_test.rb`.
+
+Im Kampf wählt `Fertigkeit` (zweiter Befehl, XP-Reihenfolge) aus den
+gelernten Skills; das Fenster zeigt Name und MP-Kosten, zu teure Skills
+erscheinen gedimmt und werden mit Log-Zeile verweigert. `self`-Skills
+wirken sofort auf den Anwender, `ally`-Skills zielen auf die Helden,
+`damage`-Skills auf lebende Gegner. `wende_skill_an` bucht die MP erst beim
+Ausführen ab (Schaden = `power + spi/2 - def/2`, ±15 %, min 1; Heilung =
+`power + spi/2`; Buff setzt einen Zustand). `Battler#states` hält bis zu
+acht Zustände mit Restdauer; `state_bonus` addiert `atk/def/spi/agi_up/down`
+auf die Basiswerte, die Statuszeilen zeigen die Zustände in Klammern mit
+Restdauer. `zustaende_ticken` wirkt am Rundenende: `poison` schadet,
+`regen` heilt, danach Dauer -1 und abgelaufene Zustände verschwinden mit
+Log-Zeile. Zustände leben nur im Kampf und enden mit ihm.
+
+RGSS: `$data_skills`, `$data_states` und `$game_party.skills/learn_skill`;
+Scripts haben `skills(id)` und `learn_skill(id, skill_id)`.
+Offen bleiben der F9-Reiter für beide Bereiche, Gegner-Fertigkeiten,
+Elemente/Erfolgsraten und Schlaf-/Sperr-Zustände.
+
+**Tests:** `tools/skills_test.rb` (70 Checks: Datenbank, Party-Lernen,
+Spielstand inkl. altem Save, Befehlsreihenfolge, MP-Kosten, Heilung,
+"nicht genug MP", Schaden + Zustandschance, Selbst-Buff, Gift/Regeneration/
+Ablauf, 8-Zustände-Grenze, Zeichnung in beiden Phasen).
+
+## Ablauf-Befehle und Gemeinsame Events (Etappe 20c)
+
+Sechs Befehle der XP-Ablaufsteuerung plus zwei Nachrichten-/Eingabe-Befehle
+sind dazugekommen; das Register (`docs/befehle.json`) führt seither **35**
+Typen, und `tools/befehle_test.rb` erzwingt, dass `CMD_TYPES`
+(`mapcheck.rb`), `ISSUE_CMD_TYPES` (`editor_main.cpp`), `EvType`/`EV_TYPES`
+(`event_form.h`) und `interpreter.rb` dieselbe Reihenfolge halten.
+
+- **Schleife** (`loop`, XP 112 + 413): eigener Zweig `commands` im
+  Befehls-Objekt. Der Interpreter legt dafür einen Stack-Rahmen mit
+  `loop: true` an; ist die Liste am Ende, beginnt sie von vorn. `break`
+  (XP 113) sucht im Stack den innersten `loop`-Rahmen und verwirft ihn samt
+  allem, was darüber liegt - deshalb wirkt es auch aus Wenn-Zweigen heraus.
+  Eine **leere** Schleife wird beendet statt zu drehen; MapCheck warnt
+  zusätzlich, wenn im Körper weder `break`, `jump` noch `exit_event` steht.
+- **Marken** (`label`/`jump`, XP 118/119): `label` ist zur Laufzeit ein
+  No-Op, `jump` sucht die Marke **nur im aktuellen Befehls-Array** (also im
+  selben Block bzw. Zweig, wie XP es bei gleicher Einrückung tut) und setzt
+  den Laufzeiger hinter sie. Fehlt die Marke, bleibt der Zeiger stehen,
+  es wird gewarnt und `Issues` schreibt ins Backlog - das Event hängt nicht.
+- **Event-Ende** (`exit_event`, XP 115) leert den Stack; **Event löschen**
+  (`erase_event`, XP 116) ruft `Event#erase!` und beendet danach ebenfalls.
+  `Event#erased?` schaltet `active?`/`commands`/`manual_fire` ab; `Game.update`
+  nimmt gelöschte Events aus der Auslöser-Schleife, `pickables` aus dem
+  Picking, und blendet die Schild-Nodes (`@event_visuals`) genau dieses
+  Events einmalig aus. `enter_map` baut die Events neu - damit ist die
+  Löschung wie in XP bis zum Kartenwechsel befristet.
+- **Tasteneingabe** (`button_input`, XP 105): blockiert wie die
+  Zahleneingabe (eigener Zustand `@button_input`, `running?` beachtet ihn)
+  und schreibt die **1-basierte Position** der gedrückten Taste aus `keys`
+  in die Variable. Tastennamen sind die von `Rune::Input` (`src/ruby/vm.cpp`:
+  Buchstaben, `space`, `escape`, `up`, `f1`, ...); MapCheck kennt die Liste
+  (`TASTEN`) und warnt bei Tippfehlern.
+- **Fenster-Optionen** (`text_options`, XP 104): eigenes Modul
+  `game/engine/message_window.rb` (Position `oben`/`mitte`/`unten`, Rahmen,
+  Transparenz). Es liegt bewusst außerhalb des Interpreters, weil die
+  Einstellung in XP in `$game_system` steht und Kartenwechsel überlebt;
+  `Game.start_game` setzt bei Neustart/F5 die Defaults. `UI.message` zeichnet
+  danach oben/mitte/unten, ohne Rahmen oder mit 35 % Deckkraft.
+- **Gemeinsame Events** (`common_event`, XP 117): `database.json` bekommt
+  den optionalen Abschnitt `"common_events": [{"id","name","trigger",
+  "switch","commands"}]`. Angesprochen werden sie über den **Namen**
+  (`Database.common_event(name)`), nicht über einen Index - wie bei
+  `$data_skills` in Rune3D. `Database.common_events` liefert nur Objekte,
+  fehlt der Abschnitt bleiben alte Projekte gültig. Der Befehl legt die
+  Befehlsliste als weiteren Stack-Rahmen (`common: name`) auf; Aufrufketten
+  sind bis `CommonEvents::MAX_TIEFE` (8) erlaubt, danach wird gewarnt und
+  übersprungen. Unbekannte Namen und fehlende Listen ebenso - nie ein Hänger.
+- **Trigger**: `CommonEvents.tick(interp)` läuft in `Game.update` vor den
+  Karten-Events, wenn der Interpreter frei ist, und startet höchstens ein
+  Event pro Frame. `trigger` ist `none` (nur per Befehl), `autorun` (läuft
+  neu, solange der Schalter an ist) oder `parallel`; `switch` gibt
+  autorun/parallel frei. **Grenze:** Die Engine hat EINEN Interpreter -
+  "parallel" läuft deshalb zwischen anderen Events, nicht gleichzeitig
+  (dieselbe Grenze wie bei parallelen Karten-Events, LOGIK D3).
+- **Prüfung**: `MapCheck.scan_database(db)` prüft den neuen Abschnitt
+  (eindeutige Namen, Trigger-Vokabular, Schalter-Pflicht bei autorun/
+  parallel, Befehlslisten inklusive unbekannter Befehlstypen). Der
+  Karten-Scan kennt `common_events:` als Namensliste und warnt, wenn ein
+  `common_event`-Befehl einen unbekannten Namen nennt; die CLI
+  (`ruby -I game/engine game/engine/mapcheck.rb`) sammelt die Datenbanken
+  beider Datenbäume ein und prüft sie mit.
+- **RGSS**: `$data_common_events` ist ein Hash Name → Eintrag (XP nutzt
+  Indizes; Rune3D bleibt beim Namensmodell).
+
+**Tests:** `tools/ablauf_test.rb` (30 Checks), `tools/common_events_test.rb`
+(27 Checks), `tools/json_test.cpp` (720 Checks inkl. Beispiel je
+Befehlstyp), `tools/befehle_test.rb`, `tools/sync_test.rb`,
+`tools/mapcheck_test.rb`.
+
+## Erweiterte Bedingungen und Sperren (Etappe 20d, Teil 1)
+
+Sechs weitere Befehlstypen (Register jetzt **41**) schließen die häufigsten
+XP-Bedingungslücken und die drei Sperr-Befehle:
+
+- **`if_gold` / `if_item`** (XP 111, Quellen Gold/Item): eigener Zweig
+  `then`/`else` wie `if_variable`; verglichen wird `Party.gold` bzw.
+  `Party.item_count(name)` mit `op` (`EVENT_OPS`) und `value`.
+- **`if_script`** (XP 111, Quelle Script): der Ausdruck aus `code` wird über
+  `Scripts.eval_code` im `Scripts::Context` ausgewertet (gleiche Helfer wie
+  Script-Befehle). Wahr ist alles außer `false`/`nil`; Fehler werden geloggt,
+  ins Issue-Backlog geschrieben und gelten als falsch.
+- **`save_access` / `menu_access` / `encounter_access`** (XP 134/135/136):
+  setzen `$game_system.save_disabled`/`menu_disabled`/`encounter_disabled`.
+  Sie wirken sofort (Speichern, Esc-Menü, Zufallskämpfe lesen dieselben
+  Flags) und landen über den `system`-Snapshot im Spielstand. Ohne
+  `$game_system` (z. B. im kopflosen Test) wird gewarnt statt zu stürzen.
+- **Modell/Editor**: `event_command_has_branches` (portabel, `event_rules.h`)
+  kennt die drei neuen Wenn-Typen, ebenso `event_command_list_mutable` und
+  `ev_flatten` - Dann-/Sonst-Zweige sind also im F6-Baum einfügbar und
+  werden vom Issue-Scan rekursiv geprüft. Der Operator-Combo gilt jetzt für
+  Variable, Gold und Item; die Sperr-Befehle nutzen die an/aus-Combo.
+- **MapCheck**: Zweig-Pflicht, Operator-Vokabular (`VERGLEICH`), Item-Name,
+  nicht-negative Menge, `code`-Pflicht und der Typ von `allowed`.
+
+**Tests:** `tools/bedingungen_test.rb` (26 Checks), `tools/sync_test.rb`
+(when-Zeilen + Operator-Tabelle), `tools/json_test.cpp` (738 Checks).
+
+### Timer (XP 124) und Timer-Anzeige
+
+`{"cmd":"timer","mode":"start","seconds":120}` startet den Spieltimer,
+`mode: "stop"` hält ihn an und löscht die Restzeit (Register: **42 Typen**).
+Die Laufzeit steckt in `$game_system` (`timer` in Frames, `timer_working`),
+wird von `Game.update` über `GameSystem#update(dt)` heruntergezählt und liegt
+über den `system`-Snapshot im Spielstand — ein geladener Spielstand setzt den
+Timer also fort. `Game.draw` zeichnet bei `timer_working` das Fenster
+`UI.timer` oben rechts (`mm:ss`, XP-`Window_Timer`); unter 0 zeigt es `00:00`
+und stoppt. `timer start` mit 0 Sekunden wirkt wie `stop` (Warnung im Log),
+ein unbekannter Modus landet im Issue-Backlog.
+
+**Tests:** `tools/timer_test.rb` (20 Checks: Herunterzählen, Befehlsvarianten,
+Zeichnung, MapCheck), `json_test` 741 Checks.
+
+### $game_temp-Aufträge (LOGIK E.3)
+
+XP-Scripts fordern Szenenwechsel über `$game_temp` an; bis Runde 28 waren die
+Felder stumm. Neu im Engine-Ordner: `game/engine/temp_actions.rb` mit
+`TempActions.tick(handler)`. `Game.process_temp_scene_change` ruft es nach
+Gameover/Titel-Prüfung und verdrahtet die Handler (`Game.temp_handler`):
+
+| Flag | Wirkung |
+|---|---|
+| `battle_calling` | `Battle.start(troop_id, can_escape, can_lose)` |
+| `menu_calling` | Menü öffnen (außer bei `menu_disabled`) |
+| `save_calling` | Menü öffnen, Zeiger auf den ersten Speichern-Eintrag |
+| `player_transferring` | `Game.change_map`; `player_new_map_id` = Kartenname oder Nummer |
+| `to_title` | `Game.to_title!` |
+
+Pro Frame wird genau **ein** Auftrag ausgeführt (Reihenfolge wie XP) und das
+Flag davor gelöscht — ein abgelehnter Kampf fragt also nicht jedes Frame neu
+an. Unbekannte Zielkarten und fehlende Handler werden gewarnt (Issue-Backlog),
+nicht als Absturz behandelt. `player_new_x/y/direction` bleiben offen
+(Rune3D-Weltkoordinaten ≠ XP-Kacheln, LOGIK AC.10).
+
+**Tests:** `tools/temp_flags_test.rb` (14 Checks).
+
+#### Quellen des Operanden (XP 122, Fortsetzung)
+
+`source` bestimmt, woher der Operand kommt (`EVENT_SOURCES`/`MapCheck::VARIABLE_QUELLEN`,
+im Formular ein eigenes Combo zwischen Operation und Wert):
+
+| `source` | Operand |
+|---|---|
+| `const` (Default, wenn `source` fehlt) | `value` |
+| `variable` | Wert der Variable aus `src` |
+| `random` | Zufall `0..value-1` (ganze Zahl, `value` ≥ 1) |
+| `item` | `Party.item_count(src)` |
+| `self` | bisheriger Wert der Zielvariable (`op: "add", source: "self"` verdoppelt) |
+
+`src` gilt nur bei `variable`/`item`, sonst warnt MapCheck. Fehlende Grenzen
+(`random` ohne `value`), unbekannte Items oder Quellen landen im Log bzw.
+Issue-Backlog, der Wert bleibt dann stehen. Nicht umgesetzt: XP-Quellen
+Actor/Enemy/Character — Rune3D hat keine Gegner-/Charakterwerte als Datenbank
+und für Actor-Attribute bräuchte es ein zusätzliches Feldauswahl-Combo.
+
+### Weitere Bedingungsquellen: Actor und Taste (XP 111)
+
+`{"cmd":"if_actor","name":"arik","then":[],"else":[]}` zweigt je nach
+Team-Mitgliedschaft (`Party.find`), `{"cmd":"if_button","name":"e",...}`
+im Frame des Tastendrucks (`Rune::Input.pressed?`, wie XP `Input.trigger?`;
+ohne Eingabeschicht — kopfloser Test — falsch). Beide haben `then`/`else`
+wie die übrigen Wenn-Befehle und werden im F6-Baum rekursiv geprüft; MapCheck
+prüft den Namen (Actor gegen `database.json`, Taste auf Existenz).
+Register: **61 Typen**. **Tests:** `tools/bedingungen_test.rb` (34 Checks).
+
+### Variable-Operationen (XP 122)
+
+`variable` kann jetzt rechnen: `{"cmd":"variable","name":"kristalle","op":"mul","value":2}`.
+`op` ∈ `set add sub mul div mod` (`EVENT_VAR_OPS` in `event_form.h`,
+`MapCheck::VARIABLE_OPS`, Combo in `editor_main.cpp` — `sync_test` vergleicht
+alle drei Listen). `value` ist der Operand; `div`/`mod` durch 0 wird gewarnt,
+ins Issue-Backlog geschrieben und lässt den Wert stehen.
+
+Rückwärtskompatibel: ohne `op` gilt weiter die Altform (`value` setzt, `add`
+addiert) — Engine und MapCheck lesen sie unverändert. Der Editor stellt sie
+beim nächsten Übernehmen auf `op`/`value` um und entfernt `add` (sonst liefen
+beide Rechnungen). Eine **gemischte** Altform (`value` + `add` in einem Befehl)
+lässt sich nicht eindeutig abbilden: das Formular zeigt keine Operation und
+verlangt eine bewusste Wahl, MapCheck warnt.
+
+`variable` zeigt dafür das Operator-Combo mit dem Rechen-Vokabular
+(`ev_op_combo_mode`, Umschalten nur bei Bedarf) und das Quellen-Combo; das
+Zahlenfeld 2 gehört nicht mehr dazu. **Tests:** `tools/variable_ops_test.rb`
+(36 Checks), `json_test` prüft Altform-Umstellung, gemischte Daten und die
+Quellen (778 Checks).
+
+### Werte ändern: HP, SP, EXP, Stufe (XP 311/312/315/316)
+
+Vier Befehle (Bereich „Party" in `docs/befehle.json`):
+
+```json
+{"cmd":"actor_hp",   "target":"alle", "amount":-20}
+{"cmd":"actor_sp",   "target":"arik", "amount":10}
+{"cmd":"actor_exp",  "amount":50}
+{"cmd":"actor_level","target":"Arik", "amount":1}
+{"cmd":"actor_hp", "target":"arik", "source":"variable", "src":"hp_bonus"}
+```
+
+- `target` fehlt/leer/`alle` → ganze Party, sonst Actor-ID oder Name.
+- `amount` ist **vorzeichenbehaftet** (XP-Operation `+`/`-` in einer Zahl):
+  positiv heilt/erhöht, negativ senkt. HP/SP klemmen auf `0..Max`. Ohne `source`
+  (oder mit `source: "const"`) bleibt `amount` eine Konstante; `source: "variable"`
+  liest die Ganzzahl aus der benannten Spielvariable `src`. Das gilt auch für
+  `actor_param`; alte Befehle ohne Quellenfelder bleiben unverändert gültig.
+- `actor_exp` läuft über `Party.set_exp` (Stufenaufstieg inklusive),
+  `actor_level` über `level_up!` — also dasselbe Wachstum wie im Kampf.
+  Abstieg senkt nur die Stufe, weil Rune3D keine Klassentabellen hat, aus
+  denen Werte neu berechnet werden könnten.
+- SP heißen in den Daten weiterhin `mp` (XP-Feld), der Befehl folgt der
+  XP-Bezeichnung.
+
+MapCheck prüft die gewählte Operandquelle (`amount` für const, `src` für
+variable), den Actor-Namen gegen `database.json` und den Stufenbereich. Das F6-
+Formular bietet const/variable samt Variablennamen. **Tests:**
+`tools/actor_wert_test.rb`, `json_test` 949 Checks.
+
+### Zustand, Parameter und Name (Etappe 24, XP 313/317/320)
+
+Drei Befehle schließen den Helden-Block; alle drei nennen das Ziel im
+Schlüssel `actor` (`alle` oder ein Held):
+
+```json
+{"cmd":"state",      "actor":"alle", "name":"Gift", "mode":"add", "turns":3}
+{"cmd":"actor_param","actor":"arik", "param":"max_hp", "amount":20}
+{"cmd":"actor_param","actor":"arik", "param":"atk", "source":"variable", "src":"atk_bonus"}
+{"cmd":"actor_name", "actor":"arik", "name":"Arik der Kühne"}
+```
+
+- **`state`** (XP 313) setzt oder entfernt (`mode` add/remove) einen Zustand aus
+  `database.json` → `states` (ID **oder** Name, Groß-/Kleinschreibung egal).
+  `turns` ist optional; ohne Angabe bleibt die Dauer offen (`null`) und der
+  Kampf setzt die Datenbank-Dauer ein. Ein erneutes `add` frischt die Dauer
+  auf, kürzt sie aber nie. Mehr als **8** Zustände lehnt die Engine ab
+  (`Party::MAX_STATES`, XP: `Game_Battler`).
+- Zustände hängen jetzt am `Party::Actor` (`states = [{ id:, turns: }]`) —
+  nicht mehr nur am Kampf-Battler. Sie stehen im Spielstand (`Party.snapshot`),
+  erscheinen über `Actor#state?`/`#state_names` und wandern bei
+  `Battle.start` in die Battler; `Battle.sync_actors!` schreibt sie zurück,
+  damit im Kampf abgelaufene Zustände auch aus Menü und Spielstand
+  verschwinden. Vollständiges Heilen (`heal`, XP 314 `recover_all`) entfernt
+  sie; eine Teilheilung um `amount` (Rune3D-Zusatz) lässt sie stehen.
+- **`actor_param`** (XP 317) ändert `max_hp`, `max_mp`, `atk`, `def`, `spi`
+  oder `agi` vorzeichenbehaftet (`Party::PARAMETER`). Maxima fallen nicht
+  unter 1, die übrigen Werte nicht unter 0; sinkt `max_hp`/`max_mp` unter den
+  aktuellen Wert, werden HP/MP gekappt.
+- **`actor_name`** (XP 320) benennt **genau einen** Helden über
+  `Party.rename` um (`alle` ist ein Fehler); der Name steht in Menü, Kampf und
+  Spielstand.
+
+MapCheck prüft Pflichtfelder, den Modus (`add`/`remove`), `turns > 0`, den
+Parameter gegen `MapCheck::PARAMETER` (muss zu `Party::PARAMETER` passen) und
+das Actor-Ziel gegen `database.json`; unbekannte Zustände und Namen sind
+Warnungen, fehlende Pflichtfelder Fehler. **Tests:** `tools/zustand_test.rb`
+(42 Checks, inkl. Spielstand und Kampf-Übergabe), `json_test` 882 Checks.
+
+### Ton aus Dateien (Etappe 21, WAV)
+
+Audio war bis Etappe 20 vollständig prozedural: Ruby rechnete PCM und meldete
+es über `Rune::Sound.register` an. Seit Etappe 21 gibt es einen Dateiweg:
+
+```ruby
+AudioFiles.loop('dorf', volume: 0.6, pitch: 100)   # sucht audio/bgm/dorf.wav
+AudioFiles.play('audio/se/tuer.wav', volume: 0.8)
+Audio.bgm_play('Audio/BGM/dorf', 80, 120)          # RGSS-Aufruf, Pitch 120 %
+```
+
+- `src/core/wav.h` ist ein **portabler** WAV-Leser (PCM 8/16/24/32 Bit, mono/
+  stereo, `WAVE_FORMAT_EXTENSIBLE`, 8–192 kHz, max. 60 s). Er mischt auf mono,
+  rechnet die Abtastrate und den Pitch um und wird von `tools/wav_test.cpp`
+  ohne Windows geprüft (CI + `build.ps1 -Test`).
+- `src/core/ogg.h` dekodiert **OGG Vorbis** (XP-Standard) über das
+  mitgelieferte `src/core/stb_vorbis.cpp` (v1.25, public domain / MIT) und
+  schickt das Ergebnis durch denselben Resampler auf 22,05 kHz mono/16 Bit.
+  Grenzen: ein Vorbis-Strom, 60 s. `sound::load_audio` erkennt das
+  Format an den ersten Bytes, nicht an der Dateiendung; `tools/ogg_test.cpp`
+  prüft das ohne Windows (CI + `build.ps1 -Test`).
+- `src/core/mp3.h` liest **MP3** über das mitgelieferte `src/core/minimp3.h`
+  (CC0) + `src/core/minimp3.cpp` (Implementierung): `ist_mp3` erkennt ID3v2
+  oder den Frame-Sync, `parse` überspringt den ID3v2-Kopf, dekodiert
+  rahmenweise und schickt das Ergebnis durch denselben Resampler (mono,
+  22050 Hz, 60 s). `tools/mp3_test.cpp` prüft das ohne Windows (CI +
+  `build.ps1 -Test`).
+- `src/core/sound.cpp` bekommt `load_audio(name, bytes, size, pitch)` (WAV,
+  OGG und MP3, Format an den ersten Bytes erkannt) und `has()`;
+  Ruby ruft sie über `Rune::Sound.load(name, bytes, pitch)` und
+  `Rune::Sound.known?(name)`.
+- `game/engine/audio_files.rb` holt die Bytes über die sichere Assets-Brücke
+  (max. 8 MB), sucht Kandidaten (`<pfad>`, `audio/<name>`, `audio/bgm/<name>`,
+  `audio/bgs/<name>`, `audio/se/<name>`, `audio/me/<name>`; `.wav`, `.ogg`,
+  `.mp3`) und lädt WAV, OGG oder MP3 (seit Etappe 22).
+- `Audio.bgm_play`/`bgs_play`/`se_play`/`me_play` versuchen zuerst eine Datei
+  und fallen sonst auf den prozeduralen Klang zurück — alte Projekte klingen
+  weiter. Eine neue Musik **ersetzt** die laufende (`AudioFiles.stop` auf die
+  vorige Datei), wie XP 241.
+- **Einmal-Sounds stoppen:** `Audio.se_play`/`me_play` merken sich die
+  gestarteten Namen (max. 24). `Audio.se_stop` und `Audio.me_stop` stoppen sie
+  über `AudioFiles.stop` (Datei) bzw. `Rune::Sound.stop` (prozedural). Ein ME
+  liegt wie in RGSS auf dem BGM-Kanal: `Audio.me_play` verstummt die laufende
+  Musik und setzt sie nicht fort, sondern vergisst sie in `MapAudio`
+  (`vergiss(:bgm)`).
+- **Merken/Wiederherstellen:** `GameSystem#bgm_memorize`/`bgm_restore`,
+  `bgs_memorize`/`bgs_restore` und `playing_bgm`/`playing_bgs` (flüchtig wie in
+  XP); `bgm_play(nil)` bzw. ein leerer Name stoppt. `bgm_fade`/`bgs_fade`
+  erwarten Sekunden und geben `time * 1000` an `Audio` weiter.
+- **Kampfmusik:** `Battle.musik_start` merkt die Kartenmusik und spielt
+  `$game_system.battle_bgm`; `Battle.musik_ende(sieg:)` spielt bei einem Sieg
+  zuerst `battle_end_me` und stellt dann mit `bgm_restore` zurück (Reihenfolge
+  wie `Scene_Battle#battle_end`). `abort!` stellt ohne ME zurück.
+- **Fade über Zeit:** `sound::set_volume(name, vol)`/`volume_of(name)`,
+  erreichbar als `Rune::Sound.volume(name, vol = nil)`. `AudioFiles.fade`
+  (Sekunden) / `fade_ms` (RGSS-Millisekunden) merken sich Dauer, Rest und
+  Startlautstärke; `AudioFiles.update(dt)` rechnet pro Frame herunter (aufrufen
+  in `game/main.rb` nach `Pictures.update`) und stoppt am Ende. `Audio.bgm_fade`
+  und `bgs_fade` liefern Millisekunden und blockieren nicht.
+- **Event-Befehle** (XP 241/242/245/246):
+  `{"cmd":"play_bgm","name":"bgm/dorf.wav","volume":100,"pitch":100}`,
+  `{"cmd":"fadeout_bgm","seconds":2}`,
+  `{"cmd":"play_bgs","name":"bgs/regen.wav","volume":80}`,
+  `{"cmd":"fadeout_bgs","seconds":1}` — MapCheck prüft Name, Lautstärke 0–100,
+  Pitch 50–150 und `seconds >= 0`; das F6-Formular nutzt Name + Wert 1/2.
+- **Musik sichern/merken** (XP 243/244/247/248): `{"cmd":"save_bgm"}`,
+  `{"cmd":"resume_bgm"}`, `{"cmd":"memorize_audio"}`,
+  `{"cmd":"restore_audio"}` — felderlos; der Interpreter ruft
+  `$game_system.bgm_memorize`/`bgm_restore` bzw. beide Spuren
+  (`bgs_memorize`/`bgs_restore`). Ohne `$game_system` (kopfloser Lauf) bleibt
+  der Befehl still.
+- **Kartenmusik** (XP-Mapinfo): die Karten-JSON darf nennen
+  `"bgm": {"name":"bgm/dorf.wav","volume":80,"pitch":100}` und dasselbe als
+  `bgs`. `MapAudio.enter(map)` läuft in `Game.enter_map` nach
+  `Weather.load_map`: genanntes BGM/BGS startet, eine Karte ohne Eintrag lässt
+  die laufende Musik weiterlaufen (XP startet dann ebenfalls nichts), und
+  dieselbe Datei mit gleichen Werten wird **nicht** neu gestartet. MapCheck
+  `pruefe_ton` prüft Objekt, Namen und die Grenzen; gewarnt wird nur vor
+  Endungen, die kein Tonformat sind (`.mid`, `.wma` …). Gepflegt wird
+  das im Editor über F2 „Karten-Eigenschaften" → Gruppe „Ton (Kartenmusik)"
+  (`MapPropsForm.bgm_*`/`bgs_*`, `map_props_check`/`map_props_apply`); ein
+  leerer Name löscht den Eintrag.
+- **Tests:** `tools/wav_test.cpp` (18 Checks), `tools/audio_files_test.rb`
+  (Datei-Weg, Pitch-Klemmung, Fade über Zeit) und `tools/map_audio_test.rb`
+  (Kartenmusik).
+
+### Bildschirm-Bilder (XP 231–235)
+
+```json
+{"cmd":"show_picture","number":1,"name":"bilder/logo.png","x":320,"y":240,"zoom_x":100,"zoom_y":100,"opacity":255,"blend":0,"origin":0}
+{"cmd":"move_picture","number":1,"x":100,"y":80,"frames":40}
+{"cmd":"rotate_picture","number":1,"speed":5}
+{"cmd":"tint_picture","number":1,"r":-60,"b":40,"frames":20}
+{"cmd":"erase_picture","number":1}
+```
+
+**Bildlader** (`game/engine/image_loader.rb`): PNG (8 Bit, nicht verschränkt,
+Farbtypen 0/2/3/4/6, `tRNS`) und BMP (24/32 Bit) werden in Ruby dekodiert
+(`decode` ist eine reine Funktion, kopflos getestet) und über
+`Rune::Gfx.image` beim Renderer angemeldet; die Datei kommt durch die sichere
+Assets-Brücke. JPEG wird bewusst nicht dekodiert (Warnung statt Absturz).
+
+**Zeichnen**: `src/gfx/ui.cpp` hat einen eigenen Bild-Durchgang (eigene Textur,
+linearer Sampler, Tint × Deckkraft, Drehung um die Mitte). Reihenfolge im
+Frame: Bilder über der Welt und über `Graphics.draw`, aber **unter** HUD,
+Meldungen und Fenstern — wie XP.
+
+**Zustand** (`game/engine/pictures.rb`): Bilder 1–50, gezeichnet nach Nummer
+aufsteigend. `move` interpoliert linear vom Stand beim Befehl zum Ziel,
+`rotate` dreht mit Grad pro Frame, `tint` blendet die Kanäle über die Frames.
+Genähert: Tint ist eine Multiplikation (positive Kanäle dämpfen die
+Gegenkanäle, negative dunkeln), Blend 1/2 (addieren/abziehen) zeichnen wie 0 —
+MapCheck warnt. **Tests:** `tools/image_loader_test.rb` (19 Checks),
+`tools/pictures_test.rb` (39 Checks), `json_test` (838 Checks).
+
+### Bildschirmwackeln (XP 225)
+
+```json
+{"cmd":"shake","power":5,"speed":5,"frames":40}
+```
+
+`ScreenFx.shake` verschiebt die Kamera über `Rune::Camera.shake = [x, y]`
+(Meter entlang Kamera-Rechts/Hoch, in `src/gfx/camera.cpp` beim Bildaufbau
+addiert) — Picking und Spielerposition bleiben unberührt. Amplitude aus
+Stärke und Tempo, Abbau linear über die Frames, sinusförmiger Verlauf.
+Bewusste Abweichung: XP ruckelt in Zufallssprüngen, Rune3D schwingt weich.
+Im Formular stehen Stärke/Tempo/Dauer in den drei Zahlenfeldern (1–9, 1–9,
+Frames), MapCheck prüft die Grenzen und warnt bei fehlender Dauer.
+
+### Kampfergebnis abfragen (XP 601–603)
+
+```json
+{"cmd":"if_battle_result","result":"sieg","then":[],"else":[]}
+```
+
+`Battle#ende` setzt `@result` (`:sieg`, `:flucht`, `:niederlage`); der Befehl
+vergleicht ihn mit `result` und schiebt den passenden Zweig auf den Stapel.
+Ohne gelaufenen Kampf (`Battle.result == nil`) gilt der Sonst-Zweig — so
+verhält sich auch XP, wenn kein Kampf stattfand. Ein Befehl mit `result`
+ersetzt die XP-Codes 601/602/603 (drei Zweige, ein Formularfeld).
+MapCheck prüft die Zweige und das Ergebnis (`ERGEBNISSE`).
+**Tests:** `tools/bedingungen_test.rb` (41 Checks, 7 für das Kampfergebnis),
+`json_test` (820 Checks).
+
+### Menü öffnen (XP 351)
+
+```json
+{"cmd":"menu"}
+```
+
+Der Befehl setzt `$game_temp.menu_calling = true` — denselben Weg, den ein
+Script nimmt. Der Scene-Wechsel läuft im nächsten Frame über
+`TempActions.tick`, also genau einmal (das Flag wird dabei gelöscht); Esc
+öffnet das Menü weiterhin. Kein Feld im Formular, kein Zustand im Event.
+**Tests:** `tools/temp_flags_test.rb` (20 Checks, davon 3 für `menu`).
+
+### Bildschirmton und Blitz (XP 223/224)
+
+```json
+{"cmd":"screen_tone","r":-34,"g":0,"b":68,"gray":0,"frames":60}
+{"cmd":"flash","color":"weiss","strength":255,"frames":20}
+```
+
+`ScreenFx` (`game/engine/screen_fx.rb`) hält den aktuellen Ton, einen laufenden
+Übergang und den Blitz. `update(dt)` rechnet in XP-Frames (`Graphics.frame_rate`
+= 40/s), `draw` legt Vollbild-Overlays über Welt und **UI** — wie XP, wo der Ton
+über allem liegt. `frames: 0` setzt sofort; der Blitz klingt über seine Frames
+von voller Stärke auf 0 ab.
+
+Bewusst genähert: Ein echtes Ton-Mapping bräuchte einen Shader. Stattdessen
+legen positive Kanäle einen Farb-Schleier auf, negative einen dunklen Schleier
+im Gegenanteil, `gray` einen grauen Schleier. Der **Verlauf** ist XP-gleich.
+Das Formular zeigt die vier Kanäle als `r,g,b,grau` in einem Feld (je −255..255)
+und `frames` getrennt; der Blitz moderiert die Farbe wie `fade`.
+**Tests:** `tools/screen_fx_test.rb` (36 Checks; Ton, Blitz, Wackeln),
+`json_test` prüft Lesen, Null-Kanäle, Grenzen und Fehlerfälle (838 Checks).
+
+### Namenseingabe (XP 303)
+
+```json
+{"cmd":"name_input","actor":"arik","max":8,"cancel":true}
+```
+
+`NameInput` (`game/engine/name_input.rb`) hält Held, Text und Grenze: `max`
+wird auf 1–16 geklemmt (XP-Default 8), getippt werden A-Z, a-z, 0-9 und
+Leerzeichen, Backspace löscht, Enter übernimmt über `Party.rename` (schreibt
+in den Actor, also auch ins Menü und in den Spielstand), Esc bricht ab — nur
+wenn der Befehl `cancel` erlaubt. Ein leerer Name wird mit einer Meldung
+abgelehnt, ein unbekannter Held öffnet kein Fenster (Log + Issue-Backlog).
+
+`UI.name_input` zeichnet Eingabefeld, blinkenden Cursor und Zeichenzähler und
+bildet Tasten auf das Modul ab (`input: false` zeichnet nur). **Achtung:** Hier
+bestätigt nur `Enter` — „e" muss ein Buchstabe bleiben. Der Interpreter
+blockiert über `@name_wait` wie beim Laden. Der Name steht seit 20e im
+`party`-Snapshot (`actors[].name`), umbenannte Mitglieder überleben damit
+Speichern/Laden. **Tests:** `tools/name_input_test.rb` (28 Checks),
+`json_test` prüft Lesen, `max`-Grenze, Default und `cancel` (798 Checks).
+
+### Laden (XP 302)
+
+```json
+{"cmd":"shop","goods":[{"item":"heiltrank","price":20},{"item":"apfel"}]}
+```
+
+`Shop` (`game/engine/shop.rb`) trennt Rechnung und Fenster: die Warenliste wird
+beim Öffnen normalisiert (`price` fehlt → Datenbankpreis), `kaufen` prüft Gold
+und legt Items ins Inventar, `verkaufen` nimmt aus dem Inventar und zahlt den
+halben Datenbankpreis — gedeckelt durch den Ladenpreis, damit „teuer kaufen,
+halb verkaufen" kein Gold-Generator ist. Unbekannte Items fliegen beim Öffnen
+raus und landen im Issue-Backlog; eine leere Liste öffnet keinen Laden.
+
+Der Interpreter setzt `@shop_wait` und blockiert, bis `Shop.active?` endet
+(XP 302 ist modal). `UI.shop` zeichnet Reiter (Kaufen/Verkaufen), Waren mit
+Preis bzw. Inventarmenge, die Gold-Zeile und die letzte Meldung; die Tasten
+(↑↓, ←→, E, Esc) ruft sie als `Shop`-Methoden auf und ist damit auch kopflos
+prüfbar (`input: false` zeichnet nur). Esc geht erst zu den Waren zurück und
+schließt dann — wie die Befehlsebene in XP. Im Formular stehen die Waren im
+Mehrzeiler als `item` bzw. `item:preis`; Waren mit Zusatzfeldern (z. B. später
+ein Bestand) zeigt das Formular als „nicht darstellbar" und verlangt eine
+bewusste Bestätigung. **Tests:** `tools/shop_test.rb` (38 Checks),
+`json_test` prüft Lesen, Preis-Schreiben, leere Zeilen und die Fehlerfälle
+(798 Checks).
+
+### Mitglieder ändern (XP 129)
+
+`Party` trennt seit 20d zwei Listen: `@katalog` (alle Helden aus
+`database.json`) und `@actors` (die **Mitglieder**). `Party.actors`,
+`Party.find`, das Menü, der Kampf und `if_actor` arbeiten auf der
+Mitgliederliste; `Party.member_add`/`member_remove`/`member?` ändern sie.
+
+```json
+{"cmd":"party_member","name":"arik","mode":"add"}
+{"cmd":"party_member","name":"mira","mode":"remove"}
+```
+
+- `name` ist die Actor-ID oder der Anzeigename; `mode` fehlt/leer → `add`
+  (wie bei `fade`/`timer` wird der Modus kleingeschrieben und im Formular
+  moderiert).
+- Ein neues Mitglied hängt **hinten** an (XP-Reihenfolge). Ein unbekannter
+  Held, ein unbekannter Modus und der Versuch, das **letzte** Mitglied zu
+  entfernen, landen im Log und im Issue-Backlog; das Team bleibt dann stehen.
+- `snapshot['actors']` ist die Mitgliederliste; `restore!` baut `@actors`
+  daraus in gespeicherter Reihenfolge neu auf und übernimmt danach die Werte.
+  Alte Spielstände ohne `actors` behalten das Team aus `Party.setup`.
+
+MapCheck prüft `mode` (`add`/`remove`), die Pflicht `name` und den Actor
+gegen `database.json`; `sync_test` vergleicht die C++-Moderation mit
+`MapCheck::PARTY_MODI`. **Tests:** `tools/party_member_test.rb` (29 Checks),
+`json_test` prüft Lesen, Default, Kleinschreibung und die beiden Fehlerfälle.
+
+## Professionalisierung: Sync-Test + README (Etappe 19j)
+
+Die Sync-Pflicht für neue Befehlstypen (MapCheck::CMD_TYPES in Ruby =
+ISSUE_CMD_TYPES + EV_TYPES in C++) war bisher Handarbeit mit einer
+Zähl-Assertion. `tools/sync_test.rb` macht daraus eine maschinelle Prüfung:
+Der Test parst `src/editor/editor_main.cpp` und seit 19o.5 auch
+`src/editor/event_form.h` als Text (kein Compiler nötig) und vergleicht
+
+- `EV_TYPES` (Reihenfolge) und `ISSUE_CMD_TYPES` (Menge) mit
+  `MapCheck::CMD_TYPES`, `EV_TYPE_LABELS`-Anzahl und die `enum EvType`-
+  Einträge (Name + Reihenfolge) mit denselben Listen,
+- die `when`-Zeilen des Interpreters (6er-Einzug = Befehls-case) mit
+  `CMD_TYPES` — ein Befehl ohne Interpreter-Implementierung fällt auf,
+- `EV_TRIGGERS`/`EV_OPS` mit `MapCheck::TRIGGER`/`VERGLEICH` und den
+  entsprechenden Modell-Arrays, die Wetter-
+  und Self-Switch-Combos (Inline-Listen) mit `WETTER`/
+  `SELF_SWITCH_BUCHSTABEN`, die Effekt-Beschriftung mit `EFFEKTE`,
+- die Dialogfelder `KEYS`/`ACTOR_LABELS`/`ITEM_LABELS` des Datenbank-
+  Dialogs mit den echten Schlüsseln in `game/data/database.json` sowie
+  die Gegner-/Truppen-Referenzen (19i).
+
+Damit ist der offene Backlog-Eintrag „zwei Implementationen" nicht
+aufgelöst (eine gemeinsame JSON-Quelle bleibt das Ziel), aber jede
+vergessene Seite kippt jetzt einen Test statt erst den Editor-Alltag.
+Zweite Maßnahme: README-Vergleichstabelle und Feature-Beschreibung auf
+den Stand 19d-19i gebracht (Kampf-Grundgerüst, Bewegungsrouten, Self-
+Switches, Zahleneingabe, Fade, RGSS-Schicht, 26 Befehle).
+
+## Datenbank-Dialog: Gegner und Truppen (Etappe 19k.1)
+
+Erster Teil der Editor-Lücken-Runde (User-Auswahl nach 19j). Der
+Datenbank-Dialog (F9) konnte seit 17g nur Helden und Items bearbeiten -
+die 19i-Daten (`enemies`, `troops`) waren reine JSON-Handarbeit. Jetzt:
+
+- **Vier Reiter**: Helden / Items / Gegner / Truppen; ein Listenfeld links
+  (je Reiter eigene Anzeige: Klasse, Art, HP, Gegner-Anzahl), Formular
+  rechts.
+- **Feldgesteuertes Formular**: statt fester 9 Zeilen mit Tab-Spezifika im
+  Code gibt es `DbField`-Tabellen (`DB_FIELDS_ACTOR/ITEM/ENEMY/TROOP`) aus
+  JSON-Schlüssel, Beschriftung, Zahlen-Flag und Präzision; `db_fields(tab)`
+  wählt sie, Layout/Füllen/Zurückschreiben sind generisch
+  (`DB_MAX_ROWS` = 13 Zeilen, Gegner brauchen 12: id/name/hp/mp/atk/def/
+  spi/agi/exp/gold/drop/drop_rate). Unbekannte JSON-Schlüssel (color, desc,
+  level, exp bei Helden) bleiben beim Speichern erhalten - der Dialog
+  schreibt nur seine Tabellenfelder.
+- **Truppen-Gegnerliste**: das Array `enemies` wird komma-getrennt im Edit
+  angezeigt und beim Ändern getrimmt zurückverwandelt. Seit 19o.3 erledigen
+  dies `database_ids_text`/`database_ids_parse`; nicht eindeutig darstellbare
+  Altdaten bleiben erhalten bzw. werden nur nach Bestätigung ersetzt.
+- **Neu-Anlegen** mit sinnvollen Defaults je Reiter (gegner_N/trupp_N mit
+  Basiswerten), Fenster auf 716x768 gewachsen, Menü-/Hilfetexte nachgezogen.
+
+`tools/sync_test.rb` prüft die vier Feldtabellen gegen die echte
+`game/data/database.json`: jeder editierbare Schlüssel muss in den
+Einträgen vorkommen (erste Spalte immer `id`) - editiert der Dialog ins
+Leere, kippt der Test.
+
+## Block-Zonen / Passierbarkeit (Etappe 19k.2)
+
+Zweiter Teil der Editor-Lücken-Runde: der offene Backlog-Punkt „Kein
+Passierbarkeits-System". Karten bekommen einen optionalen Schlüssel
+`"blocked": [{"x","z","w","h"}]` - Rechtecke in Weltmetern (x/z = Mitte,
+w/h = Größe), die als **unsichtbare Wände über alle Höhen** wirken (kein
+Überspringen, kein Durchlaufen).
+
+- **Physik (C++)**: `Physics::add_blocked/is_blocked/blocked_overlaps`
+  (`src/world/physics.*`); `overlaps_any` prüft die Zonen zusätzlich zu den
+  `solid`-AABBs, damit die achsenweise Kollisionsauflösung und `push_out`
+  (NPC-Schub) sie automatisch respektieren. Bindings: `Rune::Physics.
+  clear_blocked/add_blocked(x,z,w,h)/blocked_count/blocked?(x,z)`.
+- **Spiel**: `Game.enter_map` lädt die Zonen der Karte in die Physik
+  (respond_to?-geschützt) und loggt die Anzahl.
+- **RGSS**: `$game_map.blocked_zones`/`blocked?(x,z)` lesen dieselben
+  Rechtecke aus `Game.map`; `$game_player.passable?` liefert `false` für
+  Ziele in einer Zone (Grenzen + Geländestufe + Zonen).
+- **Editor**: F2-Karten-Eigenschaften hat ein eigenes Feld „Block-Zonen
+  (x,z,w,h pro Zeile)" (wirktungslose Zeilen werden überlesen, leere Liste
+  entfernt den Schlüssel); im Viewport zeichnet `push_blocked_zones()` jede
+  Zone als roten Flach-Quader auf Bodenhöhe. Der C++-Issues-Scan prüft
+  dieselben Regeln wie MapCheck (x/z/w/h Zahlen = Fehler, w/h <= 0 =
+  Warnung, keine Liste/Objekt = Fehler).
+- **MapCheck**: `pruefe_blocked` mit denselben Regeln; Tests in
+  `mapcheck_test.rb` (5 Checks) und `rgss_test.rb` (blocked?/passable?,
+  8 Checks).
+
+Grenzen: Zonen sind Rechtecke ohne Rotation/Höhenbereich. Die beiden
+anderen offenen Punkte (NPCs/Routen liefen durch Zonen, `passable?` kannte
+keine Objekt-Kollision) sind seit Etappe 19k.3 erledigt - siehe unten.
+
+## Passierbarkeit rund gemacht (Etappe 19k.3)
+
+19k.2 blockte nur den Spieler physikalisch. Seit 19k.3 gibt es **eine**
+Abfrage für alles, was läuft: `game/engine/passage.rb` (Modul `Passage`).
+
+- **`Passage.zonen` / `zone?(x, z)`**: die Block-Zonen der aktuellen Karte
+  (`Game.map['blocked']`), Punkttest inklusive Rand - dieselbe Rechnung wie
+  `Physics::is_blocked`. Kaputte Einträge (keine Hashes) werden überlesen.
+- **`Passage.hindernis?(x, z, gy = nil)`**: Objekt-Kollision über die neue
+  Physik-Abfrage `Physics::solid_at(x,y,z)` (Binding
+  `Rune::Physics.solid_at?(x,y,z)`). Getastet wird über der Steiggrenze der
+  Physik (`STUFE = 0.35` = `kMaxStep`): `TASTPUNKTE = [0.45, 1.2]` - ein
+  flacher Kasten bleibt damit eine begehbare Stufe, eine Wand oder ein
+  schwebender Kasten blockt. Ohne Engine (kopflose Tests) liefert die
+  Abfrage „frei", dann zählen nur die Zonen.
+- **`Passage.blockiert?(x, z, gy = nil)`** = `zone? || hindernis?`.
+
+Anschlüsse:
+- **RGSS**: `$game_player.passable?` prüft `Passage.blockiert?` (Grenzen +
+  Geländestufe + Zonen + Hindernisse); `$game_map.blocked_zones`/`blocked?`
+  delegieren an Passage (API von 19k.2 bleibt), neu `$game_map.hindernis?`.
+- **NPCs** (`npc.rb`): ein Schritt in Zone/Hindernis lässt den NPC anstossen
+  (warten) statt durchlaufen; liegt schon der **Wegpunkt** in einer Zone,
+  wird er übersprungen, damit die Patrouille nicht dauerhaft an der Wand
+  steht.
+- **Bewegungsrouten** (`mover.rb`): `bewege` rechnet den Teilschritt über
+  `teil_ziel` vor und bricht den Schritt ab (`distanz = 0`) plus
+  `warn_once`, wenn das Ziel blockiert ist - gilt für NPC-`move_to` **und**
+  den Spieler-`teleport` (der umging die Physik komplett).
+- **Spiel** (`main.rb`): Warnung, wenn der Startpunkt in einer Block-Zone
+  liegt (Spieler würde feststecken).
+- **MapCheck**: Lage-Prüfungen der geprüften Karte (`@block_zonen` aus
+  `map['blocked']`, nicht aus der geladenen Karte!) - Warnungen für
+  Startpunkt, Events, NPC-Position und NPC-Wegpunkte in einer Zone; nur
+  brauchbare Zonen (Zahlen, w/h > 0) zählen.
+- **Editor (C++)**: `blocked_zone_at(x,z)` + dieselben vier Lage-Meldungen
+  im `issues_scan_map` (Parität zu MapCheck).
+
+Tests: neu `tools/passage_test.rb` (Zonen, Tastpunkte, `blockiert?`),
+dazu Checks in `rgss_test.rb` (Hindernisse in `passable?`), `npc_test.rb`
+(Anstossen + Wegpunkt-Skip), `move_route_test.rb` (NPC- und Spieler-Route
+stoppen, Route hängt nicht) und `mapcheck_test.rb` (vier Lage-Warnungen).
+
+Grenzen (Backlog): NPCs weichen nicht aus (anstossen/überspringen statt
+Pfadfindung um die Wand herum), Bewegungs-Routen kennen kein „Wand
+entlang rutschen", `hindernis?` tastet zwei feste Höhen (keine exakte
+Körperbox).
+
+## Zufallskämpfe beim Laufen (Etappe 19l)
+
+Eine Lücke des Kampf-Grundgerüsts (19i): Kämpfe gab es nur per
+Event-Befehl. Seit 19l lösen Karten selbst Kämpfe aus - wie XP
+(`016 - Game_Map.rb`, `022 - Game_Player.rb`, `071 - Scene_Map.rb`).
+
+- **Karten-JSON**: optionaler Schlüssel `"encounters"`:
+  `{ "troops": ["waldweg", "banditen"], "steps": 30 }` - `troops` sind
+  Truppen-IDs aus der `database.json` desselben Projekts (Zufallswahl pro
+  Kampf); `steps` ist die positive ganze mittlere Schrittzahl (Default 30).
+  Ohne Truppenliste gibt es keine Zufallskämpfe.
+- **RGSS**: `$game_map.encounter_list` überspringt ungültige oder leere
+  IDs; `encounter_step` fällt bei ungültigem Wert auf 30 zurück.
+  `$game_player.make_encounter_count` würfelt `rand(n) + rand(n) + 1`
+  (im Mittel n Schritte), `decrease_encounter_count` zählt bis 0 herunter.
+- **Spiel** (`main.rb`): Gelaufene Strecke zählt herunter - seit Runde 26
+  eine Kachel pro `Game::KACHEL_METER = 1.0` Meter (XP zählt pro
+  Kachel-Schritt; vorher zählte jeder Schritt-Sound von 0,60/0,85 m, was
+  Begegnungen rund 40 % zu häufig machte). Der Schritt-Sound und
+  `$game_party.steps` bleiben an 0,60/0,85 m gebunden. Bei 0, nicht
+  leerer Liste, keinem laufenden Event und nicht gesperrten Begegnungen
+  startet `battle_start` (Flucht erlaubt, Niederlage = Game Over) und
+  würfelt neu. Ein gleichzeitiges Touch-/Auto-Event hat Vorrang, und im
+  Editor laufen weder Countdown noch Zufallskampf. Ab dem Start-Frame
+  steht die Welt. Ein fehlgeschlagener Start lässt den Zähler auf 0; der
+  nächste freie Schritt versucht es erneut. Beim Kaltstart/F5 wird nach
+  `RGSS.setup` gewürfelt, beim Kartenwechsel in `enter_map`. Teleports über
+  Karte/Laden, Event (`teleport`, `move_player`), RGSS (`moveto`) und den
+  Script-Helfer `teleport` zählen nicht als Schritte. Eigenes direktes
+  `Rune::Player.teleport` sollte anschließend `Game.reset_step_tracking`
+  aufrufen; schrittweise Bewegungsrouten bleiben dagegen zählbar. Beim
+  Laden wird neu gewürfelt; der Zähler ist nicht Teil des Spielstands.
+- **MapCheck + Editor**: `pruefe_encounters` bzw. `issue_scan_encounters`
+  prüfen Objekt, Liste aus nicht-leeren Text-IDs und positive ganze
+  `steps` (null/fehlend ist optional). F2 warnt beim Bearbeiten der Liste
+  vor unbekannten Truppen; den tatsächlichen Kampfstart samt Gegnern und
+  Party prüft `Battle.start` gegen die Projekt-Datenbank.
+- **Demo**: Die Vorlage `game/data/maps/dorf.json` verweist auf Truppen
+  aus `game/data/database.json`. Bestehende Projekte, darunter das
+  mitgelieferte `projekte/dorf`, werden nicht automatisch geändert und
+  brauchen eigene Truppen/Gegner, bevor dort Kämpfe konfiguriert werden.
+
+Tests: `encounter_test.rb` führt den echten Spielstart und Schritt-Frames
+mit `Battle`, Interpreter und Demo-Datenbank aus; `rgss_test.rb` und
+`mapcheck_test.rb` prüfen die Datenregeln. `json_test.cpp` testet dieselbe
+C++-Editorprüfung direkt und kopflos.
+
+Grenzen (Backlog): keine Kampf-Hintergrundmusik/-bilder und keine
+Gebiets-/Schritt-abhängigen Encounter-Tabellen wie XP.
+
+## Zufallskämpfe im Karten-Editor (Etappe 19m)
+
+**F2 → Zufallskämpfe** bearbeitet Truppen und mittlere Schrittzahl für die
+aktuelle Karte. Die Auswahl liest gespeicherte Truppen aus der eigenen
+`database.json`; F9 ist aus dem Dialog erreichbar und „Neu laden“ aktualisiert
+die Auswahl nach dem Speichern. „Hinzufügen“ fügt eine ID an die editierbare
+Zeilenliste an. Identische Zeilen bleiben erhalten und gewichten die zufällige
+Auswahl; eine leere Liste deaktiviert Begegnungen. Unbekannte IDs oder eine
+nicht lesbare Datenbank führen bei Listenänderung zu einer Rückfrage. Diese
+Prüfung bestätigt keine vollständige Kampffähigkeit (Gegner/Party).
+
+Schritte müssen im Formular leer (= 30) oder ganzzahlig zwischen 1 und
+9007199254740991 sein. Dieser Grenzwert verhindert Rundungsverlust bei neu
+eingegebenen Ganzzahlen in der double-basierten C++-JSON-Schicht; zur Grenze
+vorhandener großer JSON-Zahlen siehe Backlog. Fehler oder abgelehnte
+Rückfragen lassen den Dialog offen und die gesamte Karte unverändert.
+„OK“ übernimmt in den Speicher, Strg+S schreibt anschließend die Karte.
+
+`encounter_form.h` liest/bereitet Begegnungen ohne Win32 vor: Unbearbeitete
+fehlende/null-Felder, ganzzahlige Floats, Duplikate und unbekannte Schlüssel
+bleiben erhalten. Nicht darstellbare oder fehlerhafte Altwerte werden erst
+nach ausdrücklicher Bestätigung ersetzt. `map_props_form.h` übernimmt auch
+allgemeine F2-Felder nur bei tatsächlicher Änderung, erhält unberührte
+gerundete Anzeigen, Block-Zonen und unbekannte Eigenschaften. Nach
+Änderungen an der Kartenwurzel wird `g.objects` neu gebunden; der Kartenbaum
+und der Projektwechsel bleiben während des moduslosen Dialogs gesperrt.
+F9 muss vor einem Projektwechsel geschlossen werden, damit seine geladene
+Datenbank nicht unter dem Pfad eines anderen Projekts gespeichert wird.
+
+Tests: `tools/json_test.cpp` prüft das Dialog-Datenmodell, optionale und
+fehlerhafte Altwerte, lange Listen, Duplikate, Werte-Grenzen, die echte
+Demo-Datenbank, JSON-Roundtrips und unberührte allgemeine Eigenschaften.
+CI baut/linkt den Win32-Editor und kann WARP in einem unsichtbaren Fenster
+prüfen, ersetzt aber keinen interaktiven GUI-/Hardware-GPU-Test (siehe Backlog
+und Handoff).
+
+## Kampfzustand und gezielte Items (Etappe 19v)
+
+`Battle::Battler` greift bei Party-Helden direkt auf denselben `Party::Actor`
+zu: aktuelle HP/MP und echte Maximalwerte sind keine voneinander abweichenden
+Kopien. 0 HP bleibt 0; ohne lebenden Helden endet der Kampf als Niederlage.
+Ein bereits laufender Kampf wird nicht durch einen zweiten Start ersetzt.
+Die Befehlsreihenfolge verwendet feste Actor-Positionen statt Indizes in
+einer veränderlichen Liste lebender Helden. Wird ein auswählender Held
+kampfunfähig, wird seine offene Auswahl verworfen; KO streicht auch seine
+vorgemerkten Aktionen und Itemreservierungen.
+
+Die Itemliste reserviert eine verfügbare Menge pro bestätigter Aktion, ohne
+das Inventar sofort zu ändern. In `:item_target` wird ein bestimmter Held
+einschließlich KO gewählt; ein volles/ungültiges Ziel wird abgewiesen.
+Bei der Ausführung prüft `Party.use_item(..., target:)` Bestand, positive
+Stärke und Wirkung erneut und verbraucht nur bei Erfolg. Führt eine
+schnellere Aktion zum Sieg, werden spätere Aktionen nicht mehr ausgeführt.
+Das gewählte Angriffsziel fällt bei Bedarf auf den ersten lebenden Gegner
+zurück. Ausführungsreihenfolge bleibt Agilität, Gegner ziehen anschließend.
+
+`Party.use_item(id, target: actor_oder_id)` sowie `use_item(id, ziel)` bzw.
+`use_item(id, target: ziel)` im Script-Context und `$game_party` unterstützen
+gezielte Anwendung. Ohne Ziel bleibt der historische Auto-Fallback auf den
+ersten verletzten Helden bzw. den Leader erhalten; bei einer vollen Party
+kann ein alter Aufruf also weiterhin ohne Wirkung verbrauchen. Mana nimmt
+entsprechend den ersten Helden mit fehlenden MP oder den Leader. Ein
+Heiltrank kann wie früher bei 0 HP wiederbeleben. Skills und Zustände kamen
+mit Etappe 20a (siehe unten); eine XP-vollständige Item-/Gegnerlogik fehlt
+weiterhin.
+
+`Game.update` leitet Esc im Kampf an `Battle` statt an das Weltmenü. Ein
+nicht erlaubter Fluchtversuch öffnet kein Menü; ein fehlgeschlagener löscht
+Aktionen und Reservierungen. Der native Hauptloop gibt bei Esc zusätzlich
+immer den Mausfang frei, auch während eines Kampfes; die mittlere Maustaste
+schaltet den Mausblick wieder ein. Nach Game Over wird der Titelwechsel vor den
+Folgekommandos des wartenden Event-Interpreters verarbeitet; `can_lose`
+setzt die Event-Liste dagegen fort. Kampfende und `abort!` geben auch bei
+direktem Ruby-Aufruf die Simulation frei. Kartenwechsel, Titelrücksprung,
+F5 und Playtest-Fehler brechen aktive Kämpfe ab; der Fehlerbildschirm
+pausiert die Simulation anschließend bewusst wieder. F5 setzt die Party
+wie bisher neu auf und ist kein Speichern.
+
+`battle_state_test.rb` prüft echte Battle-/Party-Logik mit nativen Attrappen,
+`encounter_test.rb` die echte Spielschleife einschließlich Esc, Event-Folgen,
+Abbruch und JSON-Rundlauf über eine `Project`-Speicherattrappe. Seine
+Inputattrappe bildet Tastendruckflanken, Halten/Loslassen und die native
+Esc-Mausfreigabe nach; der Battle-Unit-Test speist Flanken direkt ein.
+`runtime_boot_test.rb` startet den echten Bootstrap in einer temporären
+Projektkopie und prüft dort unter anderem Action-Event, Projekt-Script,
+Kampf-Item und Speichern/Laden über eine echte `Project`-Slot-Datei sowie
+den F5-Fehler. Fenster, Eingabe und Rendering bleiben auch dabei Attrappen.
+`party_test.rb` und `rgss_test.rb` prüfen die Ruby-Zugänge. Der zentrale
+Glob-Runner nimmt die neue Suite automatisch in CI und `build.ps1 -Test` auf.
+Kein interaktiver Windows-/GPU-Nachweis; siehe `docs/WINDOWS_BATTLE_LIVE_TEST.md`.
+
+## F4 mit ausgewählter Karte (Etappe 19u)
+
+RuneEditor leitet die Karten-ID aus dem gespeicherten Dateinamen ab und
+startet `Rune3D.exe --project <name> --map <id>` mit `CreateProcessW`,
+zitierten Einzelkomponenten und der Engine-Wurzel als Arbeitsverzeichnis.
+Das Projekt-/Karten-Epoch-Paar und der Dateiname werden nach etwaigen
+Speicherrückfragen erneut geprüft. Ohne ausgewählte Karte entfällt `--map`.
+IDs sind nicht leer, passen samt `.json` in eine gültige Windows-Komponente
+und enthalten keine Pfade oder Gerätenamen. Optionen dürfen auch als echte
+Namen vorkommen; doppelte, fehlende und unbekannte Optionen werden abgewiesen.
+
+`main.cpp` setzt die Wide-Umgebung `RUNE_PROJECT` und `RUNE_PLAYTEST_MAP`;
+ohne `--map` wird ein geerbter alter Kartenwert gelöscht. Ruby verbraucht
+die Kartenoption beim direkten Projektstart und hält sie nur für dieses
+Projekt. `Database` und `MapCheck` erkennen `.json`/`.JSON` samt gemischter
+Schreibung und ignorieren Verzeichnisse. Für den Playtest verlangt `Database`
+eine eindeutige ID und ein lesbares JSON-Objekt.
+Fehlende/mehrdeutige Karten und unbekannte Projekte mit Karte zeigen einen
+Fehlerbildschirm statt einer anderen Karte. F5 liest die Karte erneut und
+setzt den Spielzustand zurück; auch bei einem zunächst fehlenden Projekt
+bleibt die Auswahl für den erneuten Versuch erhalten. Titel/Projektwahl
+löscht die Vorgabe.
+Terrain, Startpunkt, Events, Begegnungen und `Game.change_map` laufen über
+die normalen Enginepfade. Ohne explizite Karte bleibt der Start wie bisher.
+
+Der Kindprozess ist keine Sandbox und kein Dateischnappschuss. Ruby liest
+die Karte nach dem Editor-Speichern separat; externe Änderungen oder
+Dateilinks sind damit nicht allgemein ausgeschlossen. Normale Spielstände,
+Scripts und `last_played` bleiben aktiv. Die Windows-Pfadtests nutzen einen
+echten Test-Kindprozess, die Ruby-Boot-Tests native Attrappen; sie sind kein
+sichtbarer F4-GUI-/Hardwaretest. [CI 45183821663](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45183821663)
+für `bc237b3` ist grün. Die Zwei-Karten-Live-Prüfung nach
+`docs/WINDOWS_MATERIAL_LIVE_TEST.md` bleibt offen.
+
+## Rune3D-Laufzeit ohne Ingame-Editor (Etappe 19t)
+
+`boot.rb` lädt `map_objects.rb` statt des entfernten `editor.rb`.
+`Game.enter_map` und `Scene_Title#bau_kulisse` erzeugen je eine eigene
+`MapObjects`-Instanz, die mit `Prefabs.instantiate`, Geländehöhe und
+`Scene.refresh_solids` die Spiel- bzw. Kulissenszene aufbaut. Die alten
+`ed_*`-Knotennamen bleiben für Scripts bestehen; die Zuordnung und das
+Entfernen früherer Knoten erfolgen über Identität, sodass namensgleiche
+Script-Nodes erhalten bleiben. Picking zeigt weiter Prefab-Namen an.
+
+F4 hat in Rune3D keine Editorfunktion mehr. `Game.change_map`, Terrain,
+Events, NPCs, Laufzeit-Picking, Kampfpausen und F5 bleiben erhalten;
+beim Encounter hat ein laufendes Event Vorrang. F4 im eigenständigen
+RuneEditor speichert die Karte und startet das Spiel als eigenen Prozess.
+Seit 19u übergibt er die ausgewählte Karten-ID. Der Prozess benutzt
+reguläre Projekt-Spielstände und ist keine Sandbox.
+
+`map_objects_test.rb` prüft echte Ruby-Knoten/Szenen und eine Physikattrappe,
+`runtime_boot_test.rb` lädt echten Bootstrap, Launcher und Spiel in einer
+temporären Kopie mit nativen Attrappen, `encounter_test.rb` prüft F4/F5,
+Kartenwechsel, Picking und Kampfvorrang. Kein GUI-/Hardware-GPU-Test.
+
+## Windows-Karten-/F9-Dateitransaktionen (Etappe 19s)
+
+`document_store_win.h` verwendet den vertrauten Engine-Anker und öffnet
+Projekt-, Daten- und Kartenordner einzeln relativ zu gehaltenen Handles;
+Dateinamen sind Einzelkomponenten, Reparsepunkte und Hardlinks verboten.
+Karten laden/anlegen/speichern/löschen und F9 laden/speichern verwenden
+diesen Pfad. Andere Projektdateien sind dadurch nicht automatisch geschützt.
+
+Die Beobachtung liest die vollständigen Bytes bei gesperrten Schreib-/
+Löschzugriffen und hält zusätzlich ein Attribut-Handle mit Datei-ID während
+einer Rückfrage. Nach einem Ja wird das Ziel erneut ohne Schreib-/Delete-
+Sharing geöffnet und Identität plus exakte Bytes werden erneut verglichen;
+auf Abweichung, fehlende Unterstützung oder Fremdsperre folgt Abbruch. Bei
+fehlender Datei schützt No-Replace gegen spätere Neuanleger. Die vorbereitete,
+geflushte Datei wird handle-relativ veröffentlicht; das gesperrte Original
+wird zuvor in einen eindeutigen Backupnamen verschoben. Kartenlöschung
+markiert ausschließlich das bestätigte Handle zum Löschen.
+
+Es gibt keinen atomaren Namensaustausch: Zwischen Backup und Promotion kann
+der alte Name fehlen. Eine Konkurrenzdatei wird nicht ersetzt; falls die
+Rücksetzung blockiert ist, wird der `.rune-*.bak`-Pfad angezeigt. Fehlende
+Temp-Bereinigung wird ebenfalls gemeldet. Ein Prozess-/Systemabsturz kann
+Sicherungs- oder Tempdateien hinterlassen; manuell vergleichen und sichern.
+Netzlaufwerke, andere Dateisysteme, bestehende beschreibbare Speicher-
+abbildungen, Metadaten/ACL-Erhalt und Stromausfall sind nicht allgemein
+geprüft; FileIdInfo und Rename müssen vom Dateisystem unterstützt werden.
+
+`tools/document_store_test.cpp` prüft denselben Transaktionsablauf mit
+simulierten Bestätigungen und realen Windows-I/O-Renn-Hooks, einschließlich
+Unicode, fremdem CWD, Fremdhandles, Links, Identitätswechsel mit gleichen
+Bytes, Neuanlage, Backupkollision und blockierter Rücksetzung. Windows-CI
+`6a3b8e1`, Lauf 45175342986: 58/0, alle vier Jobs grün. Kein interaktiver
+GUI-/DPI-/Hardwaretest; Testvorschlag im Windows-Live-Dokument.
+
+## Atomares Schreiben der Projektdateien (Etappe Z8)
+
+Karten und F9 laufen über den `DocumentStore` (Identität, Konfliktprüfung,
+Backupname). Für die **übrigen** Projektdateien gilt seit Z8 eine einfachere,
+aber lückenlose Regel: erst vollständig daneben schreiben, flushen, dann
+umbenennen. Ein abgebrochener Schreibvorgang lässt die alte Datei dadurch
+unverkürzt stehen; Leser sehen entweder den alten oder den neuen Stand, nie
+eine halbe Datei.
+
+- **Ruby (`Project.write_json`):** `.rune-<pid>-<n>.tmp` neben dem Ziel,
+  `flush` + `fsync`, dann `File.rename` (unter Windows `MoveFileEx` mit
+  `MOVEFILE_REPLACE_EXISTING`, ersetzt also ein vorhandenes Ziel). Genutzt von
+  `Project.create` (system.json, database.json, welt01.json), `Project.create_map`
+  und `Project.save` (Spielstände). `create`/`create_map` geben bei einem
+  Schreibfehler `""` bzw. `nil` zurück, statt ein halbes Projekt zu melden;
+  `Game.save_game` liefert dann `false` statt „gespeichert“.
+- **`Project.touch` bleibt bewusst in-place:** Es schreibt den Zeitstempel am
+  bereits geöffneten Handle unter `flock`, damit Editor-`DocumentStore` und
+  Spiel sich gegenseitig ausschließen (siehe Kommentar in `project.rb`).
+- **Editor (`write_file` → `editor_write_file_atomic`):** Temp-Datei im
+  Zielverzeichnis, `FlushFileBuffers`, `MoveFileExW(REPLACE_EXISTING |
+  WRITE_THROUGH)`, Temp-Datei bei Fehler löschen. Genutzt von `create_project`
+  (Gerüst eines neuen Projekts) und den Merkern unter `log/`.
+- **Grenze:** Nach einem Prozess-/Systemabsturz mitten im Schreiben kann eine
+  `.rune-<pid>-<n>.tmp` liegen bleiben. Sie ist harmlos (nie das Ziel) und
+  darf gelöscht werden; das Ziel selbst ist immer vollständig.
+
+## Windows-Projekt- und Kartenpfade (Etappe 19r)
+
+Der ursprünglich im Backlog vorgeschlagene reine UTF-16-Durchstich wurde
+bewusst nicht gewählt: C++-Datenmodelle, JSON und Ruby führen Projekt- und
+Installationspfade als **gültiges UTF-8**. `core/win_path.h` konvertiert
+an Windows-Grenzen strikt nach/von UTF-16 (`MB_ERR_INVALID_CHARS`,
+`WC_ERR_INVALID_CHARS`), ohne ACP-Ersatzzeichen. Fehlerhafte Pfade werden
+abgewiesen, ungültige UTF-16-Verzeichniseinträge beim Scan übersprungen.
+Die gemeinsame Wurzelsuche verwendet Wide-APIs: der Editor bevorzugt die
+EXE-Installation, das Spiel ein CWD mit `game/`. Beide speichern die
+normalisierte Wurzel intern in UTF-8.
+
+Der Editor verwendet dieselbe Kodierung für Projekt-/Kartenscan, Lesen,
+Speichern/Löschen, F9, den Projektmerker und den gebundenen Materialstore.
+Die Projektlistbox holt Texte mit dynamischer Länge; neue temporäre Dateien
+für Karten/F9 haben kurze Namen im Zielverzeichnis. F4 validiert den
+Projektnamen, sucht `build/Rune3D.exe` oder `Rune3D.exe` neben `game/` und
+startet `CreateProcessW` mit zitiertem Argument und expliziter Engine-CWD.
+Die echte Wide-Kommandozeile und `RUNE_PROJECT` bleiben unverändert; ein
+alter Projektmerker mit ungültigem UTF-8 wird nicht per ACP geraten. Neue
+Projektordner im Editor bleiben auf ASCII-Buchstaben/Ziffern/`_` begrenzt.
+
+`Rune::ROOT` und Skriptpfade werden Ruby als UTF-8 übergeben. Weil das
+eingebettete `ruby_init()` nicht die normale Ruby-Optionsinitialisierung
+durchläuft, setzt `vm.cpp` externe und Dateisystemkodierung explizit auf
+UTF-8; ein abweichender Dateisystem-Alias lässt den VM-Start scheitern,
+statt Verzeichnisnamen still über die Codepage zu ersetzen. `Game.setup`
+entfernt keine führenden Leerzeichen aus `RUNE_PROJECT`.
+
+Windows-2022-CI für `ae0cfe6`, [Lauf 45169345662](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45169345662):
+28 Pfadprüfungen/0 Fehler, darunter Umlaut, CJK und Emoji (teils außerhalb
+der aktiven Codepage), F9-/Kartenhilfen, langer Listboxtext und F4-Kindprozess in beiden
+EXE-Layouts. Der Kindprozess ist der Testtreiber, nicht das komplette Spiel.
+Die echte kopierte Editor-CLI importiert ein Bild in einer Unicode-Wurzel;
+die eingebettete Ruby-/WARP-Brücke prüft reale Projekt-/Karten-/Spielstand-
+pfade sowie Texturen und Pixel (28/0). WARP insgesamt 36/0, Materialtest
+57/0, Ruby-Suiten 27/0/0. Keine interaktive GUI, keine Hardware-GPU und kein
+vollständiger Launcher-/F5-Test. Ein langer Kartenkomponententest verwendet
+explizit `\\?\` und belegt keine allgemeine Langpfadunterstützung. Karten
+und Datenbank bekamen dadurch noch keinen Dateischutz; 19s ergänzt die oben
+beschriebene eigene Transaktion. Live-Test:
+`docs/WINDOWS_MATERIAL_LIVE_TEST.md`.
+
+## Projektgebundene Materialien und Texturen (Etappe 19q)
+
+`texture_limits.h` begrenzt Dimensionen/Bytes, Slots, Manifest und Eingabebild.
+`material_document.h` hält den vollständigen JSON-Baum: unbekannte und
+ungültige Einträge bleiben erhalten, doppelte Schlüssel/Namen, ungültiges
+UTF-8 und nicht speicherbare Zahlen sperren das Dokument. F3 ändert gezielt
+Tile oder entfernt nur Metadaten; F7 bestätigt Ersatz und erhält altes RGBA.
+
+`project_assets_win.h` verankert unter der ausdrücklich vertrauten Engine-
+Wurzel jede Material-Pfadkomponente mit einem Windows-Verzeichnishandle ohne
+Delete-Sharing. Reparsepunkte, Hardlinks und Pfad-/Gerätenamen werden
+abgewiesen; Reads und WIC sind begrenzt. Editor und Ruby halten diese
+Projektbindung bis zum Wechsel. Import legt RGBA exklusiv neu an; der
+Manifest-Commit vergleicht die Originalbytes unter Dateisperre, verschiebt
+bei Bedarf das Original in eine Sicherung und hängt die vorbereitete Datei
+ohne Überschreiben ein. Das Rename nutzt `NtSetInformationFile` mit dem
+gehaltenen Zielverzeichnis und einem einzelnen Dateinamen, ohne Pfad-Fallback.
+Das ist kein atomarer Namensaustausch: bei Absturz oder blockierter
+Rücksetzung bleibt eine Sicherung zur Wiederherstellung. Der Materialschutz
+allein umfasst keine anderen Projektdateien und vertraut dem Engine-Anker;
+der separate Karten-/F9-Schutz kam in 19s hinzu.
+
+Der Renderer hält Basis- und Projekt-Namensräume separat; Projekt-Overrides
+gewinnen bei der Auflösung und im Atlas. Projektwechsel/F5 verwerfen Projekt-
+Slots, Draw-Kommandos und Terrain-/Atlasreferenzen, während Basisslots
+unverändert bleiben; freie Slots werden wiederverwendet. Prefabs speichern
+Namen statt langlebiger Slotnummern. Änderungen oder Löschungen räumen
+betroffene Atlas-Terrainreferenzen ab, bevor der Aufrufer neu aufbaut.
+
+`material_test.cpp` testet den portablen Baum und unter Windows Dateisperren,
+Hardlinks, Junctions, ein abweichendes Arbeitsverzeichnis und einen
+bewusst erzeugten Konflikt. Der WIC-Test nutzt nur ein temporäres Projekt.
+`renderer_warp_test.cpp` liest D3D11-WARP-Pixel, einschließlich Atlas-Terrain
+und A→B→A. `embedded_texture_test.cpp` verbindet echte CRuby-Module, den
+Windows-Dateistore und den WARP-Renderer, einschließlich Unicode-Projektname,
+Textur-Neuladepfad und A→B→A über die API. Er simuliert weder das Drücken von
+F5 noch den vollständigen Launcher. Der Test setzt den Load-Pfad der gewählten
+Ruby-Installation und belegt nicht deren entkoppeltes Deployment.
+
+Windows-2022-CI, Commit `776044d`, Lauf 45162482261: Material 57/0, WARP
+34/0, eingebettete Texturbrücke 19/0 und Ruby-Suite 27/0. Ein interaktiver
+Hardware-/GUI-/DPI-Test bleibt separat erforderlich:
+`docs/WINDOWS_MATERIAL_LIVE_TEST.md`.
+
+## Sichere Terrain-/Atmosphärenvorschau (Etappe 19p)
+
+`world/terrain_limits.h` definiert einen portablen Plan: Breite/Höhe
+1–10000, X-Auflösung 8–1024, höchstens 1024 Z-Zellen und 262144 Quads;
+Seed 0–4294967295, Amplitude ±10000, Pinsel-/Flächenkoordinaten ±1000000,
+Radius bzw. Ausdehnung 0,001–1000000. Pro Karte höchstens je 2048 Pinsel
+und Splats, 4 Mio. Pinsel-Samples und 8 Mio. Quad-Splat-Prüfungen. Vor
+`float`-/Integer-Casts wird geprüft; Höheabfragen werden vor dem Index-Cast
+auf die Kartengrenze geklemmt. `Terrain` gibt bei ungültigem Plan, Budget-
+oder Speicherfehler `false` zurück und verwirft das alte/teilweise Mesh.
+`gfx/mesh_vertex.h` entkoppelt das echte Terrain für Linux-Tests von Win32.
+
+`terrain_preview.h` liest ohne JSON-Mutation, erkennt mehrdeutige Felder
+und hält Grundfehler, Pinsel und Flächen vom Mesh fern. Einzelne ungültige
+Texture-/Tile-/Atmosphärenwerte erzeugen Warnungen und Vorschau-Ersatz;
+Texturnamen sind auf 1024 Bytes ohne NUL begrenzt. Tile gilt für 0,01–10000,
+Fog-Far für 0,1–100000 und RGB für 0–0xFFFFFF. Wetterintensität ist größer
+0 bis 10 (höchstens 400 Partikel). `mapcheck.rb` prüft dieselben Grenzwerte;
+`tools/sync_test.rb` vergleicht die Konstanten. F10 und die Statusleiste
+behalten auch tatsächliche Aufbau-/Atlasfehler sichtbar; JSON-Altdaten
+werden dadurch nicht repariert oder automatisch gespeichert.
+
+F2 validiert gezielt geänderte Felder; F7 bereitet Textur/Kachel auf einer
+Kopie vor, ohne fehlende oder ungültige unberührte Felder anzulegen bzw.
+zu ersetzen. Das bewusste Ersetzen ungültiger F7-Felder wird bestätigt.
+Die Splatliste zeigt bis zu 2048 Originalzeilen mit ihren echten JSON-
+Indizes und eine nicht löschbare Auslassungszeile. Ungültige Einträge
+brauchen vor dem Löschen eine Rückfrage; eine vorhandene leere Liste bleibt
+erhalten. F7 bindet sich an Karten-/Projekt-Epochen (auch A→B→A); zentrale
+Datenrückfragen sperren konkurrierende Editorfenster. F2 prüft den Entwurf
+nach einer Rückfrage erneut; F2 und F6 öffnen nicht gleichzeitig. Bereits
+zugestellte Listenauswahlen werden anhand ihrer Originalindizes abgeglichen;
+F5 sperrt konkurrierende F7-/Material-/Script-/F9-Datenaktionen.
+
+`texture_path.h` weist beim Editor-Lesen und -Schreiben/Löschen von RGBA-
+Dateien Pfadtrenner, Datenströme, Windows-Gerätenamen und zu lange Namen
+lexikalisch ab. In 19p allein waren Reparsepunkte und Dateikonflikte damit
+nicht geprüft; 19q ergänzt den oben beschriebenen Material-Dateistore.
+
+`AtlasPlan` begrenzt 64×64-Tiles auf 1024 (maximal 2048×2048, 16 MiB pro
+RGBA-Kopie). `Renderer::update_atlas` verwendet bei unveränderten
+Eingaben den Cache, bei Änderungen einen privaten wiederverwendeten Slot;
+eine öffentliche Textur namens `atlas` bleibt eine normale Eingabe.
+Auch wiederholtes Registrieren desselben Textur-Namens ersetzt den Slot
+statt alte CPU-/GPU-Kopien anzuhäufen. 19q ergänzt Projekt-Lebensdauer und
+Speichergrenzen für Texturen; andere Projektdateien sind davon nicht erfasst.
+Fehlt Atlas oder Basiszelle, zeigen Editor und Spiel Einzeltextur-Boden;
+unbekannte Flächentexturen fallen auf die Basis zurück und werden gemeldet.
+Der Shader-Faktor 2/tile steht für Atlas-UV neutral auf 1 (`tile` = 2),
+nicht wie früher auf 2. `terrain.tile` wird im Splatpfad nicht angewendet.
+
+`terrain_api.rb` reicht Hash- oder Array-Höhenpinsel ohne unsichere Ruby-
+Koerzierung an die nativen Bindings und leert den alten Pinselsatz beim
+nächsten Aufruf. `Game.build_terrain` wird auch beim Launcher und dem
+Ruby-Editor-Neuaufbau genutzt; es setzt erst die Basistextur und erhält
+bei fehlendem Atlas den schon erzeugten Einzeltexturboden. Fehlerhafte
+Flächen verwerfen dagegen das Terrain. Die 32-Bit-`long`-Byteberechnung
+für Ruby-Texturen wird vor der Multiplikation auf D3D-Maße begrenzt.
+
+Lokal: 671 JSON-/Editor-Checks und 51 Terrain-Checks jeweils in Release
+und mit ASan/UBSan/float-cast-overflow; Ruby 3.0.6 nativ 26 Suiten OK,
+ein EXE-Skip; dieselben 26 Suiten einzeln mit Ruby 3.4-WASM im isolierten
+WASI-Shim OK (ohne EXE-Test). Die 3.4-JSON-/Event-
+Brücken nutzen echte C++-Fixtures (14 Dateien/0 Format- oder Semantik-
+fehler, 17 Event-Checks/0 Fehler), da WASM kein Open3 ausführen kann.
+Win64-Editor, Renderer, Terrain und Ruby-VM wurden cross-kompiliert;
+zusätzliche unsichtbare Windows-Listboxprüfungen wurden lokal nicht ausgeführt.
+Der spätere 19q-CI-Lauf baut unter Windows mit Ruby 3.4 und prüft WARP sowie
+die eingebettete Texturbrücke (Ergebnisse im 19q-Abschnitt). Interaktive
+GUI-/Hardware-GPU-Prüfung und GPU-Fehler-Injektion bleiben offen (Handoff/Backlog).
+
+## F6-Layout für kleine Arbeitsflächen (Etappe 19o.6)
+
+`event_layout.h` berechnet unabhängig von Win32 das Einpassen auf eine
+Monitor-Arbeitsfläche, DPI-Skalierung, Scrollgrenzen und Fokus-Nachführung.
+Die Formularfläche beträgt 1000×702 bei 96 DPI; Combo-Dropdowns sind eigene
+Popups und zählen nicht zu ihrer geschlossenen Zeile. Das äußere Fenster
+berücksichtigt Rahmen und Scrollleisten, wird auf dem Monitor des
+Hauptfensters zentriert/begrenzt und ist größenänderbar. Bei DPI- oder
+Arbeitsflächenwechsel werden Größe, Schrift und Koordinaten angepasst.
+
+`event_view_win.h` hält logische Originalkoordinaten aller Controls und
+positioniert beim Scrollen auch vollständig außerhalb des Ausschnitts
+befindliche Kinder per `DeferWindowPos`. Die Fensterleisten bleiben bei
+genügend Platz deaktiviert sichtbar; Mausrad wird nur verarbeitet, wenn es
+kein Kind verarbeitet, Umschalt+Rad scrollt horizontal. Nach einem echten
+Fokuswechsel und nach Validierungsfehlern wird der Fokus sichtbar gemacht;
+manuelles Scrollen springt nicht zum alten Fokus zurück. Die Controls bleiben
+direkte Dialogkinder, damit `WM_COMMAND`, Auswahl-/Pending-Schutz, Combos,
+Mehrzeiler und `IsDialogMessageW` weiterhin denselben Weg nutzen.
+
+`tools/json_test.cpp` liest die tatsächlichen F6-Controlpositionen aus der
+Quelle und simuliert kleine Ansichten mit 100–300 % DPI, Scrollgrenzen,
+Fokus und negativen Monitorkoordinaten. Unter Windows ergänzt es unsichtbare
+Controltests für Nachrichten, Text, Auswahl, Combos und simulierten
+DPI-Wechsel; `build.ps1 -Test` linkt dafür User32/GDI32. Lokal bestanden
+613 portable Checks und Sanitizer; Win64 wurde cross-kompiliert und der
+Test gelinkt. Ein echter Windows-GUI-/DPI-/Mehrmonitor-Test ist weiterhin
+erforderlich (Testplan im Handoff); CI-Build oder versteckte Controls
+belegen keine tatsächliche Darstellung oder Tastatur-/Mausbedienung.
+
+## Datentreue im Event-Editor (Etappe 19o.5)
+
+`event_form.h` kapselt das portable Modell für Event-, Seiten- und
+Befehlsformulare. Lesen, Anzeigen und Öffnen verändern das JSON nicht.
+Vorher-/Nachher-Snapshots unterscheiden unberührte Werte von echten
+Eingaben; `event_batch_prepare` validiert eine Kombination der drei
+Formulare auf einer Kopie. Die Win32-Oberfläche übernimmt sie erst nach allen
+Prüfungen und gegebenenfalls Bestätigung. Ein Fehler rollt die gesamte
+Kombination zurück. Unveränderte große Integer-Tokens, präzise Floats, fehlende Felder,
+fremde Metadaten und verschachtelte Zweige bleiben erhalten. Nicht
+vollständig in Win32 darstellbare Felder sind geschützt; sie dürfen auch
+nicht still als Eingabe für einen neu eingefügten/umgewandelten Befehl
+dienen. Für editierte Zahlen und Texte gelten explizite Validierungen.
+
+Events ohne gültige nichtleere `pages`-Liste zeigen wie die Ruby-Laufzeit
+eine implizite Seite. Trigger- und Befehlsänderungen bleiben zunächst im
+Altformat. Neue Bedingungen oder Seiten materialisieren die alte Seite auf
+einer Kopie; alte Top-Level-`trigger`/`commands` bleiben erhalten, die
+Laufzeit verwendet bei vorhandenen Seiten die Seitenwerte. Nichtlistenförmige
+oder doppelte `pages` und semantisch nicht äquivalente Alttrigger/-befehle
+verhindern eine Migration, statt Daten zu überschreiben. Doppelte relevante
+Schlüssel werden nicht mehrdeutig bearbeitet (Ruby/Parser haben verschiedene
+Trefferregeln). Fehlende Zweige entstehen erst beim Einfügen; falsche Zweige
+bleiben erhalten. Ein Typwechsel und das Entfernen von Daten werden
+bestätigt. Wahlzweige bleiben nach Index erhalten, auch überzählige Zweige;
+Änderungen an Optionen lösen eine Zuordnungswarnung aus.
+
+F6 hält keine langlebigen JSON-Befehlszeiger mehr: `EventCommandPath`
+adressiert Zweig und Index auf der jeweils aktuellen Kopie. ListBox-
+Auswahlmeldungen werden nach dem Callback abgeglichen; Button-Aktionen und
+Aktionen des Hauptfensters klären noch gepostete Auswahlwechsel. Bei Pending-Eingaben fragt
+`resolve_event_edits()` vor Auswahl, Schließen, strukturellen Aktionen,
+Speichern und Karten-/Projektwechsel. Nein verwirft nur den Entwurf,
+Abbrechen erhält ihn und die alte Auswahl. `data_prompt` sperrt andere
+Editorfenster und verschiebt reentrante Auswahlmeldungen. Die Karte wird
+erst bei tatsächlicher Änderung `dirty`.
+
+Neue Events und Kopien erhalten positive freie IDs und eindeutige Namen
+gegenüber darstellbaren Event-/NPC-Namen (Self-Switch-/Spielstandschlüssel);
+geänderte kollidierende Namen werden abgelehnt. Auch eine kollisionsfreie
+Umbenennung braucht Bestätigung, weil alte Spielstände und Self-Switches nicht
+auf den neuen Schlüssel migriert werden. Die ID-Suche berücksichtigt
+doppelte Schlüssel und arbeitet auch bei vielen Events effizient. Kopien
+inkrementieren ganzzahlige Koordinaten exakt; fehlende, ungültige oder nicht
+verschiebbare Koordinaten bleiben erhalten und werden gemeldet. Bei neu
+eingegebenem `input_number` muss `initial` zur Ziffernzahl passen, damit
+Ruby den Wert nicht still klemmt; unveränderte historische Werte bleiben.
+F2/F5 erfordern weiterhin ein geschlossenes F6-Fenster (seine
+Befehlsreferenzen zeigen in den Kartenbaum); Undo deckt seit Z8 auch Events
+und Karten-Eigenschaften ab.
+
+`tools/json_test.cpp` prüft alle 26 Typen, Migration, Batch-Rollback,
+Duplikate, große Zahlen, Schutz und echte Karten. `event_bridge_check.rb`
+lädt C++-Ergebnisse mit Ruby `Event`/`Interpreter` (einschließlich Choices,
+Self-Switch-Isolation und Zahleneingabe); `sync_test.rb` liest Modell und
+Win32-Typ-/Trigger-Listen. Lokal 577 portable Checks/0 Fehler, Sanitizer,
+Win64-Cross-Kompilierung und 17/0 Event-Brückenchecks via Ruby-WASM-Fixture;
+native Open3-Ausführung und vollständigen Windows-Link prüft CI. Die GUI und
+Auswahl-/MessageBox-Abläufe benötigen weiterhin einen echten Windows-Live-Test.
+Zum überarbeiteten F6-Layout und dem ausstehenden DPI-Test siehe 19o.6 oben.
+
+## Datentreue im Objektformular (Etappe 19o.4)
+
+`object_props_form.h` liest X/Z, Rotation (Grad) und Material als
+Formular-Snapshot. `object_props_prepare` prüft Änderungen vollständig auf
+einer Kopie; nur tatsächlich veränderte Felder werden ersetzt. Unberührte
+Integer-Tokens und Kommazahlen, Y-Versatz, fehlende Felder und unbekannte
+Eigenschaften bleiben erhalten. Neue Zahlen sind endlich, maximal ±1 Mio.
+und erlauben Dezimalkomma; Material ist einzeiliges UTF-8. Ungültige
+Eingaben verhindern die gesamte Übernahme; fehlerhafte oder nicht
+darstellbare Altdaten erfordern vor dem Ersetzen Zustimmung. Doppelte
+Eigenschaften und Texte, die ein Win32-Editfeld nicht verlustfrei
+zurückgibt, sind für die jeweilige Eingabe gesperrt. F3 nutzt dieselbe
+Vorbereitung und schützt ein nicht darstellbares altes Material.
+
+Auswahl, Undo/Redo, Duplizieren, Drehen, Löschen, F3-Materialaktionen,
+F5, Karten- und Projektwechsel sowie Schließen klären offene Formulareingaben;
+Strg+S übernimmt sie vor dem Speichern. Ein unverändertes Formular erzeugt
+keinen Undo-Schnappschuss. Win32-Listen-/Baumauswahl wird nach Abschluss
+ihrer Benachrichtigungen abgeglichen; bei Abbruch wird die alte Auswahl
+wiederhergestellt. Daten-Rückfragen sperren auch moduslose Nebenfenster.
+Objekt-Feldfokus unterdrückt Kamera-/Bearbeitungskürzel, nicht aber Strg+S.
+Tasten anderer Fenster oder Programme steuern weder Kamera noch Objekte.
+Die Kartenbaum-Einfügetexte bleiben bis zum jeweiligen Win32-Aufruf gültig.
+
+Ein Drag speichert den Griffpunkt und den ursprünglichen Objektwert. Erst
+nach Bewegung über eine halbe Rasterzelle ändert sich eine Achse; nur
+bewegte Achsen werden eingerastet. Beim Zurückziehen zum Anfang werden
+ursprüngliche Zahlentypen, Präzision und fehlende/null-Felder restauriert.
+Undo wird beim ersten tatsächlichen Positionswechsel angelegt, und Capture
+endet bei Zustandswechsel oder Verlust. Die Viewport-Höhenabfrage klemmt
+Positionen vor dem Terrain-Index-Cast auf die Kartengrenzen. Objekte mit
+ungültigen, mehrfachen oder extremen X/Y/Z-/Drehungswerten bleiben im
+JSON und in der Liste, werden aber nicht gerendert oder gepickt.
+
+`map_document.h` prüft transaktional vor dem Laden: gültige JSON-Wurzel,
+UTF-8/Unicode, keine nicht darstellbaren Kommazahlen und höchstens ein
+`objects`, das, falls vorhanden, eine Liste sein muss. Andere doppelte
+Schlüssel bleiben erhalten; Objektfelder mit Duplikaten sind gesperrt.
+`json_validation.h` und `text_validation.h` sind gemeinsame Prüfer für
+Karte und F9. Die Prüfung deckt nicht alle semantischen Extremwerte ab; der gezielte
+Terrain-/Atmosphärenschutz wurde in 19p ergänzt. Karten behalten
+die Originalbytes ihres letzten Ladens/Speicherns: Vor Speichern oder
+Löschen wird bei externen Änderungen gefragt. Der frühere Pfad über
+`atomic_file_win.h` ist seit 19s durch die oben beschriebene Handle-
+Transaktion ersetzt; sie ist kein atomarer Namensaustausch.
+
+`tools/json_test.cpp` testet u. a. 400-stellige Integer, präzise Werte,
+ungültige und doppelte Felder, Preview-/Drag-Schutz, Rückstellen und die
+echten Dorfkarten sowie Dateischnappschüsse. Lokal: 390 portable Checks/0
+Fehler, ASan/UBSan/float-cast-overflow, Win64-Cross-Kompilierung und 25
+Ruby-WASM-Tests (ein EXE-Skip); die Ruby/C++-Brücke prüfte 14 Dateien/0
+Fehler. Die Windows-CI führt zusätzliche kopflose Tests der gemeinsamen
+Dateihilfe aus (Unicode-Pfad, gesperrtes Ziel, kein Überschreiben bei
+Neuanlage, mehrere Blöcke). Ein echter Windows-GUI- und End-to-End-Test
+der Dateikonflikt-Dialoge steht aus.
+
+## Datentreue im F9-Datenbankdialog (Etappe 19o.3)
+
+`database_form.h` liest Text, Integer, Float und Gegnerlisten als portable
+Formularwerte. `database_form_prepare` prüft alle geänderten Felder und
+Gold auf einer Kopie, `database_form_commit` übernimmt erst nach Rückfragen.
+Unveränderte Werte, Typen, fehlende Felder (auch Helden-Level/Exp) und
+unbekannte Daten werden nicht ergänzt oder gerundet. Ganzzahlen werden
+als Dezimaltext mit beliebiger Stellenzahl eingegeben (optional Plus/Minus,
+führende Nullen werden normalisiert), Dezimalwerte müssen endlich sein und
+dürfen Dezimalkomma/Exponent verwenden. Semantische Bereiche wie HP > 0
+oder Drop-Chance 0..1 werden weiterhin nicht geprüft.
+
+Gold ist unabhängig von der Eintragsauswahl. Bei Fehleingaben bleiben alle
+Entwürfe erhalten und Auswahl/Reiter wechseln nicht. Gegner-IDs können
+doppelt vorkommen; mehrdeutige/falsche Altdaten werden bei Listenänderung
+bestätigt, Nicht-Objekte bleiben bis zum bestätigten Löschen stehen. F9
+sperrt Einzeltexte, die das Windows-Editfeld nicht verlustfrei darstellen
+kann. Fehlende Sammlungen entstehen erst bei Neu, falsche Sammlungen nur
+nach ausdrücklicher Zustimmung. Schließen und Neu laden fragen bei
+ungespeicherten Änderungen; beim Schließen des Editors wird F9 ebenfalls
+berücksichtigt.
+
+Ungültiges JSON, doppelte Schlüssel, ungültiges UTF-8/Unicode, falsche
+Wurzeltypen und nicht endliche Float-Altwerte werden nicht geladen. Ein
+Lesefehler ersetzt weder den bisherigen Entwurf noch die Datei. Speichern
+vergleicht die Dateibytes mit dem Stand beim Laden/Speichern, fragt bei
+externen Änderungen. Seit 19s wird der bestätigte Stand anschließend unter
+einer Handle-Sperre erneut geprüft und ohne ersetzendes Rename veröffentlicht
+(Grenzen siehe oben). Fehlende database.json lässt sich explizit neu speichern.
+
+`tools/json_test.cpp` testet die Logik einschließlich ungültiger Dokumente,
+fehlender Auswahl, sehr großer Werte, kaputter Listen, Konfliktvergleich
+und der mitgelieferten Datenbanken. Lokal: 314 C++-Checks und ASan/UBSan
+erfolgreich, Win64 cross-kompiliert, Ruby-WASM 25 OK/1 Windows-EXE-Skip.
+Die Win32-Dateioperationen und Dialog-Abläufe sind damit nicht grafisch
+getestet; ein echter Windows-Live-Test steht aus.
+
+## Datentreue Block-Zonen im F2-Dialog (Etappe 19o.2)
+
+`blocked_form.h` zeigt für jeden vorhandenen Arrayeintrag eine temporäre
+Zeilenmarke `#1:` usw. (keine neue JSON-Eigenschaft). Umordnen und Ändern
+derselben markierten Zeile behalten Zusatzfelder und unberührte Zahlen samt
+Typ/Präzision. Neue Zeilen ohne Nummer benutzen `x; z; w; h` oder die alte
+`x,z,w,h`-Syntax; Semikolon erlaubt Dezimalkommas. Entfernte Nummern und
+ungültige ersetzte Altdaten melden sich vor dem Übernehmen zur Bestätigung.
+Doppelte/unbekannte Marken, nicht endliche Zahlen, Werte über 1.000.000 und
+nichtpositive neue Breiten/Höhen werden abgelehnt; ungültige alte Einzel-
+felder (`?`) und Nicht-Objekte lassen sich unverändert mitführen. Zu lange
+bzw. im Windows-Editfeld nicht darstellbare Listen werden gesperrt.
+
+`blocked_form_prepare` baut einen validierten Entwurf ohne Schreibzugriff.
+Erst nach allen Block-/Encounter-Prüfungen und Bestätigungen übernimmt
+`map_props_apply` die F2-Felder; bei Fehler bleibt die gesamte Karte
+unverändert. F6 muss vor F2 für konsistente Karten-/Formularentwürfe
+geschlossen sein. `json_test.cpp` prüft u. a. gleiche
+Geometrien mit verschiedenen Zusatzdaten, Umordnung, Zahlenpräzision,
+Lösch-/Ersetzungswarnungen, fehlerhafte Daten und atomare Übernahme.
+Grafischer F2-Live-Test auf Windows steht weiterhin aus.
+
+## Exakte JSON-Ganzzahlen (Etappe 19o.1)
+
+Ganzzahlige JSON-Tokens werden in `JsonValue` zusätzlich zur double-Näherung
+als validierte Dezimalzeichenfolge gehalten und beim Schreiben unverändert
+ausgegeben (auch außerhalb des double-Bereichs). `number()` liefert für
+Berechnungen weiterhin nur die Näherung; der Wert ist privat, Ersetzen
+erfolgt über `make_num`/`make_integer`, `increment()` arbeitet für gelesene
+Ganzzahlen exakt. Das sichere Inkrement nutzen Objekt-/Event-Duplizieren;
+seit 19o.5 schreibt F6 unveränderte Formularwerte nicht mehr zurück.
+Für neue `make_num(..., true)`-Werte schreibt der Generator die ganzzahlige
+double-Näherung ohne int64-Cast. JSON-Zahlen werden streng nach Grammatik
+eingelesen; `-0` als Ganzzahl wird wie in Ruby zu `0` normalisiert.
+
+Tests decken 2^53, 2^63, negative und 400-stellige Werte, Kopien, Änderungen,
+Inkremente und ungültige Tokens ab. Die Ruby-JSON-Brücke vergleicht außerdem
+Typen und synthetische große Zahlen. Grenzen: Kommazahlen/Rechenoperationen
+bleiben double-basiert; F6 und das Objektformular schützen seit 19o.5 bzw.
+19o.4 unberührte Formularfelder.
+
+## NPCs, Schilder und Objekte im Platzier-Editor (Etappe 19n)
+
+F5 bzw. „Events → NPCs, Schilder und Objekte“ öffnet einen modalen Dialog
+mit Kategorienliste, Neu/Löschen und Formular. X/Z sind Weltpositionen, Y ist
+ein optionaler Versatz zur Geländehöhe; Objektdrehung/Schilddrehung wird im
+Dialog in Grad, im JSON in Radiant geführt. Die letzte Cursor-Bodenposition
+lässt sich übernehmen. NPCs haben Name, Tempo, Radius, Wegpunkte (`X; Z`,
+Dezimalkomma erlaubt) und einen ersten Text. Schilder sind gewöhnliche
+Action-Events mit eindeutiger ID, `visual: "schild"` und Textbefehl; die
+zwei nicht-soliden Zeichenknoten werden beim Terrain-Neubau aktualisiert.
+Bestehende Objekte behalten ihren Prefab-Typ und alle nicht geänderten Felder.
+
+`placement_form.h` validiert auf Kopien und bewahrt unbekannte Eigenschaften,
+weitere Befehle und unveränderte präzise Zahlen. Ungültige alte Wegpunkte
+werden erst nach Rückfrage ersetzt; nicht darstellbare/komplexe Texte werden
+nicht überschrieben. Mehrseitige Schilder werden in F6 weiterbearbeitet;
+komplexe NPC-Kommandos sind im Formular nur eingeschränkt editierbar. Der
+Dialog sammelt Änderungen auf einer Kartenkopie (OK übernimmt, Abbrechen
+verwirft, Strg+S speichert), deaktiviert die übrigen Fenster und verlangt
+einen geschlossenen Event-Editor, damit dessen Formularzustand und die
+bearbeitete Kartenkopie nicht auseinanderlaufen.
+NPCs und Schilder samt Wegpunkten werden im Standalone-Editor angezeigt.
+Der Platzier-Dialog legt vor dem Ersetzen der Wurzel einen Schnappschuss der
+ganzen Karte ab (Z8); Objekt-, NPC- und Schilder-Änderungen liegen damit im
+selben Undo-Strang. Der Undo-Stapel wird bei jedem Kartenladen geleert, damit
+keine Daten aus einer anderen Karte auftauchen.
+
+Laufzeit: `Npc` und `Prefabs.instantiate` berücksichtigen optionales `y`;
+Kollision und E-Reichweite bleiben wie bisher zweidimensional in X/Z.
+`Game.update` verarbeitet auch NPC-Events und `Game.pickables` verdeckt ihre
+Events nicht mit Körperknoten. Script-Nodes werden unabhängig vom Namen
+nicht als Schildgrafik behandelt. Einmalig ausgelöste NPC-Auto-/Touch-Events
+überleben Spielstände; ältere Spielstände ohne `fired` bleiben gültig.
+MapCheck und F10 prüfen ungültiges `y`.
+Tests: `json_test.cpp`, `npc_test.rb`, `map_objects_test.rb`, `mapcheck_test.rb`
+und `encounter_test.rb` (echter Spielablauf). Ein grafischer Windows-Test
+für F5, Layout/Tab und Playtest steht noch aus.
+
 ## Ruby-API (Stand Etappe 2)
 
 | API | Bedeutung |
@@ -935,13 +3072,15 @@ stimmen automatisch.
 | `Rune::Camera.mode = :first \| :third` | Kameramodus |
 | `Rune::Camera.yaw` / `.yaw =` | Blickrichtung (Radiant) |
 | `Rune::Camera.player_position` | Spielerposition (aus der Physik) |
-| `Rune::World.generate(width: 240, height: 240, resolution: 192, seed: 7, amplitude: 18.0)` | Gelaende bauen (rechteckig, height entfaellt = Quadrat) |
+| `Rune::World.generate(width: 240, height: 240, resolution: 192, seed: 7, amplitude: 18.0)` | Gelände bauen (rechteckig, height entfällt = Quadrat) |
 | `Rune::Gfx.fog(an, farbe, sichtweite)` | Distanznebel an/aus, Nebelfarbe, Distanz |
-| `Rune::World.height_at(x, z)` | Bodenhoehe an einer Stelle |
-| `Rune::World.ready?` | Gelaende vorhanden? |
+| `Rune::World.height_at(x, z)` | Bodenhöhe an einer Stelle |
+| `Rune::World.ready?` | Gelände vorhanden? |
 | `Rune::Player.position` / `.teleport(x,y,z)` | Spieler |
 | `Rune::Player.on_ground?` / `.speed=` / `.jump_speed=` | Zustand/Tuning |
 | `Rune::Physics.clear_solids` / `.add_solid(x,y,z, sx,sy,sz)` / `.solid_count` | Hindernisse |
+| `Rune::Physics.solid_at?(x,y,z)` | Punkt in einem Hindernis? (19k.3, für `Passage.hindernis?`) |
+| `Rune::Physics.clear_blocked` / `.add_blocked(x,z,w,h)` / `.blocked_count` / `.blocked?(x,z)` | Block-Zonen der Karte (19k.2) |
 | `Rune::Input.down?(:w)` / `pressed?(:f5)` | Tastenzustand |
 | `Rune::Input.mouse_delta` / `.wheel` | Mausbewegung |
 | `Rune::Input.mouse_position` | Zeiger in Fensterpixeln `[x, y]` (im Fang-Modus: Mitte) |
@@ -958,13 +3097,12 @@ stimmen automatisch.
 
 ## Tasten
 
-`F4` Editor an/aus · im Editor: `1..9` Typ, Linksklick setzen, Rechtsklick
-löschen, `R` drehen, `G` Raster, `N` neue Karte, `V`/`B` Karte zurück/vor,
-`Strg+S` speichern ·
+RuneEditor: `F4` startet den Playtest als eigenen Prozess. Im Spiel gibt es
+seit 19t keinen Editor-Modus mehr.
 `WASD` laufen · `Shift` rennen · `Leertaste` springen · `E` reden/benutzen ·
 `F1` First-Person · `F3` Third-Person · `F2` Debug-Position ins Log ·
 `F5` Ruby neu laden · `F12` Screenshot nach `log/screenshot_N.bmp` ·
-`Esc` Menue (Speichern/Laden/Titel) bzw. Maus freigeben · `Mitte` Fang umschalten · Klick = Event/Picking ·
+`Esc` Menü (Gegenstand/Fertigkeit/Status/Speichern/Laden/Titel) bzw. Maus freigeben · `Mitte` Fang umschalten · Klick = Event/Picking ·
 Titelbildschirm: `1..9`/`Hoch`/`Runter`/Maus Projekt wählen, `Enter`/Klick
 spielen, `L` Fortsetzen, `N` neues Projekt, `D` löschen (J = ja), `Esc` beenden
 
@@ -981,15 +3119,27 @@ Eingabe, Welt, Textfenster und Teleport. Damit ist alles ohne C++-Neubau
 | `game/engine/event.rb` | `Event` — Position, Radius, Auslöser, Kommandoliste |
 | `game/engine/interpreter.rb` | `Interpreter` — führt Kommandos aus, hält das Textfenster |
 
-**Auslöser:** `action` (in Reichweite + `E`) · `touch` (Betreten, einmalig) ·
-`auto` (beim Kartenstart). Es läuft immer nur **ein** Interpreter; solange das
-Textfenster offen ist, wird nichts Neues ausgelöst.
+**Auslöser:** `action` (in Reichweite + `E`) · `touch` (Wiederbetreten:
+jede Ankunft in Reichweite, Z6/D2) · `auto` (XP-Autorun: Neustart, sobald
+der Interpreter frei ist, bis zum Seitenwechsel, Z6/D1). Es läuft immer nur
+**ein** Interpreter; solange das Textfenster offen ist, wird nichts Neues
+ausgelöst.
 
 **Kommandos** (in `game/data/maps/*.json`):
 
 | Kommando | Wirkung |
 |---|---|
 | `{"cmd":"text","lines":[…]}` | Nachrichtenfenster, blockiert bis `E` |
+
+**Kombi-Fenster (Runde 21, wie XP):** `text`, `choices` und `input_number`
+teilen sich **ein** Fenster. `Interpreter#visible_lines` hält die sichtbaren
+Zeilen; `text_waiting?` sagt, ob der Text auf Bestätigung wartet (dann blinkt
+▾). Nach der letzten Zeile bleibt der Text stehen: folgt eine Wahl, erscheint
+sie darunter im selben Fenster; folgt ein anderes Kommando, schließt das
+Fenster (XP-Regel „der Nachrichtenblock endet beim ersten anderen Befehl").
+`busy_text?` heißt jetzt „Fenster offen", `message` bleibt der Zugang zu den
+*wartenden* Zeilen (Tests/Skripte). Geprüft von `tools/event18f_test.rb`
+(7 Kombi-Checks).
 | `{"cmd":"switch","name":…,"value":true}` | Schalter setzen |
 | `{"cmd":"variable","name":…,"value":n}` / `,"add":n` | Variable setzen/erhöhen |
 | `{"cmd":"if_switch","name":…,"value":true,"then":[…],"else":[…]}` | Verzweigung |
@@ -997,6 +3147,10 @@ Textfenster offen ist, wird nichts Neues ausgelöst.
 | `{"cmd":"wait","seconds":n}` | blockiert für n Sekunden |
 | `{"cmd":"teleport","x":…,"z":…,"yaw":…}` | Spieler versetzen |
 | `{"cmd":"log","text":…}` | Zeile ins Log |
+
+Die Tabelle zeigt die häufigsten Befehle; die **vollständige Liste aller 26
+Typen** mit Bereich, Pflicht-/optionalfeldern und Beschreibung steht im
+Register `docs/befehle.json` (Z8, geprüft von `tools/befehle_test.rb`).
 
 Test ohne Engine: `ruby -I game/engine tools/event_test.rb` (23 Prüfungen,
 Exit-Code 0 = grün).
@@ -1017,7 +3171,7 @@ geprüft — `t` bleibt in Weltmetern, weil nur gedreht, nicht skaliert wird.
 | Modus | Mauszeiger | Strahl kommt aus | Zweck |
 |---|---|---|---|
 | Gefangen | versteckt, Mitte | Fadenkreuz in der Bildschirmmitte | Egoperspektive: schauen + zielen |
-| Frei | sichtbar, echtes Koordinatenpaar | Position des echten Zeigers | Menü/Editor: hover + klicken |
+| Frei | sichtbar, echtes Koordinatenpaar | Position des echten Zeigers | Menü/Spiel: hover + klicken |
 
 Im gefangenen Modus steht `mouse_position` immer in der Bildschirmmitte
 (das Fadenkreuz). `wm_mousemove` und `update_mouse_delta` pflegen die
@@ -1031,23 +3185,10 @@ Objekte schreiben Name/Größe/Abstand ins Log.
 
 Test ohne Engine: `ruby -I game/engine tools/pick_test.rb` (19 Prüfungen).
 
-## Editor (Etappe 5)
+## Prefabs und Kartenobjekte (Etappe 5, Szenenbau seit 19t)
 
-`F4` schaltet den Editor an: Mausfang aus, Palette links, Zielmarker (gelber
-Drahtkasten) auf dem Boden unter dem Zeiger.
-
-| Taste | Wirkung |
-|---|---|
-| `1` … `9` | Objekttyp aus der Palette wählen |
-| Linksklick | Objekt auf den Boden setzen (Raster 1.0 m, `G` = 0.25 m) |
-| Rechtsklick | Objekt unter dem Zeiger löschen |
-| `R` | Drehung in 30-Grad-Schritten (für neue Objekte) |
-| `Strg+S` | Karte speichern (`game/data/maps/<id>.json`) |
-
-**Ablauf:** Der Strahl aus der Mausposition wird alle 0.4 m am Gelände
-entlangmarschiert, bis er die Höhenfläche durchstößt (`Editor.terrain_hit`).
-Der Treffer wird auf das Raster gerundet. Gespeichert wird nur die Objektliste;
-die Geometrie steht in den Prefabs.
+Der damalige Ingame-Editor ist seit 19t entfernt; bearbeitet wird in
+RuneEditor. Die Prefabs und der gemeinsame Laufzeit-Szenenbau bleiben.
 
 **Prefabs** (`game/engine/prefabs.rb`) — 9 Typen mit je einer Liste von Kästen
 (Versatz `d`, Größe `s`, Farbe `c`, `solid`):
@@ -1060,7 +3201,7 @@ Schweben); die Animation hängt dann in `Prefabs.instantiate` am Knoten.
 ```json
 "objects": [ { "type": "haus", "x": -4.0, "z": -2.0, "rot": 0.0 } ]
 ```
-Beim Laden baut `Editor.rebuild` alle Objekte in die Szene ein und meldet die
+Beim Laden baut `MapObjects#rebuild` alle Objekte in die Szene ein und meldet die
 Hindernisse neu an die Physik; sie sind also sofort begehbar/fest.
 
 Das ganze Dorf ist Datenmaterial: Weg (18 Stücke), Zaun (7 Segmente),
@@ -1070,7 +3211,7 @@ Brunnen, sechs Häuser, drei Kristalle, vier Laternen liegen als 39 Objekte in
 Konvertiert wurde einmalig mit `tools/village_to_json.rb` (Positionen 1:1 aus
 dem alten Code übernommen).
 
-Test ohne Engine: `ruby -I game/engine tools/editor_test.rb` (26 Prüfungen).
+Tests ohne native Engine: `ruby -I game/engine tools/map_objects_test.rb` und `ruby tools/runtime_boot_test.rb`.
 
 ## Versionsverwaltung
 
@@ -1078,10 +3219,10 @@ PortableGit 2.56.1 liegt ohne Adminrechte in `C:\Users\jusagu\Tools\PortableGit`
 und ist im Benutzer-PATH (`...\PortableGit\cmd`) — neue Terminals kennen
 `git` direkt. Im Projektordner gilt:
 
-- `git status` / `git diff` — Was geaendert?
+- `git status` / `git diff` — Was geändert?
 - `git add -A && git commit -m "..."` — Stand sichern
 - `git log --oneline` — Historie
-- `git checkout -- <datei>` — einzelne Datei zuruecksetzen
+- `git checkout -- <datei>` — einzelne Datei zurücksetzen
 
 `.gitattributes` schaltet jede Zeilenende-Konvertierung ab (`* -text`), damit
 Diffs nicht durch CRLF-Rauschen unlesbar werden. Ignoriert werden `build/`,
@@ -1101,15 +3242,17 @@ Ein **Projekt** ist ein Ordner `projekte/<slug>/data/` — dieselbe Struktur wie
 `game/data` (`system.json`, `maps/*.json`). `Database.root` zeigt je nach
 `$project_root` auf `game/data` oder auf das Projekt; alle Lade-/Speicherpfade
 (Karten, Editor, Events) laufen darüber. `Project.ensure_demo` kopiert beim
-ersten Start `game/data` nach `projekte/dorf`, damit es immer ein Beispiel gibt.
+ersten Start `game/data` nach `projekte/dorf`, damit es immer ein Beispiel gibt;
+nachgezogen wird der Demo-Stand mit `ruby tools/sync_demo.rb` (Vorlage =
+Quelle, nur additiv).
 Ein neues Projekt bekommt nur eine leere Karte `welt01` (nur Terrain,
 Startpunkt 0/0) — keine Objekte, keine Events.
 
 Der Titelbildschirm zeigt das **Demodorf als 3D-Kulisse**: `Launcher.activate`
 generiert das Terrain aus `game/data` und baut die Szene mit
-`Editor.rebuild`; die Kamera kreist, indem der Spieler (unsichtbar) auf einem
+`MapObjects#rebuild`; die Kamera kreist, indem der Spieler (unsichtbar) auf einem
 Kreis um das Dorf teleportiert wird und `Camera.yaw` entgegen zeigt. Die Maus
-ist im Menue frei (`Rune::Input.capture = false` — die Engine startet
+ist im Menü frei (`Rune::Input.capture = false` — die Engine startet
 gefangen!), Einträge per Hoch/Runter **oder** Mausklick wählbar.
 
 Pro Projekt zeigt die Liste Titel, Kartenanzahl und "zuletzt gespielt"
@@ -1118,10 +3261,9 @@ Start). `D` löscht das markierte Projekt nach Rückfrage (`Project.delete`).
 Beim Spielstart fängt der Launcher die Maus wieder ein, damit der Mausblick
 wie bisher sofort funktioniert.
 
-Im **Editor** kamen Kartenbefehle dazu: `N` legt `welt02`, `welt03`, … an und
-wechselt hin, `V`/`B` blättern zurück/vor (ungespeicherte Änderungen werden
-dabei automatisch gesichert). `Game.change_map` sichert die schmutzige Karte,
-bevor sie entladen wird.
+Kartenbearbeitung und Kartenwechsel im Editor erfolgen über RuneEditor.
+`Game.change_map` bleibt als Spielscript-Aufruf für einen Laufzeitwechsel
+erhalten, speichert dabei aber keine Editor-Entwürfe.
 
 ## Datenformat
 
@@ -1156,7 +3298,7 @@ Events referenzieren nur Positionen. Etappe 4 (Editor) schreibt beides in JSON.
    `std::snprintf` scheitert dann mit `'ruby_snprintf' is not a member of 'std'`.
    In `vm.cpp` deshalb Strings mit `std::to_string` zusammensetzen.
 6. **Terrain- und Box-Draw teilen sich einen Objekt-CB.** `end_frame()` zeichnet
-   das Gelände zuerst mit Identitätsmatrix und Weiß, danach werden die Box-Puffer
+   das Gelände zürst mit Identitätsmatrix und Weiß, danach werden die Box-Puffer
    wieder gebunden. Wer Draw-Reihenfolgen ändert, muss beides beachten.
 7. **UI-Textbreite muss jeden Frame neu gemessen werden.** Die Textbefehle werden
    pro Frame neu erzeugt (Breite 0). Nur das *Rastern* der GDI-Textur ist gecacht
@@ -1234,40 +3376,42 @@ Events referenzieren nur Positionen. Etappe 4 (Editor) schreibt beides in JSON.
 28. **Schatten brauchen eine zur Kamera passende Sonne.** Steht die Sonne
     hinter der Kamera, fallen alle Schatten hinter die Objekte — der
     Schatten-Pass arbeitet korrekt, aber im Bild ist nichts zu sehen.
-29. **Test-Attrappen muessen die echte API treffen und auch benutzt werden.**
+29. **Test-Attrappen müssen die echte API treffen und auch benutzt werden.**
     Der Sound-Test scheiterte doppelt an sich selbst: erst referenzierte er
-    `Sounds::REG` statt `Rune::Sound::REG` (die Attrappe haengt unter
+    `Sounds::REG` statt `Rune::Sound::REG` (die Attrappe hängt unter
     `Rune::`), dann rief er `Sounds.register_all` nie auf und wundernte sich
-    ueber leere Registrierung. Erst minimal reproduzieren (Stand-alone-
+    über leere Registrierung. Erst minimal reproduzieren (Stand-alone-
     Skript), dann den Test fixen.
-30. **Der Launcher laedt das PROJEKT, nicht `game/data`.** Aenderungen an
+30. **Das Spiel lädt das PROJEKT, nicht `game/data`.** (Seit Runde 12 ohne
+    Launcher über `Scene_Title`/`start_project`.) Änderungen an
     `game/data/maps/dorf.json` wirken im Spiel erst nach dem Neuanlegen des
     Demo-Projekts — `projekte/dorf/data/maps/dorf.json` ist eine Kopie.
-    Live-Tests mit Event-Aenderungen muessen die Projektdatei editieren
-    (oder das Projekt loeschen, `ensure_demo` kopiert neu).
-31. **Action-Events nehmen das ERSTE in Reichweite, nicht das naechste.**
-    Die Schleife ueber `@events` bricht beim ersten `near?`-Treffer ab —
+    Live-Tests mit Event-Änderungen müssen die Projektdatei editieren
+    (oder `ruby tools/sync_demo.rb` bzw. das Projekt löschen,
+    `ensure_demo` kopiert neu).
+31. **Action-Events nehmen das ERSTE in Reichweite, nicht das nächste.**
+    Die Schleife über `@events` bricht beim ersten `near?`-Treffer ab —
     Reihenfolge in der JSON-Datei entscheidet, nicht die Distanz.
-32. **PowerShell-JSON-Roundtrip zerstoert Textzeilen.** `ConvertFrom-Json`
+32. **PowerShell-JSON-Roundtrip zerstört Textzeilen.** `ConvertFrom-Json`
     + `ConvertTo-Json` verwandelt `"lines": ["A", "B"]` in einen einzigen
     String "A B". JSON-Dateien deshalb immer mit Ruby
     (`JSON.parse`/`JSON.pretty_generate`) editieren.
-33. **waveOut-Startverzoegerung = Menge vorgequeuer Stille.** Ein neuer
-    Sound wird erst in den naechsten neu gefuellten Puffer gemischt und
-    hoert sich also fruehestens nach dem Rest der Queue. Mit 4 x 8192
-    Samples (~740 ms Vorlauf) wirkte jeder Klick traeg. Kleine Puffer
-    (3 x 1024 = max ~70 ms) machen den Start sofort hoerbar — bei Frame-
-    Hengstern kann es dafuer kurz knacken, das ist der Kompromiss.
+33. **waveOut-Startverzögerung = Menge vorgequeuer Stille.** Ein neuer
+    Sound wird erst in den nächsten neu gefüllten Puffer gemischt und
+    hört sich also frühestens nach dem Rest der Queue. Mit 4 x 8192
+    Samples (~740 ms Vorlauf) wirkte jeder Klick träg. Kleine Puffer
+    (3 x 1024 = max ~70 ms) machen den Start sofort hörbar — bei Frame-
+    Hengstern kann es dafür kurz knacken, das ist der Kompromiss.
 34. **Der Launcher-Kamera-Abstand lebt im Spiel weiter.** Der Launcher
-    stellt `Rune::Camera.distance = 28` fuer die Weltuebersicht; beim
-    Spielstart wurde das nie zurueckgesetzt — die Third-Person-Kamera
-    schwebte 28 m ueber dem Dorf und jeder Kollisions-Clamp griff viel zu
-    spaet. `Game.setup` setzt jetzt 7 m.
+    stellt `Rune::Camera.distance = 28` für die Weltübersicht; beim
+    Spielstart wurde das nie zurückgesetzt — die Third-Person-Kamera
+    schwebte 28 m über dem Dorf und jeder Kollisions-Clamp griff viel zu
+    spät. `Game.setup` setzt jetzt 7 m.
 35. **Der Kamera-Strahl trifft die gegnerische Seite.** Die Kamera ist
     immer HINTER dem Spieler — ein vorn liegender Zaun blockt sie nie.
-    Kamera-Kollision greift nur, wenn der Spieler rueckwaerts in etwas
-    laeuft, an einem Hindernis steht und dreht, oder bergauf schaut. Tests
-    muessen diese Situationen gezielt aufbauen (Mausdrehung per
+    Kamera-Kollision greift nur, wenn der Spieler rückwärts in etwas
+    läuft, an einem Hindernis steht und dreht, oder bergauf schaut. Tests
+    müssen diese Situationen gezielt aufbauen (Mausdrehung per
     `SetCursorPos` vom Fensterzentrum aus injizieren — der Engine-Reset
     erzeugt pro Aufruf genau ein Delta).
 36. **`std::snprintf` neben Ruby-Headern bricht.** `ruby/subst.h` macht
@@ -1276,16 +3420,20 @@ Events referenzieren nur Positionen. Etappe 4 (Editor) schreibt beides in JSON.
     Dateien (`vm.cpp`) deshalb `snprintf` ohne `std::` rufen.
 37. **Projektkopien veralten.** `ensure_demo` legt `projekte/dorf` nur bei
     Neuanlegen aus `game/data` kopien an. Neue Kartenfelder (z. B. der
-    `"npcs"`-Block aus Etappe 13) fehlen in aelteren Projektkopien
-    weiterhin — das Spiel laeuft ohne NPCs und niemand meldet einen
+    `"npcs"`-Block aus Etappe 13) fehlen in älteren Projektkopien
+    weiterhin — das Spiel läuft ohne NPCs und niemand meldet einen
     Fehler. Nach Engine-Erweiterungen am Kartenformat die Projektkopien
-    pruefen oder das Projekt neu anlegen.
+    prüfen oder das Projekt neu anlegen. Seit Runde 13 hilft
+    `ruby tools/sync_demo.rb`: es ergänzt fehlende Top-Level-Schlüssel
+    additiv (z. B. `encounters`) und setzt database/scripts auf den
+    Vorlagenstand, ohne Demo-Werte (`last_played`, Höhen, Seiten) zu
+    überschreiben.
 
 38. **Einfrieren in der Luft.** Wird die Simulation pausiert
-    (`Simulation.paused`), waehrend der Spieler springt oder nach einem
+    (`Simulation.paused`), während der Spieler springt oder nach einem
     `enter_map` noch nicht gelandet ist, bleibt er eingefroren schweben
-    (`Boden=false`, y>0) und die Kamera haengt in der Hoehe. Vor dem
-    Pausieren pruefen: erst `Rune::Player.on_ground?` abwarten, dann
+    (`Boden=false`, y>0) und die Kamera hängt in der Höhe. Vor dem
+    Pausieren prüfen: erst `Rune::Player.on_ground?` abwarten, dann
     `paused = true` setzen.
 
 39. **Editor schreibt ein anderes JSON-Format als Ruby.** Schreibt der
@@ -1305,12 +3453,12 @@ Events referenzieren nur Positionen. Etappe 4 (Editor) schreibt beides in JSON.
 41. **Modaler Dialog blockiert den Render-Loop.** Eine eigene
     GetMessage-Schleife (modales Warten) stoppt die Render-Hauptschleife
     des Editors — der Viewport zeigt schwarz, weil das DXGI flip-model
-    Frames nicht zurueckbehält. Loesung: Eigenschaften-/Neue-Karte-Dialog
-    sind **moduslos**; die Hauptschleife rendert weiter, waehrend
+    Frames nicht zurückbehält. Lösung: Eigenschaften-/Neue-Karte-Dialog
+    sind **moduslos**; die Hauptschleife rendert weiter, während
     `view_proc`, `handle_shortcuts` und WM_COMMAND Eingaben ignorieren,
-    solange `g.props_dlg` offen ist. (Fuer Test-Injection in Edit-Felder:
+    solange `g.props_dlg` offen ist. (Für Test-Injection in Edit-Felder:
     cross-process `SetFocus` ist blockiert — Felder direkt per
-    `WM_SETTEXT` fuellen.)
+    `WM_SETTEXT` füllen.)
 
 ## Doppelklick-Deployment (Nacharbeit zu 18e)
 
@@ -1318,9 +3466,9 @@ Vorher starteten beide EXEn nur, wenn der MSYS2/Ruby-PATH gesetzt war —
 per Explorer-Doppelklick kam „libwinpthread-1.dll nicht gefunden" bzw.
 Aktivierungsfehler 0xc0150002. Drei Ursachen, drei Fixes:
 
-**1. libwinpthread statisch:** Der g++-Driver haengt HINTER den
+**1. libwinpthread statisch:** Der g++-Driver hängt HINTER den
 Nutzer-Flags `-lpthread` (dynamisch) an; ein einfaches `-Bstatic`
-vor `-lwinpthread` wirkt deshalb nicht. Loesung in build.ps1:
+vor `-lwinpthread` wirkt deshalb nicht. Lösung in build.ps1:
 `-Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive,-Bdynamic`
 — whole-archive erzwingt die statische libwinpthread.a, egal was
 danach kommt. Beide EXEn importieren die DLL nicht mehr.
@@ -1333,26 +3481,25 @@ kopiert deshalb diese drei Dateien plus den Ordner
 nach build/. Fehlt der Ordner: Fehler 0xc0150002 (Ereignisprotokoll
 SideBySide, Quelle der Diagnose).
 
-**3. RUBYLIB in vm.cpp:** Die Ruby-DLL berechnet ihr lib-Praefix
-relativ zum eigenen Speicherort. Liegt sie in build/, findet sie
-stdlib und Gems ('json') nicht mehr — das Spiel startet dann ohne
-Spielskripte („LoadError: json", 0 Draws). ruby::ruby::init() setzt
-deshalb RUBYLIB auf die acht Installationspfade (site_ruby,
-vendor_ruby, 3.4.0, x64-mingw-ucrt) — nur falls RUBYLIB nicht schon
-gesetzt ist. ruby_init_loadpath() nimmt die Variable in $LOAD_PATH auf.
+**3. RUBYLIB (historischer Stand 18e+):** Die Ruby-DLL berechnete ihr
+lib-Präfix relativ zu `build/`; der damalige Fallback setzte `RUBYLIB` auf
+feste Pfade unter `C:/Ruby34-x64`. Das war bei anderen Installationen oder
+vorgegebenem `RUBYLIB` unzuverlässig und löste erneut `LoadError: json` aus.
+Seit 19x wird die passende Bibliothek mitgeliefert und bevorzugt; Details
+und Grenzen stehen im aktuellen Abschnitt „Mitgelieferte Ruby-Laufzeit“.
 
-**Tauefalle fuer manuelle Link-Tests:** g++/gcc ohne den Toolchain-PATH
+**Tauefalle für manülle Link-Tests:** g++/gcc ohne den Toolchain-PATH
 schlagen mit Exit 1 und VOLLKOMMEN leerer Ausgabe fehl (cc1.exe kann
 nicht starten — Loader-Fehler, der auf stderr nicht ankommt). Immer
 vorher `$env:PATH = "C:\Ruby34-x64\msys64\ucrt64\bin;..."` setzen.
 PowerShell-Array-Parameter mit `-Wl,a,b` sind ok, inline nach
-`& $cmd -flag` wird an Kommas zerpflueckt („Argument in der
+`& $cmd -flag` wird an Kommas zerpflückt („Argument in der
 Parameterliste fehlt").
 
 **Verifiziert:** Doppelklick-Simulation ohne Ruby-PATH (PATH=
 C:\Windows\System32;C:\Windows): Editor-Fenster steht (Titel
 „RuneEditor - dorf - Dorf"), Spiel rendert (79 Draws, 0 Fehler), mit
-Ruby-PATH alle 13 Tests + live18e/18d/18c gruen.
+Ruby-PATH alle 13 Tests + live18e/18d/18c grün.
 
 
 ## Fullbild-Fix: schwarze Ränder beim Maximieren (Nacharbeit 18j)
@@ -1372,129 +3519,156 @@ Registrierung von `RuneEditorMain`.
 
 **Geprüft:** log/live_fullscreen.ps1 (9 Checks: SC_MAXIMIZE/
 SC_RESTORE programmatisch, Viewport-Log 937x828 -> 1300x937, Prozess
-lebt, kein [ERROR]). Visuelle Verifikation durch User im Vordergrund-
+lebt, kein [ERROR]). Visülle Verifikation durch User im Vordergrund-
 Fenster (Drossel-Falle aus 18j gilt nicht für echtes Maximieren).
 
 ## Kartenbaum wie RPG Maker XP (Etappe 18k)
+
+Historischer Stand. Etappe 26 hatte den Kartenbaum nach oben gelegt; die
+Recherche zum echten RPG Maker XP (Etappe 29, siehe
+`docs/XP_EDITOR_RECHERCHE.md`) zeigte: XP hat die Tileset-Palette links
+OBEN und den Kartenbaum links UNTEN. Seit Etappe 29 wieder so: Palette,
+Splitter, Kartenbaum; 3D-Ansicht Mitte, Inspektor rechts. Der Splitter
+steuert die Höhe des unteren Kartenbaums; Ziehen nach oben vergrößert ihn.
 
 Der Editor bekommt links oben eine **Kartenliste als Baum** (TreeView) -
 das zentrale Navigationselement des RPG Maker XP:
 
 **Aufbau:** Wurzel = Projektname, darunter alle Karten des Projekts
 (Item-LPARAM = Karten-Index). `maptree_fill()` pflegt den Baum parallel
-zum Karten-Menue (`rebuild_map_menu` ruft es), `load_map` synchronisiert
+zum Karten-Menü (`rebuild_map_menu` ruft es), `load_map` synchronisiert
 ihn nach dem Laden; die aktuelle Karte ist markiert
 (`TVS_SHOWSELALWAYS`, sichtbar auch ohne Fokus).
 
 **Bedienung (wie XP):**
-- Einzelklick auf eine Karte laedt sie (die schmutzige Karte wird vorher
-  gesichert wie beim Kartenwechsel im Menue).
-- Doppelklick oeffnet die Karten-Eigenschaften (F2-Dialog).
-- Rechtsklick: Kontextmenue Eigenschaften / Umbenennen / Neue Karte /
-  Loeschen. Umbenennen startet das **Inplace-Edit** im Baum
+- Einzelklick auf eine Karte lädt sie (die schmutzige Karte wird vorher
+  gesichert wie beim Kartenwechsel im Menü).
+- Doppelklick öffnet die Karten-Eigenschaften (F2-Dialog).
+- Rechtsklick: Kontextmenü Eigenschaften / Umbenennen / Neue Karte /
+  Löschen. Umbenennen startet das **Inplace-Edit** im Baum
   (TVS_EDITLABELS); der neue Name landet in `map_root["name"]` (nur die
-  aktuell geladene Karte), die Karte wird als geaendert markiert -
-  Strg+S speichert wie ueblich. Leerer Name verwirft das Edit.
+  aktuell geladene Karte), die Karte wird als geändert markiert -
+  Strg+S speichert wie üblich. Leerer Name verwirft das Edit.
 - Die Wurzel (Projekt) ist nicht umbenennbar (BEGINLABELEDIT blockiert).
+- **Seit Z8: Hierarchie wie XP.** Rechtsklick *Einrücken* bzw. `Tab` macht
+  die Karte zum Kind der Karte darüber, *Ausrücken* bzw. `Shift+Tab` holt sie
+  eine Stufe heraus; der Teilbaum wandert mit. Elternkarten lassen sich
+  aufklappen und sind (anders als früher) auch umbenennbar.
+
+**Hierarchie (Z8):** Die Tiefe steht **nicht** in den Kartendaten, sondern im
+Projekt: `system.json` → `"map_tree": { "<karten-id>": tiefe }`. Die Engine
+ignoriert den Schlüssel; `Project.touch` und die Editor-Transaktionen lassen
+ihn unangetastet. Die **Reihenfolge** der Dateiliste bleibt unverändert
+(Indizes bleiben stabil, `cur_map` wird weiterhin über den Dateinamen
+aufgelöst), nur die Einrücktiefe kommt dazu. Beim Laden normalisiert
+`map_tree_normalize()` (in `editor/map_tree.h`, portabel geprüft von
+`tools/editor_workflow_test.cpp`): erste Karte auf Stufe 0, jede weitere
+höchstens eine Stufe tiefer als ihre Vorgängerin, Maximum 8 - so gibt es
+nie einen Knoten ohne Elternteil. Geschrieben wird über dieselbe
+Dateitransaktion wie der Spielerstart (`DocumentStore`: beobachten, prüfen,
+schreiben, Konflikt melden); schlägt das Schreiben fehl, bleibt die alte
+Tiefe stehen und die Statusleiste meldet es.
 
 **Bedienblock:** Die linke Spalte ist jetzt zweigeteilt - oben der
 Kartenbaum (feste 150 px inkl. KARTEN-Label), darunter die Werkzeuge
-(18i-Logik unveraendert: Liste nimmt freien Platz, Block folgt).
-Mindestfensterhoehe bleibt 640 px; die Werkzeugliste wird dadurch etwas
-kuerzer (Viewort bleibt >= 80 px).
+(18i-Logik unverändert: Liste nimmt freien Platz, Block folgt).
+Mindestfensterhöhe bleibt 640 px; die Werkzeugliste wird dadurch etwas
+kürzer (Viewort bleibt >= 80 px).
 
-**Shortcut-Schutz:** Waehrend des Label-Edits sind die globalen
-Shortcuts abgeschaltet (Entf wuerde sonst Objekte loeschen, R drehen) -
-`handle_shortcuts` prueft `TreeView_GetEditControl`, dasselbe Muster
+**Shortcut-Schutz:** Während des Label-Edits sind die globalen
+Shortcuts abgeschaltet (Entf würde sonst Objekte löschen, R drehen) -
+`handle_shortcuts` prüft `TreeView_GetEditControl`, dasselbe Muster
 wie bei den moduslosen Dialogen.
 
-** IDs:** IDC_MAPTREE 3027, IDC_LBL_MAPS 3028, Kontextmenue
+** IDs:** IDC_MAPTREE 3027, IDC_LBL_MAPS 3028, Kontextmenü
 IDM_TREE_PROPS/NEW/RENAME/DELETE 3110-3113. TreeView-Klassen sind in
-InitCommonControlsEx ergaenzt (ICC_TREEVIEW_CLASSES).
+InitCommonControlsEx ergänzt (ICC_TREEVIEW_CLASSES).
 
-**Geprueft:** Live-Test log/live18k.ps1 (8 Checks: Control vorhanden,
+**Geprüft:** Live-Test log/live18k.ps1 (8 Checks: Control vorhanden,
 Wurzel + Karten vorhanden, Auswahl markiert, kein Edit offen, kein
-[ERROR], Prozess lebt), 16 headless Tests gruen. Umbenennen per
+[ERROR], Prozess lebt), 16 headless Tests grün. Umbenennen per
 Inplace-Edit ist im Live-Test nicht injizierbar (Edit-Control-Focus
-ueber Prozessgrenzen unzuverlaessig, bekannte Grenze wie 18a).
+über Prozessgrenzen unzuverlässig, bekannte Grenze wie 18a).
 
 ## Resize-Rendering und lesbares Editor-Log (Etappe 18j)
 
 Zwei Fixes rund ums Fenster-Resizen und die Live-Tests:
 
-**1. Rendern waehrend des interaktiven Resizes:** Beim Ziehen der Fenster-
-kante (oder Minimieren/Restore) laeuft die modale Schleife von Windows -
-die Render-Hauptschleife des Editors pausiert. Neue Flaechen blieben
+**1. Rendern während des interaktiven Resizes:** Beim Ziehen der Fenster-
+kante (oder Minimieren/Restore) läuft die modale Schleife von Windows -
+die Render-Hauptschleife des Editors pausiert. Neue Flächen blieben
 schwarz oder zeigten den Hintergrund (im Live-Test: das Spielfenster).
 - `WM_ENTERSIZEMOVE` setzt einen 16-ms-Timer (`IDT_RESIZE`), dessen
-  `WM_TIMER` `render_frame()` zieht und `g.resize_ticks` zaehlt.
+  `WM_TIMER` `render_frame()` zieht und `g.resize_ticks` zählt.
 - `WM_EXITSIZEMOVE` killt den Timer, legt Layout frisch an, rendert und
   protokolliert `Resize-Timer: N Frames waehrend des Ziehens gerendert`
-  (Anker fuer Live-Tests).
-- `WM_SIZE` rendert jetzt zusaetzlich sofort einen frischen Frame
+  (Anker für Live-Tests).
+- `WM_SIZE` rendert jetzt zusätzlich sofort einen frischen Frame
   (Reentrancy-Guard `in_size`), damit DWM nicht den falsch skalierten
   Altfrahmen zeigt.
-- `Renderer::resize()` cleart RTV+DSV und praesentiert einmal direkt nach
+- `Renderer::resize()` cleart RTV+DSV und präsentiert einmal direkt nach
   `ResizeBuffers` - der Backbuffer-Inhalt ist danach UNDEFINIERT, ohne
-  Clear stand Muell im Bild.
+  Clear stand Müll im Bild.
 
 **2. editor.log parallel lesbar (leicht gebrochene Live-Test-Kette):**
 `core::log_open` nutzt jetzt `_wfsopen(..., _SH_DENYNO)` statt
 `fopen_s("w")` - fopen_s sperrt exklusiv, weshalb kein Live-Test das Log
-waehrend des Editor-Laufs lesen konnte (alle alten Skripte mussten den
+während des Editor-Laufs lesen konnte (alle alten Skripte mussten den
 Prozess erst beenden; die Diagnose-Skripte dieser Etappe scheiterten
 daran zweimal, bevor die Ursache im Log-Code stand).
 
-**Live-Test-Wissen (wichtig fuer kuenftige Skripte):**
+**Live-Test-Wissen (wichtig für künftige Skripte):**
 - WM_ENTERSIZEMOVE/WM_EXITSIZEMOVE einfach per PostMessage senden - das
   ist dieselbe Nachrichtenfolge wie beim echten Zug an der Fensterkante,
   komplett ohne Maus (kein pixelgenaues Treffen der Resize-Border, kein
   Klauen des Desktop-Cursors - vorherige Versuche mit SetCursorPos/
   mouse_event-Drag scheiterten serienweise an SetForegroundWindow-
-  Einschraenkungen und falschen Hit-Tests: SC_SIZE|HTBOTTOMRIGHT ist
+  Einschränkungen und falschen Hit-Tests: SC_SIZE|HTBOTTOMRIGHT ist
   0xF011, nicht 0xF008 = HTMINBUTTON).
-- Drossel-Falle: DWM drosselt Present fuer verdeckte Hintergrund-Fenster
+- Drossel-Falle: DWM drosselt Present für verdeckte Hintergrund-Fenster
   auf ~8 fps - der Timer liefert im Test also nur ~1 Frame pro 120 ms.
-  Tests muessen >= 2 s zwischen ENTER- und EXIT-Nachricht warten, sonst
-  zaehlt der Handler 0 Frames (gilt nur fuer Tests; real steht der
+  Tests müssen >= 2 s zwischen ENTER- und EXIT-Nachricht warten, sonst
+  zählt der Handler 0 Frames (gilt nur für Tests; real steht der
   Editor beim Ziehen im Vordergrund).
-- Log dieser Laeufe zeigt: Editor-Start, Timer-Protokoll und Beenden
+- Log dieser Läufe zeigt: Editor-Start, Timer-Protokoll und Beenden
   landen sauber in editor.log, das Log bleibt dabei lesbar.
 
-**Geprueft:** Live-Test log/live18j.ps1 (6 Checks: Fenster gefunden,
-simulierte Resize-Schleife ueberlebt, Timer protokolliert 47 Frames,
+**Geprüft:** Live-Test log/live18j.ps1 (6 Checks: Fenster gefunden,
+simulierte Resize-Schleife überlebt, Timer protokolliert 47 Frames,
 programmatisches Resize + Viewport-Log, kein [ERROR]), 16 headless
-Tests gruen, Build ohne Warnungen.
+Tests grün, Build ohne Warnungen.
 
 ## Responsives Editor-Layout (Etappe 18i)
+
+Historische Maße und Live-Ergebnisse; das aktuelle Layout ist in 19w beschrieben.
 
 Problem (aus Screenshot gemeldet): Bei kleinem Fenster schoben sich
 „Undo (Strg+Z)" / „Redo (Strg+Y)" in die Statusleiste, die Labels waren
 in 96-px-Buttons abgeschnitten; bei grossen Fenstern blieb unter dem
 Werkzeugblock viel Leerraum und die Objektliste war zu schmal.
 
-Loesung in `layout_children()` (`src/editor/editor_main.cpp`):
+Lösung in `layout_children()` (`src/editor/editor_main.cpp`):
 
 - Spaltenbreiten aus der Fensterbreite, aber begrenzt:
   `left_w = clamp(W*16/100, 214, 280)`, `right_w = clamp(W*19/100, 258, 340)`.
   Bei 1024 px bleibt es bei den alten 214/258, bei 1800 px wachsen die
   Spalten auf 280/332 — der Viewport nimmt immer den Rest.
-- Der Bedienblock der linken Spalte hat eine feste Hoehe
+- Der Bedienblock der linken Spalte hat eine feste Höhe
   `7*30 + 6*6 = 246 px` und sitzt **unter** der Werkzeugliste. Die Liste
   bekommt vorher allen freien Platz (`list_h >= 120`), dadurch kann der
   Block nie in die Statusleiste ragen.
-- Undo/Redo nutzen die volle Spaltenbreite (frueher 2x96 px).
+- Undo/Redo nutzen die volle Spaltenbreite (früher 2x96 px).
 - Statusleisten-Felder proportional (`W/8`, `W/9`, `W/6`, Rest) statt
   fest 160/130/220.
-- `move_child`/`tool_row`-Lambdas buendeln die SetWindowPos-Aufrufe;
+- `move_child`/`tool_row`-Lambdas bündeln die SetWindowPos-Aufrufe;
   Achtung: Lambdas mit Parameter `h` kollidieren mit dem `HWND h` der
   Aufrufer — Parameter heissen `hwnd`/`ht`.
-- `renderer_resize()` loggt jede Aenderung als `Viewport: W x H`; das ist
-  der Anker fuer Live-Tests (Layout und Swapchain muessen dieselbe Groesse
+- `renderer_resize()` loggt jede Änderung als `Viewport: W x H`; das ist
+  der Anker für Live-Tests (Layout und Swapchain müssen dieselbe Grösse
   zeigen).
 
 Verifiziert (`log/live18i.ps1`, 18 Checks): 1024x640 -> Undo 198 px breit,
-Beschriftung per WM_GETTEXT vollstaendig, Button-Unterkante == Statusleisten-
-Oberkante (keine Ueberlappung); 1800x1040 -> Prefabliste 198->264,
-Objektliste 242->322, Viewport 536->1166; Rueckkehr auf 1280x800 ohne
+Beschriftung per WM_GETTEXT vollständig, Button-Unterkante == Statusleisten-
+Oberkante (keine Überlappung); 1800x1040 -> Prefabliste 198->264,
+Objektliste 242->322, Viewport 536->1166; Rückkehr auf 1280x800 ohne
 Fehler; `editor.log` ohne ResizeBuffers-Fehler.

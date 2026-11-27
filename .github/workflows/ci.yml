@@ -1,0 +1,244 @@
+# ============================================================================
+#  Rune3D — CI (Etappe 19a)
+#
+#  Vier Jobs, bewusst getrennt, damit ein Fehlschlag sofort erkennbar macht,
+#  WELCHE Ebene kaputt ist:
+#
+#    hygiene    Repo-Hygiene: JSON parsebar, UTF-8 ohne BOM/Doppelkodierung,
+#               Zeilenenden-Konvention, boot.rb-Requires, keine Artefakte
+#    engine     Ruby-Engine: alle tools/*_test.rb + Karten-Scan (MapCheck)
+#    cpp-logik  C++ ohne Win32: Editor-Logik mit -Werror, danach JSON- und
+#               Event-Brücke gegen die Ruby-Schicht
+#    windows    der echte Bau: Rune3D.exe + RuneEditor.exe mit MSYS2-ucrt64-g++
+#               und CRuby, danach dieselbe Testsuite wie build.ps1 -Test
+#
+#  Der Windows-Job prüft Bau, kopflose Datei-/Importtests und D3D11-WARP
+#  (Software, verstecktes Fenster). Das ersetzt keinen interaktiven GUI-/DPI-
+#  oder Hardware-GPU-Test auf dem echten Rechner.
+# ============================================================================
+name: CI
+
+on:
+  push:
+    branches: [main, 'arena/**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Neuer Push auf denselben Zweig bricht den alten Lauf ab.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  hygiene:
+    name: Repo-Hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.4'
+          bundler: none
+
+      - name: Hygiene prüfen
+        run: ruby tools/lint_repo.rb
+
+  engine:
+    name: Ruby-Engine (Tests + Karten)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.4'
+          bundler: none
+
+      - name: Testsuite
+        run: ruby tools/test_all.rb
+
+      - name: Karten-Daten prüfen (MapCheck)
+        run: ruby -I game/engine game/engine/mapcheck.rb
+
+  cpp-logik:
+    name: C++-Logik (JSON-Schicht)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: json_test mit -Werror bauen
+        run: >-
+          g++ -std=c++20 -O2 -Wall -Wextra -Werror
+          -Wno-unused-parameter -Wno-missing-field-initializers
+          -Isrc src/editor/json.cpp tools/json_test.cpp -o json_test
+
+      - name: C++-JSON-Test
+        run: ./json_test "$GITHUB_WORKSPACE"
+
+      - name: RGSS-Script- und Karten-Arbeitsabläufe prüfen
+        run: |
+          g++ -std=c++20 -O2 -Wall -Wextra -Werror \
+            -Isrc src/editor/json.cpp tools/editor_workflow_test.cpp -o editor_workflow_test
+          ./editor_workflow_test
+
+      - name: Echtes Terrain kopflos bauen und prüfen
+        run: |
+          g++ -std=c++20 -O2 -Wall -Wextra -Werror \
+            -Wno-unused-parameter -Wno-missing-field-initializers \
+            -Isrc src/world/terrain.cpp tools/terrain_test.cpp -o terrain_test
+          ./terrain_test
+
+      - name: WAV-Leser und Pitch portabel prüfen (Etappe 21)
+        run: |
+          g++ -std=c++20 -O2 -Wall -Wextra -Werror -Isrc tools/wav_test.cpp -o wav_test
+          ./wav_test
+
+      - name: OGG-Vorbis-Leser portabel prüfen (Etappe 21, T2)
+        run: |
+          g++ -std=c++20 -O2 -Wall -Wextra -Werror -Isrc \
+            src/core/stb_vorbis.cpp tools/ogg_test.cpp -o ogg_test
+          ./ogg_test
+
+      - name: MP3-Leser portabel prüfen (Etappe 22, T4)
+        run: |
+          g++ -std=c++20 -O2 -Wall -Wextra -Werror -Isrc \
+            src/core/minimp3.cpp tools/mp3_test.cpp -o mp3_test
+          ./mp3_test
+
+      - name: Materialdokument portabel prüfen
+        run: |
+          g++ -std=c++20 -O2 -Wall -Wextra -Werror \
+            -Wno-unused-parameter -Wno-missing-field-initializers \
+            -Isrc src/editor/json.cpp tools/material_test.cpp -o material_test
+          ./material_test
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.4'
+          bundler: none
+
+      - name: JSON-Brücke (C++-Schreiber gegen Ruby pretty_generate)
+        run: ruby tools/json_bridge_check.rb ./json_test --strict-format
+
+      - name: Event-Brücke (C++-Edits gegen Ruby-Laufzeit)
+        run: ruby tools/event_bridge_check.rb ./json_test
+
+  windows:
+    name: Windows-Build (Rune3D + RuneEditor)
+    # windows-2022, weil setup-ruby dort die zum Bauen von Ruby nötigen
+    # MSYS2-Pakete mitbringt (siehe README der Action).
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.4'
+          bundler: none
+
+      - name: Werkzeug melden (für die Fehlersuche)
+        id: werkzeug
+        shell: pwsh
+        run: |
+          $prefix = ((ruby -e "require 'rbconfig'; print RbConfig::CONFIG['prefix']") -join '')
+          $hdr    = ((ruby -e "require 'rbconfig'; print RbConfig::CONFIG['rubyhdrdir']") -join '')
+          $libdir = ((ruby -e "require 'rbconfig'; print RbConfig::CONFIG['libdir']") -join '')
+          $so     = ((ruby -e "require 'rbconfig'; print RbConfig::CONFIG['RUBY_SO_NAME']") -join '')
+          Write-Host "Ruby-Prefix : $prefix"
+          Write-Host "Header      : $hdr  ($(Test-Path $hdr))"
+          Write-Host "Lib         : $libdir  ($(Test-Path $libdir))"
+          Write-Host "SO-Name     : $so"
+          Get-ChildItem $libdir -Filter '*.a' -ErrorAction SilentlyContinue | Select-Object -First 5 -ExpandProperty Name
+          $gcc = Join-Path $prefix 'msys64\ucrt64\bin\g++.exe'
+          Write-Host "MSYS2-g++   : $gcc  ($(Test-Path $gcc))"
+          "gcc_vorhanden=$(Test-Path $gcc)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: MSYS2-Toolchain nachinstallieren (nur falls Ruby kein DevKit hat)
+        if: steps.werkzeug.outputs.gcc_vorhanden == 'false'
+        id: msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: mingw-w64-ucrt-x86_64-toolchain mingw-w64-ucrt-x86_64-gmp
+          path-type: minimal
+
+      - name: MSYS2-Pfad für build.ps1 setzen
+        if: steps.werkzeug.outputs.gcc_vorhanden == 'false'
+        shell: pwsh
+        run: echo "RUNE_MSYS_ROOT=${{ steps.msys2.outputs.msys2-location }}" >> $env:GITHUB_ENV
+
+      - name: Bauen (Rune3D.exe + RuneEditor.exe)
+        shell: pwsh
+        run: .\build.ps1 -Clean
+
+      - name: Tests (C++-Logik, Windows-Dateien und Unicode-Pfade, Ruby-Brücken)
+        shell: pwsh
+        run: |
+          try { .\build.ps1 -Test }
+          catch { Write-Host "::error title=Windows-Testablauf::$($_.Exception.Message)"; throw }
+
+      - name: D3D11-WARP und eingebettete Ruby-Texturbrücke
+        shell: pwsh
+        run: |
+          try { .\build.ps1 -WarpTest }
+          catch { Write-Host "::error title=WARP-Testablauf::$($_.Exception.Message)"; throw }
+
+      # Etappe 19f: Das Artefakt muss SELBSTLAUFEND sein - die EXEs finden
+      # ihre Daten (game/, projekte/) neben sich oder eine Ebene höher. Ein
+      # Download nur mit EXEs erzeugte beim Start LoadError/prefabs/Projekt-
+      # Fehler (User-Konsole 19e). Kopieren + mit hochladen.
+      - name: Laufzeit-Daten neben die EXEs kopieren
+        shell: pwsh
+        run: |
+          Copy-Item -Recurse -Force game build/game
+          Copy-Item -Recurse -Force projekte build/projekte
+
+      - name: Gebaute Programme als Artefakt
+        uses: actions/upload-artifact@v7
+        with:
+          name: Rune3D-Windows
+          path: |
+            build/Rune3D.exe
+            build/RuneEditor.exe
+            build/*.dll
+            build/RuneEditor.exe.manifest
+            build/ruby_builtin_dlls/
+            build/lib/ruby/
+            build/game/
+            build/projekte/
+          if-no-files-found: error
+
+      # Nicht nur build/, sondern das tatsächlich hochgeladene und erneut
+      # entpackte Artefakt ohne installiertes Ruby starten.
+      - name: Veröffentlichtes Artefakt erneut entpacken
+        id: artifact_download
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: Rune3D-Windows
+          path: ${{ runner.temp }}/rune-artifact-pruefung
+
+      # Direkt nach dem Upload kann die Artifact-API die ID kurzzeitig noch
+      # nicht ausliefern. Ein zweiter Versuch bleibt ein echter Downloadtest.
+      - name: Artefakt-Bereitstellung abwarten
+        if: steps.artifact_download.outcome == 'failure'
+        shell: pwsh
+        run: Start-Sleep -Seconds 15
+
+      - name: Artefakt-Download erneut versuchen
+        if: steps.artifact_download.outcome == 'failure'
+        uses: actions/download-artifact@v8
+        with:
+          name: Rune3D-Windows
+          path: ${{ runner.temp }}/rune-artifact-pruefung
+
+      - name: Isolierter Start und Windows-Editor-UI-Smoke
+        shell: pwsh
+        run: |
+          try { .\tools\windows_runtime_smoke.ps1 -PackagePath (Join-Path $env:RUNNER_TEMP 'rune-artifact-pruefung') -RequireUiTest }
+          catch { Write-Host "::error title=Isolierter Windows-Start::$($_.Exception.Message)"; throw }

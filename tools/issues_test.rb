@@ -1,11 +1,11 @@
 #encoding: utf-8
 # ============================================================================
-#  Kopfloser Test fuer das Laufzeit-Backlog des Spiels (Etappe 18h).
-#  Laesst sich ohne Engine starten:
+#  Kopfloser Test für das Laufzeit-Backlog des Spiels (Etappe 18h).
+#  Lässt sich ohne Engine starten:
 #     ruby -I game/engine tools/issues_test.rb
-#  Exit-Code 0 = alles gruen.
+#  Exit-Code 0 = alles grün.
 #
-#  Geprueft: Issues-Modul (report/clear/dump), Interpreter meldet unbekannte
+#  Geprüft: Issues-Modul (report/clear/dump), Interpreter meldet unbekannte
 #  Kommandos, Scripts meldet fehlende/defekte Scripts, Party meldet
 #  unbekannte Items, Weather meldet unbekannte Typen, issues.json entsteht.
 # ============================================================================
@@ -53,7 +53,7 @@ def check(name)
   $fail += 1 unless ok
 end
 
-# In ein temporaeres Arbeitsverzeichnis wechseln, damit issues.json dort landet.
+# In ein temporäres Arbeitsverzeichnis wechseln, damit issues.json dort landet.
 require 'tmpdir'
 Dir.mktmpdir('issues_test') do |tmp|
   Dir.chdir(tmp) do
@@ -66,7 +66,7 @@ Dir.mktmpdir('issues_test') do |tmp|
 
     e = Issues.report('Test', 'etwas stimmt nicht')
     check('report liefert Eintrag') { e.is_a?(Hash) && e['area'] == 'Test' }
-    check('Backlog zaehlt 1') { Issues.count == 1 }
+    check('Backlog zählt 1') { Issues.count == 1 }
     check('warn im Log') { Rune::LOGGED.grep(/Backlog.*Test/).any? }
     check('issues.json geschrieben') { File.exist?('log/issues.json') }
     check('log/ Verzeichnis angelegt') { Dir.exist?('log') }
@@ -74,11 +74,11 @@ Dir.mktmpdir('issues_test') do |tmp|
     Issues.report('Test', 'schlimmer', severity: 'error')
     check('error-Eintrag im Log') { Rune::LOGGED.grep(/error .*Backlog.*schlimmer/).any? }
     data = JSON.parse(File.read('log/issues.json'))
-    check('issues.json: 2 Eintraege') { data['issues'].size == 2 }
+    check('issues.json: 2 Einträge') { data['issues'].size == 2 }
     check('issues.json: severity error') { data['issues'][1]['severity'] == 'error' }
 
     Issues.clear!
-    check('clear! leert und loescht') { Issues.count.zero? && !File.exist?('log/issues.json') }
+    check('clear! leert und löscht') { Issues.count.zero? && !File.exist?('log/issues.json') }
 
     # --- Interpreter meldet unbekannte Kommandos -----------------------------
     interp = Interpreter.new
@@ -117,7 +117,7 @@ Dir.mktmpdir('issues_test') do |tmp|
     check('unbekannter Wetter-Typ gemeldet') do
       Issues.all.any? { |i| i['area'] == 'Wetter' && i['message'].include?('orkan') }
     end
-    check('Wetter faellt auf kein zurueck') { Weather.type == 'kein' }
+    check('Wetter fällt auf kein zurück') { Weather.type == 'kein' }
     Weather.set('regen')
     check('bekannter Typ meldet nichts') do
       Issues.all.none? { |i| i['area'] == 'Wetter' && i['message'].include?('regen') }
@@ -126,11 +126,11 @@ Dir.mktmpdir('issues_test') do |tmp|
     # --- Abschlussstand in der Datei -----------------------------------------
     Issues.dump!
     data = JSON.parse(File.read('log/issues.json'))
-    check('issues.json enthaelt alle Bereiche') do
+    check('issues.json enthält alle Bereiche') do
       (data['issues'].map { |i| i['area'] } & %w[Interpreter Scripts Party Wetter]).size == 4
     end
   end
 end
 
-puts($fail.zero? ? 'ISSUES-TEST OK (0 Fehler)' : "ISSUES-TEST FEHLGESCHLAGEN (#{$fail} Fehler)")
+puts($fail.zero? ? 'ISSÜS-TEST OK (0 Fehler)' : "ISSÜS-TEST FEHLGESCHLAGEN (#{$fail} Fehler)")
 exit($fail.zero? ? 0 : 1)

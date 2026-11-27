@@ -32,7 +32,7 @@ void Camera::update(const core::InputState& in, float dt) {
     }
 
     // Kamera-Kollision: Abstand weich auf die freie Sichtlinie bringen.
-    // Reinziehen sofort (kein Clipping), Rausziehen gegaettet.
+    // Reinziehen sofort (kein Clipping), Rausziehen gegättet.
     const float want = (collision_dist >= 0.0f) ? std::min(dist, collision_dist) : dist;
     if (want < m_applied_dist) {
         m_applied_dist = want;
@@ -46,7 +46,7 @@ void Camera::update(const core::InputState& in, float dt) {
         m_applied_lift += (wlift - m_applied_lift) * std::min(1.0f, dt * 5.0f);
     }
 
-    // Bewegung uebernimmt Physics; die Kamera schaut nur.
+    // Bewegung übernimmt Physics; die Kamera schaut nur.
 }
 
 Vec3 Camera::eye_position() const {
@@ -62,14 +62,27 @@ Vec3 Camera::eye_position() const {
 Mat4 Camera::view_proj(int fb_width, int fb_height) const {    const float aspect = (fb_height > 0) ? static_cast<float>(fb_width) / static_cast<float>(fb_height) : 1.0f;
 
     const Mat4 proj = perspective_fov_lh(fov, aspect, 0.08f, 600.0f);
-    const Vec3 eye = eye_position();
     const Vec3 up{0.0f, 1.0f, 0.0f};
+    const Vec3 fwd = forward();
+
+    // Etappe 20f: Bildschirmwackeln (XP 225) verschiebt das Auge entlang der
+    // Kamera-Rechts-/Hochachse; Blickrichtung und Ziel bleiben gleich, damit
+    // das Bild nur zittert statt zu schwenken.
+    Vec3 wackeln{0.0f, 0.0f, 0.0f};
+    if (shake_x != 0.0f || shake_y != 0.0f) {
+        Vec3 rechts = normalize(cross(up, fwd));
+        if (dot(rechts, rechts) < 1e-8f) rechts = Vec3{1.0f, 0.0f, 0.0f};
+        const Vec3 hoch = cross(fwd, rechts);
+        wackeln = add(scale(rechts, shake_x), scale(hoch, shake_y));
+    }
+
+    const Vec3 eye = add(eye_position(), wackeln);
 
     Mat4 view;
     if (mode == CameraMode::FirstPerson) {
-        view = look_to_lh(eye, forward(), up);
+        view = look_to_lh(eye, fwd, up);
     } else {
-        view = look_at_lh(eye, Vec3{target.x, target.y + eye_height, target.z}, up);
+        view = look_at_lh(eye, add(Vec3{target.x, target.y + eye_height, target.z}, wackeln), up);
     }
     return mul(view, proj);
 }

@@ -1,8 +1,8 @@
 #encoding: utf-8
 # ============================================================================
-#  Kopfloser Test fuer das Projekt-System: Liste, Slug, Anlegen, neue Karten.
+#  Kopfloser Test für das Projekt-System: Liste, Slug, Anlegen, neue Karten.
 #     ruby -I game/engine tools/project_test.rb
-#  Legt echte Ordner unter projekte/ an - Testprojekte werden wieder geloescht.
+#  Legt echte Ordner unter projekte/ an - Testprojekte werden wieder gelöscht.
 # ============================================================================
 
 $LOAD_PATH.unshift(File.join(File.expand_path('..', __dir__), 'game', 'engine'))
@@ -52,6 +52,22 @@ check('Start zeigt auf welt01 bei 0/0') {
   sys['start']['map'] == 'welt01' && sys['start']['x'] == 0.0 && sys['start']['z'] == 0.0
 }
 
+db_path = File.join(Project.data_path(name), 'database.json')
+check('Y3: database.json mit Start-Held und Start-Item existiert') do
+  File.exist?(db_path)
+end
+if File.exist?(db_path)
+  db = JSON.parse(File.read(db_path, encoding: 'UTF-8'))
+  check('Y3: ein Start-Held (XP kopiert die Default-Akteure)') do
+    db['actors'].is_a?(Array) && db['actors'].size == 1 &&
+      !db['actors'][0]['name'].to_s.empty? && db['actors'][0]['hp'].to_i.positive?
+  end
+  check('Y3: Start-Item wird in die Party übernommen (start > 0)') do
+    db['items'].is_a?(Array) && db['items'].size >= 1 &&
+      db['items'][0]['start'].to_i.positive?
+  end
+end
+
 map = JSON.parse(File.read(File.join(Project.data_path(name), 'maps', 'welt01.json'), encoding: 'UTF-8'))
 check('Neue Welt ist leer (nur Gras)') { map['objects'].empty? && map['events'].empty? }
 check('Neue Welt hat Terrain + Startpunkt') {
@@ -76,19 +92,72 @@ check('Karte welt02 ist leer') {
   m = Database.map('welt02')
   m['objects'].empty? && m['events'].empty? && m['start']['x'] == 0.0
 }
-check('naechste freie ID ist welt03') { Project.next_map_id == 'welt03' }
+check('nächste freie ID ist welt03') { Project.next_map_id == 'welt03' }
 
-# --- Infos / zuletzt gespielt / loeschen ----------------------------------
+# --- Infos / zuletzt gespielt / löschen ----------------------------------
 Project.touch(name)
 info = Project.info(name)
 check('info liefert Titel') { info['title'] == 'Test Welt' }
-check('info zaehlt 2 Karten') { info['maps'] == 2 }
+check('info zählt 2 Karten') { info['maps'] == 2 }
 check('touch vermerkt zuletzt gespielt') { info['last'].is_a?(String) && !info['last'].empty? }
 check('title liefert Anzeigename') { Project.title(name) == 'Test Welt' }
+
+# Der Playtest darf den gleichzeitig im Editor eingestellten Projektstart
+# nicht aus einem älteren Snapshot überschreiben oder kaputtes JSON leeren.
+system_path = File.join(Project.data_path(name), 'system.json')
+fixture = JSON.parse(File.read(system_path, encoding: 'UTF-8'))
+fixture['start']['x'] = 17.0
+fixture['start']['use_project_position'] = true
+fixture['zukunft'] = { 'zahl' => 9_007_199_254_740_993, 'text' => 'Änderung' }
+File.write(system_path, JSON.pretty_generate(fixture) + "\n", encoding: 'UTF-8')
+check('touch erhält Projektstart und unbekannte Daten') {
+  Project.touch(name) && (updated = JSON.parse(File.read(system_path, encoding: 'UTF-8'))) &&
+    updated['start'] == fixture['start'] && updated['zukunft'] == fixture['zukunft'] &&
+    updated['last_played'].is_a?(String)
+}
+['{', '{"start":{"x":1,"x":2}}', '[1,2]'].each do |invalid|
+  File.binwrite(system_path, invalid)
+  check('touch lässt beschädigte, mehrdeutige oder falsche Systemdaten unangetastet') {
+    !Project.touch(name) && File.binread(system_path) == invalid
+  }
+end
+File.write(system_path, JSON.pretty_generate(fixture) + "\n", encoding: 'UTF-8')
+before_lock = File.binread(system_path)
+locked = File.open(system_path, 'r+b')
+begin
+  acquired = locked.flock(File::LOCK_EX | File::LOCK_NB)
+  skipped = !Project.touch(name)
+ensure
+  locked.close
+end
+check('touch überspringt ein konkurrierend gesperrtes system.json') {
+  acquired && skipped && File.binread(system_path) == before_lock
+}
+# --- Atomares Schreiben (Z8) ---------------------------------------------
+# write_json schreibt neben das Ziel und benennt um: Inhalt vollständig, keine
+# halbe Datei, kein Temp-Rest. Der Merker bleibt außerhalb von data/.
+probe = File.join(Project.path(name), 'probe.json')
+check('Z8: write_json schreibt JSON mit Umlauten') do
+  Project.write_json(probe, { 'probe' => 'Wäldchen', 'zahl' => 7 }) &&
+    JSON.parse(File.read(probe, encoding: 'UTF-8')) == { 'probe' => 'Wäldchen', 'zahl' => 7 }
+end
+check('Z8: write_json ersetzt vorhandenen Inhalt vollständig') do
+  Project.write_json(probe, { 'kurz' => 1 }) &&
+    JSON.parse(File.read(probe, encoding: 'UTF-8')) == { 'kurz' => 1 }
+end
+check('Z8: keine Temp-Datei bleibt liegen') do
+  Dir.glob(File.join(Project.path(name), '*.tmp')).empty?
+end
+check('Z8: Datei endet mit genau einem Zeilenumbruch') do
+  bin = File.binread(probe)
+  bin.end_with?("\n") && !bin.end_with?("\n\n")
+end
+File.delete(probe) if File.exist?(probe)
+
 Project.delete(name)
 check('delete entfernt das Projekt') { !Project.valid?(name) }
 
-# --- Aufraeumen -----------------------------------------------------------
+# --- Aufräumen -----------------------------------------------------------
 FileUtils.rm_rf(Project.path('test_welt'))
 FileUtils.rm_rf(Project.path('test_welt_2'))
 check('Testprojekte wieder entfernt') { !Project.valid?('test_welt') && !Project.valid?('test_welt_2') }

@@ -1,10 +1,17 @@
 build/
+.cache/
+build-tests/
 log/
 *.log
 *.exe
-*.o
 *.dll
+*.o
 .vs/
 *.user
-projekte/*/saves/
 opencode.json
+
+# Spielstaende sind Benutzerdaten und gehoeren nicht ins Repo.
+# Ausnahme: der mitgelieferte Demo-Spielstand von "dorf" (Beispiel fuer das
+# Lade-Menue und fuer die JSON-Brueckenpruefung tools/json_bridge_check.rb).
+projekte/*/saves/*
+!projekte/dorf/saves/slot1.json

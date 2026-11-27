@@ -27,6 +27,25 @@ module Project
 
   def valid?(name) = list.include?(name)
 
+  # Bevorzugtes Projekt für den internen Start (AB, ohne Launcher):
+  # zuletzt gespielt (last_played aus system.json), sonst das erste
+  # alphabetisch. nil, wenn kein Projekt existiert.
+  def preferred
+    names = list
+    return nil if names.empty?
+
+    best = nil
+    best_last = ''
+    names.each do |n|
+      last = read_system(n)['last_played'].to_s
+      next if last.empty? || last <= best_last
+
+      best = n
+      best_last = last
+    end
+    best || names.first
+  end
+
   def read_system(name)
     p = File.join(data_path(name), 'system.json')
     return {} unless File.exist?(p)
@@ -40,7 +59,7 @@ module Project
     read_system(name)['name'] || name
   end
 
-  # Kurzinfo fuer den Titelbildschirm: Titel, Kartenanzahl, Spielstaende,
+  # Kurzinfo für den Titelbildschirm: Titel, Kartenanzahl, Spielstände,
   # zuletzt gespielt.
   def info(name)
     maps = begin
@@ -55,13 +74,44 @@ module Project
       'last'  => read_system(name)['last_played'] }
   end
 
-  # "Zuletzt gespielt" beim Start eines Projekts vermerken.
+  # Beim Parsen doppelte Felder nicht still zusammenfallen lassen. Die
+  # Startposition und unbekannte Projektdaten gehören dem Benutzer.
+  class UniqueSystemObject < Hash
+    def []=(key, value)
+      raise JSON::ParserError, "doppeltes Feld #{key.inspect}" if key?(key)
+
+      super
+    end
+  end
+
+  # "Zuletzt gespielt" beim Start vermerken. Lesen und Schreiben passieren
+  # am SELBEN offenen Handle: Unter Windows verhindert dessen fehlendes
+  # Delete-Sharing den Austausch durch den Editor; der DocumentStore sperrt
+  # umgekehrt dieses Schreib-Handle. Mehrere Spiele koordinieren per flock.
+  # Der Zeitstempel ist optional: Bei Konflikt/ungültigem JSON nicht starten
+  # verzögern und insbesondere niemals eine leere Ersatzdatei schreiben.
   def touch(name)
-    p = File.join(data_path(name), 'system.json')
-    return unless File.exist?(p)
-    sys = read_system(name)
-    sys['last_played'] = Time.now.strftime('%Y-%m-%d %H:%M')
-    File.write(p, JSON.pretty_generate(sys) + "\n", encoding: 'UTF-8')
+    path = File.join(data_path(name), 'system.json')
+    File.open(path, 'r+b') do |file|
+      unless file.flock(File::LOCK_EX | File::LOCK_NB)
+        Rune::Log.warn('Projekt: Zeitstempel übersprungen, system.json wird verwendet')
+        return false
+      end
+      source = file.read.force_encoding(Encoding::UTF_8)
+      sys = JSON.parse(source, object_class: UniqueSystemObject)
+      raise JSON::ParserError, 'system.json ist kein Objekt' unless sys.is_a?(Hash)
+
+      sys.store('last_played', Time.now.strftime('%Y-%m-%d %H:%M'))
+      output = JSON.pretty_generate(sys) + "\n"
+      file.rewind
+      file.write(output)
+      file.truncate(file.pos)
+      file.flush
+      true
+    end
+  rescue JSON::JSONError, EncodingError, SystemCallError, IOError => e
+    Rune::Log.warn("Projekt: Zeitstempel nicht gespeichert: #{e.message}")
+    false
   end
 
   # Projektordner komplett entfernen.
@@ -69,15 +119,43 @@ module Project
     FileUtils.rm_rf(path(name))
   end
 
-  # ---------------------------------------------------- Spielstaende (Etappe 10)
+  # ------------------------------------------------- Schreiben (atomar, Z8)
+
+  # JSON erst vollständig NEBEN dem Ziel schreiben, dann austauschen - dieselbe
+  # Regel wie beim Editor (document_store_win.h) und den Karten. Bricht ein
+  # Schreibvorgang ab (Platte voll, Absturz, Stromausfall), bleibt die alte
+  # Datei unverkürzt stehen; Leser sehen entweder den alten oder den neuen
+  # Stand, nie eine halbe Datei. Ruby File.rename ersetzt unter Windows ein
+  # vorhandenes Ziel (MoveFileEx mit MOVEFILE_REPLACE_EXISTING).
+  def write_json(path, data)
+    tmp = "#{path}.rune-#{Process.pid}-#{rand(1_000_000)}.tmp"
+    File.open(tmp, 'wb') do |file|
+      file.write(JSON.pretty_generate(data) + "\n")
+      file.flush
+      file.fsync
+    end
+    File.rename(tmp, path)
+    true
+  rescue SystemCallError, IOError, JSON::JSONError => e
+    Rune::Log.warn("Projekt: #{File.basename(path)} nicht geschrieben: #{e.message}")
+    begin
+      File.delete(tmp) if tmp && File.exist?(tmp)
+    rescue SystemCallError
+      nil
+    end
+    false
+  end
+
+  # ---------------------------------------------------- Spielstände (Etappe 10)
 
   def saves_dir(name) = File.join(path(name), 'saves')
 
   # Spielstand ablegen: JSON unter projekte/<name>/saves/slot<N>.json.
+  # Atomar (write_json): ein abgebrochener Speichervorgang darf den alten
+  # Spielstand nicht zerstören. false, wenn nicht geschrieben werden konnte.
   def save(name, slot, data)
     FileUtils.mkdir_p(saves_dir(name))
-    File.write(File.join(saves_dir(name), "slot#{slot}.json"),
-               JSON.pretty_generate(data) + "\n", encoding: 'UTF-8')
+    write_json(File.join(saves_dir(name), "slot#{slot}.json"), data)
   end
 
   # Spielstand lesen; nil, wenn der Slot leer/kaputt ist.
@@ -89,13 +167,13 @@ module Project
     nil
   end
 
-  # Kurzinfo eines Slots (fuer Menue/Titelbildschirm): nil oder Zeit+Karte.
+  # Kurzinfo eines Slots (für Menü/Titelbildschirm): nil oder Zeit+Karte.
   def save_info(name, slot)
     d = load_save(name, slot)
-    d && { 'saved' => d['saved'], 'map' => d['map'] }
+    d && { 'saved' => d['saved'], 'map' => d['map'], 'time' => d['time'] }
   end
 
-  # Hoechster belegter Slot (3..1), nil wenn keine Spielstaende existieren.
+  # Höchster belegter Slot (3..1), nil wenn keine Spielstände existieren.
   def latest_save(name)
     3.downto(1) do |s|
       return s if File.exist?(File.join(saves_dir(name), "slot#{s}.json"))
@@ -122,8 +200,29 @@ module Project
     "#{base}_#{n}"
   end
 
-  # Neues Projekt anlegen: leere Welt (nur Gras), Startpunkt in der Mitte.
-  # Rueckgabe: der Projektordnername.
+  # Mini-Datenbank für neue Projekte (Y3/XP): ein Start-Held und ein
+  # Start-Item. Leere Arrays würden die Party leer lassen und jeden Kampf
+  # mit "keine Helden" abbrechen; XP kopiert die Default-Akteure ($data_actors).
+  # Der Editor (create_project) spiegelt denselben Inhalt.
+  def starter_database
+    { 'gold' => 0,
+      'actors' => [{ 'id' => 'held', 'name' => 'Held', 'class' => 'Abenteurer',
+                     'level' => 1, 'hp' => 100, 'mp' => 20, 'atk' => 10,
+                     'def' => 8, 'spi' => 8, 'agi' => 8, 'exp' => 0 }],
+      'items' => [{ 'id' => 'heiltrank', 'name' => 'Heiltrank', 'kind' => 'heal',
+                    'power' => 40, 'price' => 25, 'start' => 1,
+                    'desc' => 'Heilt 40 HP eines Helden.' }],
+      'enemies' => [],
+      'troops' => [],
+      # 20a: Bereiche vorhanden, aber leer - der Editor-Reiter fehlt noch.
+      'skills' => [],
+      'states' => [] }
+  end
+
+  # Neues Projekt anlegen: leere Welt (nur Gras), Startpunkt in der Mitte,
+  # Mini-Datenbank mit Start-Held (Y3). Rückgabe: der Projektordnername,
+  # "" wenn eine Datei nicht geschrieben werden konnte (der angelegte Ordner
+  # bleibt dann als Hinweis stehen - wie create_project im Editor).
   def create(title)
     name = unique_slug(title)
     Dir.mkdir(BASE) unless Dir.exist?(BASE)
@@ -137,8 +236,10 @@ module Project
       'switches'  => {},
       'variables' => {},
     }
-    File.write(File.join(data_path(name), 'system.json'),
-               JSON.pretty_generate(system) + "\n", encoding: 'UTF-8')
+    # Y3: Start-Held + Start-Item wie im Editor-Pfad (nie leere Arrays).
+    angelegt = write_json(File.join(data_path(name), 'system.json'), system) &&
+               write_json(File.join(data_path(name), 'database.json'), starter_database)
+    return '' unless angelegt
 
     map = {
       'name'     => 'Neue Welt',
@@ -152,8 +253,7 @@ module Project
       'panorama' => { 'color' => 0x3D6FB5 },
       'note'     => '',
     }
-    File.write(File.join(data_path(name), 'maps', 'welt01.json'),
-               JSON.pretty_generate(map) + "\n", encoding: 'UTF-8')
+    return '' unless write_json(File.join(data_path(name), 'maps', 'welt01.json'), map)
     name
   end
 
@@ -167,7 +267,7 @@ module Project
     'dorf'
   end
 
-  # Naechste freie Karten-ID: welt01, welt02, ...
+  # Nächste freie Karten-ID: welt01, welt02, ...
   def next_map_id
     ids = Database.map_ids
     n = 1
@@ -176,7 +276,7 @@ module Project
   end
 
   # Neue leere Karte im aktiven Projekt anlegen (flach, Etappe 17b) und als
-  # JSON ablegen. Rueckgabe: die Karten-ID.
+  # JSON ablegen. Rückgabe: die Karten-ID.
   def create_map(name = 'Neue Welt')
     id = next_map_id
     dir = File.join(Database.root, 'maps')
@@ -192,8 +292,9 @@ module Project
       'panorama' => { 'color' => 0x3D6FB5 },
       'note'     => '',
     }
-    File.write(File.join(dir, "#{id}.json"),
-               JSON.pretty_generate(map) + "\n", encoding: 'UTF-8')
+    # Atomar wie alle Projektdateien: eine halb geschriebene Karte würde beim
+    # nächsten Öffnen als kaputtes JSON liegen bleiben.
+    return nil unless write_json(File.join(dir, "#{id}.json"), map)
     id
   end
 end

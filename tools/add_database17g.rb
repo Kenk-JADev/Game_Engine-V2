@@ -1,6 +1,6 @@
 #encoding: utf-8
 # ============================================================================
-#  Legt die Demo-Datenbank (Helden/Items) fuer Etappe 17g an:
+#  Legt die Demo-Datenbank (Helden/Items) für Etappe 17g an:
 #    game/data/database.json            (Vorlage, wird zu neuen Projekten
 #                                        kopiert - siehe Project.ensure_demo)
 #    projekte/dorf/data/database.json   (bestehendes Demo-Projekt)
@@ -34,7 +34,7 @@ DB = {
       'desc' => 'Seltsamer blauer Kristall aus dem Brunnen.' },
     { 'id' => 'goldbeutel', 'name' => 'Goldbeutel', 'kind' => 'money',
       'power' => 50, 'price' => 0, 'start' => 0,
-      'desc' => 'Bringt 50 Gold beim Oeffnen.' }
+      'desc' => 'Bringt 50 Gold beim Öffnen.' }
   ]
 }.freeze
 
@@ -44,7 +44,7 @@ targets = [
 ]
 
 targets.each do |path|
-  next if File.exist?(path)   # bereits vorhanden: nicht ueberschreiben
+  next if File.exist?(path)   # bereits vorhanden: nicht überschreiben
   FileUtils.mkdir_p(File.dirname(path))
   File.write(path, JSON.pretty_generate(DB) + "\n", encoding: 'UTF-8')
   puts "angelegt: #{path}"

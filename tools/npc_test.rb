@@ -1,6 +1,6 @@
 #encoding: utf-8
 # ============================================================================
-#  Kopfloser Test fuer NPCs (Etappe 13): Wegpunkt-Bewegung, Loop, Event-
+#  Kopfloser Test für NPCs (Etappe 13): Wegpunkt-Bewegung, Loop, Event-
 #  Kopplung, Picking-Schnittstelle.
 #     ruby -I game/engine tools/npc_test.rb
 # ============================================================================
@@ -25,8 +25,13 @@ module Rune
   end
 end
 
-# Game.gy-Attrappe (Hoehe 0), bevor npc.rb geladen wird.
+# Game-Attrappe (Höhe 0, Karte ohne Block-Zonen), bevor npc.rb geladen wird.
 module Game
+  @map = {}
+  class << self
+    attr_accessor :map
+  end
+
   def self.gy(_x, _z) = 0.0
 end
 
@@ -47,14 +52,14 @@ end
 scene = Scene.new('Test')
 
 npc = Npc.new(
-  { 'name' => 'Waechter', 'x' => 0.0, 'z' => 0.0, 'speed' => 2.0,
+  { 'name' => 'Wächter', 'x' => 0.0, 'z' => 0.0, 'speed' => 2.0,
     'path' => [[4.0, 0.0], [4.0, 4.0]],
     'commands' => [{ 'cmd' => 'text', 'lines' => ['Hallo'] }] },
   scene
 )
 
 check('NPC startet an seiner Position') { npc.position == [0.0, 0.0] }
-check('NPC-Node in der Szene') { scene.root.children.any? { |n| n.name == 'npc_Waechter' } }
+check('NPC-Node in der Szene') { scene.root.children.any? { |n| n.name == 'npc_Wächter' } }
 
 # --- Bewegung ----------------------------------------------------------------
 npc.update(1.0)   # 2 m in Richtung (4, 0)
@@ -70,10 +75,10 @@ npc.update(2.0)
 check('Zweiter Wegpunkt erreicht') { npc.position == [4.0, 4.0] }
 
 npc.update(2.0)
-check('Loop: laeuft wieder zum ersten Wegpunkt') { npc.position[0] == 4.0 && npc.position[1] < 4.0 }
+check('Loop: läuft wieder zum ersten Wegpunkt') { npc.position[0] == 4.0 && npc.position[1] < 4.0 }
 
 # --- Event-Kopplung ----------------------------------------------------------
-check('Event heisst wie der NPC') { npc.event.name == 'Waechter' }
+check('Event heisst wie der NPC') { npc.event.name == 'Wächter' }
 check('Event-Position folgt Bewegung') { npc.event.x == npc.position[0] && npc.event.z == npc.position[1] }
 
 px, pz = npc.position
@@ -90,6 +95,33 @@ stein = Npc.new({ 'name' => 'Stein', 'x' => 1.0, 'z' => 2.0 }, scene)
 stein.update(5.0)
 check('NPC ohne Wegpunkte bleibt stehen') { stein.position == [1.0, 2.0] }
 
+# Etappe 19n: y ist ein Bodenversatz, auch nach Bewegung und Spielstandladen.
+hoeher = Npc.new({ 'name' => 'Hoch', 'x' => 0.0, 'y' => 3.0, 'z' => 0.0,
+                   'speed' => 1.0, 'path' => [[4.0, 0.0]] }, scene)
+check('NPC-Y-Versatz ist am Körper und beim Picking sichtbar') do
+  hoeher.node.position[1] == 3.9 && hoeher.event.box_center[1] == 4.0
+end
+hoeher.update(1.0)
+check('NPC-Y-Versatz bleibt beim Laufen') { hoeher.node.position[1] == 3.9 }
+hoeher.move_to(2, 1)
+check('NPC-Y-Versatz bleibt bei Bewegungsrouten') { hoeher.node.position[1] == 3.9 }
+hoeher.restore!(0, 0, 0)
+check('NPC-Y-Versatz bleibt beim Laden') { hoeher.node.position[1] == 3.9 }
+
+schild = Event.new('id' => 13, 'name' => 'Wegweiser', 'x' => 4, 'y' => 2, 'z' => -1,
+                   'rot' => Math::PI / 2, 'visual' => 'schild',
+                   'trigger' => 'action', 'commands' => [{ 'cmd' => 'text', 'lines' => ['Hallo'] }])
+schild.add_visual(scene, 13)
+tafeln = scene.root.children.select { |n| n.name.start_with?('event_visual_13_') }
+check('Schild-Event erzeugt Pfosten und Tafel in der richtigen Höhe') do
+  tafeln.size == 2 && tafeln[0].position == [4.0, 2.65, -1.0] &&
+    tafeln[1].position == [4.0, 3.55, -1.0] && tafeln.all? { |n| n.rotation[1] == Math::PI / 2 }
+end
+check('Schild bleibt ein nutzbares Event') do
+  schild.box_center == [4.0, 3.0, -1.0] && schild.near?(4, -1) &&
+    schild.trigger == 'action' && schild.commands[0]['lines'] == ['Hallo']
+end
+
 # --- Geschwindigkeit ---------------------------------------------------------
 schnell = Npc.new({ 'name' => 'Sprint', 'x' => 0.0, 'z' => 0.0, 'speed' => 10.0,
                     'path' => [[100.0, 0.0]] }, scene)
@@ -100,17 +132,37 @@ check('Geschwindigkeit skaliert') { schnell.position[0] == 10.0 }
 blocker = Npc.new({ 'name' => 'Block', 'x' => 0.0, 'z' => 0.0, 'speed' => 2.0,
                     'path' => [[10.0, 0.0]] }, scene)
 Rune.ppos = [1.5, 0.0, 0.0]   # Spieler direkt auf der Laufstrecke
-blocker.update(0.5)           # naechste Position (1,0) laege 0.5 m vom Spieler
+blocker.update(0.5)           # nächste Position (1,0) läge 0.5 m vom Spieler
 check('NPC wartet, wenn Spieler im Weg') { blocker.position[0] == 0.0 }
 
 Rune.ppos = [1.5, 0.0, 5.0]   # Spieler zur Seite
 blocker.update(0.5)
-check('NPC laeuft weiter, wenn Weg frei') { blocker.position[0] > 0.9 }
+check('NPC läuft weiter, wenn Weg frei') { blocker.position[0] > 0.9 }
+
+# --- Block-Zonen (Etappe 19k.3) ----------------------------------------------
+# Zone von x = 2..4 (Mitte 3, Breite 2) auf der Laufstrecke nach (10, 0).
+Game.map = { 'blocked' => [{ 'x' => 3.0, 'z' => 0.0, 'w' => 2.0, 'h' => 2.0 }] }
+wand = Npc.new({ 'name' => 'Wandläufer', 'x' => 0.0, 'z' => 0.0, 'speed' => 2.0,
+                 'path' => [[10.0, 0.0]] }, scene)
+wand.update(0.5)   # nächste Position (1, 0) ist frei
+check('NPC läuft bis vor die Block-Zone') { wand.position[0] == 1.0 }
+wand.update(1.0)   # nächste Position (3, 0) läge in der Zone
+check('NPC läuft nicht in die Block-Zone (stösst an)') { wand.position[0] == 1.0 }
+
+tour = Npc.new({ 'name' => 'Tour', 'x' => 0.0, 'z' => 0.0, 'speed' => 10.0,
+                 'path' => [[3.0, 0.0], [0.0, 6.0]] }, scene)
+tour.update(1.0)   # Wegpunkt (3,0) liegt in der Zone -> übersprungen
+tour.update(1.0)   # läuft dafür den zweiten Wegpunkt an
+check('Blockierter Wegpunkt wird übersprungen') { tour.position == [0.0, 6.0] }
+
+Game.map = {}
+wand.update(1.0)
+check('Ohne Zonen läuft der NPC weiter') { wand.position[0] > 1.0 }
 
 # --- Snapshot / Restore (Etappe 15) ------------------------------------------
 blocker.update(1.0)           # weiterlaufen lassen
 snap = blocker.snapshot
-check('Snapshot enthaelt Name/Position/Wegpunkt') do
+check('Snapshot enthält Name/Position/Wegpunkt') do
   snap['name'] == 'Block' && snap['x'] == blocker.position[0] &&
     snap['z'] == blocker.position[1] && snap['wp'].is_a?(Integer)
 end
@@ -121,6 +173,13 @@ check('Restore stellt Position wieder her') do
   blocker.position[0] == snap['x'] && blocker.position[1] == snap['z']
 end
 check('Restore stellt Wegpunkt wieder her') { blocker.snapshot['wp'] == snap['wp'] }
+blocker.event.fired = true
+feuer_snap = blocker.snapshot
+blocker.event.fired = false
+blocker.restore!(feuer_snap['x'], feuer_snap['z'], feuer_snap['wp'], feuer_snap['fired'])
+check('einmalig ausgelöstes NPC-Event übersteht Snapshot/Restore') { blocker.event.fired }
+blocker.restore!(snap['x'], snap['z'], snap['wp'])
+check('alte NPC-Spielstände ohne fired bleiben lesbar') { !blocker.event.fired }
 
 # Event-Position nach Restore synchron (E-Interaktion am geladenen Ort)
 check('Event-Position nach Restore synchron') do
