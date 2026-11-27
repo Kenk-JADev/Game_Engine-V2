@@ -79,6 +79,14 @@ tools/event_commands_test.rb             Tests der Schicht
 | 40b.4 | Ports, Handler-Registry und Interpreter inkl. Wait/Stack/Labels | Interpreter-Tests | umgesetzt |
 | 40b.5 | Einbindung in `rpg.rb`, Gesamtprüfung | TestSuite/Lint/Build | Code fertig; manuell zu prüfen |
 
+## Weitergeführt in Etappe 42
+
+`docs/ETAPPE_42_EVENT_COMMAND_TABS.md` baut diese Schicht zum vollständigen
+XP-Bauplan aus: `layout.rb` (drei Tabs, zwei Spalten, zwei Abschnitte, 90
+Befehle mit XP-Namen und Beschriftung), 90 typisierte Command-Klassen,
+90 einzelne Handler statt Gruppen mit `case`, `ISystemSettingsService` und
+lesbarer Ausführungszustand (`program_counter`, `call_stack`).
+
 ## Nachtrag aus Etappe 41: zwei Fehler dieser Schicht behoben
 
 `tools/event_commands_test.rb` war seit dem Stand `7d4023a` rot und ist jetzt

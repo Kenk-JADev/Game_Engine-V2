@@ -3713,3 +3713,48 @@ nicht darstellbare Altdaten bleiben gesperrt stehen.
 Register ohne Engine-Wirkung (`classes`, `weapons`, `armors`, `animations`,
 `tilesets`, `system`) sagen das in der Hinweiszeile. Ihre Daten werden
 vollständig gespeichert; die Anschlüsse stehen in `docs/BACKLOG.md`.
+
+## Event-Command-Architektur nach den drei XP-Tabs (Etappe 42)
+
+Die `Rpg::EventCommands`-Schicht folgt jetzt exakt dem Aufbau der drei
+Event-Command-Tabs des RPG Maker XP. `game/engine/rpg/event_commands/layout.rb`
+ist der geschriebene Bauplan: drei Tabs, je zwei Spalten, je Spalte zwei
+Abschnitte, insgesamt 90 Befehle in XP-Reihenfolge mit XP-Name, deutscher
+Beschriftung und XP-Code. Der Katalog zieht Beschriftung, Abschnitt und
+Position aus diesem Plan; `Layout.pruefen!` verhindert, dass beide
+auseinanderlaufen. `Layout.als_text` liefert den Baum zum Nachbauen einer
+Oberfläche — diese Etappe enthält bewusst keine UI.
+
+`typed.rb` erzeugt aus dem Feldschema des Katalogs je Befehlstyp eine eigene
+Command-Klasse und eine Parameterklasse (`Typed::Commands::ShowText`,
+`Typed::Params::ShowText`, …). Sie erzwingen ihre Typen, füllen Vorgaben auf,
+sind unveränderlich und liefern mit `to_h` den verlustfreien Rohdatensatz
+zurück; Blöcke (`then`/`else`, `choice_0..3`/`cancel`, `body`,
+`win`/`escape`/`lose`) enthalten wieder typisierte Kinder. Feldnamen, die mit
+Ruby kollidieren, bekommen sichere Leser (`initialize` → `initialize_actor`,
+das `code`-Feld des Scripts → `param_code`), die JSON-Namen bleiben.
+
+`handlers.rb` hält 90 einzelne Handler — einer je Befehlstyp, ohne `case` über
+`commandType`. Die Registry liefert sie über `for(definition)` und lässt sich
+pro Typ überschreiben (Dependency Injection). Bedingungen und
+Variablenquellen bleiben kleine gemeinsame Funktionen. Neu ist
+`ISystemSettingsService` für Windowskin, Speichern-, Menü- und
+Begegnungszugriff; Kampf-BGM, Kampf-End-ME und Textoptionen erreichen jetzt
+ebenfalls echte Ports (`IAudioService#set_battle_bgm`/`#set_battle_end_me`,
+`IUINavigationService#text_options`). Die in der Architektur genannten
+Service-Namen (`IInventoryService`, `IPartyService`, `IPictureService`,
+`IScreenEffectService`, …) sind Aliase der vorhandenen Ports.
+
+Der Interpreter macht seinen Zustand lesbar: `program_counter` (XP: `@index`),
+`current_command`, `call_stack` (Programm, Block, Schleife, Common Event mit
+eigenem Zeiger), `depth`, `common_event_depth`, `wait_kind`. Wartezustände
+sind `:time`, `:move`, `:transition` und `:ui`; Unterprogramme bleiben auf
+`MAX_DEPTH = 16` begrenzt.
+
+Beispielwerte stehen in `game/config/event_commands.json`: Schalter 101
+`Tor_Offen`, Variable 202 `Quest_Phase`, Karte 12 an (8, 14), BGM
+`bgm_tavern_night`, SE `se_door_latch`, dazu Held 1 `Kael`, Truppe 9 und
+Common Event 9. Die vier Beispielprogramme zeigen alle 90 Befehle.
+`tools/event_commands_arch_test.rb` prüft Bauplan, Typen, Handler, Ports und
+Interpreter (1542 Prüfungen), `tools/event_commands_test.rb` bleibt mit 107
+Prüfungen grün. Details: `docs/ETAPPE_42_EVENT_COMMAND_TABS.md`.

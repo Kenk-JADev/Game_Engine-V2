@@ -12,8 +12,10 @@ module Rpg
 end
 
 require 'rpg/event_commands/support'
+require 'rpg/event_commands/layout'
 require 'rpg/event_commands/models'
 require 'rpg/event_commands/catalog'
+require 'rpg/event_commands/typed'
 require 'rpg/event_commands/ports'
 require 'rpg/event_commands/handlers'
 require 'rpg/event_commands/loader'

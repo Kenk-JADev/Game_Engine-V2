@@ -344,6 +344,8 @@ module Rpg
         def play_me(**_argumente) = raise(NotImplementedError, 'IAudioService#play_me fehlt')
         def play_se(**_argumente) = raise(NotImplementedError, 'IAudioService#play_se fehlt')
         def stop_se(**_argumente) = raise(NotImplementedError, 'IAudioService#stop_se fehlt')
+        def set_battle_bgm(**_argumente) = raise(NotImplementedError, 'IAudioService#set_battle_bgm fehlt')
+        def set_battle_end_me(**_argumente) = raise(NotImplementedError, 'IAudioService#set_battle_end_me fehlt')
       end
 
       class NullAudioService < IAudioService
@@ -356,12 +358,15 @@ module Rpg
         def play_me(**_argumente) = nil
         def play_se(**_argumente) = nil
         def stop_se(**_argumente) = nil
+        def set_battle_bgm(**_argumente) = nil
+        def set_battle_end_me(**_argumente) = nil
       end
 
       class RecordingAudioService < NullAudioService
         include Recording
 
-        %i[play_bgm fade_out_bgm play_bgs fade_out_bgs play_me play_se stop_se].each do |name|
+        %i[play_bgm fade_out_bgm play_bgs fade_out_bgs play_me play_se stop_se
+           set_battle_bgm set_battle_end_me].each do |name|
           define_method(name) do |**argumente|
             record(name, argumente)
           end
@@ -407,6 +412,7 @@ module Rpg
 
       class IUINavigationService
         def message(**_argumente) = raise(NotImplementedError, 'IUINavigationService#message fehlt')
+        def text_options(**_argumente) = raise(NotImplementedError, 'IUINavigationService#text_options fehlt')
         def choices(**_argumente) = raise(NotImplementedError, 'IUINavigationService#choices fehlt')
         def input_number(**_argumente) = raise(NotImplementedError, 'IUINavigationService#input_number fehlt')
         def button_input = raise(NotImplementedError, 'IUINavigationService#button_input fehlt')
@@ -422,6 +428,7 @@ module Rpg
 
       class NullUINavigationService < IUINavigationService
         def message(**_argumente) = nil
+        def text_options(**_argumente) = nil
         def choices(**_argumente) = 0
         def input_number(**_argumente) = 0
         def button_input = 0
@@ -447,6 +454,7 @@ module Rpg
         end
 
         def message(**argumente) = record(:message, argumente)
+        def text_options(**argumente) = record(:text_options, argumente)
         def choices(**argumente) = record(:choices, argumente) && @choice
         def input_number(**argumente) = record(:input_number, argumente) && @number
         def button_input = record(:button_input) && @button
@@ -458,6 +466,9 @@ module Rpg
         def title = record(:title)
         def last_button = @button
         def busy? = @busy == true
+
+        # Wie bei Karte und Übergang darf ein Test das Fenster schließen.
+        attr_accessor :busy
       end
 
       class IScriptPort
@@ -474,8 +485,20 @@ module Rpg
         def run(**argumente) = record(:run, argumente)
       end
 
+      # Ein Port für alle zwölf Heldenbefehle. Die benannten Methoden sind die
+      # typisierte Sicht; wer nur change() implementiert, bleibt gültig.
       class IActorPort
+        COMMANDS = %w[change_hp change_sp change_state recover_all change_exp change_level
+                      change_parameters change_skills change_equipment change_actor_name
+                      change_actor_class change_actor_graphic].freeze
+
         def change(**_argumente) = raise(NotImplementedError, 'IActorPort#change fehlt')
+
+        COMMANDS.each do |name|
+          define_method(name) do |**argumente|
+            change(command: name, params: argumente)
+          end
+        end
       end
 
       class NullActorPort < IActorPort
@@ -488,10 +511,46 @@ module Rpg
         def change(**argumente) = record(:change, argumente)
       end
 
+      # Laufzeit-System aus Tab 1: Fenstergrafik und die drei Zugriffs sperren.
+      class ISystemSettingsService
+        def windowskin(**_argumente) = raise(NotImplementedError, 'ISystemSettingsService#windowskin fehlt')
+        def save_access(**_argumente) = raise(NotImplementedError, 'ISystemSettingsService#save_access fehlt')
+        def menu_access(**_argumente) = raise(NotImplementedError, 'ISystemSettingsService#menu_access fehlt')
+        def encounter(**_argumente) = raise(NotImplementedError, 'ISystemSettingsService#encounter fehlt')
+      end
+
+      class NullSystemSettingsService < ISystemSettingsService
+        def windowskin(**_argumente) = nil
+        def save_access(**_argumente) = nil
+        def menu_access(**_argumente) = nil
+        def encounter(**_argumente) = nil
+      end
+
+      class RecordingSystemSettingsService < NullSystemSettingsService
+        include Recording
+
+        %i[windowskin save_access menu_access encounter].each do |name|
+          define_method(name) { |**argumente| record(name, argumente) }
+        end
+      end
+
+      # Die in der Architektur genannten Service-Namen sind Aliase der Ports:
+      # eine Schnittstelle, zwei lesbare Namen, keine doppelte Implementierung.
+      IInventoryService = IInventoryPort
+      IPartyService = IPartyPort
+      IPictureService = IPicturePort
+      IScreenEffectService = IScreenEffectPort
+      IActorService = IActorPort
+      ITimerService = ITimerPort
+      IAnimationService = IAnimationPort
+      IWeatherService = IWeatherPort
+      ITransitionService = ITransitionPort
+      IScriptService = IScriptPort
+
       PortSet = Data.define(:switches, :variables, :self_switches, :timer,
                             :inventory, :party, :actors, :map, :animation,
                             :pictures, :weather, :transition, :screen, :audio,
-                            :battle, :ui, :script, :dispatcher) do
+                            :battle, :ui, :script, :system_settings, :dispatcher) do
         def initialize(switches: NullSwitchStore.new,
                        variables: NullVariableStore.new,
                        self_switches: NullSelfSwitchStore.new,
@@ -509,12 +568,14 @@ module Rpg
                        battle: NullBattleController.new,
                        ui: NullUINavigationService.new,
                        script: NullScriptPort.new,
+                       system_settings: NullSystemSettingsService.new,
                        dispatcher: Rpg::Ports::EventDispatcher.new)
           super(switches: switches, variables: variables, self_switches: self_switches,
                 timer: timer, inventory: inventory, party: party, actors: actors, map: map,
                 animation: animation, pictures: pictures, weather: weather,
                 transition: transition, screen: screen, audio: audio, battle: battle,
-                ui: ui, script: script, dispatcher: dispatcher)
+                ui: ui, script: script, system_settings: system_settings,
+                dispatcher: dispatcher)
         end
       end
     end

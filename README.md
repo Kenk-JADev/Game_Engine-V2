@@ -218,6 +218,7 @@ ruby tools\lint_repo.rb                        # Repo-Hygiene
 | Ruby-Laufzeit | Echter Bootstrap, Launcher, Szenenbau, F4/F5, Kampf-Eingabe und Save/Load mit nativen Attrappen | `tools/runtime_boot_test.rb`, `tools/map_objects_test.rb`, `tools/encounter_test.rb` |
 | C++-Logiktest | JSON, Editor-Formulare, F9-Registerkatalog und -Geometrie, Hauptfenster-Geometrie und Kartenaktionsschutz; unter Windows zusätzlich unsichtbare Panel-/Baumtests | `tools/json_test.cpp` |
 | F9-Register ↔ Engine | Datenbank mit allen 13 Registern, vorbereitete Register wirkungslos, F9-Vorgaben spielbar, alte Projekte gültig | `tools/database_register_test.rb` |
+| Event-Command-Architektur | Bauplan der drei XP-Tabs (90 Befehle), typisierte Command-Objekte, ein Handler je Typ, Ports und Interpreter | `tools/event_commands_arch_test.rb`, `tools/event_commands_test.rb` |
 | Script-/Kartenmodell | RGSS-Dokumente, Einrückung, Markeridentität und Startposition | `tools/editor_workflow_test.cpp` |
 | C++-Terrain | Echte Geländegenerierung, Höhen-/Splat-Budgets, Atlasplan und Fehlerpfade ohne D3D | `tools/terrain_test.cpp` |
 | Materialien/Dateien | Verlustfreier JSON-Baum, unter Windows Handle-Konflikte, Junctions und Hardlinks | `tools/material_test.cpp` |
@@ -651,6 +652,9 @@ Spielstände liegen in `projekte/<name>/saves/slot1..3.json`.
   und betroffener Datei
 - [`docs/ETAPPE_41_F9_DATENBANK.md`](docs/ETAPPE_41_F9_DATENBANK.md) — F9 mit 13
   XP-Registern: Recherche, Aufbau, Prüfungen und Live-Test-Anleitung
+- [`docs/ETAPPE_42_EVENT_COMMAND_TABS.md`](docs/ETAPPE_42_EVENT_COMMAND_TABS.md) —
+  Event-Command-Architektur nach den drei XP-Tabs: Bauplan, Typen, Handler,
+  Ports, Beispielwerte
 - [`docs/HANDOFF_Naechste_KI.md`](docs/HANDOFF_Naechste_KI.md) — Arbeitsregeln,
   Etappen-Tabelle, bekannte Fallstricke
 

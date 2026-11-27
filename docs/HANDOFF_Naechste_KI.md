@@ -1,5 +1,31 @@
 # Handoff für die nächste KI - Rune3D, Stand nach Implementierung 19y
 
+**Etappe 42 (Event-Command-Architektur nach den drei XP-Tabs) — fertig, ohne UI.**
+Die `Rpg::EventCommands`-Schicht ist jetzt der vollständige XP-Bauplan:
+`layout.rb` beschreibt drei Tabs mit je zwei Spalten und je zwei Abschnitten
+(90 Befehle in XP-Reihenfolge, mit XP-Name, deutscher Beschriftung und Code);
+der Katalog zieht Beschriftung/Abschnitt/Position daraus, `Layout.pruefen!`
+verhindert Abweichungen. `typed.rb` baut aus dem Feldschema **90 eigene
+Command-Klassen plus 90 Parameterklassen** (typisiert, unveränderlich,
+verlustfreier Roundtrip, typisierte Kinder in `then`/`else`, `choice_0..3`,
+`body`, `win`/`escape`/`lose`; Ruby-sichere Leser `initialize_actor`,
+`param_code`). `handlers.rb` hat **90 einzelne Handler** statt Gruppen mit
+`case command.commandType`; die Registry liefert sie pro Typ und lässt sich
+per DI überschreiben. Neu: `ISystemSettingsService` (Windowskin, Speichern,
+Menü, Begegnung), `IAudioService#set_battle_bgm/#set_battle_end_me`,
+`IUINavigationService#text_options` — damit hat jeder Befehl mit Seiteneffekt
+einen Port. Service-Aliase (`IInventoryService`, `IPartyService`,
+`IPictureService`, `IScreenEffectService`, …) nennen die Schnittstellen wie in
+der Architekturvorgabe. Der Interpreter zeigt `program_counter`,
+`current_command`, `call_stack`, `depth`, `common_event_depth`, `wait_kind`.
+Beispielwerte bleiben die eigenen IDs/Keys (Schalter 101 `Tor_Offen`, Variable
+202 `Quest_Phase`, Karte 12 an (8, 14), `bgm_tavern_night`, `se_door_latch`);
+die vier Beispielprogramme decken alle 90 Befehle ab. Prüfungen:
+`tools/event_commands_arch_test.rb` **1542/0** (neu), `event_commands_test`
+**107/0**, `lint_repo` ohne Befund. **Keine UI gebaut** und die Ports sind noch
+nicht an das laufende Spiel angeschlossen (Backlog). Bauplan und Tabellen:
+`docs/ETAPPE_42_EVENT_COMMAND_TABS.md`.
+
 **Etappe 41 (F9-Datenbank wie XP) — Code fertig, Live-Test offen.** Der Nutzer
 hat aus vier Vorschlägen ausdrücklich **B) Editor-Datenbank F9 wie XP**
 gewählt. F9 hat jetzt alle **13 XP-Register** als echte Registerkarten

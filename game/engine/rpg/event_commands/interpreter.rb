@@ -56,6 +56,34 @@ module Rpg
       def busy? = running? && !@wait.nil?
       def context = @frames.last&.context || @context
 
+      # Befehlszeiger des obersten Frames — XP nennt ihn @index. Nil, wenn
+      # kein Programm läuft. Zusammen mit call_stack ist der komplette
+      # Ausführungszustand von außen lesbar (Tests, Debugger, Editor).
+      def program_counter = @frames.last&.index
+      def depth = @frames.size
+      def wait_kind = @wait&.kind
+      def waiting? = !@wait.nil?
+
+      def current_command
+        frame = @frames.last
+        return nil unless frame
+
+        frame.commands[frame.index]
+      end
+
+      # Aufrufstapel: Programm, Blöcke, Schleifen und Common-Event-Aufrufe in
+      # der Reihenfolge ihrer Entstehung, jeweils mit eigenem Befehlszeiger.
+      def call_stack
+        @frames.map do |frame|
+          { kind: frame.kind, indent: frame.indent, index: frame.index,
+            commands: frame.commands.size, repeats: frame.repeats,
+            program_id: frame.context[:program_id],
+            common_event_id: frame.context[:common_event_id] }
+        end.freeze
+      end
+
+      def common_event_depth = @frames.count { |frame| frame.kind == :common }
+
       def update(delta_seconds = 0.0)
         return self unless running?
 

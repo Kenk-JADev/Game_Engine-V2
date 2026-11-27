@@ -21,6 +21,30 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 ---
 
 ## Offen
+### [Ruby] Event-Command-Ports sind noch nicht an das laufende Spiel angeschlossen — offen (Etappe 42)
+- Symptom: `Rpg::EventCommands` führt alle 90 XP-Befehle typisiert aus, aber
+  standardmäßig gegen Null-/Memory-/Recording-Adapter. Ein `play_se` oder
+  `change_hp` aus dieser Schicht verändert das laufende Spiel noch nicht.
+- Vermutung/Analyse: Es fehlen die Adapter, die `IPartyService`,
+  `IBattleController`, `IAudioService`, `IPictureService`, `IMapController`
+  usw. auf `Party`, `Battle`, `Audio`, `Pictures`, `Game` abbilden — plus die
+  Entscheidung, welche Schicht künftig die Events führt (bestehender
+  `interpreter.rb` oder dieser).
+- Betroffene Stellen: `game/engine/rpg/event_commands/ports.rb`,
+  `game/engine/rpg.rb` (`build_event_interpreter`), `game/engine/interpreter.rb`.
+- Gefunden in: Etappe 42 (bewusst zurückgestellt, Auftrag war Architektur ohne UI).
+
+### [Editor] F6 zeigt den XP-Bauplan der drei Tabs noch nicht — offen (Etappe 42)
+- Symptom: Der Event-Editor nutzt weiter seine eigene Befehlsliste; die
+  drei XP-Tabs mit je zwei Spalten und zwei Abschnitten gibt es nur als Daten
+  (`Rpg::EventCommands::Layout`) und als Tabelle in der Doku.
+- Vermutung/Analyse: Für die Oberfläche fehlt die Zuordnung der bestehenden
+  `cmd`-Strings zu den 90 `commandType`-Namen und ein Dialog mit drei Reitern.
+  Der Bauplan ist bewusst UI-frei gehalten, damit er direkt gecodet werden kann.
+- Betroffene Stellen: `src/editor/editor_main.cpp` (F6),
+  `src/editor/event_form.h`, `game/engine/rpg/event_commands/layout.rb`.
+- Gefunden in: Etappe 42.
+
 ### [Engine] Level-Up ohne Klassentabellen — bewusste Grenze (Runde 22)
 - Symptom: Stufenaufstieg wächst prozentual (8 % HP/MP, 5 % je
   Angriffswert), XP rechnet dagegen aus `RPG::Class`-Kurven je Stufe.

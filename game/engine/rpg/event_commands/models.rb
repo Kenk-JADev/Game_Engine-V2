@@ -32,12 +32,16 @@ module Rpg
       # Eine Befehlsdefinition kennt zusätzlich ihre XP-Spalte. Die Spalte
       # wird aus dem Code abgeleitet, solange sie nicht ausdrücklich gesetzt
       # wird; damit bleibt der Katalog deklarativ und ohne Sonderfälle.
+      # Beschriftung, XP-Name, Abschnitt und Position kommen aus Layout —
+      # dort steht der Bauplan der drei Tabs, hier nur die Feldschema-Logik.
       Definition = Data.define(:type, :commandType, :code, :tab, :column,
-                               :group, :handler, :fields, :blocks, :summary) do
+                               :group, :handler, :fields, :blocks, :summary,
+                               :label, :xp_name, :section, :position) do
         prepend Rpg::Support::Immutable
 
         def initialize(type:, code:, tab:, group:, handler:, column: nil,
                        fields: {}, blocks: {}, summary: '')
+          eintrag = Layout.entry(type)
           super(
             type: type.to_s,
             commandType: type.to_s,
@@ -48,7 +52,11 @@ module Rpg
             handler: handler.to_s,
             fields: fields.to_h { |name, field| [name.to_s, field] },
             blocks: blocks.map(&:to_s),
-            summary: summary
+            summary: summary,
+            label: eintrag&.label || type.to_s,
+            xp_name: eintrag&.xp_name || type.to_s,
+            section: eintrag&.section || group.to_s,
+            position: eintrag&.position || 0
           )
         end
 
@@ -111,6 +119,15 @@ module Rpg
               (column.nil? || eintrag.column == column.to_sym)
           end.freeze
         end
+
+        # Der Bauplan der drei Tabs, gefiltert auf diesen Katalog. Eine
+        # Oberfläche braucht nur diese Struktur: Tab -> Spalte -> Abschnitt.
+        def layout = Layout
+
+        # Typisierte Sicht auf ein Kommando: eigene Klasse je Befehlstyp mit
+        # benannten, geprueften Feldern statt rohem Parameter-Hash.
+        def typed(command) = Typed.cast(command, self)
+        def typed_program(id) = Typed.cast_program(program(id), self)
       end
     end
   end
