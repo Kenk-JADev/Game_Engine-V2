@@ -219,6 +219,7 @@ ruby tools\lint_repo.rb                        # Repo-Hygiene
 | C++-Logiktest | JSON, Editor-Formulare, F9-Registerkatalog und -Geometrie, Hauptfenster-Geometrie und Kartenaktionsschutz; unter Windows zusätzlich unsichtbare Panel-/Baumtests | `tools/json_test.cpp` |
 | F9-Register ↔ Engine | Datenbank mit allen 13 Registern, vorbereitete Register wirkungslos, F9-Vorgaben spielbar, alte Projekte gültig | `tools/database_register_test.rb` |
 | Event-Command-Architektur | Bauplan der drei XP-Tabs (90 Befehle), typisierte Command-Objekte, ein Handler je Typ, Ports und Interpreter | `tools/event_commands_arch_test.rb`, `tools/event_commands_test.rb` |
+| XP-Befehlskatalog (F6) | Portable Abbildung des Bauplans: 90 Befehle, 3 Tabs, 12 Abschnitte, Codes, Felder, `cmd`-Zuordnung und überlappungsfreie Geometrie | `tools/event_command_catalog_test.cpp` |
 | Script-/Kartenmodell | RGSS-Dokumente, Einrückung, Markeridentität und Startposition | `tools/editor_workflow_test.cpp` |
 | C++-Terrain | Echte Geländegenerierung, Höhen-/Splat-Budgets, Atlasplan und Fehlerpfade ohne D3D | `tools/terrain_test.cpp` |
 | Materialien/Dateien | Verlustfreier JSON-Baum, unter Windows Handle-Konflikte, Junctions und Hardlinks | `tools/material_test.cpp` |
@@ -468,6 +469,13 @@ Ein nicht ausgewählter Befehlsentwurf wird bei Ja eingefügt. Ungültige
 Eingaben verhindern die gesamte gemeinsame Übernahme. Die Karte wird
 anschließend im Hauptfenster mit Strg+S gespeichert; mit Fokus im F6-Fenster
 ist das Tastenkürzel für das Hauptfenster abgeschaltet.
+
+**XP-Befehlsauswahl (Etappe 44):** Neben der Befehlstyp-ComboBox öffnet „XP…“
+einen Dialog mit drei Registerkarten wie RPG Maker XP (je zwei Spalten und zwei
+Abschnitten, 90 Befehle). Ein Klick wählt den Befehl, „Übernehmen“ stellt die
+ComboBox auf den passenden Event-String. 60 Befehle sind ausführbar verdrahtet;
+30 sind als „vorbereitet“ markiert und melden ihre Grenze, statt still in eine
+Karte geschrieben zu werden. Siehe `docs/ETAPPE_44_EVENT_COMMAND_TABS_UI.md`.
 
 Nur geänderte Felder werden geschrieben. Unberührte Zahlen, fehlende Felder,
 Zusatzdaten und verschachtelte Zweige bleiben erhalten. Alte Events ohne

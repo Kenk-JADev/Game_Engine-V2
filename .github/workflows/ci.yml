@@ -116,6 +116,13 @@ jobs:
             -Isrc src/editor/json.cpp tools/material_test.cpp -o material_test
           ./material_test
 
+      - name: XP-Befehlskatalog portabel prüfen (Etappe 44)
+        run: |
+          g++ -std=c++20 -O2 -Wall -Wextra -Werror \
+            -Wno-unused-parameter -Wno-missing-field-initializers \
+            -Isrc tools/event_command_catalog_test.cpp -o event_command_catalog_test
+          ./event_command_catalog_test
+
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.4'

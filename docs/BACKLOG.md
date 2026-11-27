@@ -21,17 +21,6 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 ---
 
 ## Offen
-### [Editor] F6 zeigt den XP-Bauplan der drei Tabs noch nicht — offen (Etappe 42)
-- Symptom: Der Event-Editor nutzt weiter seine eigene Befehlsliste; die
-  drei XP-Tabs mit je zwei Spalten und zwei Abschnitten gibt es nur als Daten
-  (`Rpg::EventCommands::Layout`) und als Tabelle in der Doku.
-- Vermutung/Analyse: Für die Oberfläche fehlt die Zuordnung der bestehenden
-  `cmd`-Strings zu den 90 `commandType`-Namen und ein Dialog mit drei Reitern.
-  Der Bauplan ist bewusst UI-frei gehalten, damit er direkt gecodet werden kann.
-- Betroffene Stellen: `src/editor/editor_main.cpp` (F6),
-  `src/editor/event_form.h`, `game/engine/rpg/event_commands/layout.rb`.
-- Gefunden in: Etappe 42.
-
 ### [Engine] Level-Up ohne Klassentabellen — bewusste Grenze (Runde 22)
 - Symptom: Stufenaufstieg wächst prozentual (8 % HP/MP, 5 % je
   Angriffswert), XP rechnet dagegen aus `RPG::Class`-Kurven je Stufe.
@@ -505,6 +494,29 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Runde 12 (Y4-Nachgang).
 
 ## Erledigt
+### [Editor] F6 zeigt den XP-Bauplan der drei Tabs — erledigt (Etappe 44)
+- Symptom: Der Event-Editor nutzte weiter seine eigene flache Befehlsliste; die
+  drei XP-Tabs mit je zwei Spalten und zwei Abschnitten gab es nur als Daten
+  (`Rpg::EventCommands::Layout`) und als Tabelle in der Doku.
+- Fix: F6 bekommt neben der Befehlstyp-ComboBox einen „XP…“-Button, der einen
+  eigenen Dialog mit **drei Registerkarten** öffnet (je zwei Spalten, zwei
+  Abschnitte, 90 Befehle in XP-Reihenfolge). Portabler Katalog
+  `src/editor/event_command_catalog.h` (generiert aus `layout.rb` über
+  `tools/gen_event_command_catalog.rb` + `.py`), Geometrie
+  `event_command_layout.h`, Win32-Dialog `event_command_dialog_win.h`.
+  „Übernehmen“ stellt die ComboBox auf den passenden Event-String. 60 Befehle
+  sind verdrahtet, 30 als „vorbereitet“ gekennzeichnet (Rpg-Schicht führt sie,
+  das Karten-Event noch nicht — siehe Etappe 43).
+- Abdeckung: `tools/event_command_catalog_test.cpp` (32 Prüfungen, 0 Fehler,
+  CI-Schritt mit `-Werror`); Cross-Kompilat des Editors sauber; `json_test`
+  1031/0, `befehle_test` 0 Fehler, `event_commands_arch_test` 1542/0.
+- Doku: `docs/ETAPPE_44_EVENT_COMMAND_TABS_UI.md`.
+- Betroffene Stellen: `src/editor/editor_main.cpp`,
+  `src/editor/event_command_catalog.h`, `event_command_layout.h`,
+  `event_command_dialog_win.h`, `.github/workflows/ci.yml`.
+- Offen für den Windows-Rechner: Sicht-/DPI-Test (96/120/144/192 DPI,
+  Tab-Umbruch, Übernehmen). CI-Grün ersetzt keinen interaktiven GUI-Test.
+
 ### [Ruby] Event-Command-Ports sind nicht an das laufende Spiel angeschlossen — erledigt (Etappe 43)
 - Symptom: `Rpg::EventCommands` führte alle 90 XP-Befehle typisiert aus, aber
   gegen Null-/Memory-/Recording-Adapter. Ein `play_se` oder `change_hp`

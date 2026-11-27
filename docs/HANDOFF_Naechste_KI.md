@@ -1,4 +1,28 @@
-# Handoff für die nächste KI - Rune3D, Stand nach Implementierung 19y
+# Handoff für die nächste KI - Rune3D, Stand nach Etappe 44
+
+**Etappe 44 (F6 als drei XP-Registerkarten) — fertig, Sicht-/DPI-Test steht aus.**
+Der Event-Editor (F6) hat jetzt eine Befehlsauswahl wie RPG Maker XP: neben der
+Befehlstyp-ComboBox öffnet der Button **„XP…“** einen eigenen Dialog mit **drei
+Registerkarten**, je **zwei Spalten** und **zwei Abschnitten**, **90 Befehle** in
+XP-Reihenfolge. „Übernehmen“ stellt die ComboBox auf den passenden Event-String
+und löst die bestehende Feld-Sichtbarkeit aus. Neue portable Schicht:
+`src/editor/event_command_catalog.h` (generiert aus `Rpg::EventCommands::Layout`
+über `tools/gen_event_command_catalog.rb` + `.py`, byte-reproduzierbar),
+`event_command_layout.h` (Geometrie, 96 DPI) und `event_command_dialog_win.h`
+(Win32, in `editor_main.cpp` eingebunden). **60 Befehle verdrahtet, 30
+„vorbereitet“** (Rpg-Schicht führt sie, das Karten-Event noch nicht; der Dialog
+kennzeichnet sie und meldet die Grenze statt sie still zu schreiben). Neuer
+kopfloser Test `tools/event_command_catalog_test.cpp` (**32/0**, CI-Schritt mit
+`-Werror` im Job `cpp-logik`). Cross-Kompilat des Editors sauber; `json_test`
+1031/0, `befehle_test` 0 Fehler (keine neuen `cmd`-Strings), `event_commands_arch_test`
+1542/0, `event_commands_engine_test` 110/0. Doku:
+`docs/ETAPPE_44_EVENT_COMMAND_TABS_UI.md`. **CI grün:** wird nach dem Push
+nachgetragen. **Offen für den Windows-Rechner:** interaktiver Sicht-/DPI-Test
+(96/120/144/192 DPI, Tab-Umbruch bei langen Beschriftungen, Übernehmen,
+Fenster in der Arbeitsfläche). CI-Grün (auch Windows-Job mit D3D11-WARP) ersetzt
+keinen GUI-Test. **Nächster sinnvoller Schritt:** typisierte Parameterformulare
+je Befehl aus den 235 Katalog-Feldern (`EcFieldKind`), oder die 30 vorbereiteten
+Befehle an die Engine-Ports anbinden (Ausbau von Etappe 43).
 
 **Etappe 43 (Ports an die echte Engine) — fertig, ohne UI.** Die 90 typisierten
 XP-Befehle wirken jetzt im laufenden Spiel: `game/engine/rpg/event_commands/engine_ports.rb`
@@ -21,8 +45,7 @@ Native-Attrappen und tickt pro Frame auch `Mover`/`Fade`/`Pictures`/`ScreenFx`/
 1542/0, `event_commands_test` 107/0). Doku: `docs/ETAPPE_43_ENGINE_PORTS.md`.
 **CI grün:** Lauf [45994399716](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45994399716)
 (`55b3357`), alle vier Jobs; Ruby-Engine 60 OK/0/1.
-**Nächster Schritt: Etappe 44 — F6 als drei XP-Registerkarten** (C++/Win32,
-in der Sandbox nur cross-kompilierbar; Sicht-/DPI-Test auf dem Windows-Rechner).
+**Etappe 44 (F6 als drei XP-Registerkarten) ist umgesetzt** — siehe oben.
 
 **Etappe 42 (Event-Command-Architektur nach den drei XP-Tabs) — fertig, ohne UI.**
 Die `Rpg::EventCommands`-Schicht ist jetzt der vollständige XP-Bauplan:

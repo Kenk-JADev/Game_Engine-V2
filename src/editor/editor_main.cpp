@@ -53,6 +53,8 @@
 #include "editor/database_form.h"
 #include "editor/database_catalog.h"
 #include "editor/database_layout.h"
+#include "editor/event_command_catalog.h"
+#include "editor/event_command_layout.h"
 #include "editor/document_store_win.h"
 #include "editor/encounter_check.h"
 #include "editor/encounter_form.h"
@@ -651,6 +653,7 @@ bool material_editor_focused();
 
 // Etappe 17g: Datenbank-Dialog (Helden/Items/Gold).
 void open_database_dialog();
+void open_event_command_picker();   // Etappe 44: XP-Befehlsauswahl (drei Tabs)
 bool database_editor_open();
 bool database_editor_focused();
 bool database_request_close();
@@ -8395,6 +8398,7 @@ enum {
     // Etappe 19d: Self-Switch-Bedingung der Seite (Buchstabe + an/aus)
     IDEV_CSELF     = 5055,
     IDEV_CSELFVAL  = 5056,
+    IDEV_XP_PICK   = 5057,   // Etappe 44: XP-Befehlsauswahl öffnen
 };
 
 // Pfade statt langlebiger Zeiger: jede Strukturänderung löst die Referenz auf
@@ -10031,6 +10035,7 @@ LRESULT CALLBACK event_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             if (id == IDEV_CLOSE || id == IDCANCEL) { if (resolve_event_edits()) DestroyWindow(h); return 0; }
             if (id == IDEV_APPLY_EV) { ev_apply(true, false, EvCommandApply::None); return 0; }
             if (id == IDEV_INSERT)   { ev_insert_command(); return 0; }
+            if (id == IDEV_XP_PICK)  { open_event_command_picker(); return 0; }
             if (id == IDEV_APPLYCMD) { ev_update_command(); return 0; }
             if (id == IDEV_DELCMD)   { ev_delete_command(); return 0; }
             if (id == IDEV_UP)       { ev_move_command(-1); return 0; }
@@ -10200,7 +10205,9 @@ void open_event_editor() {
     ev_label(L"Befehlstyp:", 316, 494, 110);
     g_ev.cb_ce_type = ev_control(L"ComboBox", nullptr,
                                  CBS_DROPDOWNLIST | WS_VSCROLL,
-                                 424, 490, 250, 220, IDEV_CETYPE);
+                                 424, 490, 176, 220, IDEV_CETYPE);
+    // Etappe 44: XP-Befehlsauswahl mit drei Registerkarten (90 Befehle).
+    ev_control(L"Button", L"XP\u2026", BS_PUSHBUTTON, 606, 488, 64, 28, IDEV_XP_PICK);
     for (const wchar_t* t : EV_TYPE_LABELS) {
         SendMessageW(g_ev.cb_ce_type, CB_ADDSTRING, 0,
                      reinterpret_cast<LPARAM>(t));
@@ -11414,6 +11421,13 @@ bool database_editor_focused() {
     HWND fg = GetForegroundWindow();
     return fg == g_db.win || (fg && IsChild(g_db.win, fg));
 }
+
+// ============================================================================
+//  Etappe 44: XP-Befehlsauswahl (drei Registerkarten) — Implementation.
+//  Eingebunden nach ui_px/utf8_to_wide/g_ev/event_layout_center; der Dialog
+//  nutzt dieselbe portable Fensterrechnung wie der Datenbank-Dialog.
+// ============================================================================
+#include "editor/event_command_dialog_win.h"
 
 // ============================================================================
 //  Etappe 17h: Sound-Test + Playtest

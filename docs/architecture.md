@@ -702,6 +702,19 @@ Speichern in dorf.json), 15 Tests grün, 8-s-Spielrun ohne Fehler.
 
 Der Event-Editor (F6) ist deutlich näher an RPG Maker XP gerückt:
 
+**XP-Befehlsauswahl (Etappe 44):** Neben der Befehlstyp-ComboBox öffnet der
+Button „XP…“ einen eigenen Dialog mit drei Registerkarten wie RPG Maker XP —
+je zwei Spalten und zwei Abschnitten, 90 Befehle in XP-Reihenfolge. Die Daten
+stammen portabel aus `src/editor/event_command_catalog.h` (generiert aus
+`Rpg::EventCommands::Layout` über `tools/gen_event_command_catalog.rb` + `.py`),
+die Geometrie aus `event_command_layout.h` (96-DPI-Einheiten, kopflos geprüft in
+`tools/event_command_catalog_test.cpp`), der Win32-Dialog aus
+`event_command_dialog_win.h`. „Übernehmen“ stellt die ComboBox auf den
+zugeordneten Event-String (`cmd`) und löst die Feld-Sichtbarkeit aus. 60 Befehle
+sind verdrahtet; 30 sind als „vorbereitet“ gekennzeichnet (die Rpg-Schicht führt
+sie, das Karten-Event-System noch nicht — Etappe 43) und werden nicht still in
+eine Karte geschrieben. Details: `docs/ETAPPE_44_EVENT_COMMAND_TABS_UI.md`.
+
 **Befehlskategorien:** Die Befehls-ComboBox gruppiert jetzt 20 Typen
 mit Präfixen: [Nachricht] (Text, Wahlmöglichkeiten, Log),
 [Steuerung] (Warte, Schalter setzen/umschalten, Variable, Wenn
