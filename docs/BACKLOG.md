@@ -514,6 +514,21 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Runde 12 (Y4-Nachgang).
 
 ## Erledigt
+### [Ruby] CommandValidator + neue Beispielwerte (Etappe 47) — erledigt
+- Symptom: Es gab keinen benannten, wiederverwendbaren Validator, der beim Laden
+  von Maps/Common Events IDs + Asset-Keys + Block-/Indent-Konsistenz gegen einen
+  Datenbank-Index prüft; Beispielwerte waren alt (Tor_Offen/202/Map 12).
+- Fix: `command_validator.rb` (Adapter über Loader, `resources_from_database`,
+  `validate`/`valid?`, `Rpg.validate_event_commands`); neue Beispielwerte
+  (101 Tor_Smaragdwald_Offen, 205 Alchemie_Punkte, Map 7 (14,22),
+  bgm_ancient_citadel, se_crystal_chime) in Config + Tests + Docs.
+- Abdeckung: `tools/event_command_validator_test.rb` 13/0 (via test_all im CI);
+  test 107/0, arch 1542/0, engine 110/0, json 1031/0, catalog 32/0, settings 29/0.
+- Doku: `docs/ETAPPE_47_COMMAND_VALIDATOR.md`.
+- Betroffene Stellen: `game/engine/rpg/event_commands/command_validator.rb`,
+  `event_commands.rb`, `rpg.rb`, `game/config/event_commands.json`,
+  `tools/event_commands_*_test.rb`, `tools/event_command_validator_test.rb`.
+
 ### [Editor] Zweige/leere Slots anklickbar zum Einfügen (F6) — erledigt (Etappe 46)
 - Symptom: „Dann:“/„Sonst:“-Kopfzeilen und leere Zweige waren nicht sinnvoll
   anklickbar; Einfügen lief nur über die Befehlstyp-Combo + „Einfügen“, leere

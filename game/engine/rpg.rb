@@ -49,6 +49,12 @@ module Rpg
     EventCommands::Loader.new(file_system: file_system, reporter: reporter).load(path)
   end
 
+  # Etappe 47: Befehlsprogramm gegen einen Ressourcen-/Datenbank-Index prüfen
+  # (IDs, Asset-Keys, Block-/Indent-Konsistenz). Liefert Befund-Strings.
+  def self.validate_event_commands(commands, resources:)
+    EventCommands::CommandValidator.validate(commands, resources: resources)
+  end
+
   # Etappe 43: Interpreter auf der echten Engine. Ohne Angaben greifen die
   # laufenden Module (GameState, Party, Battle, $game_system, Pictures, ...).
   # bindungen ordnet die Rpg-IDs den Engine-Namen zu, z. B.

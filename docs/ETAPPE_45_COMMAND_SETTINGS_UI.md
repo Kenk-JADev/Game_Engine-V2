@@ -51,7 +51,7 @@ dem typisierten Rpg-Katalog: nur so bleibt jeder geschriebene Befehl ausführbar
 ## Nummerierte Register (Schalter / Variablen)
 
 `NumberedRegistry` hält je Nummer 1..999 einen Namen. Persistenz in
-`database.json["switches"]` / `["variables"]` als Objekt `{"101":"Tor_Offen",...}`
+`database.json["switches"]` / `["variables"]` als Objekt `{"101":"Tor_Smaragdwald_Offen",...}`
 (oder Liste von Namen, Index = Nummer-1). Fehlende Schlüssel => leeres Register;
 der Editor legt sie beim ersten Benennen an, **unberührte database-Felder bleiben
 erhalten**. Die Engine arbeitet weiter mit Namen (`GameState.switch/set_switch`);
@@ -59,7 +59,7 @@ die Auswahl liefert den Namen der gewählten Nummer. Eine unbenannte Nummer beko
 beim Übernehmen einen sprechenden Default (`Schalter_0101` / `Variable_0202`) und
 wird registriert, damit kein leerer Name in der Karte landet.
 
-Beschriftung wie XP: `0101: Tor_Offen`, unbenannt `0001: (unbenannt)`.
+Beschriftung wie XP: `0101: Tor_Smaragdwald_Offen`, unbenannt `0001: (unbenannt)`.
 
 ## Bedienelemente je Feldart
 

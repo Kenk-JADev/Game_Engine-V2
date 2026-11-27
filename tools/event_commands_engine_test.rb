@@ -140,7 +140,7 @@ BINDUNGEN = {
   'troops' => { 9 => 'waldweg' },
   'states' => { 11 => 'gift' },
   'skills' => { 50 => 'kraftschlag' },
-  'maps' => { 12 => 'dorf' },
+  'maps' => { 7 => 'dorf' },
   'events' => { 7 => 'waechter' }
 }.freeze
 
@@ -231,7 +231,7 @@ laufen(1)
 Rune::Input.pressed = []
 
 check('Schalter 101 steht in GameState') { GameState.switch('101') == true }
-check('Variable 202 wurde gerechnet') { GameState.variable('202') != 0.0 }
+check('Variable 205 wurde gerechnet') { GameState.variable('205') != 0.0 }
 check('Gold kam dazu') { Party.gold >= 25 }
 gleich(4, Party.item_count('heiltrank'), 'zwei Heiltränke dazugekommen (Start 2)')
 check('Held arik ist in der Party') { Party.member?('arik') }
@@ -306,15 +306,15 @@ laufen(2)
 
 check('Kartenwechsel angefordert') { $game_temp.player_transferring == true }
 gleich('dorf', $game_temp.player_new_map_id, 'Zielkarte über Bindung aufgelöst')
-gleich(8, $game_temp.player_new_x, 'X = 8')
-gleich(14, $game_temp.player_new_y, 'Y = 14')
+gleich(14, $game_temp.player_new_x, 'X = 14')
+gleich(22, $game_temp.player_new_y, 'Y = 22')
 gleich(8, $game_temp.player_new_direction, 'Blickrichtung up = 8')
 check('Event versetzt') { Game.events.first.x == 4.0 && Game.events.first.z == 9.0 }
 check('Bewegungsroute ist durchgelaufen') { !Mover.active? }
 check('Spieler wurde versetzt') { Rune::Player.pos != [0.0, 0.0, 0.0] }
 
-einzeln('play_bgm', { 'bgm_key' => 'bgm_tavern_night', 'volume' => 80, 'pitch' => 100 })
-gleich('bgm_tavern_night', $game_system.playing_bgm['name'], 'BGM läuft')
+einzeln('play_bgm', { 'bgm_key' => 'bgm_ancient_citadel', 'volume' => 80, 'pitch' => 100 })
+gleich('bgm_ancient_citadel', $game_system.playing_bgm['name'], 'BGM läuft')
 gleich(80, $game_system.playing_bgm['volume'], 'BGM-Lautstärke 80')
 einzeln('play_bgs', { 'bgs_key' => 'bgs_rain_on_stone', 'volume' => 60, 'pitch' => 100 })
 gleich('bgs_rain_on_stone', $game_system.playing_bgs['name'], 'BGS läuft')
@@ -358,9 +358,9 @@ check('Übergang läuft') { Fade.laeuft? }
 check('Übergang blendet aus') { Fade.alpha < 0.5 }
 
 einzeln('memorize_bgm_bgs', {})
-einzeln('play_bgm', { 'bgm_key' => 'bgm_tavern_night', 'volume' => 60, 'pitch' => 110 })
+einzeln('play_bgm', { 'bgm_key' => 'bgm_ancient_citadel', 'volume' => 60, 'pitch' => 110 })
 einzeln('restore_bgm_bgs', {})
-check('BGM wiederhergestellt') { $game_system.playing_bgm['name'] == 'bgm_tavern_night' }
+check('BGM wiederhergestellt') { $game_system.playing_bgm['name'] == 'bgm_ancient_citadel' }
 
 puts '== Tab 3: Kampf und Gegner =='
 Party.setup(Database.database)
@@ -404,7 +404,7 @@ gleich(1, event_interpreter.choice_index, 'zweite Option gewählt')
 check('Wahl geschlossen') { !event_interpreter.busy_choices? }
 
 event_interpreter = Interpreter.new
-einzeln('input_number', { 'variable_id' => 202, 'digits' => 3 }, interpreter: event_interpreter)
+einzeln('input_number', { 'variable_id' => 205, 'digits' => 3 }, interpreter: event_interpreter)
 check('Zahleneingabe offen') { event_interpreter.busy_number? }
 gleich(3, event_interpreter.num_input[:digits], 'drei Stellen')
 
@@ -466,7 +466,7 @@ gleich(0, engine.choice_result, 'choice_result steht auf 0')
 # Zahleneingabe: UI.nummer_eingabe schreibt, der Befehl liest danach (XP 103).
 interp = Interpreter.new
 engine, = motor(interpreter: interp)
-engine.start(programm_aus(902, [befehl('input_number', { 'variable_id' => 202, 'digits' => 3 })]))
+engine.start(programm_aus(902, [befehl('input_number', { 'variable_id' => 205, 'digits' => 3 })]))
 engine.update(0.05)
 check('Zahleneingabe blockiert') { engine.wait_kind == :ui && interp.busy_number? }
 feld = interp.num_input
@@ -477,7 +477,7 @@ UI.nummer_eingabe(feld)
 Rune::Input.pressed = []
 interp.instance_variable_set(:@num_input, nil)
 engine.update(0.05)
-gleich(700, GameState.variable('202').to_i, 'Zahl 700 in Variable 202')
+gleich(700, GameState.variable('205').to_i, 'Zahl 700 in Variable 205')
 check('Zahlenprogramm zu Ende') { !engine.running? }
 
 # Tasteneingabe wartet auf eine Taste (XP 105).

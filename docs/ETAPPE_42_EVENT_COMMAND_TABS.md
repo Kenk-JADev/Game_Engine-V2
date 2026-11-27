@@ -331,16 +331,16 @@ einmal zeigen (Programm 1 „Torritual“, 2 „Kartenritual“, 3 „Kampfritua
 
 | Ressource | ID | Key | Name |
 |---|---|---|---|
-| Schalter | 101 | `switch/tor_offen` | Tor_Offen |
-| Variable | 202 | `variable/quest_phase` | Quest_Phase |
+| Schalter | 101 | `switch/tor_offen` | Tor_Smaragdwald_Offen |
+| Variable | 202 | `variable/quest_phase` | Alchemie_Punkte |
 | Karte | 12 | `map/ruinenkammer` | Ruinenkammer — Transfer an (8, 14) |
 | Event | 7 | `event/waechter` | Wächter |
 | Held | 1 | `actor/kael` | Kael |
 | Common Event | 9 | `common_event/lagerfeuer` | Lagerfeuer |
 | Item / Waffe / Rüstung | 3 / 4 / 5 | `item/vital_tonic`, `weapon/rune_blade`, `armor/warded_cloak` | Vital Tonic, Rune Blade, Warded Cloak |
 | Truppe / Gegner | 9 / 8 | `troop/rift_pack`, `enemy/ashen_wraith` | Rift Pack, Ashen Wraith |
-| BGM / BGS | 24 / 25 | `bgm_tavern_night`, `bgs_rain_on_stone` | Tavern Night, Rain on Stone |
-| ME / SE | 26 / 27 | `me_gate_chime`, `se_door_latch` | Gate Chime, Door Latch |
+| BGM / BGS | 24 / 25 | `bgm_ancient_citadel`, `bgs_rain_on_stone` | Tavern Night, Rain on Stone |
+| ME / SE | 26 / 27 | `me_gate_chime`, `se_crystal_chime` | Gate Chime, Door Latch |
 | Bild / Laden / Script | 20 / 21 / 22 | `pic_crest_seal`, `shop/rune_market`, `script/check_gate` | Crest Seal, Rune Market, Check Gate |
 | Windowskin / Übergang | 23 / 34 | `skin/obsidian`, `transition/rune_fade` | Obsidian, Rune Fade |
 
@@ -351,8 +351,8 @@ einmal zeigen (Programm 1 „Torritual“, 2 „Kartenritual“, 3 „Kampfritua
   Reihenfolge), Katalog ↔ Layout, 90 Command- und 90 Parameterklassen,
   verlustfreier Roundtrip aller Beispielbefehle samt Blöcken, 90 getrennte
   Handler, Handler-Austausch per DI, alle Schnittstellen und Adapter,
-  Beispielwerte (Schalter 101, Variable 202, Karte 12 an (8, 14),
-  `bgm_tavern_night`, `se_door_latch`), Befehlszeiger, Aufrufstapel,
+  Beispielwerte (Schalter 101, Variable 205, Karte 7 an (14, 22),
+  `bgm_ancient_citadel`, `se_crystal_chime`), Befehlszeiger, Aufrufstapel,
   Wartezustände und Rekursionsgrenze.
 - `ruby tools/event_commands_test.rb` → **107 Prüfungen, 0 Fehler**
   (Loader-Validierung, Negativfälle, Interpreter-Verhalten) — unverändert grün.

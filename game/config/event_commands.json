@@ -2,106 +2,242 @@
   "version": 1,
   "resources": {
     "switches": [
-      { "id": 101, "key": "switch/tor_offen", "name": "Tor_Offen" }
+      {
+        "id": 101,
+        "key": "switch/tor_smaragdwald_offen",
+        "name": "Tor_Smaragdwald_Offen"
+      }
     ],
     "variables": [
-      { "id": 202, "key": "variable/quest_phase", "name": "Quest_Phase" }
+      {
+        "id": 205,
+        "key": "variable/alchemie_punkte",
+        "name": "Alchemie_Punkte"
+      }
     ],
     "self_switches": [
-      { "id": 1, "key": "self_switch/tor", "name": "A" }
+      {
+        "id": 1,
+        "key": "self_switch/tor",
+        "name": "A"
+      }
     ],
     "common_events": [
-      { "id": 9, "key": "common_event/lagerfeuer", "name": "Lagerfeuer" }
+      {
+        "id": 9,
+        "key": "common_event/lagerfeuer",
+        "name": "Lagerfeuer"
+      }
     ],
     "maps": [
-      { "id": 12, "key": "map/ruinenkammer", "name": "Ruinenkammer" }
+      {
+        "id": 7,
+        "key": "map/smaragdwald",
+        "name": "Smaragdwald"
+      }
     ],
     "events": [
-      { "id": 7, "key": "event/waechter", "name": "Wächter" }
+      {
+        "id": 7,
+        "key": "event/waechter",
+        "name": "Wächter"
+      }
     ],
     "actors": [
-      { "id": 1, "key": "actor/kael", "name": "Kael" }
+      {
+        "id": 1,
+        "key": "actor/kael",
+        "name": "Kael"
+      }
     ],
     "classes": [
-      { "id": 10, "key": "class/vanguard", "name": "Vanguard" }
+      {
+        "id": 10,
+        "key": "class/vanguard",
+        "name": "Vanguard"
+      }
     ],
     "skills": [
-      { "id": 50, "key": "skill/rune_burst", "name": "Rune Burst" }
+      {
+        "id": 50,
+        "key": "skill/rune_burst",
+        "name": "Rune Burst"
+      }
     ],
     "items": [
-      { "id": 3, "key": "item/vital_tonic", "name": "Vital Tonic" }
+      {
+        "id": 3,
+        "key": "item/vital_tonic",
+        "name": "Vital Tonic"
+      }
     ],
     "weapons": [
-      { "id": 4, "key": "weapon/rune_blade", "name": "Rune Blade" }
+      {
+        "id": 4,
+        "key": "weapon/rune_blade",
+        "name": "Rune Blade"
+      }
     ],
     "armors": [
-      { "id": 5, "key": "armor/warded_cloak", "name": "Warded Cloak" }
+      {
+        "id": 5,
+        "key": "armor/warded_cloak",
+        "name": "Warded Cloak"
+      }
     ],
     "enemies": [
-      { "id": 8, "key": "enemy/ashen_wraith", "name": "Ashen Wraith" }
+      {
+        "id": 8,
+        "key": "enemy/ashen_wraith",
+        "name": "Ashen Wraith"
+      }
     ],
     "troops": [
-      { "id": 9, "key": "troop/rift_pack", "name": "Rift Pack" }
+      {
+        "id": 9,
+        "key": "troop/rift_pack",
+        "name": "Rift Pack"
+      }
     ],
     "states": [
-      { "id": 11, "key": "state/rune_mark", "name": "Rune Mark" }
+      {
+        "id": 11,
+        "key": "state/rune_mark",
+        "name": "Rune Mark"
+      }
     ],
     "animations": [
-      { "id": 13, "key": "fx/rune_burst", "name": "Rune Burst" }
+      {
+        "id": 13,
+        "key": "fx/rune_burst",
+        "name": "Rune Burst"
+      }
     ],
     "tilesets": [
-      { "id": 14, "key": "tileset/ruin_stone", "name": "Ruin Stone" }
+      {
+        "id": 14,
+        "key": "tileset/ruin_stone",
+        "name": "Ruin Stone"
+      }
     ],
     "elements": [
-      { "id": 2, "key": "element/frost", "name": "Frost" }
+      {
+        "id": 2,
+        "key": "element/frost",
+        "name": "Frost"
+      }
     ],
     "pictures": [
-      { "id": 20, "key": "pic_crest_seal", "name": "Crest Seal" }
+      {
+        "id": 20,
+        "key": "pic_crest_seal",
+        "name": "Crest Seal"
+      }
     ],
     "shops": [
-      { "id": 21, "key": "shop/rune_market", "name": "Rune Market" }
+      {
+        "id": 21,
+        "key": "shop/rune_market",
+        "name": "Rune Market"
+      }
     ],
     "scripts": [
-      { "id": 22, "key": "script/check_gate", "name": "Check Gate" }
+      {
+        "id": 22,
+        "key": "script/check_gate",
+        "name": "Check Gate"
+      }
     ],
     "windowskins": [
-      { "id": 23, "key": "skin/obsidian", "name": "Obsidian" }
+      {
+        "id": 23,
+        "key": "skin/obsidian",
+        "name": "Obsidian"
+      }
     ],
     "bgms": [
-      { "id": 24, "key": "bgm_tavern_night", "name": "Tavern Night" }
+      {
+        "id": 24,
+        "key": "bgm_ancient_citadel",
+        "name": "Ancient Citadel"
+      }
     ],
     "bgss": [
-      { "id": 25, "key": "bgs_rain_on_stone", "name": "Rain on Stone" }
+      {
+        "id": 25,
+        "key": "bgs_rain_on_stone",
+        "name": "Rain on Stone"
+      }
     ],
     "mes": [
-      { "id": 26, "key": "me_gate_chime", "name": "Gate Chime" }
+      {
+        "id": 26,
+        "key": "me_gate_chime",
+        "name": "Gate Chime"
+      }
     ],
     "ses": [
-      { "id": 27, "key": "se_door_latch", "name": "Door Latch" }
+      {
+        "id": 27,
+        "key": "se_crystal_chime",
+        "name": "Crystal Chime"
+      }
     ],
     "characters": [
-      { "id": 28, "key": "char/kael", "name": "Kael" }
+      {
+        "id": 28,
+        "key": "char/kael",
+        "name": "Kael"
+      }
     ],
     "battlers": [
-      { "id": 29, "key": "battler/kael", "name": "Kael" }
+      {
+        "id": 29,
+        "key": "battler/kael",
+        "name": "Kael"
+      }
     ],
     "faces": [
-      { "id": 30, "key": "face/kael", "name": "Kael" }
+      {
+        "id": 30,
+        "key": "face/kael",
+        "name": "Kael"
+      }
     ],
     "fogs": [
-      { "id": 31, "key": "fog/ember_mist", "name": "Ember Mist" }
+      {
+        "id": 31,
+        "key": "fog/ember_mist",
+        "name": "Ember Mist"
+      }
     ],
     "panoramas": [
-      { "id": 32, "key": "panorama/ruin_sky", "name": "Ruin Sky" }
+      {
+        "id": 32,
+        "key": "panorama/ruin_sky",
+        "name": "Ruin Sky"
+      }
     ],
     "battlebacks": [
-      { "id": 33, "key": "battleback/ruin_floor", "name": "Ruin Floor" }
+      {
+        "id": 33,
+        "key": "battleback/ruin_floor",
+        "name": "Ruin Floor"
+      }
     ],
     "transitions": [
-      { "id": 34, "key": "transition/rune_fade", "name": "Rune Fade" }
+      {
+        "id": 34,
+        "key": "transition/rune_fade",
+        "name": "Rune Fade"
+      }
     ],
     "terrain": [
-      { "id": 35, "key": "terrain/rubble", "name": "Rubble" }
+      {
+        "id": 35,
+        "key": "terrain/rubble",
+        "name": "Rubble"
+      }
     ]
   },
   "programs": [
@@ -114,7 +250,10 @@
           "code": 101,
           "indent": 0,
           "params": {
-            "lines": ["Kael: Das Siegel antwortet.", "Mira: Der Riegel wartet."],
+            "lines": [
+              "Kael: Das Siegel antwortet.",
+              "Mira: Der Riegel wartet."
+            ],
             "speaker": "Kael",
             "face_key": "face/kael",
             "background": "window",
@@ -126,7 +265,10 @@
           "code": 102,
           "indent": 0,
           "params": {
-            "choices": ["Tor öffnen", "Zurück"],
+            "choices": [
+              "Tor öffnen",
+              "Zurück"
+            ],
             "cancel_index": 1,
             "cancel_behavior": "cancel",
             "default_index": 0,
@@ -139,7 +281,13 @@
                 "commandType": "show_text",
                 "code": 101,
                 "indent": 1,
-                "params": { "lines": ["Kael:runes antworten."], "background": "transparent", "position": "top" }
+                "params": {
+                  "lines": [
+                    "Kael:runes antworten."
+                  ],
+                  "background": "transparent",
+                  "position": "top"
+                }
               }
             ],
             "cancel": [
@@ -147,7 +295,9 @@
                 "commandType": "comment",
                 "code": 108,
                 "indent": 1,
-                "params": { "text": "Abbruch ohne Zustandsänderung" }
+                "params": {
+                  "text": "Abbruch ohne Zustandsänderung"
+                }
               }
             ]
           }
@@ -156,44 +306,66 @@
           "commandType": "input_number",
           "code": 103,
           "indent": 0,
-          "params": { "variable_id": 202, "digits": 3 }
+          "params": {
+            "variable_id": 205,
+            "digits": 3
+          }
         },
         {
           "commandType": "change_text_options",
           "code": 104,
           "indent": 0,
-          "params": { "background": "transparent", "position": "top", "speed": 3, "no_fast": false }
+          "params": {
+            "background": "transparent",
+            "position": "top",
+            "speed": 3,
+            "no_fast": false
+          }
         },
         {
           "commandType": "button_input_processing",
           "code": 105,
           "indent": 0,
-          "params": { "variable_id": 202 }
+          "params": {
+            "variable_id": 205
+          }
         },
         {
           "commandType": "wait",
           "code": 106,
           "indent": 0,
-          "params": { "seconds": 0.5 }
+          "params": {
+            "seconds": 0.5
+          }
         },
         {
           "commandType": "comment",
           "code": 108,
           "indent": 0,
-          "params": { "text": "Torsequenz nach XP-Tab 1" }
+          "params": {
+            "text": "Torsequenz nach XP-Tab 1"
+          }
         },
         {
           "commandType": "conditional_branch",
           "code": 111,
           "indent": 0,
-          "params": { "kind": "switch", "switch_id": 101, "value": 1 },
+          "params": {
+            "kind": "switch",
+            "switch_id": 101,
+            "value": 1
+          },
           "blocks": {
             "then": [
               {
                 "commandType": "show_text",
                 "code": 101,
                 "indent": 1,
-                "params": { "lines": ["Das Tor ist bereits offen."] }
+                "params": {
+                  "lines": [
+                    "Das Tor ist bereits offen."
+                  ]
+                }
               }
             ],
             "else": [
@@ -201,7 +373,11 @@
                 "commandType": "show_text",
                 "code": 101,
                 "indent": 1,
-                "params": { "lines": ["Kael: Ich prüfe die Runen."] }
+                "params": {
+                  "lines": [
+                    "Kael: Ich prüfe die Runen."
+                  ]
+                }
               }
             ]
           }
@@ -212,25 +388,54 @@
           "indent": 0,
           "blocks": {
             "body": [
-              { "commandType": "label", "code": 118, "indent": 1, "params": { "name": "schleife_start" } },
+              {
+                "commandType": "label",
+                "code": 118,
+                "indent": 1,
+                "params": {
+                  "name": "schleife_start"
+                }
+              },
               {
                 "commandType": "control_variables",
                 "code": 122,
                 "indent": 1,
-                "params": { "from_id": 202, "to_id": 202, "operation": "add", "source": "constant", "value": 1 }
+                "params": {
+                  "from_id": 205,
+                  "to_id": 205,
+                  "operation": "add",
+                  "source": "constant",
+                  "value": 1
+                }
               },
               {
                 "commandType": "conditional_branch",
                 "code": 111,
                 "indent": 1,
-                "params": { "kind": "variable", "variable_id": 202, "comparator": "greater", "value": 3 },
+                "params": {
+                  "kind": "variable",
+                  "variable_id": 205,
+                  "comparator": "greater",
+                  "value": 3
+                },
                 "blocks": {
                   "then": [
-                    { "commandType": "break_loop", "code": 113, "indent": 2 }
+                    {
+                      "commandType": "break_loop",
+                      "code": 113,
+                      "indent": 2
+                    }
                   ]
                 }
               },
-              { "commandType": "wait", "code": 106, "indent": 1, "params": { "seconds": 0.1 } }
+              {
+                "commandType": "wait",
+                "code": 106,
+                "indent": 1,
+                "params": {
+                  "seconds": 0.1
+                }
+              }
             ]
           }
         },
@@ -238,113 +443,183 @@
           "commandType": "call_common_event",
           "code": 117,
           "indent": 0,
-          "params": { "common_event_id": 9 }
+          "params": {
+            "common_event_id": 9
+          }
         },
         {
           "commandType": "jump_to_label",
           "code": 119,
           "indent": 0,
-          "params": { "name": "nach_sprung" }
+          "params": {
+            "name": "nach_sprung"
+          }
         },
         {
           "commandType": "comment",
           "code": 108,
           "indent": 0,
-          "params": { "text": "Dieser Schritt wird übersprungen" }
+          "params": {
+            "text": "Dieser Schritt wird übersprungen"
+          }
         },
-        { "commandType": "label", "code": 118, "indent": 0, "params": { "name": "nach_sprung" } },
+        {
+          "commandType": "label",
+          "code": 118,
+          "indent": 0,
+          "params": {
+            "name": "nach_sprung"
+          }
+        },
         {
           "commandType": "control_switches",
           "code": 121,
           "indent": 0,
-          "params": { "from_id": 101, "to_id": 101, "value": true }
+          "params": {
+            "from_id": 101,
+            "to_id": 101,
+            "value": true
+          }
         },
         {
           "commandType": "control_variables",
           "code": 122,
           "indent": 0,
-          "params": { "from_id": 202, "to_id": 202, "operation": "add", "source": "other", "other": "party_size" }
+          "params": {
+            "from_id": 205,
+            "to_id": 205,
+            "operation": "add",
+            "source": "other",
+            "other": "party_size"
+          }
         },
         {
           "commandType": "control_self_switch",
           "code": 123,
           "indent": 0,
-          "params": { "letter": "A", "value": true }
+          "params": {
+            "letter": "A",
+            "value": true
+          }
         },
         {
           "commandType": "control_timer",
           "code": 124,
           "indent": 0,
-          "params": { "operation": "start", "seconds": 45.0 }
+          "params": {
+            "operation": "start",
+            "seconds": 45.0
+          }
         },
         {
           "commandType": "change_gold",
           "code": 125,
           "indent": 0,
-          "params": { "operation": "add", "amount": 25 }
+          "params": {
+            "operation": "add",
+            "amount": 25
+          }
         },
         {
           "commandType": "change_items",
           "code": 126,
           "indent": 0,
-          "params": { "item_id": 3, "operation": "add", "amount": 2 }
+          "params": {
+            "item_id": 3,
+            "operation": "add",
+            "amount": 2
+          }
         },
         {
           "commandType": "change_weapons",
           "code": 127,
           "indent": 0,
-          "params": { "weapon_id": 4, "operation": "add", "amount": 1, "include_equipment": false }
+          "params": {
+            "weapon_id": 4,
+            "operation": "add",
+            "amount": 1,
+            "include_equipment": false
+          }
         },
         {
           "commandType": "change_armors",
           "code": 128,
           "indent": 0,
-          "params": { "armor_id": 5, "operation": "add", "amount": 1, "include_equipment": true }
+          "params": {
+            "armor_id": 5,
+            "operation": "add",
+            "amount": 1,
+            "include_equipment": true
+          }
         },
         {
           "commandType": "change_party_member",
           "code": 129,
           "indent": 0,
-          "params": { "actor_id": 1, "operation": "add", "initialize": true }
+          "params": {
+            "actor_id": 1,
+            "operation": "add",
+            "initialize": true
+          }
         },
         {
           "commandType": "change_windowskin",
           "code": 131,
           "indent": 0,
-          "params": { "skin_key": "skin/obsidian" }
+          "params": {
+            "skin_key": "skin/obsidian"
+          }
         },
         {
           "commandType": "change_battle_bgm",
           "code": 132,
           "indent": 0,
-          "params": { "bgm_key": "bgm_tavern_night" }
+          "params": {
+            "bgm_key": "bgm_ancient_citadel"
+          }
         },
         {
           "commandType": "change_battle_end_me",
           "code": 133,
           "indent": 0,
-          "params": { "me_key": "me_gate_chime" }
+          "params": {
+            "me_key": "me_gate_chime"
+          }
         },
         {
           "commandType": "change_save_access",
           "code": 134,
           "indent": 0,
-          "params": { "allowed": true }
+          "params": {
+            "allowed": true
+          }
         },
         {
           "commandType": "change_menu_access",
           "code": 135,
           "indent": 0,
-          "params": { "allowed": false }
+          "params": {
+            "allowed": false
+          }
         },
         {
           "commandType": "change_encounter",
           "code": 136,
           "indent": 0,
-          "params": { "allowed": false }
+          "params": {
+            "allowed": false
+          }
         },
-        { "commandType": "erase_event", "code": 116, "indent": 0 },
-        { "commandType": "exit_event_processing", "code": 115, "indent": 0 }
+        {
+          "commandType": "erase_event",
+          "code": 116,
+          "indent": 0
+        },
+        {
+          "commandType": "exit_event_processing",
+          "code": 115,
+          "indent": 0
+        }
       ]
     },
     {
@@ -355,19 +630,34 @@
           "commandType": "transfer_player",
           "code": 201,
           "indent": 0,
-          "params": { "map_id": 12, "x": 8, "y": 14, "direction": "up", "fade": "fade" }
+          "params": {
+            "map_id": 7,
+            "x": 14,
+            "y": 22,
+            "direction": "up",
+            "fade": "fade"
+          }
         },
         {
           "commandType": "set_event_location",
           "code": 202,
           "indent": 0,
-          "params": { "target": "event", "event_id": 7, "x": 4, "y": 9 }
+          "params": {
+            "target": "event",
+            "event_id": 7,
+            "x": 4,
+            "y": 9
+          }
         },
         {
           "commandType": "scroll_map",
           "code": 203,
           "indent": 0,
-          "params": { "direction": "right", "distance": 3, "speed": 4 }
+          "params": {
+            "direction": "right",
+            "distance": 3,
+            "speed": 4
+          }
         },
         {
           "commandType": "change_map_settings",
@@ -376,32 +666,52 @@
           "params": {
             "target": "panorama",
             "asset_key": "panorama/ruin_sky",
-            "color": { "red": 10, "green": 5, "blue": 0, "gray": 0 }
+            "color": {
+              "red": 10,
+              "green": 5,
+              "blue": 0,
+              "gray": 0
+            }
           }
         },
         {
           "commandType": "change_fog_color_tone",
           "code": 205,
           "indent": 0,
-          "params": { "color": { "red": -20, "green": 0, "blue": 30, "gray": 10 } }
+          "params": {
+            "color": {
+              "red": -20,
+              "green": 0,
+              "blue": 30,
+              "gray": 10
+            }
+          }
         },
         {
           "commandType": "change_fog_opacity",
           "code": 206,
           "indent": 0,
-          "params": { "opacity": 120 }
+          "params": {
+            "opacity": 120
+          }
         },
         {
           "commandType": "show_animation",
           "code": 207,
           "indent": 0,
-          "params": { "animation_key": "fx/rune_burst", "target": "event", "event_id": 7 }
+          "params": {
+            "animation_key": "fx/rune_burst",
+            "target": "event",
+            "event_id": 7
+          }
         },
         {
           "commandType": "change_transparent_flag",
           "code": 208,
           "indent": 0,
-          "params": { "transparent": true }
+          "params": {
+            "transparent": true
+          }
         },
         {
           "commandType": "set_move_route",
@@ -410,45 +720,83 @@
           "params": {
             "target": "player",
             "steps": [
-              { "action": "walk", "direction": "up" },
-              { "action": "wait" },
-              { "action": "jump", "dx": 1, "dz": 0 }
+              {
+                "action": "walk",
+                "direction": "up"
+              },
+              {
+                "action": "wait"
+              },
+              {
+                "action": "jump",
+                "dx": 1,
+                "dz": 0
+              }
             ],
             "wait": true,
             "repeat": false,
             "ignore": true
           }
         },
-        { "commandType": "wait_for_move_completion", "code": 210, "indent": 0 },
+        {
+          "commandType": "wait_for_move_completion",
+          "code": 210,
+          "indent": 0
+        },
         {
           "commandType": "prepare_transition",
           "code": 221,
           "indent": 0,
-          "params": { "transition_key": "transition/rune_fade" }
+          "params": {
+            "transition_key": "transition/rune_fade"
+          }
         },
         {
           "commandType": "execute_transition",
           "code": 222,
           "indent": 0,
-          "params": { "transition_key": "transition/rune_fade" }
+          "params": {
+            "transition_key": "transition/rune_fade"
+          }
         },
         {
           "commandType": "change_screen_tone",
           "code": 223,
           "indent": 0,
-          "params": { "color": { "red": 15, "green": -5, "blue": 25, "gray": 0 } }
+          "params": {
+            "color": {
+              "red": 15,
+              "green": -5,
+              "blue": 25,
+              "gray": 0
+            }
+          }
         },
         {
           "commandType": "screen_flash",
           "code": 224,
           "indent": 0,
-          "params": { "color": { "red": 255, "green": 240, "blue": 200, "gray": 0 }, "duration": 0.3, "no_wait": false }
+          "params": {
+            "color": {
+              "red": 255,
+              "green": 240,
+              "blue": 200,
+              "gray": 0
+            },
+            "duration": 0.3,
+            "no_wait": false
+          }
         },
         {
           "commandType": "screen_shake",
           "code": 225,
           "indent": 0,
-          "params": { "strength": 4, "speed": 3, "duration": 0.5, "no_wait": true }
+          "params": {
+            "strength": 4,
+            "speed": 3,
+            "duration": 0.5,
+            "no_wait": true
+          }
         },
         {
           "commandType": "show_picture",
@@ -482,7 +830,13 @@
           "commandType": "rotate_picture",
           "code": 233,
           "indent": 0,
-          "params": { "picture_slot_id": 20, "picture_key": "pic_crest_seal", "degrees": 45, "duration": 0.3, "no_wait": true }
+          "params": {
+            "picture_slot_id": 20,
+            "picture_key": "pic_crest_seal",
+            "degrees": 45,
+            "duration": 0.3,
+            "no_wait": true
+          }
         },
         {
           "commandType": "change_picture_tone",
@@ -491,7 +845,12 @@
           "params": {
             "picture_slot_id": 20,
             "picture_key": "pic_crest_seal",
-            "color": { "red": 30, "green": 0, "blue": -20, "gray": 0 },
+            "color": {
+              "red": 30,
+              "green": 0,
+              "blue": -20,
+              "gray": 0
+            },
             "duration": 0.2,
             "no_wait": true
           }
@@ -500,57 +859,96 @@
           "commandType": "erase_picture",
           "code": 235,
           "indent": 0,
-          "params": { "picture_slot_id": 20, "picture_key": "pic_crest_seal" }
+          "params": {
+            "picture_slot_id": 20,
+            "picture_key": "pic_crest_seal"
+          }
         },
         {
           "commandType": "set_weather_effects",
           "code": 236,
           "indent": 0,
-          "params": { "kind": "rain", "intensity": 6, "duration": 5.0 }
+          "params": {
+            "kind": "rain",
+            "intensity": 6,
+            "duration": 5.0
+          }
         },
         {
           "commandType": "play_bgm",
           "code": 241,
           "indent": 0,
-          "params": { "bgm_key": "bgm_tavern_night", "volume": 80, "pitch": 100 }
+          "params": {
+            "bgm_key": "bgm_ancient_citadel",
+            "volume": 80,
+            "pitch": 100
+          }
         },
         {
           "commandType": "fade_out_bgm",
           "code": 242,
           "indent": 0,
-          "params": { "bgm_key": "bgm_tavern_night", "fade_seconds": 1.5 }
+          "params": {
+            "bgm_key": "bgm_ancient_citadel",
+            "fade_seconds": 1.5
+          }
         },
         {
           "commandType": "play_bgs",
           "code": 245,
           "indent": 0,
-          "params": { "bgs_key": "bgs_rain_on_stone", "volume": 60, "pitch": 100 }
+          "params": {
+            "bgs_key": "bgs_rain_on_stone",
+            "volume": 60,
+            "pitch": 100
+          }
         },
         {
           "commandType": "fade_out_bgs",
           "code": 246,
           "indent": 0,
-          "params": { "bgs_key": "bgs_rain_on_stone", "fade_seconds": 1.0 }
+          "params": {
+            "bgs_key": "bgs_rain_on_stone",
+            "fade_seconds": 1.0
+          }
         },
-        { "commandType": "memorize_bgm_bgs", "code": 247, "indent": 0 },
-        { "commandType": "restore_bgm_bgs", "code": 248, "indent": 0 },
+        {
+          "commandType": "memorize_bgm_bgs",
+          "code": 247,
+          "indent": 0
+        },
+        {
+          "commandType": "restore_bgm_bgs",
+          "code": 248,
+          "indent": 0
+        },
         {
           "commandType": "play_me",
           "code": 249,
           "indent": 0,
-          "params": { "me_key": "me_gate_chime", "volume": 90, "pitch": 100 }
+          "params": {
+            "me_key": "me_gate_chime",
+            "volume": 90,
+            "pitch": 100
+          }
         },
         {
           "commandType": "play_se",
           "code": 250,
           "indent": 0,
-          "params": { "se_key": "se_door_latch", "volume": 100, "pitch": 110 }
+          "params": {
+            "se_key": "se_crystal_chime",
+            "volume": 100,
+            "pitch": 110
+          }
         },
         {
           "commandType": "stop_se",
           "code": 251,
           "indent": 0,
-          "params": { "se_key": "se_door_latch" }
+          "params": {
+            "se_key": "se_crystal_chime"
+          }
         }
       ]
     },
@@ -562,14 +960,22 @@
           "commandType": "battle_processing",
           "code": 301,
           "indent": 0,
-          "params": { "troop_id": 9, "can_escape": true, "can_lose": false },
+          "params": {
+            "troop_id": 9,
+            "can_escape": true,
+            "can_lose": false
+          },
           "blocks": {
             "win": [
               {
                 "commandType": "show_text",
                 "code": 101,
                 "indent": 1,
-                "params": { "lines": ["Der Rift ist gebannt."] }
+                "params": {
+                  "lines": [
+                    "Der Rift ist gebannt."
+                  ]
+                }
               }
             ],
             "escape": [
@@ -577,7 +983,9 @@
                 "commandType": "comment",
                 "code": 108,
                 "indent": 1,
-                "params": { "text": "Flucht ohne Beute" }
+                "params": {
+                  "text": "Flucht ohne Beute"
+                }
               }
             ],
             "lose": [
@@ -585,7 +993,9 @@
                 "commandType": "comment",
                 "code": 108,
                 "indent": 1,
-                "params": { "text": "Niederlage erlaubt" }
+                "params": {
+                  "text": "Niederlage erlaubt"
+                }
               }
             ]
           }
@@ -597,9 +1007,24 @@
           "params": {
             "shop_key": "shop/rune_market",
             "goods": [
-              { "kind": "item", "id": 3, "price": 40, "quantity": 2 },
-              { "kind": "weapon", "id": 4, "price": 320, "quantity": 1 },
-              { "kind": "armor", "id": 5, "price": 260, "quantity": 1 }
+              {
+                "kind": "item",
+                "id": 3,
+                "price": 40,
+                "quantity": 2
+              },
+              {
+                "kind": "weapon",
+                "id": 4,
+                "price": 320,
+                "quantity": 1
+              },
+              {
+                "kind": "armor",
+                "id": 5,
+                "price": 260,
+                "quantity": 1
+              }
             ]
           }
         },
@@ -607,73 +1032,118 @@
           "commandType": "name_input_processing",
           "code": 303,
           "indent": 0,
-          "params": { "actor_id": 1, "max_length": 8 }
+          "params": {
+            "actor_id": 1,
+            "max_length": 8
+          }
         },
         {
           "commandType": "change_hp",
           "code": 311,
           "indent": 0,
-          "params": { "actor_id": 1, "operation": "subtract", "amount": 12, "allow_knockout": false }
+          "params": {
+            "actor_id": 1,
+            "operation": "subtract",
+            "amount": 12,
+            "allow_knockout": false
+          }
         },
         {
           "commandType": "change_sp",
           "code": 312,
           "indent": 0,
-          "params": { "actor_id": 1, "operation": "add", "amount": 4 }
+          "params": {
+            "actor_id": 1,
+            "operation": "add",
+            "amount": 4
+          }
         },
         {
           "commandType": "change_state",
           "code": 313,
           "indent": 0,
-          "params": { "actor_id": 1, "state_id": 11, "operation": "add" }
+          "params": {
+            "actor_id": 1,
+            "state_id": 11,
+            "operation": "add"
+          }
         },
         {
           "commandType": "recover_all",
           "code": 314,
           "indent": 0,
-          "params": { "actor_id": 1 }
+          "params": {
+            "actor_id": 1
+          }
         },
         {
           "commandType": "change_exp",
           "code": 315,
           "indent": 0,
-          "params": { "actor_id": 1, "operation": "add", "amount": 30 }
+          "params": {
+            "actor_id": 1,
+            "operation": "add",
+            "amount": 30
+          }
         },
         {
           "commandType": "change_level",
           "code": 316,
           "indent": 0,
-          "params": { "actor_id": 1, "operation": "add", "amount": 1 }
+          "params": {
+            "actor_id": 1,
+            "operation": "add",
+            "amount": 1
+          }
         },
         {
           "commandType": "change_parameters",
           "code": 317,
           "indent": 0,
-          "params": { "actor_id": 1, "parameter": "strength", "operation": "add", "amount": 2 }
+          "params": {
+            "actor_id": 1,
+            "parameter": "strength",
+            "operation": "add",
+            "amount": 2
+          }
         },
         {
           "commandType": "change_skills",
           "code": 318,
           "indent": 0,
-          "params": { "actor_id": 1, "skill_id": 50, "operation": "add" }
+          "params": {
+            "actor_id": 1,
+            "skill_id": 50,
+            "operation": "add"
+          }
         },
         {
           "commandType": "change_equipment",
           "code": 319,
           "indent": 0,
-          "params": { "actor_id": 1, "slot": "weapon", "item_id": 4 }
+          "params": {
+            "actor_id": 1,
+            "slot": "weapon",
+            "item_id": 4
+          }
         },
         {
           "commandType": "change_actor_name",
           "code": 320,
           "indent": 0,
-          "params": { "actor_id": 1, "name": "Kael" }
+          "params": {
+            "actor_id": 1,
+            "name": "Kael"
+          }
         },
         {
           "commandType": "change_actor_class",
           "code": 321,
           "indent": 0,
-          "params": { "actor_id": 1, "class_id": 10 }
+          "params": {
+            "actor_id": 1,
+            "class_id": 10
+          }
         },
         {
           "commandType": "change_actor_graphic",
@@ -690,61 +1160,121 @@
           "commandType": "change_enemy_hp",
           "code": 331,
           "indent": 0,
-          "params": { "slot": 0, "operation": "subtract", "amount": 20, "allow_knockout": true }
+          "params": {
+            "slot": 0,
+            "operation": "subtract",
+            "amount": 20,
+            "allow_knockout": true
+          }
         },
         {
           "commandType": "change_enemy_sp",
           "code": 332,
           "indent": 0,
-          "params": { "slot": 0, "operation": "subtract", "amount": 5 }
+          "params": {
+            "slot": 0,
+            "operation": "subtract",
+            "amount": 5
+          }
         },
         {
           "commandType": "change_enemy_state",
           "code": 333,
           "indent": 0,
-          "params": { "slot": 0, "state_id": 11, "operation": "remove" }
+          "params": {
+            "slot": 0,
+            "state_id": 11,
+            "operation": "remove"
+          }
         },
         {
           "commandType": "enemy_recover_all",
           "code": 334,
           "indent": 0,
-          "params": { "slot": 0 }
+          "params": {
+            "slot": 0
+          }
         },
-        { "commandType": "enemy_appearance", "code": 335, "indent": 0, "params": { "slot": 0 } },
+        {
+          "commandType": "enemy_appearance",
+          "code": 335,
+          "indent": 0,
+          "params": {
+            "slot": 0
+          }
+        },
         {
           "commandType": "enemy_transform",
           "code": 336,
           "indent": 0,
-          "params": { "slot": 0, "enemy_id": 8 }
+          "params": {
+            "slot": 0,
+            "enemy_id": 8
+          }
         },
         {
           "commandType": "show_battle_animation",
           "code": 337,
           "indent": 0,
-          "params": { "slot": 0, "animation_key": "fx/rune_burst" }
+          "params": {
+            "slot": 0,
+            "animation_key": "fx/rune_burst"
+          }
         },
         {
           "commandType": "deal_damage",
           "code": 338,
           "indent": 0,
-          "params": { "slot": 0, "amount": 15, "element_id": 2 }
+          "params": {
+            "slot": 0,
+            "amount": 15,
+            "element_id": 2
+          }
         },
         {
           "commandType": "force_action",
           "code": 339,
           "indent": 0,
-          "params": { "slot": 0, "action_key": "skill/rune_burst", "target_slot": -1 }
+          "params": {
+            "slot": 0,
+            "action_key": "skill/rune_burst",
+            "target_slot": -1
+          }
         },
-        { "commandType": "abort_battle", "code": 340, "indent": 0 },
-        { "commandType": "call_menu_screen", "code": 351, "indent": 0 },
-        { "commandType": "call_save_screen", "code": 352, "indent": 0 },
-        { "commandType": "game_over", "code": 353, "indent": 0 },
-        { "commandType": "return_to_title_screen", "code": 354, "indent": 0 },
+        {
+          "commandType": "abort_battle",
+          "code": 340,
+          "indent": 0
+        },
+        {
+          "commandType": "call_menu_screen",
+          "code": 351,
+          "indent": 0
+        },
+        {
+          "commandType": "call_save_screen",
+          "code": 352,
+          "indent": 0
+        },
+        {
+          "commandType": "game_over",
+          "code": 353,
+          "indent": 0
+        },
+        {
+          "commandType": "return_to_title_screen",
+          "code": 354,
+          "indent": 0
+        },
         {
           "commandType": "script",
           "code": 355,
           "indent": 0,
-          "params": { "script_key": "script/check_gate", "expression": "gate.ready?", "code": "gate.check" }
+          "params": {
+            "script_key": "script/check_gate",
+            "expression": "gate.ready?",
+            "code": "gate.check"
+          }
         }
       ]
     },
@@ -756,15 +1286,25 @@
           "commandType": "show_text",
           "code": 101,
           "indent": 0,
-          "params": { "lines": ["Das Lagerfeuer knistert."] }
+          "params": {
+            "lines": [
+              "Das Lagerfeuer knistert."
+            ]
+          }
         },
         {
           "commandType": "wait",
           "code": 106,
           "indent": 0,
-          "params": { "frames": 30 }
+          "params": {
+            "frames": 30
+          }
         },
-        { "commandType": "exit_event_processing", "code": 115, "indent": 0 }
+        {
+          "commandType": "exit_event_processing",
+          "code": 115,
+          "indent": 0
+        }
       ]
     }
   ]

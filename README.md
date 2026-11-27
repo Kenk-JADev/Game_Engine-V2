@@ -221,6 +221,7 @@ ruby tools\lint_repo.rb                        # Repo-Hygiene
 | Event-Command-Architektur | Bauplan der drei XP-Tabs (90 Befehle), typisierte Command-Objekte, ein Handler je Typ, Ports und Interpreter | `tools/event_commands_arch_test.rb`, `tools/event_commands_test.rb` |
 | XP-Befehlskatalog (F6) | Portable Abbildung des Bauplans: 90 Befehle, 3 Tabs, 12 Abschnitte, Codes, Felder, `cmd`-Zuordnung und überlappungsfreie Geometrie | `tools/event_command_catalog_test.cpp` |
 | Einstell-Schema + Register (F6) | Nummerierte Schalter-/Variablen-Register 1..999, Einstellfelder je Befehl, Asset-Ordnerfilter | `tools/event_command_settings_test.cpp` |
+| CommandValidator | Prüft Befehlsprogramme gegen Datenbank-Index: Referenz-IDs, Asset-Keys, Block-/Indent-Konsistenz, Sprungmarken | `tools/event_command_validator_test.rb` |
 | Script-/Kartenmodell | RGSS-Dokumente, Einrückung, Markeridentität und Startposition | `tools/editor_workflow_test.cpp` |
 | C++-Terrain | Echte Geländegenerierung, Höhen-/Splat-Budgets, Atlasplan und Fehlerpfade ohne D3D | `tools/terrain_test.cpp` |
 | Materialien/Dateien | Verlustfreier JSON-Baum, unter Windows Handle-Konflikte, Junctions und Hardlinks | `tools/material_test.cpp` |

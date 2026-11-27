@@ -189,7 +189,7 @@ assert(wahl.block('choice_0').first.is_a?(Rpg::EventCommands::Typed::Commands::S
 assert(wahl.children.values.flatten.all?(&:frozen?), 'Kinder sind unveränderlich')
 
 zahl = KATALOG.typed(KATALOG.program(1).commands.find { |c| c.commandType == 'input_number' })
-gleich(202, zahl.variable_id, 'InputNumber zeigt auf Variable 202')
+gleich(205, zahl.variable_id, 'InputNumber zeigt auf Variable 205')
 assert(zahl.digits.is_a?(Integer), 'Stellenanzahl ist ganzzahlig')
 
 warten = KATALOG.typed(KATALOG.program(1).commands.find { |c| c.commandType == 'wait' })
@@ -204,7 +204,7 @@ gleich(355, skript.code, 'Script#code bleibt der XP-Code')
 assert(skript.param_code.is_a?(String), 'Script-Quelltext liegt in param_code')
 
 transfer = KATALOG.typed(KATALOG.program(2).commands.find { |c| c.commandType == 'transfer_player' })
-gleich([12, 8, 14], [transfer.map_id, transfer.x, transfer.y], 'TransferPlayer auf Karte 12 an (8, 14)')
+gleich([7, 14, 22], [transfer.map_id, transfer.x, transfer.y], 'TransferPlayer auf Karte 7 an (14, 22)')
 
 KATALOG.definitions.each do |definition|
   klasse = Rpg::EventCommands::Typed.command_class(definition)
@@ -218,7 +218,7 @@ wirft(ArgumentError, 'Pflichtfeld fehlt wird abgewiesen') do
 end
 wirft(ArgumentError, 'falscher Typ wird abgewiesen') do
   Rpg::EventCommands::Typed.params_class(KATALOG.definition('input_number'))
-    .from_params('variable_id' => 202, 'digits' => 'vier')
+    .from_params('variable_id' => 205, 'digits' => 'vier')
 end
 gleich(text.class, KATALOG.typed(KATALOG.program(1).commands.first).class,
        'wiederholter Cast nutzt dieselbe Klasse')
@@ -304,8 +304,8 @@ end
 
 ports, senke = test_ports
 Rpg.build_event_interpreter(catalog: KATALOG, ports: ports).run(KATALOG.program(1), max_updates: 500)
-gleich(true, ports.switches.get(101), 'Schalter 101 (Tor_Offen) gesetzt')
-assert(ports.variables.get(202) != 0, 'Variable 202 (Quest_Phase) verändert')
+gleich(true, ports.switches.get(101), 'Schalter 101 (Tor_Smaragdwald_Offen) gesetzt')
+assert(ports.variables.get(205) != 0, 'Variable 205 (Alchemie_Punkte) verändert')
 gleich(4, ports.system_settings.calls.size, 'Windowskin, Speichern, Menü, Begegnung erreichen den Port')
 gleich(%w[windowskin save_access menu_access encounter], ports.system_settings.calls.map { |c| c[:name] },
        'System-Settings in Befehlsreihenfolge')
@@ -316,12 +316,12 @@ assert(ports.ui.calls.any? { |c| c[:name] == 'text_options' }, 'Textoptionen err
 
 ports, _senke = test_ports
 Rpg.build_event_interpreter(catalog: KATALOG, ports: ports).run(KATALOG.program(2), max_updates: 500)
-assert(ports.map.calls.any? { |c| c[:name] == 'transfer' && c[:map_id] == 12 && c[:x] == 8 && c[:y] == 14 },
+assert(ports.map.calls.any? { |c| c[:name] == 'transfer' && c[:map_id] == 7 && c[:x] == 14 && c[:y] == 22 },
        'Transfer auf Karte 12 (8, 14) erreicht den Karten-Port')
-assert(ports.audio.calls.any? { |c| c[:name] == 'play_bgm' && c[:key] == 'bgm_tavern_night' },
-       'BGM bgm_tavern_night erreicht den Audio-Port')
-assert(ports.audio.calls.any? { |c| c[:name] == 'play_se' && c[:key] == 'se_door_latch' },
-       'SE se_door_latch erreicht den Audio-Port')
+assert(ports.audio.calls.any? { |c| c[:name] == 'play_bgm' && c[:key] == 'bgm_ancient_citadel' },
+       'BGM bgm_ancient_citadel erreicht den Audio-Port')
+assert(ports.audio.calls.any? { |c| c[:name] == 'play_se' && c[:key] == 'se_crystal_chime' },
+       'SE se_crystal_chime erreicht den Audio-Port')
 assert(ports.pictures.calls.size >= 5, 'alle fünf Bildbefehle erreichen den Bild-Port')
 gleich(1, ports.weather.calls.size, 'Wetter erreicht den Wetter-Port')
 

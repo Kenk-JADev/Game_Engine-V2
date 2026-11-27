@@ -47,9 +47,9 @@ Implementierung sind eigen.
    Inventar, Party, Karte, Audio, Screen, Bilder, Wetter, Übergang, Kampf, UI
    und Script werden über injizierte Interfaces angesprochen. Null- und
    Recording-Adapter machen den Interpreter ohne Grafik/UI/Audio testbar.
-7. **Eigene Werte:** Schalter 101 `Tor_Offen`, Variable 202
-   `Quest_Phase`, Self-Switch `A`, BGM `bgm_tavern_night`, SE
-   `se_door_latch`, Bild `pic_crest_seal`, Karte 12 bei (8, 14), Gegner-Slot 0.
+7. **Eigene Werte:** Schalter 101 `Tor_Smaragdwald_Offen`, Variable 205
+   `Alchemie_Punkte`, Self-Switch `A`, BGM `bgm_ancient_citadel`, SE
+   `se_crystal_chime`, Bild `pic_crest_seal`, Karte 12 bei (8, 14), Gegner-Slot 0.
 8. **Stack statt Globalzustand:** Call Common Event erzeugt einen Sub-Frame
    mit Tiefenlimit; Wait-, Dialog-, Moves- und Übergangszustände liegen im
    Interpreter, Label/Jump und Break Loop arbeiten auf Frame-Ebenen.

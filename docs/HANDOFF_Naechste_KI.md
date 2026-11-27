@@ -1,4 +1,23 @@
-# Handoff für die nächste KI - Rune3D, Stand nach Etappe 46
+# Handoff für die nächste KI - Rune3D, Stand nach Etappe 47
+
+**Etappe 47 (CommandValidator + neue Beispielwerte) — fertig, ohne UI.**
+Die modulare Architektur nach den drei XP-Tabs (Datenmodell commandType/indent/
+params/blocks, Interpreter mit PC/Blöcken/Labels/Call-Stack/Waits, Handler-Registry
+je Typ, 18 DI-Services, typsichere Felder aus catalog/typed) war bereits gesetzt
+(Etappe 42/43). Neu: **`CommandValidator`**
+(`game/engine/rpg/event_commands/command_validator.rb`) prüft beim Laden von
+Maps/Common Events alle Referenz-IDs + Asset-Keys + Block-/Indent-Konsistenz +
+Sprungmarken und liefert Befunde statt zu werfen; dünner Adapter über den Loader
+(eine Prüfquelle), `resources_from_database(db, assets:)` baut den Index,
+Komfort-API `Rpg.validate_event_commands`. **Neue Beispielwerte:** Schalter 101
+`Tor_Smaragdwald_Offen`, Variable **205** `Alchemie_Punkte`, Map **7** an
+**(14,22)**, BGM `bgm_ancient_citadel`, SE `se_crystal_chime` — konsistent in
+Config + allen drei Event-Command-Tests + Docs. Neuer Test
+`tools/event_command_validator_test.rb` (**13/0**, läuft via test_all im CI-Engine-Job).
+Bestehend grün: test 107/0, arch 1542/0, engine 110/0, json 1031/0, catalog 32/0,
+settings 29/0. Doku: `docs/ETAPPE_47_COMMAND_VALIDATOR.md`. **CI grün:** wird
+nachgetragen. Kein UI-Design in dieser Etappe.
+
 
 **Etappe 46 (Zweige/leere Slots anklickbar zum Einfügen) — fertig, Sicht-/DPI-Test steht aus.**
 Die F6-Befehlsliste verhält sich wie XP: leere Zweige bekommen eine sichtbare
@@ -111,8 +130,8 @@ einen Port. Service-Aliase (`IInventoryService`, `IPartyService`,
 `IPictureService`, `IScreenEffectService`, …) nennen die Schnittstellen wie in
 der Architekturvorgabe. Der Interpreter zeigt `program_counter`,
 `current_command`, `call_stack`, `depth`, `common_event_depth`, `wait_kind`.
-Beispielwerte bleiben die eigenen IDs/Keys (Schalter 101 `Tor_Offen`, Variable
-202 `Quest_Phase`, Karte 12 an (8, 14), `bgm_tavern_night`, `se_door_latch`);
+Beispielwerte bleiben die eigenen IDs/Keys (Schalter 101 `Tor_Smaragdwald_Offen`, Variable
+202 `Alchemie_Punkte`, Karte 7 an (14, 22), `bgm_ancient_citadel`, `se_crystal_chime`);
 die vier Beispielprogramme decken alle 90 Befehle ab. Prüfungen:
 `tools/event_commands_arch_test.rb` **1542/0** (neu), `event_commands_test`
 **107/0**, `lint_repo` ohne Befund. **Keine UI gebaut**; die Ports sind seit

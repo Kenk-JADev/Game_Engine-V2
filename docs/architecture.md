@@ -727,7 +727,10 @@ Bearbeiten, Rechtsklick Menü); leere Zweige haben eine anklickbare Leer-Zeile u
 Doppelklick auf Kopfzeile/Leer-Zeile fügt in diesen Zweig ein (Etappe 46,
 `ev_flatten_empty`). Serialisierung bleibt der getestete Pfad
 `event_command_prepare`; das Schema folgt `event_command_keys` (laufendes
-Karten-Event-System), nicht dem typisierten Katalog. Details:
+Karten-Event-System), nicht dem typisierten Katalog. Ein **CommandValidator**
+(Etappe 47, `command_validator.rb`) prüft typisierte Befehlsprogramme beim Laden
+von Maps/Common Events gegen einen Datenbank-Index (Referenz-IDs, Asset-Keys,
+Block-/Indent-Konsistenz, Sprungmarken) als Adapter über den Loader. Details:
 `docs/ETAPPE_45_COMMAND_SETTINGS_UI.md`.
 
 **Befehlskategorien:** Die Befehls-ComboBox gruppiert jetzt 20 Typen
@@ -3780,8 +3783,8 @@ sind `:time`, `:move`, `:transition` und `:ui`; Unterprogramme bleiben auf
 `MAX_DEPTH = 16` begrenzt.
 
 Beispielwerte stehen in `game/config/event_commands.json`: Schalter 101
-`Tor_Offen`, Variable 202 `Quest_Phase`, Karte 12 an (8, 14), BGM
-`bgm_tavern_night`, SE `se_door_latch`, dazu Held 1 `Kael`, Truppe 9 und
+`Tor_Smaragdwald_Offen`, Variable 205 `Alchemie_Punkte`, Karte 7 an (14, 22), BGM
+`bgm_ancient_citadel`, SE `se_crystal_chime`, dazu Held 1 `Kael`, Truppe 9 und
 Common Event 9. Die vier Beispielprogramme zeigen alle 90 Befehle.
 `tools/event_commands_arch_test.rb` prüft Bauplan, Typen, Handler, Ports und
 Interpreter (1542 Prüfungen), `tools/event_commands_test.rb` bleibt mit 107

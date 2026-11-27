@@ -105,13 +105,13 @@ assert(KATALOG.definitions.all? { |definition| definition.handler.to_s.size.posi
   assert(KATALOG.definition(typ), "Befehlstyp #{typ} ist im Katalog")
 end
 
-gleich('Tor_Offen', KATALOG.resources['switches'].first['name'], 'eigener Schalter 101')
+gleich('Tor_Smaragdwald_Offen', KATALOG.resources['switches'].first['name'], 'eigener Schalter 101')
 gleich(101, KATALOG.resources['switches'].first['id'], 'Schalter-ID 101')
-gleich('Quest_Phase', KATALOG.resources['variables'].first['name'], 'eigene Variable 202')
-gleich('bgm_tavern_night', KATALOG.resources['bgms'].first['key'], 'eigener BGM-Key')
-gleich('se_door_latch', KATALOG.resources['ses'].first['key'], 'eigener SE-Key')
+gleich('Alchemie_Punkte', KATALOG.resources['variables'].first['name'], 'eigene Variable 205')
+gleich('bgm_ancient_citadel', KATALOG.resources['bgms'].first['key'], 'eigener BGM-Key')
+gleich('se_crystal_chime', KATALOG.resources['ses'].first['key'], 'eigener SE-Key')
 gleich('pic_crest_seal', KATALOG.resources['pictures'].first['key'], 'eigener Bild-Key')
-gleich(12, KATALOG.resources['maps'].first['id'], 'eigene Map-ID 12')
+gleich(7, KATALOG.resources['maps'].first['id'], 'eigene Map-ID 7')
 gleich(:enemy_slot, KATALOG.definition('change_enemy_hp').fields.fetch('slot').kind,
        'Gegner-Slots sind typisiert')
 
@@ -200,7 +200,7 @@ interpreter.run(KATALOG.program(1), max_updates: 5000)
 assert(!interpreter.running?, 'Programm 1 läuft bis zum Ende')
 gleich(true, ports.switches.get(101), 'Schalter 101 gesetzt')
 gleich(true, ports.self_switches.get(interpreter.event_key, 'A'), 'Self-Switch A gesetzt')
-gleich(4.0, ports.variables.get(202), 'Variable 202 nach Schleife und Sprung')
+gleich(4.0, ports.variables.get(205), 'Variable 205 nach Schleife und Sprung')
 gleich(25, ports.party.gold, 'Gold geändert')
 gleich(2, ports.inventory.count('items', 3), 'Vital Tonic hinzugefügt')
 gleich(1, ports.inventory.count('weapons', 4), 'Rune Blade hinzugefügt')
@@ -222,12 +222,12 @@ interpreter = Rpg.build_event_interpreter(catalog: KATALOG, ports: ports)
 interpreter.run(KATALOG.program(2), max_updates: 5000)
 assert(!interpreter.running?, 'Programm 2 läuft bis zum Ende')
 transfer = ports.map.calls.find { |eintrag| eintrag[:name] == 'transfer' }
-gleich(12, transfer[:map_id], 'Transfer nach Map 12')
-gleich(8, transfer[:x], 'Transfer-X 8')
-gleich(14, transfer[:y], 'Transfer-Y 14')
+gleich(7, transfer[:map_id], 'Transfer nach Map 7')
+gleich(14, transfer[:x], 'Transfer-X 14')
+gleich(22, transfer[:y], 'Transfer-Y 22')
 route = ports.map.calls.find { |eintrag| eintrag[:name] == 'move_route' }
 gleich(3, route[:steps].size, 'drei typisierte Bewegungsschritte')
-assert(ports.audio.calls.any? { |eintrag| eintrag[:name] == 'play_bgm' && eintrag[:key] == 'bgm_tavern_night' },
+assert(ports.audio.calls.any? { |eintrag| eintrag[:name] == 'play_bgm' && eintrag[:key] == 'bgm_ancient_citadel' },
        'BGM über Audio-Port gestartet')
 assert(ports.pictures.calls.any? { |eintrag| eintrag[:name] == 'show' }, 'Bild angezeigt')
 assert(ports.pictures.calls.any? { |eintrag| eintrag[:name] == 'erase' }, 'Bild gelöscht')
