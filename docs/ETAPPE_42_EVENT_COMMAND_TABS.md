@@ -358,6 +358,15 @@ einmal zeigen (Programm 1 „Torritual“, 2 „Kartenritual“, 3 „Kampfritua
   (Loader-Validierung, Negativfälle, Interpreter-Verhalten) — unverändert grün.
 - `ruby tools/lint_repo.rb` → ohne Befund.
 
+## CI-Ergebnis
+
+[Lauf 45985842278](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45985842278)
+(`ce1743b`) ist **grün in allen vier Jobs**: Windows-Build **60 Tests OK /
+0 Fehler / 0 übersprungen**, Ruby-Engine 59 OK / 0 Fehler / 1 übersprungen
+(`tex_import_test` braucht die gebaute EXE), C++-Logik und Repo-Hygiene ohne
+Befund. Die Schicht ist damit auf Windows und Linux geprüft — ein GUI-Test ist
+das nicht, denn diese Etappe enthält keine UI.
+
 ## Bewusst nicht verändert / offen
 
 - **Keine UI.** Diese Etappe liefert Bauplan und Typen; die Registerkarten im

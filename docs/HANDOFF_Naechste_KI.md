@@ -24,7 +24,9 @@ die vier Beispielprogramme decken alle 90 Befehle ab. Prüfungen:
 `tools/event_commands_arch_test.rb` **1542/0** (neu), `event_commands_test`
 **107/0**, `lint_repo` ohne Befund. **Keine UI gebaut** und die Ports sind noch
 nicht an das laufende Spiel angeschlossen (Backlog). Bauplan und Tabellen:
-`docs/ETAPPE_42_EVENT_COMMAND_TABS.md`.
+`docs/ETAPPE_42_EVENT_COMMAND_TABS.md`. **CI grün:** Lauf
+[45985842278](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45985842278)
+(`ce1743b`), alle vier Jobs; Windows 60 OK/0/0.
 
 **Etappe 41 (F9-Datenbank wie XP) — Code fertig, Live-Test offen.** Der Nutzer
 hat aus vier Vorschlägen ausdrücklich **B) Editor-Datenbank F9 wie XP**
