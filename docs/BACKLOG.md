@@ -514,6 +514,21 @@ Bereiche: `Engine`, `Editor`, `Ruby`, `Tests`, `Werkzeuge`, `Doku`.
 - Gefunden in: Runde 12 (Y4-Nachgang).
 
 ## Erledigt
+### [Editor] Zweige/leere Slots anklickbar zum Einfügen (F6) — erledigt (Etappe 46)
+- Symptom: „Dann:“/„Sonst:“-Kopfzeilen und leere Zweige waren nicht sinnvoll
+  anklickbar; Einfügen lief nur über die Befehlstyp-Combo + „Einfügen“, leere
+  Zweige hatten keine sichtbare Zeile.
+- Fix: `ev_flatten_empty` hängt je leerem/fehlendem Zweig eine Leer-Zeile
+  `(leer - hier einfuegen)` an; Doppelklick auf insertable Kopfzeile/Leer-Zeile
+  öffnet den XP-Picker und fügt in diesen Zweig ein; Doppelklick auf Befehl
+  bearbeitet weiter. Ziel-Label nennt Doppelklick. Schutz nicht insertbarer
+  Zweige unverändert. Serialisierung bleibt `event_command_prepare`.
+- Abdeckung: Cross-Kompilat sauber; json_test 1031/0, catalog 32/0, settings 29/0,
+  arch 1542/0, engine 110/0; Hygiene unauffällig.
+- Doku: `docs/ETAPPE_46_BRANCH_INSERT_SLOTS.md`.
+- Betroffene Stellen: `src/editor/editor_main.cpp`.
+- Offen für den Windows-Rechner: Sicht-/DPI-Test.
+
 ### [Editor] XP-Einstellfenster je Befehl, nummerierte Listen, Asset-Ordnerwahl, XP-Befehlsliste — erledigt (Etappe 45)
 - Symptom: F6 hatte nur Freitextfelder; Schalter/Variable mussten eingetippt
   werden, Audio/Bilder likewise; die Befehlsliste war nicht XP-artig bedienbar.

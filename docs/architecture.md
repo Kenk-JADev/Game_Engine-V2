@@ -723,7 +723,9 @@ für Schalter/Variablen (`event_numbered_registry.h`, Persistenz
 Datenbank-Auswahlen für Refs, Asset-Ordnerwahl für Audio/Bilder
 (`event_asset_browser_win.h`, Kopie ins Projekt), Combos/An-Aus/geprüfte Zahlen/
 Mehrzeiler. Die Befehlsliste ist XP-artig bedienbar (Klick auswählen, Doppelklick
-Bearbeiten, Rechtsklick Menü). Serialisierung bleibt der getestete Pfad
+Bearbeiten, Rechtsklick Menü); leere Zweige haben eine anklickbare Leer-Zeile und
+Doppelklick auf Kopfzeile/Leer-Zeile fügt in diesen Zweig ein (Etappe 46,
+`ev_flatten_empty`). Serialisierung bleibt der getestete Pfad
 `event_command_prepare`; das Schema folgt `event_command_keys` (laufendes
 Karten-Event-System), nicht dem typisierten Katalog. Details:
 `docs/ETAPPE_45_COMMAND_SETTINGS_UI.md`.

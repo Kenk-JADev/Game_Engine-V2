@@ -8904,6 +8904,17 @@ std::string ev_cmd_label(const JsonValue& c) {
     return type;
 }
 
+// Etappe 46: Leere Zweige bekommen eine sichtbare, anklickbare Leer-Zeile.
+// Doppelklick darauf (oder auf die Kopfzeile) fügt in genau diesen Zweig ein —
+// wie in XP, statt das leere Inline-Feld bzw. die Befehlstyp-Combo zu nutzen.
+static void ev_flatten_empty(const EventCommandPath& path, int depth) {
+    EventCmdRef r;
+    r.path = path; r.index = -1; r.depth = depth;
+    r.header = true; r.insertable = true;
+    r.label = "(leer - hier einfuegen)";
+    g_ev.refs.push_back(std::move(r));
+}
+
 // Keine Zweige beim Anzeigen anlegen. Auch leere oder fehlende Zweige bekommen
 // eine auswählbare Kopfzeile; ihr Array entsteht erst bei gültigem Einfügen.
 void ev_flatten(const JsonValue& list, int depth, const EventCommandPath& path) {
@@ -8937,8 +8948,10 @@ void ev_flatten(const JsonValue& list, int depth, const EventCommandPath& path) 
                 if (!h.insertable) h.label += " [ungültig/mehrfach]";
                 else if (!br) h.label += " [fehlt]";
                 const EventCommandPath child_path = h.path;
+                const bool ins = h.insertable;
                 g_ev.refs.push_back(std::move(h));
                 if (br && br->is_arr() && unique) ev_flatten(*br, depth + 2, child_path);
+                if (ins && (!br || !br->is_arr() || br->arr.empty())) ev_flatten_empty(child_path, depth + 2);
             }
             // Z5: "Wenn Abbruch:"-Kopfzeile (XP 403), sobald cancel auf
             // "verzweigung" steht - sonst ist der Zweig inaktiv und wird
@@ -8956,8 +8969,10 @@ void ev_flatten(const JsonValue& list, int depth, const EventCommandPath& path) 
                 if (!h.insertable) h.label += " [ungültig/mehrfach]";
                 else if (!cb) h.label += " [fehlt]";
                 const EventCommandPath child_path = h.path;
+                const bool ins = h.insertable;
                 g_ev.refs.push_back(std::move(h));
                 if (cb && cb->is_arr() && cb_unique) ev_flatten(*cb, depth + 2, child_path);
+                if (ins && (!cb || !cb->is_arr() || cb->arr.empty())) ev_flatten_empty(child_path, depth + 2);
             }
             continue;
         }
@@ -8972,8 +8987,10 @@ void ev_flatten(const JsonValue& list, int depth, const EventCommandPath& path) 
             if (!h.insertable) h.label += " [ungültig/mehrfach]";
             else if (!body) h.label += " [fehlt]";
             const EventCommandPath child_path = h.path;
+            const bool ins = h.insertable;
             g_ev.refs.push_back(std::move(h));
             if (body && body->is_arr() && unique) ev_flatten(*body, depth + 2, child_path);
+            if (ins && (!body || !body->is_arr() || body->arr.empty())) ev_flatten_empty(child_path, depth + 2);
             continue;
         }
         if (type != "if_switch" && type != "if_variable" && type != "if_self_switch" &&
@@ -8988,8 +9005,10 @@ void ev_flatten(const JsonValue& list, int depth, const EventCommandPath& path) 
             if (!h.insertable) h.label += " [ungültig/mehrfach]";
             else if (!branch) h.label += " [fehlt]";
             const EventCommandPath child_path = h.path;
+            const bool ins = h.insertable;
             g_ev.refs.push_back(std::move(h));
             if (branch && branch->is_arr() && unique) ev_flatten(*branch, depth + 2, child_path);
+            if (ins && (!branch || !branch->is_arr() || branch->arr.empty())) ev_flatten_empty(child_path, depth + 2);
         }
     }
 }
@@ -9485,7 +9504,7 @@ void ev_refresh_cmds() {
     std::wstring target = L"Ziel: Wurzel";
     if (g_ev.sel_cmd >= 0) {
         const EventCmdRef& r = g_ev.refs[static_cast<size_t>(g_ev.sel_cmd)];
-        if (r.header) target = r.insertable ? L"Ziel: ausgewählter Zweig" : L"Zweig nicht bearbeitbar";
+        if (r.header) target = r.insertable ? L"Ziel: Zweig (Doppelklick = einfuegen)" : L"Zweig nicht bearbeitbar";
         else if (!r.path.empty()) target = L"Ziel: Zweig-Ebene";
     }
     SetWindowTextW(g_ev.lbl_insert, target.c_str());
@@ -10033,9 +10052,13 @@ LRESULT CALLBACK event_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             // Etappe 45: Doppelklick auf einen Befehl öffnet sein XP-Einstellfenster.
             if (id == IDEV_CMDS && code == LBN_DBLCLK) {
                 ev_flush_queued_selections();
-                if (g_ev.sel_cmd >= 0 && static_cast<size_t>(g_ev.sel_cmd) < g_ev.refs.size() &&
-                    !g_ev.refs[static_cast<size_t>(g_ev.sel_cmd)].header)
-                    open_event_command_settings(g_ev.command_before.type, g_ev.command_before, true);
+                if (g_ev.sel_cmd >= 0 && static_cast<size_t>(g_ev.sel_cmd) < g_ev.refs.size()) {
+                    const EventCmdRef& r = g_ev.refs[static_cast<size_t>(g_ev.sel_cmd)];
+                    if (!r.header)
+                        open_event_command_settings(g_ev.command_before.type, g_ev.command_before, true);
+                    else if (r.insertable)
+                        open_event_command_picker();   // Etappe 46: in Zweig/Leer-Slot einfügen
+                }
                 return 0;
             }
             // Etappe 45: Kontextmenü (Rechtsklick) Bearbeiten/Löschen/Einfügen.

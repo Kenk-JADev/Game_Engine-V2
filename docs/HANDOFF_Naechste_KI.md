@@ -1,4 +1,20 @@
-# Handoff für die nächste KI - Rune3D, Stand nach Etappe 45
+# Handoff für die nächste KI - Rune3D, Stand nach Etappe 46
+
+**Etappe 46 (Zweige/leere Slots anklickbar zum Einfügen) — fertig, Sicht-/DPI-Test steht aus.**
+Die F6-Befehlsliste verhält sich wie XP: leere Zweige bekommen eine sichtbare
+Leer-Zeile `(leer - hier einfuegen)`; **Doppelklick auf eine Zweig-Kopfzeile
+(Dann/Sonst/Wenn[x]/Schleife/Wenn Abbruch) oder Leer-Zeile öffnet den XP-Picker
+und fügt in genau diesen Zweig ein** — statt das leere Inline-Feld bzw. die
+Befehlstyp-Combo zu nutzen. Doppelklick auf einen Befehl bearbeitet ihn weiter
+(Etappe 45). Nicht insertable Zweige bleiben geschützt. Serialisierung unverändert
+`event_command_prepare`/`event_batch_prepare` (Insert legt das Zweig-Array erst bei
+gültigem Befehl an). Nur `src/editor/editor_main.cpp` geändert (`ev_flatten_empty`,
+Doppelklick-Verzweigung, Ziel-Label). Cross-Kompilat sauber; json_test 1031/0,
+catalog 32/0, settings 29/0, arch 1542/0, engine 110/0. Doku:
+`docs/ETAPPE_46_BRANCH_INSERT_SLOTS.md`. **CI grün:** wird nachgetragen.
+**Offen für den Windows-Rechner:** Sicht-/DPI-Test der Leer-Slots und des
+Einfügens per Doppelklick.
+
 
 **Etappe 45 (XP-Einstellfenster, nummerierte Listen, Asset-Ordnerwahl, XP-Befehlsliste) — fertig, Sicht-/DPI-Test steht aus.**
 F6 bedient sich jetzt wie XP: jeder Befehl hat ein **eigenes Einstellfenster**

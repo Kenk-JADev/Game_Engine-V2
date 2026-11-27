@@ -484,7 +484,10 @@ nummerierte Liste 1..999 (mit Namen) gewählt, nicht eingetippt; Items/Helden/
 Truppen/… aus der Datenbank; Audio und Bilder über „Durchsuchen…“ aus einem Ordner
 (extern gewählte Dateien werden ins Projekt kopiert). In der Befehlsliste:
 Klick = auswählen, Doppelklick = Bearbeiten, Rechtsklick = Menü
-(Bearbeiten…/Einfügen…/Löschen). Siehe `docs/ETAPPE_45_COMMAND_SETTINGS_UI.md`.
+(Bearbeiten…/Einfügen…/Löschen). Leere Zweige zeigen eine anklickbare Leer-Zeile;
+Doppelklick auf eine Zweig-Kopfzeile (Dann/Sonst/…) oder Leer-Zeile fügt in genau
+diesen Zweig ein (Etappe 46). Siehe `docs/ETAPPE_45_COMMAND_SETTINGS_UI.md` und
+`docs/ETAPPE_46_BRANCH_INSERT_SLOTS.md`.
 
 Nur geänderte Felder werden geschrieben. Unberührte Zahlen, fehlende Felder,
 Zusatzdaten und verschachtelte Zweige bleiben erhalten. Alte Events ohne
