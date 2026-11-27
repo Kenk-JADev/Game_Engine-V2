@@ -16,7 +16,10 @@ folgt `event_command_keys`, nicht dem typisierten Katalog. Neuer kopfloser Test
 `tools/event_command_settings_test.cpp` (**29/0**, CI-Schritt `-Werror`).
 Cross-Kompilat sauber; `json_test` 1031/0, `befehle_test` 0, `event_commands_arch_test`
 1542/0, `event_commands_engine_test` 110/0, `event_command_catalog_test` 32/0.
-Doku: `docs/ETAPPE_45_COMMAND_SETTINGS_UI.md`. **CI grün:** wird nachgetragen.
+Doku: `docs/ETAPPE_45_COMMAND_SETTINGS_UI.md`. **CI grün:** Lauf
+[46000770539](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/46000770539)
+(`f6e1cd1`), alle vier Jobs; Windows-Build baut `RuneEditor.exe` mit den neuen
+Dialogen, Ruby-Engine 60 OK/0/1.
 **Offen für den Windows-Rechner:** interaktiver Sicht-/DPI-Test der Einstellfenster,
 der nummerierten Listen und der Ordnerwahl. **Nächster Ausbau:** die 30
 vorbereiteten XP-Befehle an die Engine-Ports anbinden + eigene Einstellfenster;

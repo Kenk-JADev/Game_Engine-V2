@@ -102,9 +102,18 @@ Cross-Kompilat des Editors (zig, Windows-Ziel) sauber; nur die vorbestehende
 
 ## CI
 
-<!-- CI_ABSCHNITT -->
-Wird nach dem Push nachgetragen (Lauf-ID, alle vier Jobs). Neuer Schritt
-„Einstell-Schema + nummerierte Register portabel prüfen (Etappe 45)“ im Job `cpp-logik`.
+**CI grün:** Lauf [46000770539](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/46000770539)
+(Commit `f6e1cd1`), alle vier Jobs erfolgreich:
+
+| Job | Ergebnis |
+|---|---|
+| C++-Logik (JSON-Schicht) | ✓ — inkl. „Einstell-Schema + nummerierte Register portabel prüfen (Etappe 45)“ (`-Werror`, 29/0) und Etappe-44-Katalog (32/0) |
+| Repo-Hygiene | ✓ |
+| Windows-Build (Rune3D + RuneEditor) | ✓ — `RuneEditor.exe` mit MSYS2-g++ gebaut, Einstellfenster/Asset-Browser kompilieren; D3D11-WARP/UI-Smoke |
+| Ruby-Engine (Tests + Karten) | ✓ — 60 OK, 0 fehlgeschlagen, 1 übersprungen (nur `tex_import`) |
+
+Der Windows-Job beweist, dass die neuen Win32-Header auch mit der echten
+Windows-Toolchain kompilieren. Er ersetzt keinen interaktiven Sicht-/DPI-Test.
 
 ## Sicht-/DPI-Test auf dem Windows-Rechner
 
