@@ -106,6 +106,16 @@ jetzt nur noch, dass `switch` ein Text ist; leer ist erlaubt, ein Nicht-Text
 läuft dauerhaft" bleibt bestehen. Gefunden und abgesichert durch
 `tools/database_register_test.rb`.
 
+## CI-Ergebnis
+
+[Lauf 45981479255](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/45981479255)
+(`945cf8f`) ist **grün in allen vier Jobs**: Ruby-Engine 58 OK / 0 Fehler /
+1 übersprungen (ohne gebaute EXE), Windows-Build **59 OK / 0 Fehler /
+0 übersprungen**, dazu WARP 39, Windows-Pfad 39, Dokument-Datei 58, Material 57,
+Editor-Arbeitsablauf 67 und die eingebettete Texturbrücke 7/40 — jeweils
+0 Fehler. Der Windows-Lauf beweist den Bau und die kopflosen Tests, **nicht**
+das Aussehen von F9: die Sicht-/DPI-Prüfung unten bleibt offen.
+
 ## Zwei Altfehler der CI mitbehoben
 
 Der erste CI-Lauf zu dieser Etappe war rot — aber nicht wegen F9: dieselben
