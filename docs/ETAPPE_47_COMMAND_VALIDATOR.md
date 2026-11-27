@@ -89,8 +89,10 @@ wurden konsistent umgestellt (IDs, Namen, Keys, Transfer-Koordinaten).
 
 ## CI
 
-<!-- CI_ABSCHNITT -->
-Wird nach dem Push nachgetragen (Lauf-ID, alle vier Jobs).
+**CI grün:** Lauf [46006515442](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/46006515442)
+(Commit `14d19bc`), alle vier Jobs erfolgreich. Ruby-Engine jetzt **61 OK,
+0 fehlgeschlagen, 1 übersprungen** (der neue `event_command_validator_test` läuft
+via `test_all` mit); Windows-Build 62 OK/0/0; C++-Logik und Repo-Hygiene grün.
 
 ## Hinweis
 

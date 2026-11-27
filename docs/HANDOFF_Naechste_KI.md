@@ -15,8 +15,9 @@ Komfort-API `Rpg.validate_event_commands`. **Neue Beispielwerte:** Schalter 101
 Config + allen drei Event-Command-Tests + Docs. Neuer Test
 `tools/event_command_validator_test.rb` (**13/0**, läuft via test_all im CI-Engine-Job).
 Bestehend grün: test 107/0, arch 1542/0, engine 110/0, json 1031/0, catalog 32/0,
-settings 29/0. Doku: `docs/ETAPPE_47_COMMAND_VALIDATOR.md`. **CI grün:** wird
-nachgetragen. Kein UI-Design in dieser Etappe.
+settings 29/0. Doku: `docs/ETAPPE_47_COMMAND_VALIDATOR.md`. **CI grün:** Lauf
+[46006515442](https://github.com/Kenk-JADev/Game_Engine-V2/actions/runs/46006515442)
+(`14d19bc`), alle vier Jobs; Ruby-Engine 61 OK/0/1. Kein UI-Design in dieser Etappe.
 
 
 **Etappe 46 (Zweige/leere Slots anklickbar zum Einfügen) — fertig, Sicht-/DPI-Test steht aus.**
